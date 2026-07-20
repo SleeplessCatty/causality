@@ -1,0 +1,32 @@
+{
+  "name": "causality",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": "24.18.0",
+    "pnpm": "11.15.1"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @causality/contracts build && pnpm --parallel --filter @causality/api --filter @causality/web dev",
+    "dev:web": "pnpm --filter @causality/contracts build && pnpm --filter @causality/web dev",
+    "dev:api": "pnpm --filter @causality/contracts build && pnpm --filter @causality/api dev",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "pnpm --filter @causality/contracts typecheck && pnpm --filter @causality/api typecheck && pnpm --filter @causality/web typecheck",
+    "test": "pnpm --filter @causality/contracts test && pnpm --filter @causality/api test && pnpm --filter @causality/web test",
+    "test:integration": "pnpm --filter @causality/api test:integration",
+    "test:e2e": "pnpm --filter @causality/contracts build && docker compose up -d --wait postgres && playwright test",
+    "build": "pnpm --filter @causality/contracts build && pnpm --filter @causality/api build && pnpm --filter @causality/web build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "eslint": "10.7.0",
+    "prettier": "3.9.5",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.64.0"
+  }
+}

@@ -1,0 +1,8 @@
+import type { FastifyInstance } from 'fastify';
+
+export function registerHealthRoute(app: FastifyInstance): void {
+  app.get('/api/health', async () => ({
+    status: 'ok' as const,
+    service: 'causality-api' as const,
+  }));
+}

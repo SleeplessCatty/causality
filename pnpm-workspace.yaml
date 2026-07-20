@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  cpu-features: false
+  esbuild: true
+  protobufjs: false
+  ssh2: false
+
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.101.3'
+  - '@tanstack/react-query@5.101.3'
