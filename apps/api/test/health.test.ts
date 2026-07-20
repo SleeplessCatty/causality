@@ -37,6 +37,30 @@ describe('API foundation', () => {
     expect(response.statusCode).toBe(404);
   });
 
+  it('publishes the health and readiness routes as OpenAPI JSON', async () => {
+    const app = buildApp({ logger: false, checkDatabase: async () => true });
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/openapi.json',
+    });
+    const document = response.json<{
+      info: { title: string; version: string };
+      openapi: string;
+      paths: Record<string, unknown>;
+    }>();
+
+    expect(response.statusCode).toBe(200);
+    expect(document.openapi).toMatch(/^3\./);
+    expect(document.info).toEqual({
+      title: 'Causality API',
+      version: '0.1.0',
+    });
+    expect(document.paths).toHaveProperty('/api/health');
+    expect(document.paths).toHaveProperty('/api/ready');
+  });
+
   it('reports database check failures as unavailable without leaking details', async () => {
     const app = buildApp({
       logger: false,

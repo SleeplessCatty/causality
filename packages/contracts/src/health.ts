@@ -5,15 +5,19 @@ export const healthResponseSchema = z.object({
   service: z.literal('causality-api'),
 });
 
+export const readyResponseSchema = z.object({
+  status: z.literal('ready'),
+  database: z.literal('available'),
+});
+
+export const notReadyResponseSchema = z.object({
+  status: z.literal('not_ready'),
+  database: z.literal('unavailable'),
+});
+
 export const readinessResponseSchema = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('ready'),
-    database: z.literal('available'),
-  }),
-  z.object({
-    status: z.literal('not_ready'),
-    database: z.literal('unavailable'),
-  }),
+  readyResponseSchema,
+  notReadyResponseSchema,
 ]);
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
