@@ -260,7 +260,7 @@ export function CausalGraphPage() {
       >
         <CausalGraphCanvas
           ref={canvasRef}
-          graph={graphQuery.data ?? null}
+          graph={graphQuery.data ?? lastGraph}
           centerEventName={selectedEvent?.name}
           isInitialLoading={hasValidCenter && !lastGraph && !queryError}
           isRefreshing={isReplacing}

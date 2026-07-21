@@ -8,6 +8,8 @@
 
 **Tech Stack:** React 19.2.7, React Router 8.2.0, TanStack Query 5.101.3, TypeScript 6.0.2, Cytoscape.js 3.34.0, cytoscape-elk 2.3.0, elkjs 0.12.0, Vitest 4.1.10, React Testing Library 16.3.2, Playwright 1.61.1.
 
+**Status:** 开发、自动化测试和真实浏览器视觉复核已完成（2026-07-21），等待用户人工复核。
+
 ## Global Constraints
 
 - Implement only the approved P1-09 design in `docs/stages/phase-1/P1-09-local-graph-expansion-filter-layout-design.md`.

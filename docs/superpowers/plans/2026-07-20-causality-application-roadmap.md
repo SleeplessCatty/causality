@@ -548,7 +548,7 @@ pnpm build
 | P1-06 局部因果图查询 API               | 已完成 |
 | P1-07 局部因果图基础展示               | 已完成 |
 | P1-08 局部图交互与信息查看             | 已完成 |
-| P1-09 局部图扩展、筛选与布局稳定性     | 设计待审核 |
+| P1-09 局部图扩展、筛选与布局稳定性     | 等待人工复核 |
 | P1-10 第一阶段整体验收与容器化交付     | 未开始 |
 | P2-01 至 P2-07                         | 未开始 |
 
@@ -600,10 +600,16 @@ P1-08 实施计划：
 docs/superpowers/plans/2026-07-21-p1-08-local-graph-interaction-implementation.md
 ```
 
-P1-09 设计文档：
+**P1-09 局部图扩展、筛选与布局稳定性** 已完成开发、自动化测试和真实浏览器视觉复核，等待用户人工复核。设计文档：
 
 ```text
 docs/stages/phase-1/P1-09-local-graph-expansion-filter-layout-design.md
 ```
 
-下一步为 P1-09 书面设计审核。未经用户确认 P1-09 设计文档，不编写实施计划，不开始实现。
+P1-09 实施计划：
+
+```text
+docs/superpowers/plans/2026-07-21-p1-09-local-graph-expansion-filter-layout-implementation.md
+```
+
+下一步为 P1-09 用户人工复核。未经用户明确确认复核通过，不将 P1-09 标记为已完成，也不进入 P1-10。

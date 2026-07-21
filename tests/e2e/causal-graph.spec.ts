@@ -29,8 +29,10 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
     meta: { nodeCount: number; relationCount: number };
   };
 
-  await expect(page).toHaveURL(/centerEventId=.*&direction=both/);
-  const canvas = page.getByRole('img', { name: /原油价格上涨的局部因果图/ });
+  await expect(page).toHaveURL(
+    /centerEventId=.*&direction=both&limit=20&minConfidence=0&minCaseCount=0/,
+  );
+  const canvas = page.getByRole('application', { name: /原油价格上涨的局部因果图/ });
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', String(initialGraph.meta.nodeCount));
   await expect(canvas).toHaveAttribute(
@@ -97,7 +99,7 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   const isolated = (await isolatedResponse.json()) as { id: string };
 
   await page.goto(`/graph?centerEventId=${isolated.id}&direction=both`);
-  const isolatedCanvas = page.getByRole('img', { name: new RegExp(isolatedName) });
+  const isolatedCanvas = page.getByRole('application', { name: new RegExp(isolatedName) });
   await expect(isolatedCanvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(isolatedCanvas).toHaveAttribute('data-node-count', '1');
   await expect(isolatedCanvas).toHaveAttribute('data-relation-count', '0');

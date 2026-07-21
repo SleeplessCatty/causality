@@ -125,7 +125,11 @@ vi.mock('../components/CausalGraphCanvas', async () => {
           focus: () => undefined,
         }));
         React.useEffect(() => {
-          if (!graph) return;
+          if (!graph) {
+            setVisibleGraph(null);
+            onLayoutStateChange?.('idle');
+            return;
+          }
           canvasControl.candidateNodeCount = graph.meta.nodeCount;
           const commit = () => {
             canvasControl.commitCount += 1;
@@ -511,14 +515,26 @@ describe('CausalGraphPage', () => {
   });
 
   it('keeps the old graph and interaction state when a replacement query fails', async () => {
+    let rejectReplacement: ((reason: Error) => void) | undefined;
+    vi.mocked(getCausalGraph).mockImplementation((query) => {
+      if (query.direction === 'upstream') {
+        return new Promise((_resolve, reject) => {
+          rejectReplacement = reject;
+        });
+      }
+      return Promise.resolve(graph(query.direction, 'exhausted', query));
+    });
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
     await screen.findAllByText('2 个节点 · 1 条关系');
     fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
     fireEvent.click(screen.getByRole('button', { name: '空格' }));
-    vi.mocked(getCausalGraph).mockRejectedValueOnce(new Error('network failed'));
     fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
+    await waitFor(() => expect(rejectReplacement).toBeTypeOf('function'));
+    expect(screen.getByTestId('graph-canvas').getAttribute('data-node-count')).toBe('2');
+    act(() => rejectReplacement?.(new Error('network failed')));
 
     expect(await screen.findByText('查询失败，仍显示上一查询结果')).toBeTruthy();
+    expect(screen.getByTestId('graph-canvas').getAttribute('data-node-count')).toBe('2');
     expect(screen.getAllByText('2 个节点 · 1 条关系')).toHaveLength(2);
     expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
     expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
