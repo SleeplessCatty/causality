@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { caseContentSchema, caseReferenceSchema } from '../cases/caseSchemas.js';
+
 const timestampSchema = z.iso.datetime({ offset: true });
 const eventReferenceSchema = z
   .object({ id: z.uuid(), name: z.string().trim().min(1).max(120) })
@@ -17,6 +19,14 @@ export const relationFormInputSchema = z
       .nullable()
       .optional()
       .transform((value) => value || null),
+    caseSelections: z
+      .array(
+        z.discriminatedUnion('type', [
+          z.object({ type: z.literal('existing'), caseId: z.uuid() }).strict(),
+          z.object({ type: z.literal('new'), content: caseContentSchema }).strict(),
+        ]),
+      )
+      .default([]),
   })
   .strict()
   .superRefine((value, context) => {
@@ -27,6 +37,19 @@ export const relationFormInputSchema = z
         path: ['effectEventId'],
       });
     }
+    const seen = new Set<string>();
+    value.caseSelections.forEach((selection, index) => {
+      const key =
+        selection.type === 'existing' ? `existing:${selection.caseId}` : `new:${selection.content}`;
+      if (seen.has(key)) {
+        context.addIssue({
+          code: 'custom',
+          message: '同一关系不能重复选择案例',
+          path: ['caseSelections', index],
+        });
+      }
+      seen.add(key);
+    });
   });
 
 export const relationListQuerySchema = z
@@ -56,7 +79,7 @@ export const relationReferenceSchema = z
 export const relationSummarySchema = relationReferenceSchema
   .extend({
     confidence: z.number().int().min(0).max(100),
-    caseCount: z.literal(0),
+    caseCount: z.number().int().nonnegative(),
     updatedAt: timestampSchema,
   })
   .strict();
@@ -65,6 +88,7 @@ export const relationDetailSchema = relationSummarySchema
   .extend({
     description: z.string().max(2_000).nullable(),
     createdAt: timestampSchema,
+    recentCases: z.array(caseReferenceSchema).max(5),
   })
   .strict();
 
@@ -91,3 +115,4 @@ export type RelationSummary = z.infer<typeof relationSummarySchema>;
 export type RelationDetail = z.infer<typeof relationDetailSchema>;
 export type RelationListResponse = z.infer<typeof relationListResponseSchema>;
 export type RelationPairCheckResponse = z.infer<typeof relationPairCheckResponseSchema>;
+export type CaseSelection = RelationFormInput['caseSelections'][number];

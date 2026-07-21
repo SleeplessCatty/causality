@@ -15,7 +15,7 @@ export default defineConfig({
     {
       command: 'corepack pnpm --filter @causality/api dev',
       url: 'http://127.0.0.1:3000/api/health',
-      reuseExistingServer: false,
+      reuseExistingServer: !process.env.CI,
       timeout: 30_000,
       env: {
         NODE_ENV: 'test',
@@ -29,7 +29,7 @@ export default defineConfig({
     {
       command: 'corepack pnpm --filter @causality/web dev',
       url: 'http://127.0.0.1:5173',
-      reuseExistingServer: false,
+      reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
   ],

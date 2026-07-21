@@ -2,8 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import type {
   abstractEvents,
+  causalRelationCases,
   causalRelations,
-  concreteCausalCases,
+  concreteCases,
   eventAliases,
 } from '../schema/index.js';
 
@@ -17,13 +18,15 @@ export interface SimulationOptions {
 type SimulatedEvent = typeof abstractEvents.$inferInsert;
 type SimulatedAlias = typeof eventAliases.$inferInsert;
 type SimulatedRelation = typeof causalRelations.$inferInsert;
-type SimulatedCase = typeof concreteCausalCases.$inferInsert;
+type SimulatedCase = typeof concreteCases.$inferInsert;
+type SimulatedCaseLink = typeof causalRelationCases.$inferInsert;
 
 export interface SimulationPlan {
   events: SimulatedEvent[];
   aliases: SimulatedAlias[];
   relations: SimulatedRelation[];
   cases: () => IterableIterator<SimulatedCase>;
+  caseLinks: () => IterableIterator<SimulatedCaseLink>;
 }
 
 const defaults: SimulationOptions = {
@@ -145,27 +148,29 @@ export function buildSimulationPlan(options: SimulationOptions, batchId: string)
     aliases,
     relations,
     cases: function* cases() {
-      const caseRandom = createSeededRandom(options.seed ^ 0x5f37_59df);
-      const baseTime = Date.UTC(2020, 0, 1);
-
       for (let index = 0; index < options.cases; index += 1) {
-        const relationIndex = Math.floor(caseRandom() * relations.length);
-        const relation = relations[relationIndex]!;
-        const causeIndex = directions[relationIndex]![0];
-        const effectIndex = directions[relationIndex]![1];
-        const causeTime = baseTime + Math.floor(caseRandom() * 2_000) * 86_400_000;
-        const effectTime = causeTime + Math.floor(caseRandom() * 31) * 86_400_000;
-
         yield {
           id: deterministicUuid(`${batchId}:case:${index}`),
-          causalRelationId: relation.id!,
-          causeEvent: `具体原因：${events[causeIndex]!.name}`,
-          effectEvent: `具体结果：${events[effectIndex]!.name}`,
-          causeOccurredAt: new Date(causeTime),
-          effectOccurredAt: new Date(effectTime),
-          description: `模拟因果案例 ${index + 1}，仅用于开发测试。`,
-          source: `模拟公开资料 ${batchId}-${index + 1}`,
+          content: `SIM-${batchId}-案例-${index + 1}`,
         };
+      }
+    },
+    caseLinks: function* caseLinks() {
+      const caseRandom = createSeededRandom(options.seed ^ 0x5f37_59df);
+      for (let index = 0; index < options.cases; index += 1) {
+        if (index % 5 === 0) continue;
+        const concreteCaseId = deterministicUuid(`${batchId}:case:${index}`);
+        const relationIndex = Math.floor(caseRandom() * relations.length);
+        yield {
+          causalRelationId: relations[relationIndex]!.id!,
+          concreteCaseId,
+        };
+        if (index % 6 === 0 && relations.length > 1) {
+          yield {
+            causalRelationId: relations[(relationIndex + 1) % relations.length]!.id!,
+            concreteCaseId,
+          };
+        }
       }
     },
   };

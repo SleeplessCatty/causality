@@ -7,8 +7,9 @@ import type {
   RelationPairCheckResponse,
   RelationReference,
   RelationSummary,
+  CaseReference,
 } from '@causality/contracts';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 import { decodeRelationCursor, encodeRelationCursor } from './relationCursor.js';
 
@@ -22,7 +23,22 @@ interface RelationRow {
   description: string | null;
   created_at: Date;
   updated_at: Date;
+  case_count: number;
   rank?: number;
+}
+
+export class RelationCaseNotFoundError extends Error {
+  constructor() {
+    super('Selected case not found');
+    this.name = 'RelationCaseNotFoundError';
+  }
+}
+
+export class RelationCaseContentConflictError extends Error {
+  constructor(readonly existingId: string) {
+    super('Case content already exists');
+    this.name = 'RelationCaseContentConflictError';
+  }
 }
 
 export interface RelationRepository {
@@ -53,16 +69,17 @@ function summary(row: RelationRow): RelationSummary {
   return {
     ...reference(row),
     confidence: row.confidence,
-    caseCount: 0,
+    caseCount: Number(row.case_count),
     updatedAt: row.updated_at.toISOString(),
   };
 }
 
-function detail(row: RelationRow): RelationDetail {
+function detail(row: RelationRow, recentCases: CaseReference[]): RelationDetail {
   return {
     ...summary(row),
     description: row.description,
     createdAt: row.created_at.toISOString(),
+    recentCases,
   };
 }
 
@@ -74,7 +91,9 @@ const selectRelation = `select r.id,
                                r.confidence,
                                r.description,
                                r.created_at,
-                               r.updated_at
+                               r.updated_at,
+                               (select count(*)::int from causal_relation_cases crc
+                                where crc.causal_relation_id = r.id) as case_count
                         from causal_relations r
                         join abstract_events cause on cause.id = r.cause_event_id
                         join abstract_events effect on effect.id = r.effect_event_id`;
@@ -152,6 +171,8 @@ export class PostgresRelationRepository implements RelationRepository {
                 r.description,
                 r.created_at,
                 r.updated_at,
+                (select count(*)::int from causal_relation_cases crc
+                 where crc.causal_relation_id = r.id) as case_count,
                 case
                   when cause.normalized_name = $1 or effect.normalized_name = $1 then 1
                   when cause.normalized_name like $2 escape '\\'
@@ -216,32 +237,127 @@ export class PostgresRelationRepository implements RelationRepository {
 
   async findById(id: string): Promise<RelationDetail | null> {
     const result = await this.pool.query<RelationRow>(`${selectRelation} where r.id = $1`, [id]);
-    return result.rows[0] ? detail(result.rows[0]) : null;
+    if (!result.rows[0]) return null;
+    const cases = await this.pool.query<{ id: string; content: string }>(
+      `select c.id, c.content
+       from causal_relation_cases crc
+       join concrete_cases c on c.id = crc.concrete_case_id
+       where crc.causal_relation_id = $1
+       order by crc.linked_at desc, c.id desc
+       limit 5`,
+      [id],
+    );
+    return detail(result.rows[0], cases.rows);
   }
 
   async create(input: RelationFormInput): Promise<RelationDetail> {
-    const result = await this.pool.query<{ id: string }>(
-      `insert into causal_relations (cause_event_id, effect_event_id, confidence, description)
-       values ($1, $2, $3, $4)
-       returning id`,
-      [input.causeEventId, input.effectEventId, input.confidence, input.description],
-    );
-    return (await this.findById(result.rows[0]!.id))!;
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const result = await client.query<{ id: string }>(
+        `insert into causal_relations (cause_event_id, effect_event_id, confidence, description)
+         values ($1, $2, $3, $4)
+         returning id`,
+        [input.causeEventId, input.effectEventId, input.confidence, input.description],
+      );
+      const id = result.rows[0]!.id;
+      await this.replaceCaseSelections(client, id, input.caseSelections);
+      await client.query('commit');
+      return (await this.findById(id))!;
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async replace(id: string, input: RelationFormInput): Promise<RelationDetail | null> {
-    const result = await this.pool.query<{ id: string }>(
-      `update causal_relations
-       set cause_event_id = $2,
-           effect_event_id = $3,
-           confidence = $4,
-           description = $5,
-           updated_at = clock_timestamp()
-       where id = $1
-       returning id`,
-      [id, input.causeEventId, input.effectEventId, input.confidence, input.description],
-    );
-    if (!result.rows[0]) return null;
-    return this.findById(id);
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const result = await client.query<{ id: string }>(
+        `update causal_relations
+         set cause_event_id = $2,
+             effect_event_id = $3,
+             confidence = $4,
+             description = $5,
+             updated_at = clock_timestamp()
+         where id = $1
+         returning id`,
+        [id, input.causeEventId, input.effectEventId, input.confidence, input.description],
+      );
+      if (!result.rows[0]) {
+        await client.query('rollback');
+        return null;
+      }
+      await this.replaceCaseSelections(client, id, input.caseSelections);
+      await client.query('commit');
+      return this.findById(id);
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async replaceCaseSelections(
+    client: PoolClient,
+    relationId: string,
+    selections: RelationFormInput['caseSelections'],
+  ): Promise<void> {
+    const existingIds = selections
+      .filter((selection) => selection.type === 'existing')
+      .map((selection) => selection.caseId);
+    if (existingIds.length > 0) {
+      const existing = await client.query<{ id: string }>(
+        `select id from concrete_cases where id = any($1::uuid[])`,
+        [existingIds],
+      );
+      if (existing.rows.length !== new Set(existingIds).size) {
+        throw new RelationCaseNotFoundError();
+      }
+    }
+
+    const caseIds = [...existingIds];
+    for (const selection of selections) {
+      if (selection.type !== 'new') continue;
+      const inserted = await client.query<{ id: string }>(
+        `insert into concrete_cases (content)
+         values ($1)
+         on conflict (content) do nothing
+         returning id`,
+        [selection.content],
+      );
+      if (!inserted.rows[0]) {
+        const existing = await client.query<{ id: string }>(
+          `select id from concrete_cases where content = $1`,
+          [selection.content],
+        );
+        throw new RelationCaseContentConflictError(existing.rows[0]!.id);
+      }
+      caseIds.push(inserted.rows[0].id);
+    }
+
+    if (caseIds.length === 0) {
+      await client.query(`delete from causal_relation_cases where causal_relation_id = $1`, [
+        relationId,
+      ]);
+    } else {
+      await client.query(
+        `delete from causal_relation_cases
+         where causal_relation_id = $1
+           and not (concrete_case_id = any($2::uuid[]))`,
+        [relationId, caseIds],
+      );
+      await client.query(
+        `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+         select $1, selected.id
+         from unnest($2::uuid[]) selected(id)
+         on conflict do nothing`,
+        [relationId, caseIds],
+      );
+    }
   }
 }

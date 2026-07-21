@@ -10,7 +10,7 @@ const relation = {
   causeEvent: { id: '22222222-2222-4222-8222-222222222222', name: '原油价格上涨' },
   effectEvent: { id: '33333333-3333-4333-8333-333333333333', name: '航空成本上升' },
   confidence: 82,
-  caseCount: 0 as const,
+  caseCount: 6,
   updatedAt: '2026-07-21T03:00:00.000Z',
 };
 
@@ -18,6 +18,12 @@ const detail = {
   ...relation,
   description: '燃油成本传导',
   createdAt: '2026-07-20T03:00:00.000Z',
+  recentCases: [
+    {
+      id: '44444444-4444-4444-8444-444444444444',
+      content: '2025年4月美国宣布新一轮关税措施',
+    },
+  ],
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -66,6 +72,10 @@ describe('RelationListPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '查看详情' }));
 
     expect(await screen.findByText('燃油成本传导')).toBeTruthy();
+    expect(screen.getByText('2025年4月美国宣布新一轮关税措施')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '查看全部 6 条' }).getAttribute('href')).toBe(
+      `/cases?relationId=${relation.id}`,
+    );
     expect(screen.getByRole('link', { name: '编辑关系' }).getAttribute('href')).toBe(
       `/relations/${relation.id}/edit`,
     );

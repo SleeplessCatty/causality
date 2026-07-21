@@ -10,13 +10,14 @@ interface DatabaseCounts {
   abstractEvents: number;
   eventAliases: number;
   causalRelations: number;
-  concreteCausalCases: number;
+  concreteCases: number;
+  causalRelationCaseLinks: number;
 }
 
 interface IntegrityCounts {
   selfLoops: number;
   invalidConfidence: number;
-  invalidCaseTimeOrder: number;
+  duplicateCaseLinks: number;
   invalidForeignKeys: number;
 }
 
@@ -37,17 +38,19 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
   const counts = await pool.query<{
     abstract_events: number;
     causal_relations: number;
-    concrete_causal_cases: number;
+    concrete_cases: number;
+    causal_relation_case_links: number;
     event_aliases: number;
   }>(
     `select
        (select count(*)::int from abstract_events) as abstract_events,
        (select count(*)::int from event_aliases) as event_aliases,
        (select count(*)::int from causal_relations) as causal_relations,
-       (select count(*)::int from concrete_causal_cases) as concrete_causal_cases`,
+       (select count(*)::int from concrete_cases) as concrete_cases,
+       (select count(*)::int from causal_relation_cases) as causal_relation_case_links`,
   );
   const integrity = await pool.query<{
-    invalid_case_time_order: number;
+    duplicate_case_links: number;
     invalid_confidence: number;
     invalid_foreign_keys: number;
     self_loops: number;
@@ -60,8 +63,12 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
         from causal_relations
         where confidence < 0 or confidence > 100) as invalid_confidence,
        (select count(*)::int
-        from concrete_causal_cases
-        where effect_occurred_at < cause_occurred_at) as invalid_case_time_order,
+        from (
+          select causal_relation_id, concrete_case_id
+          from causal_relation_cases
+          group by causal_relation_id, concrete_case_id
+          having count(*) > 1
+        ) duplicates) as duplicate_case_links,
        (
          (select count(*) from event_aliases a
           left join abstract_events e on e.id = a.event_id
@@ -70,9 +77,10 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
           left join abstract_events c on c.id = r.cause_event_id
           left join abstract_events e on e.id = r.effect_event_id
           where c.id is null or e.id is null) +
-         (select count(*) from concrete_causal_cases c
-          left join causal_relations r on r.id = c.causal_relation_id
-          where r.id is null)
+         (select count(*) from causal_relation_cases crc
+          left join causal_relations r on r.id = crc.causal_relation_id
+          left join concrete_cases c on c.id = crc.concrete_case_id
+          where r.id is null or c.id is null)
        )::int as invalid_foreign_keys`,
   );
 
@@ -84,12 +92,13 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
       abstractEvents: countRow.abstract_events,
       eventAliases: countRow.event_aliases,
       causalRelations: countRow.causal_relations,
-      concreteCausalCases: countRow.concrete_causal_cases,
+      concreteCases: countRow.concrete_cases,
+      causalRelationCaseLinks: countRow.causal_relation_case_links,
     },
     integrity: {
       selfLoops: integrityRow.self_loops,
       invalidConfidence: integrityRow.invalid_confidence,
-      invalidCaseTimeOrder: integrityRow.invalid_case_time_order,
+      duplicateCaseLinks: integrityRow.duplicate_case_links,
       invalidForeignKeys: integrityRow.invalid_foreign_keys,
     },
     valid: false,

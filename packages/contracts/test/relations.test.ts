@@ -28,7 +28,48 @@ describe('relation contracts', () => {
       effectEventId,
       confidence: 75,
       description: '利率上升促使流动性收紧',
+      caseSelections: [],
     });
+  });
+
+  it('accepts mixed case selections and rejects duplicates', () => {
+    const newContent = '2025年4月美国宣布新一轮关税措施';
+    const base = {
+      causeEventId,
+      effectEventId,
+      confidence: 75,
+      description: null,
+    };
+    expect(
+      relationFormInputSchema.parse({
+        ...base,
+        caseSelections: [
+          { type: 'existing', caseId: relationId },
+          { type: 'new', content: ` ${newContent} ` },
+        ],
+      }).caseSelections,
+    ).toEqual([
+      { type: 'existing', caseId: relationId },
+      { type: 'new', content: newContent },
+    ]);
+    expect(
+      relationFormInputSchema.safeParse({
+        ...base,
+        caseSelections: [
+          { type: 'existing', caseId: relationId },
+          { type: 'existing', caseId: relationId },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      relationFormInputSchema.safeParse({
+        ...base,
+        caseSelections: [
+          { type: 'new', content: newContent },
+          { type: 'new', content: ` ${newContent} ` },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it('rejects self loops, null confidence, decimals, and out-of-range values', () => {
@@ -52,7 +93,7 @@ describe('relation contracts', () => {
     ).toEqual({ causeEventId, effectEventId, excludeId: relationId });
   });
 
-  it('accepts strict list, detail, and pair-check responses with case count zero', () => {
+  it('accepts strict list, detail, and pair-check responses with real case data', () => {
     const reference = {
       id: relationId,
       causeEvent: { id: causeEventId, name: '央行提高政策利率' },
@@ -62,7 +103,13 @@ describe('relation contracts', () => {
       ...reference,
       confidence: 75,
       description: null,
-      caseCount: 0,
+      caseCount: 2,
+      recentCases: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          content: '2025年4月美国宣布新一轮关税措施',
+        },
+      ],
       createdAt: '2026-07-21T00:00:00.000Z',
       updatedAt: '2026-07-21T00:00:00.000Z',
     };
@@ -70,7 +117,7 @@ describe('relation contracts', () => {
     expect(relationDetailSchema.parse(detail)).toEqual(detail);
     expect(
       relationListResponseSchema.parse({
-        items: [{ ...reference, confidence: 75, caseCount: 0, updatedAt: detail.updatedAt }],
+        items: [{ ...reference, confidence: 75, caseCount: 2, updatedAt: detail.updatedAt }],
         nextCursor: null,
         hasMore: false,
       }),
@@ -78,7 +125,15 @@ describe('relation contracts', () => {
     expect(
       relationPairCheckResponseSchema.parse({ sameDirection: null, reverseDirection: reference }),
     ).toBeTruthy();
-    expect(() => relationDetailSchema.parse({ ...detail, caseCount: 1 })).toThrow();
+    expect(() =>
+      relationDetailSchema.parse({
+        ...detail,
+        recentCases: Array.from({ length: 6 }, (_, index) => ({
+          id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+          content: `案例 ${index}`,
+        })),
+      }),
+    ).toThrow();
   });
 
   it('accepts relation error codes', () => {

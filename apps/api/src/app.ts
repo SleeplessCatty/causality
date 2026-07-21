@@ -12,6 +12,7 @@ import { registerHealthRoute } from './routes/health.js';
 import { registerReadinessRoute, type DatabaseReadinessCheck } from './routes/readiness.js';
 import { registerEventRoutes } from './features/events/eventRoutes.js';
 import { registerRelationRoutes } from './features/relations/relationRoutes.js';
+import { registerCaseRoutes } from './features/cases/caseRoutes.js';
 
 interface BuildAppOptions {
   logger?: FastifyServerOptions['logger'];
@@ -46,6 +47,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     if (options.databasePool) {
       registerEventRoutes(app, options.databasePool);
       registerRelationRoutes(app, options.databasePool);
+      registerCaseRoutes(app, options.databasePool);
     }
 
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());

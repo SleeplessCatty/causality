@@ -1,4 +1,30 @@
 export {
+  caseCandidateListResponseSchema,
+  caseCandidateQuerySchema,
+  caseContentSchema,
+  caseDetailSchema,
+  caseFormInputSchema,
+  caseListQuerySchema,
+  caseListResponseSchema,
+  caseReferenceSchema,
+  caseRelationListQuerySchema,
+  caseRelationListResponseSchema,
+  caseRelationSummarySchema,
+  caseSummarySchema,
+  type CaseCandidateListResponse,
+  type CaseCandidateQuery,
+  type CaseDetail,
+  type CaseFormInput,
+  type CaseListQuery,
+  type CaseListResponse,
+  type CaseReference,
+  type CaseRelationListQuery,
+  type CaseRelationListResponse,
+  type CaseRelationSummary,
+  type CaseSummary,
+} from './cases/caseSchemas.js';
+
+export {
   healthResponseSchema,
   notReadyResponseSchema,
   readyResponseSchema,
@@ -46,4 +72,5 @@ export {
   type RelationPairCheckResponse,
   type RelationReference,
   type RelationSummary,
+  type CaseSelection,
 } from './relations/relationSchemas.js';

@@ -47,12 +47,12 @@ type CaseSummary = CaseReference & {
 type CaseDetail = CaseSummary & { createdAt: string };
 ```
 
-- [ ] Write failing case contract tests for trimming, 1–50 character bounds, strict objects, list query defaults, `relationId`, candidate limit 10, summaries, details, relation pages, and error-code serialization.
-- [ ] Extend relation contract tests first for mixed `caseSelections`, duplicate existing IDs, duplicate new content, real nonnegative `caseCount`, and at most five `recentCases`; confirm current contracts fail.
-- [ ] Implement `caseContentSchema`, case form/list/candidate/relation-list schemas, response schemas, exported types, case error codes, and optional `existingId` on the shared strict API error response.
-- [ ] Extend `relationFormInputSchema` with `caseSelections: z.array(caseSelectionSchema).default([])` and a refinement rejecting duplicate selections.
-- [ ] Change `caseCount` from `z.literal(0)` to a nonnegative integer and add `recentCases: z.array(caseReferenceSchema).max(5)` to relation detail.
-- [ ] Run `pnpm --filter @causality/contracts test` and `pnpm --filter @causality/contracts typecheck`; expect all contract tests green.
+- [x] Write failing case contract tests for trimming, 1–50 character bounds, strict objects, list query defaults, `relationId`, candidate limit 10, summaries, details, relation pages, and error-code serialization.
+- [x] Extend relation contract tests first for mixed `caseSelections`, duplicate existing IDs, duplicate new content, real nonnegative `caseCount`, and at most five `recentCases`; confirm current contracts fail.
+- [x] Implement `caseContentSchema`, case form/list/candidate/relation-list schemas, response schemas, exported types, case error codes, and optional `existingId` on the shared strict API error response.
+- [x] Extend `relationFormInputSchema` with `caseSelections: z.array(caseSelectionSchema).default([])` and a refinement rejecting duplicate selections.
+- [x] Change `caseCount` from `z.literal(0)` to a nonnegative integer and add `recentCases: z.array(caseReferenceSchema).max(5)` to relation detail.
+- [x] Run `pnpm --filter @causality/contracts test` and `pnpm --filter @causality/contracts typecheck`; expect all contract tests green.
 
 ### Task 2: New database model, migration, and deterministic data tools
 
@@ -91,13 +91,13 @@ create table causal_relation_cases (
 );
 ```
 
-- [ ] Replace old integration expectations with failing tests for both new tables, content checks, exact unique content, composite primary key, restrictive foreign keys, search/list indexes, and relation/case traversal indexes.
-- [ ] Write failing data-tool tests that require independent, single-relation, and shared cases plus deterministic link generation; preserve explicit output counts for cases and relation-case links.
-- [ ] Implement the two Drizzle schemas and update schema exports.
-- [ ] Generate migration `0003`, inspect that it drops only the old case table, creates the two new tables and indexes, and leaves abstract events, aliases, and causal relations untouched.
-- [ ] Rewrite fixed seed and simulation generators for the new model; keep `--cases` as the number of independent cases and derive deterministic associations from the same seed.
-- [ ] Extend `db:verify` with `concreteCases`, `causalRelationCaseLinks`, invalid foreign keys, and duplicate-link integrity checks.
-- [ ] Run focused unit tests, then `pnpm test:integration`; expect the migration and data-tool suites green.
+- [x] Replace old integration expectations with failing tests for both new tables, content checks, exact unique content, composite primary key, restrictive foreign keys, search/list indexes, and relation/case traversal indexes.
+- [x] Write failing data-tool tests that require independent, single-relation, and shared cases plus deterministic link generation; preserve explicit output counts for cases and relation-case links.
+- [x] Implement the two Drizzle schemas and update schema exports.
+- [x] Generate migration `0003`, inspect that it drops only the old case table, creates the two new tables and indexes, and leaves abstract events, aliases, and causal relations untouched.
+- [x] Rewrite fixed seed and simulation generators for the new model; keep `--cases` as the number of independent cases and derive deterministic associations from the same seed.
+- [x] Extend `db:verify` with `concreteCases`, `causalRelationCaseLinks`, invalid foreign keys, and duplicate-link integrity checks.
+- [x] Run focused unit tests, then `pnpm test:integration`; expect the migration and data-tool suites green.
 
 ### Task 3: Concrete-case cursor, repository, service, and REST API
 
@@ -126,14 +126,14 @@ interface CaseRepository {
 }
 ```
 
-- [ ] Write failing cursor tests for list/search/relation-filter state, malformed values, query mismatch, tampering, and version mismatch.
-- [ ] Implement versioned Base64URL cursors bound to normalized `q` and `relationId`.
-- [ ] Write failing service tests for not found, duplicate content with existing case ID, known PostgreSQL constraints, and unknown errors.
-- [ ] Implement the case service and stable `CASE_NOT_FOUND` / `CASE_CONTENT_CONFLICT` errors.
-- [ ] Write failing Testcontainers tests for list, search, relation filter, candidates, detail, relation pagination, create, replace, duplicate conflict, missing records, stable pagination, indexes, and OpenAPI paths.
-- [ ] Implement parameterized repository queries with set-based relation counts, ranked content search, stable cursor pagination, and no per-row queries.
-- [ ] Register routes in static-before-parameter order and register the case module from `buildApp` only when a pool exists.
-- [ ] Run all API unit and integration tests green.
+- [x] Write failing cursor tests for list/search/relation-filter state, malformed values, query mismatch, tampering, and version mismatch.
+- [x] Implement versioned Base64URL cursors bound to normalized `q` and `relationId`.
+- [x] Write failing service tests for not found, duplicate content with existing case ID, known PostgreSQL constraints, and unknown errors.
+- [x] Implement the case service and stable `CASE_NOT_FOUND` / `CASE_CONTENT_CONFLICT` errors.
+- [x] Write failing Testcontainers tests for list, search, relation filter, candidates, detail, relation pagination, create, replace, duplicate conflict, missing records, stable pagination, indexes, and OpenAPI paths.
+- [x] Implement parameterized repository queries with set-based relation counts, ranked content search, stable cursor pagination, and no per-row queries.
+- [x] Register routes in static-before-parameter order and register the case module from `buildApp` only when a pool exists.
+- [x] Run all API unit and integration tests green.
 
 ### Task 4: Atomic relation-case persistence and real relation summaries
 
@@ -154,13 +154,13 @@ interface RelationDetail {
 }
 ```
 
-- [ ] Extend relation integration tests first for real set-based counts, recent five ordered by `linked_at desc`, mixed existing/new selections, zero selections, shared cases, unlink-without-delete, unchanged confidence, and full rollback.
-- [ ] Add failing service tests for missing selected cases, duplicate selection, new-content conflict, and mapping join/content database constraints to stable errors.
-- [ ] Refactor relation repository reads to aggregate counts and query only five recent cases for normal detail; edit preload obtains the complete association set through paged `GET /api/cases?relationId=<id>` calls.
-- [ ] Implement `create` and `replace` with a checked-out pool client and one transaction covering relation write, new-case creation, link insertion, and removed-link deletion.
-- [ ] Ensure failed writes roll back both the relation and newly inserted cases; never auto-reuse a conflicting `new` selection.
-- [ ] Update route error mapping and OpenAPI response schemas.
-- [ ] Run relation unit and integration tests, then the complete API suite green.
+- [x] Extend relation integration tests first for real set-based counts, recent five ordered by `linked_at desc`, mixed existing/new selections, zero selections, shared cases, unlink-without-delete, unchanged confidence, and full rollback.
+- [x] Add failing service tests for missing selected cases, duplicate selection, new-content conflict, and mapping join/content database constraints to stable errors.
+- [x] Refactor relation repository reads to aggregate counts and query only five recent cases for normal detail; edit preload obtains the complete association set through paged `GET /api/cases?relationId=<id>` calls.
+- [x] Implement `create` and `replace` with a checked-out pool client and one transaction covering relation write, new-case creation, link insertion, and removed-link deletion.
+- [x] Ensure failed writes roll back both the relation and newly inserted cases; never auto-reuse a conflicting `new` selection.
+- [x] Update route error mapping and OpenAPI response schemas.
+- [x] Run relation unit and integration tests, then the complete API suite green.
 
 ### Task 5: Independent concrete-case Web module
 
@@ -187,13 +187,13 @@ interface RelationDetail {
 /cases/:caseId/edit
 ```
 
-- [ ] Write failing API-helper and page tests for navigation, list/search debounce, `relationId` filter, cursor pagination, loading/empty/error states, candidate-free form validation, duplicate conflict link, detail relation pagination, create navigation, edit warning, replace navigation, and input preservation.
-- [ ] Implement abortable 10-second API helpers with shared error parsing and contract validation.
-- [ ] Add the “具体案例” navigation item and four routes without changing the application shell style.
-- [ ] Implement the case list with 30-row pages and URL-backed `q` / `relationId` state.
-- [ ] Implement the one-field form with 50-character count, accessible errors, submit lock, and duplicate-case detail link.
-- [ ] Implement detail and edit pages; linked relations navigate to `/relations?expanded=<id>`.
-- [ ] Add only case-specific layout rules and run Web tests, typecheck, and production build green.
+- [x] Write failing API-helper and page tests for navigation, list/search debounce, `relationId` filter, cursor pagination, loading/empty/error states, candidate-free form validation, duplicate conflict link, detail relation pagination, create navigation, edit warning, replace navigation, and input preservation.
+- [x] Implement abortable 10-second API helpers with shared error parsing and contract validation.
+- [x] Add the “具体案例” navigation item and four routes without changing the application shell style.
+- [x] Implement the case list with 30-row pages and URL-backed `q` / `relationId` state.
+- [x] Implement the one-field form with 50-character count, accessible errors, submit lock, and duplicate-case detail link.
+- [x] Implement detail and edit pages; linked relations navigate to `/relations?expanded=<id>`.
+- [x] Add only case-specific layout rules and run Web tests, typecheck, and production build green.
 
 ### Task 6: Case rows in relation forms and recent cases in relation detail
 
@@ -223,12 +223,12 @@ interface RelationFormValue {
 }
 ```
 
-- [ ] Write failing component tests for adding/removing rows, 250ms candidate search, candidate-only text, explicit “创建新案例”, 50-character validation, duplicate rows, zero rows, edit preload, preserved rows after failure, and disabled controls while saving.
-- [ ] Implement reusable case selector rows with request cancellation, keyboard selection, explicit new-case confirmation, and no match reasons.
-- [ ] Integrate `caseSelections` into relation validation and submission; new relation default is an empty array and edit loads every association by following the relation-filtered case-list cursor before rendering the form.
-- [ ] Invalidate case lists/details/candidates and relation lists/details after relation writes.
-- [ ] Extend relation inline detail with real count, five linked case references, case-detail links, and `/cases?relationId=<id>` for all cases.
-- [ ] Run all Web tests, typecheck, and build green.
+- [x] Write failing component tests for adding/removing rows, 250ms candidate search, candidate-only text, explicit “创建新案例”, 50-character validation, duplicate rows, zero rows, edit preload, preserved rows after failure, and disabled controls while saving.
+- [x] Implement reusable case selector rows with request cancellation, keyboard selection, explicit new-case confirmation, and no match reasons.
+- [x] Integrate `caseSelections` into relation validation and submission; new relation default is an empty array and edit loads every association by following the relation-filtered case-list cursor before rendering the form.
+- [x] Invalidate case lists/details/candidates and relation lists/details after relation writes.
+- [x] Extend relation inline detail with real count, five linked case references, case-detail links, and `/cases?relationId=<id>` for all cases.
+- [x] Run all Web tests, typecheck, and build green.
 
 ### Task 7: Browser workflow, documentation, and manual-review handoff
 
@@ -241,10 +241,10 @@ interface RelationFormValue {
 - Modify: `docs/superpowers/plans/2026-07-20-causality-application-roadmap.md`
 - Modify: `docs/superpowers/plans/2026-07-21-p1-05-concrete-case-management.md`
 
-- [ ] Write failing Playwright workflows for independent create/search/edit, exact duplicate conflict, relation selection of existing and explicit new cases, shared reuse, unlink without deletion, zero cases, real count, recent five, and filtered “查看全部案例”.
-- [ ] Implement remaining testability fixes and run Playwright green against the Colima PostgreSQL database.
-- [ ] Inspect case and updated relation pages at 1280×800 and 1440×900; verify keyboard focus, row wrapping, candidate overlays, error messages, and no horizontal overflow.
-- [ ] Rebuild fixed and 10,000-case simulated development data, then run `pnpm db:verify` and record both case and association counts.
-- [ ] Update README and set P1-05 to `等待人工复核` without entering P1-06.
-- [ ] Run `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm test:integration`, `pnpm test:e2e`, `pnpm build`, `git diff --check`, database verification, and production-bundle secret scan.
-- [ ] Present exact results and the P1-05 manual checklist; keep implementation uncommitted until the user confirms successful verification.
+- [x] Write failing Playwright workflows for independent create/search/edit, exact duplicate conflict, relation selection of existing and explicit new cases, shared reuse, unlink without deletion, zero cases, real count, recent five, and filtered “查看全部案例”.
+- [x] Implement remaining testability fixes and run Playwright green against the Colima PostgreSQL database.
+- [x] Inspect case and updated relation pages at 1280×800 and 1440×900; verify keyboard focus, row wrapping, candidate overlays, error messages, and no horizontal overflow.
+- [x] Rebuild fixed and 10,000-case simulated development data, then run `pnpm db:verify` and record both case and association counts.
+- [x] Update README and set P1-05 to `等待人工复核` without entering P1-06.
+- [x] Run `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pnpm test`, `pnpm test:integration`, `pnpm test:e2e`, `pnpm build`, `git diff --check`, database verification, and production-bundle secret scan.
+- [x] Present exact results and the P1-05 manual checklist; keep implementation uncommitted until the user confirms successful verification.

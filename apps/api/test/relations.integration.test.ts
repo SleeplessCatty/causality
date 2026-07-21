@@ -1,4 +1,10 @@
-import type { EventDetail, RelationDetail, RelationListResponse } from '@causality/contracts';
+import type {
+  CaseDetail,
+  CaseSelection,
+  EventDetail,
+  RelationDetail,
+  RelationListResponse,
+} from '@causality/contracts';
 import { Pool } from 'pg';
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -61,7 +67,11 @@ describe.sequential('relation REST API', () => {
   async function createRelation(
     causeEventId: string,
     effectEventId: string,
-    overrides: Partial<{ confidence: number; description: string | null }> = {},
+    overrides: Partial<{
+      confidence: number;
+      description: string | null;
+      caseSelections: CaseSelection[];
+    }> = {},
   ) {
     return app!.inject({
       method: 'POST',
@@ -71,6 +81,7 @@ describe.sequential('relation REST API', () => {
         effectEventId,
         confidence: overrides.confidence ?? 70,
         description: overrides.description ?? null,
+        caseSelections: overrides.caseSelections ?? [],
       },
     });
   }
@@ -91,6 +102,7 @@ describe.sequential('relation REST API', () => {
       confidence: 82,
       caseCount: 0,
       description: '燃油成本传导',
+      recentCases: [],
     });
     expect(
       (await app!.inject({ method: 'GET', url: `/api/relations/${created.id}` })).json(),
@@ -142,6 +154,7 @@ describe.sequential('relation REST API', () => {
         effectEventId: newEffect.id,
         confidence: 91,
         description: '汇率变化传导',
+        caseSelections: [],
       },
     });
     expect(response.statusCode).toBe(200);
@@ -150,6 +163,72 @@ describe.sequential('relation REST API', () => {
       confidence: 91,
       description: '汇率变化传导',
     });
+  });
+
+  it('atomically creates, reuses, counts, limits, and unlinks concrete cases', async () => {
+    const existingCase = (
+      await app!.inject({
+        method: 'POST',
+        url: '/api/cases',
+        payload: { content: '2026年关系测试已有案例' },
+      })
+    ).json<CaseDetail>();
+    const cause = await createEvent('测试：案例关联原因');
+    const effect = await createEvent('测试：案例关联结果');
+    const newContents = Array.from({ length: 6 }, (_, index) => `2026年关系测试新案例${index + 1}`);
+    const createdResponse = await createRelation(cause.id, effect.id, {
+      confidence: 64,
+      caseSelections: [
+        { type: 'existing', caseId: existingCase.id },
+        ...newContents.map((content) => ({ type: 'new' as const, content })),
+      ],
+    });
+    const created = createdResponse.json<RelationDetail>();
+    expect(createdResponse.statusCode).toBe(201);
+    expect(created.caseCount).toBe(7);
+    expect(created.recentCases).toHaveLength(5);
+    expect(created.confidence).toBe(64);
+
+    const replaced = await app!.inject({
+      method: 'PUT',
+      url: `/api/relations/${created.id}`,
+      payload: {
+        causeEventId: cause.id,
+        effectEventId: effect.id,
+        confidence: 64,
+        description: null,
+        caseSelections: [{ type: 'existing', caseId: existingCase.id }],
+      },
+    });
+    expect(replaced.statusCode).toBe(200);
+    expect(replaced.json<RelationDetail>()).toMatchObject({ caseCount: 1, confidence: 64 });
+    const independentCount = await pool!.query<{ count: string }>(
+      `select count(*) from concrete_cases where content = any($1::text[])`,
+      [newContents],
+    );
+    expect(independentCount.rows[0]?.count).toBe('6');
+  });
+
+  it('rolls back a relation and new cases when an existing selection is missing', async () => {
+    const cause = await createEvent('测试：回滚原因');
+    const effect = await createEvent('测试：回滚结果');
+    const content = '2026年关系事务回滚案例';
+    const response = await createRelation(cause.id, effect.id, {
+      caseSelections: [
+        { type: 'new', content },
+        { type: 'existing', caseId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' },
+      ],
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: 'CASE_NOT_FOUND' });
+    const counts = await pool!.query<{ cases: string; relations: string }>(
+      `select
+         (select count(*) from concrete_cases where content = $1) as cases,
+         (select count(*) from causal_relations
+          where cause_event_id = $2 and effect_event_id = $3) as relations`,
+      [content, cause.id, effect.id],
+    );
+    expect(counts.rows[0]).toEqual({ cases: '0', relations: '0' });
   });
 
   it('searches cause/effect names, aliases, and descriptions', async () => {

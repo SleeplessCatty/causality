@@ -7,6 +7,7 @@ import { runMigrations } from '../src/database/migrate.js';
 const eventOneId = '10000000-0000-4000-8000-000000000001';
 const eventTwoId = '10000000-0000-4000-8000-000000000002';
 const relationId = '20000000-0000-4000-8000-000000000001';
+const caseId = '30000000-0000-4000-8000-000000000001';
 
 async function expectPgError(operation: Promise<unknown>, expectedCode: string): Promise<void> {
   await expect(operation).rejects.toMatchObject({ code: expectedCode });
@@ -57,8 +58,9 @@ describe.sequential('core PostgreSQL model', () => {
 
     expect(tables.rows.map((row) => row.table_name)).toEqual([
       'abstract_events',
+      'causal_relation_cases',
       'causal_relations',
-      'concrete_causal_cases',
+      'concrete_cases',
       'event_aliases',
     ]);
   });
@@ -174,40 +176,45 @@ describe.sequential('core PostgreSQL model', () => {
     );
   });
 
-  it('requires valid case references and chronological occurrence times', async () => {
+  it('keeps cases independent, unique, short, and reusable through relation links', async () => {
     await expectPgError(
-      pool!.query(
-        `insert into concrete_causal_cases
-           (causal_relation_id, cause_event, effect_event,
-            cause_occurred_at, effect_occurred_at, description, source)
-         values
-           ($1, 'Cause', 'Effect', '2026-02-02', '2026-02-01',
-            'Explanation', 'Public source')`,
-        [relationId],
-      ),
+      pool!.query(`insert into concrete_cases (content) values ('   ')`),
       '23514',
     );
-
+    await expectPgError(
+      pool!.query(`insert into concrete_cases (content) values ($1)`, ['事'.repeat(51)]),
+      '22001',
+    );
+    await pool!.query(`insert into concrete_cases (id, content) values ($1, $2)`, [
+      caseId,
+      '2025年4月美国宣布新一轮关税措施',
+    ]);
+    await expectPgError(
+      pool!.query(`insert into concrete_cases (content) values ($1)`, [
+        '2025年4月美国宣布新一轮关税措施',
+      ]),
+      '23505',
+    );
     await expectPgError(
       pool!.query(
-        `insert into concrete_causal_cases
-           (causal_relation_id, cause_event, effect_event,
-            cause_occurred_at, effect_occurred_at, description, source)
-         values
-           ('ffffffff-ffff-4fff-8fff-ffffffffffff', 'Cause', 'Effect',
-            '2026-02-01', '2026-02-02', 'Explanation', 'Public source')`,
+        `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+         values ('ffffffff-ffff-4fff-8fff-ffffffffffff', $1)`,
+        [caseId],
       ),
       '23503',
     );
-
     await pool!.query(
-      `insert into concrete_causal_cases
-         (causal_relation_id, cause_event, effect_event,
-          cause_occurred_at, effect_occurred_at, description, source)
-       values
-         ($1, 'Policy rate rose', 'Liquidity tightened',
-          '2026-02-01', '2026-02-02', 'Observed sequence', 'Public source')`,
-      [relationId],
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+       values ($1, $2)`,
+      [relationId, caseId],
+    );
+    await expectPgError(
+      pool!.query(
+        `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+         values ($1, $2)`,
+        [relationId, caseId],
+      ),
+      '23505',
     );
   });
 
@@ -256,7 +263,10 @@ describe.sequential('core PostgreSQL model', () => {
         'causal_relations_effect_event_id_idx',
         'causal_relations_description_trgm_idx',
         'causal_relations_updated_at_id_idx',
-        'concrete_cases_relation_effect_time_idx',
+        'concrete_cases_content_trgm_idx',
+        'concrete_cases_updated_at_id_idx',
+        'causal_relation_cases_relation_linked_idx',
+        'causal_relation_cases_case_linked_idx',
       ]),
     );
 

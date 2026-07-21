@@ -8,8 +8,9 @@ import { parseEnv } from '../../config/env.js';
 import { createDatabaseClient } from '../client.js';
 import {
   abstractEvents,
+  causalRelationCases,
   causalRelations,
-  concreteCausalCases,
+  concreteCases,
   eventAliases,
 } from '../schema/index.js';
 import {
@@ -28,6 +29,7 @@ export interface SimulationResult {
     aliases: number;
     relations: number;
     cases: number;
+    caseLinks: number;
   };
   elapsedMilliseconds: number;
 }
@@ -58,17 +60,27 @@ export async function runSimulation(
         .values(plan.relations.slice(offset, offset + insertBatchSize));
     }
 
-    let caseBatch: Array<typeof concreteCausalCases.$inferInsert> = [];
+    let caseBatch: Array<typeof concreteCases.$inferInsert> = [];
     for (const causalCase of plan.cases()) {
       caseBatch.push(causalCase);
       if (caseBatch.length === insertBatchSize) {
-        await transaction.insert(concreteCausalCases).values(caseBatch);
+        await transaction.insert(concreteCases).values(caseBatch);
         caseBatch = [];
       }
     }
     if (caseBatch.length > 0) {
-      await transaction.insert(concreteCausalCases).values(caseBatch);
+      await transaction.insert(concreteCases).values(caseBatch);
     }
+
+    let linkBatch: Array<typeof causalRelationCases.$inferInsert> = [];
+    for (const link of plan.caseLinks()) {
+      linkBatch.push(link);
+      if (linkBatch.length === insertBatchSize) {
+        await transaction.insert(causalRelationCases).values(linkBatch);
+        linkBatch = [];
+      }
+    }
+    if (linkBatch.length > 0) await transaction.insert(causalRelationCases).values(linkBatch);
   });
 
   return {
@@ -78,6 +90,7 @@ export async function runSimulation(
       aliases: options.events,
       relations: options.relations,
       cases: options.cases,
+      caseLinks: Array.from(plan.caseLinks()).length,
     },
     elapsedMilliseconds: Math.round(performance.now() - startedAt),
   };

@@ -58,6 +58,7 @@ describe('simulation plan', () => {
     expect(first.events).toEqual(second.events);
     expect(first.relations).toEqual(second.relations);
     expect(Array.from(first.cases())).toEqual(Array.from(second.cases()));
+    expect(Array.from(first.caseLinks())).toEqual(Array.from(second.caseLinks()));
   });
 
   it('creates no self loops or duplicate directed relations', () => {
@@ -72,18 +73,28 @@ describe('simulation plan', () => {
     }
   });
 
-  it('binds every case to a relation and keeps chronological time order', () => {
+  it('creates independent cases with zero, one, and multiple relation links', () => {
     const plan = buildSimulationPlan(options, 'case-batch');
     const relationIds = new Set(plan.relations.map((relation) => relation.id));
     const cases = Array.from(plan.cases());
+    const caseIds = new Set(cases.map((causalCase) => causalCase.id));
+    const links = Array.from(plan.caseLinks());
+    const linkCounts = new Map<string, number>();
 
     expect(cases).toHaveLength(30);
     for (const causalCase of cases) {
-      expect(relationIds.has(causalCase.causalRelationId)).toBe(true);
-      expect(causalCase.effectOccurredAt.getTime()).toBeGreaterThanOrEqual(
-        causalCase.causeOccurredAt.getTime(),
-      );
+      expect(causalCase.content.length).toBeLessThanOrEqual(50);
     }
+    for (const link of links) {
+      expect(relationIds.has(link.causalRelationId)).toBe(true);
+      expect(caseIds.has(link.concreteCaseId)).toBe(true);
+      linkCounts.set(link.concreteCaseId, (linkCounts.get(link.concreteCaseId) ?? 0) + 1);
+    }
+    const counts = cases.map((causalCase) => linkCounts.get(causalCase.id!) ?? 0);
+    expect(counts).toContain(0);
+    expect(counts).toContain(1);
+    expect(counts.some((count) => count > 1)).toBe(true);
+    expect(links).toHaveLength(28);
   });
 
   it('creates unique, filesystem-safe batch identifiers', () => {

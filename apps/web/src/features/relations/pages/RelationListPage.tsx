@@ -201,6 +201,31 @@ export function RelationListPage() {
                               >
                                 编辑关系
                               </Link>
+                              <div className="relation-inline-cases">
+                                <div className="relation-inline-cases__heading">
+                                  <span>具体案例</span>
+                                  <strong>{expanded.data.caseCount} 条</strong>
+                                </div>
+                                {expanded.data.recentCases.length > 0 ? (
+                                  <ul>
+                                    {expanded.data.recentCases.map((item) => (
+                                      <li key={item.id}>
+                                        <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p>尚未关联具体案例</p>
+                                )}
+                                {expanded.data.caseCount > 5 ? (
+                                  <Link
+                                    className="relation-inline-cases__all"
+                                    to={`/cases?relationId=${expanded.data.id}`}
+                                  >
+                                    查看全部 {expanded.data.caseCount} 条
+                                  </Link>
+                                ) : null}
+                              </div>
                             </div>
                           ) : null}
                         </td>

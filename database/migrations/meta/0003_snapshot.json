@@ -1,0 +1,662 @@
+{
+  "id": "4f0026a4-1b71-4192-a4fc-233a9e115d21",
+  "prevId": "7660265b-1a17-413f-8ba4-f56c5b127978",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.abstract_events": {
+      "name": "abstract_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "normalized_name": {
+          "name": "normalized_name",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "lower(btrim(name))",
+            "type": "stored"
+          }
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "keywords": {
+          "name": "keywords",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "abstract_events_normalized_name_uidx": {
+          "name": "abstract_events_normalized_name_uidx",
+          "columns": [
+            {
+              "expression": "normalized_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "abstract_events_normalized_name_trgm_idx": {
+          "name": "abstract_events_normalized_name_trgm_idx",
+          "columns": [
+            {
+              "expression": "normalized_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "abstract_events_updated_at_id_idx": {
+          "name": "abstract_events_updated_at_id_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "abstract_events_name_length_check": {
+          "name": "abstract_events_name_length_check",
+          "value": "char_length(btrim(\"abstract_events\".\"name\")) between 1 and 120"
+        },
+        "abstract_events_description_check": {
+          "name": "abstract_events_description_check",
+          "value": "\"abstract_events\".\"description\" is null or char_length(btrim(\"abstract_events\".\"description\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.causal_relation_cases": {
+      "name": "causal_relation_cases",
+      "schema": "",
+      "columns": {
+        "causal_relation_id": {
+          "name": "causal_relation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "concrete_case_id": {
+          "name": "concrete_case_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linked_at": {
+          "name": "linked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "causal_relation_cases_relation_linked_idx": {
+          "name": "causal_relation_cases_relation_linked_idx",
+          "columns": [
+            {
+              "expression": "causal_relation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "linked_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "concrete_case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "causal_relation_cases_case_linked_idx": {
+          "name": "causal_relation_cases_case_linked_idx",
+          "columns": [
+            {
+              "expression": "concrete_case_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "linked_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "causal_relation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "causal_relation_cases_causal_relation_id_causal_relations_id_fk": {
+          "name": "causal_relation_cases_causal_relation_id_causal_relations_id_fk",
+          "tableFrom": "causal_relation_cases",
+          "tableTo": "causal_relations",
+          "columnsFrom": ["causal_relation_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "causal_relation_cases_concrete_case_id_concrete_cases_id_fk": {
+          "name": "causal_relation_cases_concrete_case_id_concrete_cases_id_fk",
+          "tableFrom": "causal_relation_cases",
+          "tableTo": "concrete_cases",
+          "columnsFrom": ["concrete_case_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "causal_relation_cases_causal_relation_id_concrete_case_id_pk": {
+          "name": "causal_relation_cases_causal_relation_id_concrete_case_id_pk",
+          "columns": ["causal_relation_id", "concrete_case_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.causal_relations": {
+      "name": "causal_relations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "cause_event_id": {
+          "name": "cause_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effect_event_id": {
+          "name": "effect_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "causal_relations_direction_uidx": {
+          "name": "causal_relations_direction_uidx",
+          "columns": [
+            {
+              "expression": "cause_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "effect_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "causal_relations_cause_event_id_idx": {
+          "name": "causal_relations_cause_event_id_idx",
+          "columns": [
+            {
+              "expression": "cause_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "causal_relations_effect_event_id_idx": {
+          "name": "causal_relations_effect_event_id_idx",
+          "columns": [
+            {
+              "expression": "effect_event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "causal_relations_updated_at_id_idx": {
+          "name": "causal_relations_updated_at_id_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "causal_relations_description_trgm_idx": {
+          "name": "causal_relations_description_trgm_idx",
+          "columns": [
+            {
+              "expression": "lower(\"description\") gin_trgm_ops",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "causal_relations_cause_event_id_abstract_events_id_fk": {
+          "name": "causal_relations_cause_event_id_abstract_events_id_fk",
+          "tableFrom": "causal_relations",
+          "tableTo": "abstract_events",
+          "columnsFrom": ["cause_event_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "causal_relations_effect_event_id_abstract_events_id_fk": {
+          "name": "causal_relations_effect_event_id_abstract_events_id_fk",
+          "tableFrom": "causal_relations",
+          "tableTo": "abstract_events",
+          "columnsFrom": ["effect_event_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "causal_relations_no_self_loop_check": {
+          "name": "causal_relations_no_self_loop_check",
+          "value": "\"causal_relations\".\"cause_event_id\" <> \"causal_relations\".\"effect_event_id\""
+        },
+        "causal_relations_confidence_check": {
+          "name": "causal_relations_confidence_check",
+          "value": "\"causal_relations\".\"confidence\" between 0 and 100"
+        },
+        "causal_relations_description_check": {
+          "name": "causal_relations_description_check",
+          "value": "\"causal_relations\".\"description\" is null or char_length(btrim(\"causal_relations\".\"description\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.concrete_cases": {
+      "name": "concrete_cases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "content": {
+          "name": "content",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "concrete_cases_content_uidx": {
+          "name": "concrete_cases_content_uidx",
+          "columns": [
+            {
+              "expression": "content",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "concrete_cases_content_trgm_idx": {
+          "name": "concrete_cases_content_trgm_idx",
+          "columns": [
+            {
+              "expression": "lower(\"content\") gin_trgm_ops",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "concrete_cases_updated_at_id_idx": {
+          "name": "concrete_cases_updated_at_id_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "concrete_cases_content_check": {
+          "name": "concrete_cases_content_check",
+          "value": "\"concrete_cases\".\"content\" = btrim(\"concrete_cases\".\"content\") and char_length(\"concrete_cases\".\"content\") between 1 and 50"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.event_aliases": {
+      "name": "event_aliases",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "alias": {
+          "name": "alias",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "normalized_alias": {
+          "name": "normalized_alias",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true,
+          "generated": {
+            "as": "lower(btrim(alias))",
+            "type": "stored"
+          }
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "event_aliases_event_normalized_uidx": {
+          "name": "event_aliases_event_normalized_uidx",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "normalized_alias",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "event_aliases_event_id_idx": {
+          "name": "event_aliases_event_id_idx",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "event_aliases_normalized_alias_idx": {
+          "name": "event_aliases_normalized_alias_idx",
+          "columns": [
+            {
+              "expression": "normalized_alias",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "event_aliases_normalized_alias_trgm_idx": {
+          "name": "event_aliases_normalized_alias_trgm_idx",
+          "columns": [
+            {
+              "expression": "normalized_alias",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "event_aliases_event_id_abstract_events_id_fk": {
+          "name": "event_aliases_event_id_abstract_events_id_fk",
+          "tableFrom": "event_aliases",
+          "tableTo": "abstract_events",
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "event_aliases_alias_length_check": {
+          "name": "event_aliases_alias_length_check",
+          "value": "char_length(btrim(\"event_aliases\".\"alias\")) between 1 and 120"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

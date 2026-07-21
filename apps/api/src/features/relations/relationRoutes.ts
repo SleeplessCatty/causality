@@ -28,7 +28,7 @@ function sendRelationError(error: unknown, reply: FastifyReply) {
   }
   if (error instanceof RelationServiceError) {
     const status =
-      error.code === 'RELATION_NOT_FOUND'
+      error.code === 'RELATION_NOT_FOUND' || error.code === 'CASE_NOT_FOUND'
         ? 404
         : error.code === 'RELATION_EVENT_NOT_FOUND'
           ? 400
@@ -38,6 +38,7 @@ function sendRelationError(error: unknown, reply: FastifyReply) {
       code: error.code,
       message: error.message,
       ...(fields ? { fields } : {}),
+      ...(error.existingId ? { existingId: error.existingId } : {}),
     });
   }
   throw error;

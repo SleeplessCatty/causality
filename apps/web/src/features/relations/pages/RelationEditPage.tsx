@@ -2,6 +2,7 @@ import type { RelationFormInput } from '@causality/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router';
 
+import { getAllCasesForRelation } from '../../cases/api/caseApi';
 import { getRelation, replaceRelation } from '../api/relationApi';
 import { RelationForm } from '../components/RelationForm';
 
@@ -14,9 +15,16 @@ export function RelationEditPage() {
     queryFn: ({ signal }) => getRelation(relationId, signal),
     enabled: Boolean(relationId),
   });
+  const linkedCases = useQuery({
+    queryKey: ['cases', 'relation-associations', relationId],
+    queryFn: ({ signal }) => getAllCasesForRelation(relationId, signal),
+    enabled: relation.isSuccess && relation.data.caseCount > 0,
+  });
+  const casesPending = relation.isSuccess && relation.data.caseCount > 0 && linkedCases.isPending;
+  const casesError = relation.isSuccess && relation.data.caseCount > 0 && linkedCases.isError;
 
-  if (relation.isPending) return <div className="page-state">加载因果关系…</div>;
-  if (relation.isError) {
+  if (relation.isPending || casesPending) return <div className="page-state">加载因果关系…</div>;
+  if (relation.isError || casesError) {
     return (
       <div className="page-state page-state--error" role="alert">
         <strong>无法读取因果关系</strong>
@@ -33,6 +41,7 @@ export function RelationEditPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['relations', 'list'] }),
       queryClient.invalidateQueries({ queryKey: ['relations', 'pair-check'] }),
+      queryClient.invalidateQueries({ queryKey: ['cases'] }),
     ]);
     navigate(`/relations?expanded=${relationId}`, { state: { notice: '修改已保存' } });
   }
@@ -57,6 +66,11 @@ export function RelationEditPage() {
           effectEvent: relation.data.effectEvent,
           confidence: relation.data.confidence,
           description: relation.data.description,
+          caseSelections: (linkedCases.data ?? []).map((item) => ({
+            type: 'existing' as const,
+            caseId: item.id,
+            content: item.content,
+          })),
         }}
         onSubmit={submit}
         cancelTo={`/relations?expanded=${relationId}`}

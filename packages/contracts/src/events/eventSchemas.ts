@@ -107,6 +107,9 @@ export const apiErrorCodeSchema = z.enum([
   'RELATION_EVENT_NOT_FOUND',
   'RELATION_SELF_LOOP',
   'RELATION_DIRECTION_CONFLICT',
+  'CASE_NOT_FOUND',
+  'CASE_CONTENT_CONFLICT',
+  'CASE_SELECTION_DUPLICATE',
   'INTERNAL_ERROR',
 ]);
 
@@ -115,6 +118,7 @@ export const apiErrorSchema = z
     code: apiErrorCodeSchema,
     message: z.string().min(1),
     fields: z.record(z.string(), z.string()).optional(),
+    existingId: z.uuid().optional(),
   })
   .strict();
 

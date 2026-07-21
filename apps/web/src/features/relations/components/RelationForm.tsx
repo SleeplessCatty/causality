@@ -4,18 +4,20 @@ import {
   type RelationFormInput,
 } from '@causality/contracts';
 import { useQuery } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useCallback, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
 import { ApiClientError } from '../../events/api/eventApi';
 import { checkRelationPair } from '../api/relationApi';
 import { EventSelector } from './EventSelector';
+import { RelationCasesField, type RelationCaseSelectionValue } from './RelationCasesField';
 
 export interface RelationFormValue {
   causeEvent: EventCandidate | null;
   effectEvent: EventCandidate | null;
   confidence: number | null;
   description: string | null;
+  caseSelections: RelationCaseSelectionValue[];
 }
 
 interface RelationFormProps {
@@ -37,6 +39,8 @@ export function RelationForm({
   const [effectEvent, setEffectEvent] = useState(initialValue.effectEvent);
   const [confidence, setConfidence] = useState<number | null>(initialValue.confidence);
   const [description, setDescription] = useState(initialValue.description ?? '');
+  const [caseSelections, setCaseSelections] = useState(initialValue.caseSelections);
+  const [casesIncomplete, setCasesIncomplete] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -52,6 +56,9 @@ export function RelationForm({
     queryFn: ({ signal }) => checkRelationPair(causeEvent!.id, effectEvent!.id, relationId, signal),
     enabled: Boolean(causeEvent && effectEvent && causeEvent.id !== effectEvent.id),
   });
+  const handleCasesIncomplete = useCallback((incomplete: boolean) => {
+    setCasesIncomplete(incomplete);
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -62,7 +69,16 @@ export function RelationForm({
       effectEventId: effectEvent?.id ?? '',
       confidence,
       description,
+      caseSelections: caseSelections.map((selection) =>
+        selection.type === 'existing'
+          ? { type: 'existing' as const, caseId: selection.caseId }
+          : { type: 'new' as const, content: selection.content },
+      ),
     };
+    if (casesIncomplete) {
+      setFieldErrors({ caseSelections: '请选择已有案例或明确创建新案例' });
+      return;
+    }
     const parsed = relationFormInputSchema.safeParse(raw);
     if (!parsed.success) {
       const errors: Record<string, string> = {};
@@ -195,6 +211,14 @@ export function RelationForm({
               </span>
             ) : null}
           </div>
+
+          <RelationCasesField
+            value={caseSelections}
+            onChange={setCaseSelections}
+            onIncompleteChange={handleCasesIncomplete}
+            error={fieldErrors.caseSelections}
+            disabled={isSubmitting}
+          />
         </div>
 
         <aside className="candidate-panel relation-form-aside">

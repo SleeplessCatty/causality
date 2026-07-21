@@ -8,18 +8,25 @@ import type {
 } from '@causality/contracts';
 
 import type { RelationRepository } from './relationRepository.js';
+import {
+  RelationCaseContentConflictError,
+  RelationCaseNotFoundError,
+} from './relationRepository.js';
 
 export type RelationServiceErrorCode =
   | 'RELATION_NOT_FOUND'
   | 'RELATION_EVENT_NOT_FOUND'
   | 'RELATION_SELF_LOOP'
-  | 'RELATION_DIRECTION_CONFLICT';
+  | 'RELATION_DIRECTION_CONFLICT'
+  | 'CASE_NOT_FOUND'
+  | 'CASE_CONTENT_CONFLICT';
 
 export class RelationServiceError extends Error {
   constructor(
     readonly code: RelationServiceErrorCode,
     message: string,
     readonly field?: 'causeEventId' | 'effectEventId',
+    readonly existingId?: string,
   ) {
     super(message);
     this.name = 'RelationServiceError';
@@ -32,6 +39,17 @@ interface PostgreSqlError {
 }
 
 function mapWriteError(error: unknown): never {
+  if (error instanceof RelationCaseNotFoundError) {
+    throw new RelationServiceError('CASE_NOT_FOUND', '所选案例不存在');
+  }
+  if (error instanceof RelationCaseContentConflictError) {
+    throw new RelationServiceError(
+      'CASE_CONTENT_CONFLICT',
+      '案例内容已存在',
+      undefined,
+      error.existingId,
+    );
+  }
   const databaseError = error as PostgreSqlError;
   if (
     databaseError.code === '23505' &&

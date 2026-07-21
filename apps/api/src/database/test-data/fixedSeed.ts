@@ -8,8 +8,9 @@ import { parseEnv } from '../../config/env.js';
 import { createDatabaseClient } from '../client.js';
 import {
   abstractEvents,
+  causalRelationCases,
   causalRelations,
-  concreteCausalCases,
+  concreteCases,
   eventAliases,
 } from '../schema/index.js';
 
@@ -73,23 +74,21 @@ const fixedRelations = relationDefinitions.map(
   }),
 );
 
-const fixedCases = Array.from({ length: 18 }, (_, index) => {
-  const relationIndex = index < fixedRelations.length ? index : index - 15;
-  const [causeIndex, effectIndex] = relationDefinitions[relationIndex]!;
-  const causeDate = new Date(Date.UTC(2024 + Math.floor(index / 12), index % 12, 1));
-  const effectDate = new Date(causeDate.getTime() + 86_400_000);
+const fixedCases = Array.from({ length: 18 }, (_, index) => ({
+  id: stableId(8200, index + 1),
+  content: `202${4 + Math.floor(index / 12)}年${(index % 12) + 1}月固定案例${index + 1}`,
+}));
 
-  return {
-    id: stableId(8200, index + 1),
-    causalRelationId: fixedRelations[relationIndex]!.id,
-    causeEvent: `示例原因：${fixedEvents[causeIndex]!.name}`,
-    effectEvent: `示例结果：${fixedEvents[effectIndex]!.name}`,
-    causeOccurredAt: causeDate,
-    effectOccurredAt: effectDate,
-    description: `固定种子案例 ${index + 1}，用于验证抽象关系的数据结构。`,
-    source: `固定种子公开资料 ${index + 1}`,
-  };
-});
+const fixedCaseLinks = [
+  ...Array.from({ length: 15 }, (_, index) => ({
+    causalRelationId: fixedRelations[index]!.id,
+    concreteCaseId: fixedCases[index]!.id,
+  })),
+  ...Array.from({ length: 3 }, (_, index) => ({
+    causalRelationId: fixedRelations[index + 1]!.id,
+    concreteCaseId: fixedCases[index]!.id,
+  })),
+];
 
 export async function runFixedSeed(pool: Pool): Promise<void> {
   const database = createDatabaseClient(pool);
@@ -108,9 +107,15 @@ export async function runFixedSeed(pool: Pool): Promise<void> {
       .values(fixedRelations)
       .onConflictDoNothing({ target: causalRelations.id });
     await transaction
-      .insert(concreteCausalCases)
+      .insert(concreteCases)
       .values(fixedCases)
-      .onConflictDoNothing({ target: concreteCausalCases.id });
+      .onConflictDoNothing({ target: concreteCases.id });
+    await transaction
+      .insert(causalRelationCases)
+      .values(fixedCaseLinks)
+      .onConflictDoNothing({
+        target: [causalRelationCases.causalRelationId, causalRelationCases.concreteCaseId],
+      });
   });
 }
 

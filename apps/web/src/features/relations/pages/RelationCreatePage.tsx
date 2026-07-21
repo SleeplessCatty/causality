@@ -10,6 +10,7 @@ const emptyRelation: RelationFormValue = {
   effectEvent: null,
   confidence: 10,
   description: null,
+  caseSelections: [],
 };
 
 export function RelationCreatePage() {
@@ -19,7 +20,10 @@ export function RelationCreatePage() {
   async function submit(input: RelationFormInput): Promise<void> {
     const relation = await createRelation(input);
     queryClient.setQueryData(['relations', 'detail', relation.id], relation);
-    await queryClient.invalidateQueries({ queryKey: ['relations', 'list'] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['relations', 'list'] }),
+      queryClient.invalidateQueries({ queryKey: ['cases'] }),
+    ]);
     navigate(`/relations?expanded=${relation.id}`, { state: { notice: '因果关系已创建' } });
   }
 

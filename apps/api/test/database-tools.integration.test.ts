@@ -56,6 +56,7 @@ describe.sequential('database data tools', () => {
     const counts = await pool!.query<{
       aliases: string;
       cases: string;
+      caseLinks: string;
       events: string;
       relations: string;
     }>(
@@ -63,13 +64,15 @@ describe.sequential('database data tools', () => {
          (select count(*) from abstract_events) as events,
          (select count(*) from event_aliases) as aliases,
          (select count(*) from causal_relations) as relations,
-         (select count(*) from concrete_causal_cases) as cases`,
+         (select count(*) from concrete_cases) as cases,
+         (select count(*) from causal_relation_cases) as "caseLinks"`,
     );
     expect(counts.rows[0]).toEqual({
       events: '12',
       aliases: '12',
       relations: '15',
       cases: '18',
+      caseLinks: '18',
     });
 
     const event = await pool!.query<{ description: string }>(
@@ -87,12 +90,13 @@ describe.sequential('database data tools', () => {
       abstractEvents: 12,
       eventAliases: 12,
       causalRelations: 15,
-      concreteCausalCases: 18,
+      concreteCases: 18,
+      causalRelationCaseLinks: 18,
     });
     expect(report.integrity).toEqual({
       selfLoops: 0,
       invalidConfidence: 0,
-      invalidCaseTimeOrder: 0,
+      duplicateCaseLinks: 0,
       invalidForeignKeys: 0,
     });
     expect(report.valid).toBe(true);
@@ -107,7 +111,7 @@ describe.sequential('database data tools', () => {
 
     expect(result).toMatchObject({
       batchId: 'integration-batch',
-      inserted: { events: 20, aliases: 20, relations: 50, cases: 80 },
+      inserted: { events: 20, aliases: 20, relations: 50, cases: 80, caseLinks: 75 },
     });
     expect(result.elapsedMilliseconds).toBeGreaterThanOrEqual(0);
 
@@ -116,7 +120,8 @@ describe.sequential('database data tools', () => {
       abstractEvents: 32,
       eventAliases: 32,
       causalRelations: 65,
-      concreteCausalCases: 98,
+      concreteCases: 98,
+      causalRelationCaseLinks: 93,
     });
     expect(report.valid).toBe(true);
   });

@@ -30,6 +30,7 @@ function renderForm(onSubmit = vi.fn().mockResolvedValue(undefined)) {
               effectEvent: null,
               confidence: null,
               description: null,
+              caseSelections: [],
             }}
             onSubmit={onSubmit}
             cancelTo="/relations"
@@ -98,6 +99,7 @@ describe('RelationForm', () => {
         effectEventId: effect.id,
         confidence: 80,
         description: null,
+        caseSelections: [],
       }),
     );
   });

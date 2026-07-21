@@ -1,7 +1,11 @@
 import type { RelationDetail } from '@causality/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { RelationRepository } from '../src/features/relations/relationRepository.js';
+import {
+  RelationCaseContentConflictError,
+  RelationCaseNotFoundError,
+  type RelationRepository,
+} from '../src/features/relations/relationRepository.js';
 import { RelationService } from '../src/features/relations/relationService.js';
 
 const detail: RelationDetail = {
@@ -13,6 +17,7 @@ const detail: RelationDetail = {
   description: null,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
+  recentCases: [],
 };
 
 const input = {
@@ -20,6 +25,7 @@ const input = {
   effectEventId: detail.effectEvent.id,
   confidence: detail.confidence,
   description: detail.description,
+  caseSelections: [],
 };
 
 function repository(overrides: Partial<RelationRepository> = {}): RelationRepository {
@@ -65,5 +71,23 @@ describe('RelationService', () => {
     const error = new Error('connection interrupted');
     const service = new RelationService(repository({ create: vi.fn().mockRejectedValue(error) }));
     await expect(service.create(input)).rejects.toBe(error);
+  });
+
+  it('maps missing and conflicting case selections to stable errors', async () => {
+    const missingService = new RelationService(
+      repository({ create: vi.fn().mockRejectedValue(new RelationCaseNotFoundError()) }),
+    );
+    await expect(missingService.create(input)).rejects.toMatchObject({ code: 'CASE_NOT_FOUND' });
+
+    const existingId = '44444444-4444-4444-8444-444444444444';
+    const conflictService = new RelationService(
+      repository({
+        create: vi.fn().mockRejectedValue(new RelationCaseContentConflictError(existingId)),
+      }),
+    );
+    await expect(conflictService.create(input)).rejects.toMatchObject({
+      code: 'CASE_CONTENT_CONFLICT',
+      existingId,
+    });
   });
 });

@@ -14,6 +14,7 @@ export function AppShell() {
           <nav className="primary-navigation" aria-label="主导航">
             <NavLink to="/events">事件</NavLink>
             <NavLink to="/relations">因果关系</NavLink>
+            <NavLink to="/cases">具体案例</NavLink>
             <NavLink to="/system">系统状态</NavLink>
           </nav>
         </div>

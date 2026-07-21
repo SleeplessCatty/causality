@@ -9,6 +9,10 @@ import { SystemStatus } from '../features/system-status/SystemStatus';
 import { RelationListPage } from '../features/relations/pages/RelationListPage';
 import { RelationCreatePage } from '../features/relations/pages/RelationCreatePage';
 import { RelationEditPage } from '../features/relations/pages/RelationEditPage';
+import { CaseCreatePage } from '../features/cases/pages/CaseCreatePage';
+import { CaseDetailPage } from '../features/cases/pages/CaseDetailPage';
+import { CaseEditPage } from '../features/cases/pages/CaseEditPage';
+import { CaseListPage } from '../features/cases/pages/CaseListPage';
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +27,10 @@ export const router = createBrowserRouter([
       { path: 'relations', element: <RelationListPage /> },
       { path: 'relations/new', element: <RelationCreatePage /> },
       { path: 'relations/:relationId/edit', element: <RelationEditPage /> },
+      { path: 'cases', element: <CaseListPage /> },
+      { path: 'cases/new', element: <CaseCreatePage /> },
+      { path: 'cases/:caseId', element: <CaseDetailPage /> },
+      { path: 'cases/:caseId/edit', element: <CaseEditPage /> },
       { path: 'system', element: <SystemStatus /> },
       { path: '*', element: <Navigate to="/events" replace /> },
     ],
