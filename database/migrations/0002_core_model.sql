@@ -1,0 +1,2 @@
+CREATE INDEX "causal_relations_updated_at_id_idx" ON "causal_relations" USING btree ("updated_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "causal_relations_description_trgm_idx" ON "causal_relations" USING gin (lower("description") gin_trgm_ops);

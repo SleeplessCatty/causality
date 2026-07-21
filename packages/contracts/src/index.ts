@@ -28,3 +28,22 @@ export {
   type EventListResponse,
   type EventSummary,
 } from './events/eventSchemas.js';
+
+export {
+  relationDetailSchema,
+  relationFormInputSchema,
+  relationListQuerySchema,
+  relationListResponseSchema,
+  relationPairCheckQuerySchema,
+  relationPairCheckResponseSchema,
+  relationReferenceSchema,
+  relationSummarySchema,
+  type RelationDetail,
+  type RelationFormInput,
+  type RelationListQuery,
+  type RelationListResponse,
+  type RelationPairCheckQuery,
+  type RelationPairCheckResponse,
+  type RelationReference,
+  type RelationSummary,
+} from './relations/relationSchemas.js';

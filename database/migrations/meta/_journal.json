@@ -15,6 +15,13 @@
       "when": 1784587555537,
       "tag": "0001_event_management",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784610962986,
+      "tag": "0002_core_model",
+      "breakpoints": true
     }
   ]
 }

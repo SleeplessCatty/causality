@@ -11,6 +11,7 @@ import {
 import { registerHealthRoute } from './routes/health.js';
 import { registerReadinessRoute, type DatabaseReadinessCheck } from './routes/readiness.js';
 import { registerEventRoutes } from './features/events/eventRoutes.js';
+import { registerRelationRoutes } from './features/relations/relationRoutes.js';
 
 interface BuildAppOptions {
   logger?: FastifyServerOptions['logger'];
@@ -42,14 +43,28 @@ export function buildApp(options: BuildAppOptions = {}) {
   app.after(() => {
     registerHealthRoute(app);
     registerReadinessRoute(app, options.checkDatabase ?? (async () => false));
-    if (options.databasePool) registerEventRoutes(app, options.databasePool);
+    if (options.databasePool) {
+      registerEventRoutes(app, options.databasePool);
+      registerRelationRoutes(app, options.databasePool);
+    }
 
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());
   });
 
   app.setErrorHandler((error, _request, reply) => {
-    const validationError = error as { validation?: unknown };
+    const validationError = error as { validation?: Array<{ message?: string }> };
     if (validationError.validation) {
+      const isRelationSelfLoop = validationError.validation.some(
+        (issue) => issue.message === '原因事件和结果事件不能相同',
+      );
+      if (isRelationSelfLoop) {
+        void reply.status(409).send({
+          code: 'RELATION_SELF_LOOP',
+          message: '原因事件和结果事件不能相同',
+          fields: { effectEventId: '原因事件和结果事件不能相同' },
+        });
+        return;
+      }
       void reply.status(400).send({
         code: 'VALIDATION_ERROR',
         message: '请求参数不合法',

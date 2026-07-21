@@ -237,7 +237,7 @@ describe.sequential('core PostgreSQL model', () => {
     expect(aliases.rows[0]?.count).toBe('0');
   });
 
-  it('creates indexes for foreign keys, directional queries, event search, and event pagination', async () => {
+  it('creates indexes for foreign keys, directional queries, search, and pagination', async () => {
     const indexes = await pool!.query<{ indexname: string }>(
       `select indexname
        from pg_indexes
@@ -254,6 +254,8 @@ describe.sequential('core PostgreSQL model', () => {
         'abstract_events_updated_at_id_idx',
         'causal_relations_cause_event_id_idx',
         'causal_relations_effect_event_id_idx',
+        'causal_relations_description_trgm_idx',
+        'causal_relations_updated_at_id_idx',
         'concrete_cases_relation_effect_time_idx',
       ]),
     );
