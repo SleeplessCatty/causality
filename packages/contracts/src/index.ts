@@ -25,6 +25,18 @@ export {
 } from './cases/caseSchemas.js';
 
 export {
+  causalGraphNodeSchema,
+  causalGraphQuerySchema,
+  causalGraphRelationSchema,
+  causalGraphResponseSchema,
+  type CausalGraphNode,
+  type CausalGraphQuery,
+  type CausalGraphRelation,
+  type CausalGraphResponse,
+  type CausalGraphStopReason,
+} from './causal-graph/causalGraphSchemas.js';
+
+export {
   healthResponseSchema,
   notReadyResponseSchema,
   readyResponseSchema,
