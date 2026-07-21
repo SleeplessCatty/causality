@@ -28,6 +28,21 @@ const graph: CausalGraphResponse = {
   },
 };
 
+const graph50: CausalGraphResponse = {
+  nodes: [
+    { id: centerEventId, name: '原油价格上涨' },
+    { id: '22222222-2222-4222-8222-222222222222', name: '运输成本上升' },
+  ],
+  relations: [],
+  meta: {
+    ...graph.meta,
+    nodeLimit: 50,
+    relationLimit: 500,
+    nodeCount: 2,
+    stopReason: 'node_limit',
+  },
+};
+
 function createFakeRuntime() {
   let zoom = 1;
   let onZoom: (zoom: number) => void = () => undefined;
@@ -41,6 +56,7 @@ function createFakeRuntime() {
     }),
     commit: vi.fn(),
     fit: vi.fn(),
+    focusNode: vi.fn(),
     getZoom: vi.fn(() => zoom),
     setZoom: vi.fn((nextZoom) => {
       zoom = nextZoom;
@@ -98,6 +114,51 @@ describe('CausalGraphCanvas', () => {
 
     unmount();
     expect(fake.runtime.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('reports a committed graph only after layout and uses a readable large-graph viewport', () => {
+    const fake = createFakeRuntime();
+    const onGraphCommit = vi.fn();
+    render(
+      <CausalGraphCanvas
+        graph={graph50}
+        centerEventName="原油价格上涨"
+        createRuntime={() => fake.runtime}
+        onGraphCommit={onGraphCommit}
+      />,
+    );
+
+    expect(onGraphCommit).not.toHaveBeenCalled();
+    act(() => fake.completeLayout());
+    expect(fake.runtime.commit).toHaveBeenCalledWith({ laidOut: true });
+    expect(fake.runtime.focusNode).toHaveBeenCalledWith(centerEventId, 48, 0.6);
+    expect(onGraphCommit).toHaveBeenCalledWith(graph50);
+  });
+
+  it('keeps committed graph metadata when a replacement layout fails', () => {
+    const fake = createFakeRuntime();
+    const { rerender } = render(
+      <CausalGraphCanvas
+        graph={graph}
+        centerEventName="原油价格上涨"
+        createRuntime={() => fake.runtime}
+      />,
+    );
+    act(() => fake.completeLayout());
+    const canvas = screen.getByRole('application');
+    expect(canvas.getAttribute('data-node-count')).toBe('1');
+
+    rerender(
+      <CausalGraphCanvas
+        graph={graph50}
+        centerEventName="原油价格上涨"
+        createRuntime={() => fake.runtime}
+      />,
+    );
+    expect(canvas.getAttribute('data-node-count')).toBe('1');
+    act(() => fake.failLayout());
+    expect(canvas.getAttribute('data-node-count')).toBe('1');
+    expect(canvas.getAttribute('data-layout-state')).toBe('error');
   });
 
   it('clamps zoom, reports it, and fits without relayout', () => {

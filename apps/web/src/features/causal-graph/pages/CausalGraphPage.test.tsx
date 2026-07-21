@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -13,6 +13,14 @@ import { ApiClientError, getEvent } from '../../events/api/eventApi';
 import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphPage } from './CausalGraphPage';
 import type { GraphElementSelection } from '../graph/graphSelection';
+
+const canvasControl = vi.hoisted(() => ({
+  autoCommit: true,
+  commitCount: 0,
+  candidateNodeCount: 0,
+  commit: null as (() => void) | null,
+  failLayout: null as (() => void) | null,
+}));
 
 vi.mock('../../events/api/eventApi', () => {
   class MockApiClientError extends Error {
@@ -29,11 +37,17 @@ vi.mock('../components/CausalGraphToolbar', () => ({
     direction,
     onEventSelect,
     onDirectionChange,
+    filterOpen,
+    onFilterToggle,
+    filterPopover,
   }: {
     selectedEvent: EventCandidate | null;
     direction: CausalGraphQuery['direction'];
     onEventSelect: (event: EventCandidate) => void;
     onDirectionChange: (direction: CausalGraphQuery['direction']) => void;
+    filterOpen: boolean;
+    onFilterToggle: () => void;
+    filterPopover?: React.ReactNode;
   }) => (
     <div>
       <span>
@@ -50,6 +64,15 @@ vi.mock('../components/CausalGraphToolbar', () => ({
       <button type="button" onClick={() => onDirectionChange('upstream')}>
         切换上游
       </button>
+      <button
+        type="button"
+        aria-expanded={filterOpen}
+        aria-controls="graph-filter-popover"
+        onClick={onFilterToggle}
+      >
+        筛选
+      </button>
+      {filterPopover}
     </div>
   ),
 }));
@@ -68,6 +91,8 @@ vi.mock('../components/CausalGraphCanvas', async () => {
           onClearSelection,
           onToggleInspector,
           onEscape,
+          onGraphCommit,
+          onLayoutStateChange,
         }: {
           graph: CausalGraphResponse | null;
           isInitialLoading: boolean;
@@ -77,6 +102,8 @@ vi.mock('../components/CausalGraphCanvas', async () => {
           onClearSelection?: () => void;
           onToggleInspector?: () => void;
           onEscape?: () => void;
+          onGraphCommit?: (graph: CausalGraphResponse) => void;
+          onLayoutStateChange?: (state: 'idle' | 'loading' | 'ready' | 'error') => void;
           overlay?:
             | {
                 message: string;
@@ -87,14 +114,39 @@ vi.mock('../components/CausalGraphCanvas', async () => {
         },
         ref,
       ) => {
-        void ref;
+        const [visibleGraph, setVisibleGraph] = React.useState<CausalGraphResponse | null>(null);
+        React.useImperativeHandle(ref, () => ({
+          zoomIn: () => undefined,
+          zoomOut: () => undefined,
+          fit: () => undefined,
+          retryLayout: () => canvasControl.commit?.(),
+          resize: () => undefined,
+          ensureSelectionVisible: () => undefined,
+          focus: () => undefined,
+        }));
+        React.useEffect(() => {
+          if (!graph) return;
+          canvasControl.candidateNodeCount = graph.meta.nodeCount;
+          const commit = () => {
+            canvasControl.commitCount += 1;
+            setVisibleGraph(graph);
+            onLayoutStateChange?.('ready');
+            onGraphCommit?.(graph);
+          };
+          canvasControl.commit = commit;
+          canvasControl.failLayout = () => onLayoutStateChange?.('error');
+          onLayoutStateChange?.('loading');
+          if (canvasControl.autoCommit) commit();
+        }, [graph, onGraphCommit, onLayoutStateChange]);
         return (
           <div
             data-testid="graph-canvas"
-            data-node-count={graph?.meta.nodeCount ?? 0}
-            data-relation-count={graph?.meta.relationCount ?? 0}
+            data-node-count={visibleGraph?.meta.nodeCount ?? 0}
+            data-relation-count={visibleGraph?.meta.relationCount ?? 0}
           >
-            {!graph && !isInitialLoading && !overlay ? '搜索并选择一个中心事件' : null}
+            {!visibleGraph && !graph && !isInitialLoading && !overlay
+              ? '搜索并选择一个中心事件'
+              : null}
             {isInitialLoading ? '正在生成因果图…' : null}
             {isRefreshing ? '正在重新生成…' : null}
             {overlay?.message}
@@ -177,11 +229,17 @@ const eventDetail = {
 function graph(
   direction: CausalGraphQuery['direction'] = 'both',
   stopReason: CausalGraphStopReason = 'exhausted',
+  overrides: Partial<CausalGraphQuery> & { nodeCount?: number } = {},
 ): CausalGraphResponse {
+  const nodeLimit = overrides.limit ?? 20;
+  const nodeCount = overrides.nodeCount ?? 2;
   return {
     nodes: [
       { id: centerEventId, name: '原油价格上涨' },
       { id: effectEventId, name: '航空公司成本上升' },
+      ...(nodeCount > 2
+        ? [{ id: '44444444-4444-4444-8444-444444444444', name: '燃油附加费上涨' }]
+        : []),
     ],
     relations: [
       {
@@ -193,13 +251,13 @@ function graph(
       },
     ],
     meta: {
-      centerEventId,
+      centerEventId: overrides.centerEventId ?? centerEventId,
       direction,
-      nodeLimit: 20,
-      relationLimit: 200,
-      minConfidence: 0,
-      minCaseCount: 0,
-      nodeCount: 2,
+      nodeLimit,
+      relationLimit: nodeLimit === 20 ? 200 : nodeLimit === 50 ? 500 : 1_000,
+      minConfidence: overrides.minConfidence ?? 0,
+      minCaseCount: overrides.minCaseCount ?? 0,
+      nodeCount,
       relationCount: 1,
       stopReason,
     },
@@ -221,8 +279,15 @@ function renderPage(initialEntry = '/graph') {
 
 describe('CausalGraphPage', () => {
   beforeEach(() => {
+    canvasControl.autoCommit = true;
+    canvasControl.commitCount = 0;
+    canvasControl.candidateNodeCount = 0;
+    canvasControl.commit = null;
+    canvasControl.failLayout = null;
     vi.mocked(getEvent).mockResolvedValue(eventDetail);
-    vi.mocked(getCausalGraph).mockResolvedValue(graph());
+    vi.mocked(getCausalGraph).mockImplementation(async (query) =>
+      graph(query.direction, 'exhausted', query),
+    );
   });
 
   afterEach(() => vi.clearAllMocks());
@@ -238,18 +303,31 @@ describe('CausalGraphPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择原油' }));
 
     await waitFor(() =>
-      expect(router.state.location.search).toBe(`?centerEventId=${centerEventId}&direction=both`),
+      expect(router.state.location.search).toBe(
+        `?centerEventId=${centerEventId}&direction=both&limit=20&minConfidence=0&minCaseCount=0`,
+      ),
     );
     await waitFor(() =>
-      expect(getCausalGraph).toHaveBeenCalledWith(centerEventId, 'both', expect.anything()),
+      expect(getCausalGraph).toHaveBeenCalledWith(
+        {
+          centerEventId,
+          direction: 'both',
+          limit: 20,
+          minConfidence: 0,
+          minCaseCount: 0,
+        },
+        expect.anything(),
+      ),
     );
-    expect(await screen.findByText('2 个节点 · 1 条关系')).toBeTruthy();
+    expect(await screen.findAllByText('2 个节点 · 1 条关系')).toHaveLength(2);
   });
 
   it('restores URL state and canonicalizes an invalid direction', async () => {
     const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=sideways`);
     await waitFor(() =>
-      expect(router.state.location.search).toBe(`?centerEventId=${centerEventId}&direction=both`),
+      expect(router.state.location.search).toBe(
+        `?centerEventId=${centerEventId}&direction=both&limit=20&minConfidence=0&minCaseCount=0`,
+      ),
     );
     expect(await screen.findByText('工具栏：原油价格上涨 · both')).toBeTruthy();
   });
@@ -263,10 +341,19 @@ describe('CausalGraphPage', () => {
 
   it('automatically requests a changed direction', async () => {
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findByText('2 个节点 · 1 条关系');
+    await screen.findAllByText('2 个节点 · 1 条关系');
     fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
     await waitFor(() =>
-      expect(getCausalGraph).toHaveBeenCalledWith(centerEventId, 'upstream', expect.anything()),
+      expect(getCausalGraph).toHaveBeenCalledWith(
+        expect.objectContaining({
+          centerEventId,
+          direction: 'upstream',
+          limit: 20,
+          minConfidence: 0,
+          minCaseCount: 0,
+        }),
+        expect.anything(),
+      ),
     );
   });
 
@@ -280,12 +367,12 @@ describe('CausalGraphPage', () => {
 
     vi.mocked(getCausalGraph).mockResolvedValueOnce(graph('both', 'relation_limit'));
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    expect(await screen.findByText('已按关系上限缩小')).toBeTruthy();
+    expect(await screen.findByText('关系较密集，已触发展示保护')).toBeTruthy();
   });
 
   it('keeps selection and inspector open state independent', async () => {
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findByText('2 个节点 · 1 条关系');
+    await screen.findAllByText('2 个节点 · 1 条关系');
 
     fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
     expect(screen.getByText(`画布选择：node:${effectEventId}`)).toBeTruthy();
@@ -305,16 +392,135 @@ describe('CausalGraphPage', () => {
 
   it('sets a selected node as center while preserving direction and resetting interaction state', async () => {
     const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=upstream`);
-    await screen.findByText('2 个节点 · 1 条关系');
+    await screen.findAllByText('2 个节点 · 1 条关系');
+    fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
+    fireEvent.click(screen.getByRole('button', { name: '空格' }));
+    const commitsBeforeCenterChange = canvasControl.commitCount;
+    fireEvent.click(screen.getByRole('button', { name: '设为中心事件' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(
+        `?centerEventId=${effectEventId}&direction=upstream&limit=20&minConfidence=0&minCaseCount=0`,
+      ),
+    );
+    await waitFor(() =>
+      expect(canvasControl.commitCount).toBeGreaterThan(commitsBeforeCenterChange),
+    );
+    await waitFor(() => expect(screen.queryByText(/检查器：/)).toBeNull());
+    expect(screen.getByText('画布选择：无')).toBeTruthy();
+  });
+
+  it('preserves filters while direction and center changes reset the tier', async () => {
+    const router = renderPage(
+      `/graph?centerEventId=${centerEventId}&direction=both&limit=50&minConfidence=60&minCaseCount=2`,
+    );
+    await screen.findAllByText('2 个节点 · 1 条关系');
+    const commitsBeforeDirectionChange = canvasControl.commitCount;
+    fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(
+        `?centerEventId=${centerEventId}&direction=upstream&limit=20&minConfidence=60&minCaseCount=2`,
+      ),
+    );
+    await waitFor(() =>
+      expect(canvasControl.commitCount).toBeGreaterThan(commitsBeforeDirectionChange),
+    );
+    await waitFor(() => expect(screen.queryByText('正在重新生成…')).toBeNull());
+
     fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
     fireEvent.click(screen.getByRole('button', { name: '空格' }));
     fireEvent.click(screen.getByRole('button', { name: '设为中心事件' }));
     await waitFor(() =>
       expect(router.state.location.search).toBe(
-        `?centerEventId=${effectEventId}&direction=upstream`,
+        `?centerEventId=${effectEventId}&direction=upstream&limit=20&minConfidence=60&minCaseCount=2`,
       ),
     );
+  });
+
+  it('applies and resets filters explicitly at the 20-node tier', async () => {
+    const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
+    await screen.findAllByText('2 个节点 · 1 条关系');
+    fireEvent.click(screen.getByRole('button', { name: '筛选' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '最低置信度' }), {
+      target: { value: '70' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: '最少案例数' }), {
+      target: { value: '3' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '应用筛选' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(
+        `?centerEventId=${centerEventId}&direction=both&limit=20&minConfidence=70&minCaseCount=3`,
+      ),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '筛选' }));
+    fireEvent.click(screen.getByRole('button', { name: '重置筛选' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(
+        `?centerEventId=${centerEventId}&direction=both&limit=20&minConfidence=0&minCaseCount=0`,
+      ),
+    );
+  });
+
+  it('closes the filter popover when its toolbar trigger is clicked again', async () => {
+    renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
+    await screen.findAllByText('2 个节点 · 1 条关系');
+    const trigger = screen.getByRole('button', { name: '筛选' });
+    fireEvent.click(trigger);
+    expect(screen.getByRole('region', { name: '筛选因果关系' })).toBeTruthy();
+
+    fireEvent.pointerDown(trigger);
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('region', { name: '筛选因果关系' })).toBeNull();
+  });
+
+  it('expands to the next tier only from a limited committed graph', async () => {
+    vi.mocked(getCausalGraph).mockImplementation(async (query) =>
+      graph(query.direction, query.limit === 20 ? 'node_limit' : 'exhausted', query),
+    );
+    const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
+    await screen.findByRole('button', { name: '扩展至 50 节点' });
+    fireEvent.click(screen.getByRole('button', { name: '扩展至 50 节点' }));
+    await waitFor(() => expect(router.state.location.search).toContain('limit=50'));
+  });
+
+  it('keeps old interaction state until a replacement graph is committed', async () => {
+    vi.mocked(getCausalGraph).mockImplementation(async (query) =>
+      graph(query.direction, 'exhausted', {
+        ...query,
+        nodeCount: query.direction === 'upstream' ? 3 : 2,
+      }),
+    );
+    renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
+    await screen.findAllByText('2 个节点 · 1 条关系');
+    fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
+    fireEvent.click(screen.getByRole('button', { name: '空格' }));
+    expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
+
+    canvasControl.autoCommit = false;
+    canvasControl.commit = null;
+    fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
+    await waitFor(() => expect(canvasControl.candidateNodeCount).toBe(3));
+    expect(screen.getAllByText('2 个节点 · 1 条关系')).toHaveLength(2);
+    expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
+
+    act(() => canvasControl.commit?.());
+    expect(await screen.findAllByText('3 个节点 · 1 条关系')).toHaveLength(2);
     expect(screen.queryByText(/检查器：/)).toBeNull();
     expect(screen.getByText('画布选择：无')).toBeTruthy();
+  });
+
+  it('keeps the old graph and interaction state when a replacement query fails', async () => {
+    renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
+    await screen.findAllByText('2 个节点 · 1 条关系');
+    fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
+    fireEvent.click(screen.getByRole('button', { name: '空格' }));
+    vi.mocked(getCausalGraph).mockRejectedValueOnce(new Error('network failed'));
+    fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
+
+    expect(await screen.findByText('查询失败，仍显示上一查询结果')).toBeTruthy();
+    expect(screen.getAllByText('2 个节点 · 1 条关系')).toHaveLength(2);
+    expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
   });
 });

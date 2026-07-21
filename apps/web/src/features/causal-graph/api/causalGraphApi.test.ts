@@ -23,17 +23,25 @@ const response = {
 describe('getCausalGraph', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('requests the selected direction with fixed P1-07 limits', async () => {
+  it('requests the complete local graph query', async () => {
     const fetchMock = vi.fn<typeof fetch>(
       async () => ({ ok: true, json: async () => response }) as Response,
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(getCausalGraph(centerEventId, 'both')).resolves.toEqual(response);
+    await expect(
+      getCausalGraph({
+        centerEventId,
+        direction: 'downstream',
+        limit: 50,
+        minConfidence: 60,
+        minCaseCount: 2,
+      }),
+    ).resolves.toEqual(response);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
-      `/api/causal-graph?centerEventId=${centerEventId}&direction=both&limit=20&minConfidence=0&minCaseCount=0`,
+      `/api/causal-graph?centerEventId=${centerEventId}&direction=downstream&limit=50&minConfidence=60&minCaseCount=2`,
     );
     expect(fetchMock.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -49,6 +57,14 @@ describe('getCausalGraph', () => {
       ),
     );
 
-    await expect(getCausalGraph(centerEventId, 'both')).rejects.toThrow();
+    await expect(
+      getCausalGraph({
+        centerEventId,
+        direction: 'both',
+        limit: 20,
+        minConfidence: 0,
+        minCaseCount: 0,
+      }),
+    ).rejects.toThrow();
   });
 });

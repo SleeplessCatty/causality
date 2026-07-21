@@ -10,6 +10,7 @@ describe('CausalGraphToolbar', () => {
     const onZoomIn = vi.fn();
     const onZoomOut = vi.fn();
     const onFit = vi.fn();
+    const onFilterToggle = vi.fn();
     render(
       <AppProviders>
         <CausalGraphToolbar
@@ -21,6 +22,9 @@ describe('CausalGraphToolbar', () => {
           onZoomIn={onZoomIn}
           onZoomOut={onZoomOut}
           onFit={onFit}
+          filterCount={2}
+          filterOpen={false}
+          onFilterToggle={onFilterToggle}
         />
       </AppProviders>,
     );
@@ -29,11 +33,13 @@ describe('CausalGraphToolbar', () => {
     fireEvent.click(screen.getByRole('button', { name: '缩小因果图' }));
     fireEvent.click(screen.getByRole('button', { name: '放大因果图' }));
     fireEvent.click(screen.getByRole('button', { name: '适应画布' }));
+    fireEvent.click(screen.getByRole('button', { name: '筛选 2' }));
 
     expect(onDirectionChange).toHaveBeenCalledWith('upstream');
     expect(onZoomOut).toHaveBeenCalledOnce();
     expect(onZoomIn).toHaveBeenCalledOnce();
     expect(onFit).toHaveBeenCalledOnce();
+    expect(onFilterToggle).toHaveBeenCalledOnce();
     expect(screen.getByText('100%')).toBeTruthy();
   });
 
@@ -46,6 +52,9 @@ describe('CausalGraphToolbar', () => {
       onZoomIn: vi.fn(),
       onZoomOut: vi.fn(),
       onFit: vi.fn(),
+      filterCount: 0,
+      filterOpen: false,
+      onFilterToggle: vi.fn(),
     };
     const { rerender } = render(
       <AppProviders>

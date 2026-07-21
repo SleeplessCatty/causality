@@ -1,4 +1,5 @@
 import type { CausalGraphQuery, EventCandidate } from '@causality/contracts';
+import type { ReactNode } from 'react';
 
 import { GraphEventSelector } from './GraphEventSelector';
 
@@ -11,6 +12,10 @@ interface CausalGraphToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
+  filterCount: number;
+  filterOpen: boolean;
+  onFilterToggle: () => void;
+  filterPopover?: ReactNode;
 }
 
 const directions: Array<{
@@ -32,6 +37,10 @@ export function CausalGraphToolbar({
   onZoomIn,
   onZoomOut,
   onFit,
+  filterCount,
+  filterOpen,
+  onFilterToggle,
+  filterPopover,
 }: CausalGraphToolbarProps) {
   return (
     <div className="causal-graph-toolbar" aria-label="因果图工具栏">
@@ -50,6 +59,17 @@ export function CausalGraphToolbar({
             {option.label}
           </button>
         ))}
+      </div>
+      <div className="graph-filter-control">
+        <button
+          type="button"
+          aria-expanded={filterOpen}
+          aria-controls="graph-filter-popover"
+          onClick={onFilterToggle}
+        >
+          {filterCount > 0 ? `筛选 ${filterCount}` : '筛选'}
+        </button>
+        {filterPopover}
       </div>
       <div className="graph-viewport-controls" aria-label="画布缩放">
         <button type="button" aria-label="缩小因果图" disabled={zoom <= 0.25} onClick={onZoomOut}>

@@ -30,6 +30,7 @@ export interface GraphRuntime {
   ): (() => void) | void;
   commit(elements: LaidOutElements): void;
   fit(padding: number, animate: boolean): void;
+  focusNode(id: string, padding: number, minimumZoom: number): void;
   getZoom(): number;
   setZoom(zoom: number, animate: boolean): void;
   onZoom(listener: (zoom: number) => void): () => void;
@@ -85,6 +86,18 @@ function selectionElement(cy: Core, selection: GraphElementSelection) {
   return cy.getElementById(selection.id);
 }
 
+export function focusVisibleNode(
+  visible: Core,
+  id: string,
+  padding: number,
+  minimumZoom: number,
+): void {
+  const node = visible.getElementById(id);
+  visible.fit(visible.elements(), padding);
+  if (visible.zoom() < minimumZoom) visible.zoom(minimumZoom);
+  if (!node.empty()) visible.center(node);
+}
+
 export function createGraphRuntime(container: HTMLElement): GraphRuntime {
   const visible = cytoscape({
     container,
@@ -114,6 +127,9 @@ export function createGraphRuntime(container: HTMLElement): GraphRuntime {
       } else {
         visible.fit(visible.elements(), padding);
       }
+    },
+    focusNode(id, padding, minimumZoom) {
+      focusVisibleNode(visible, id, padding, minimumZoom);
     },
     getZoom: () => visible.zoom(),
     setZoom(zoom, animate) {

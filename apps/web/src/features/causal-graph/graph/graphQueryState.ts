@@ -33,11 +33,7 @@ export const DEFAULT_GRAPH_QUERY_STATE = {
   minCaseCount: 0,
 } as const satisfies Omit<GraphQueryState, 'centerEventId'>;
 
-const graphDirections = new Set<CausalGraphQuery['direction']>([
-  'upstream',
-  'downstream',
-  'both',
-]);
+const graphDirections = new Set<CausalGraphQuery['direction']>(['upstream', 'downstream', 'both']);
 const graphLimits = new Set<GraphLimit>([20, 50, 100]);
 const unsignedIntegerPattern = /^(0|[1-9]\d*)$/u;
 
@@ -74,8 +70,7 @@ export function parseGraphQueryState(search: URLSearchParams): {
     ? (parsedLimit as GraphLimit)
     : DEFAULT_GRAPH_QUERY_STATE.limit;
   const minConfidence =
-    parseInteger(search.get('minConfidence'), 0, 100) ??
-    DEFAULT_GRAPH_QUERY_STATE.minConfidence;
+    parseInteger(search.get('minConfidence'), 0, 100) ?? DEFAULT_GRAPH_QUERY_STATE.minConfidence;
   const minCaseCount =
     parseInteger(search.get('minCaseCount'), 0) ?? DEFAULT_GRAPH_QUERY_STATE.minCaseCount;
   const state = { centerEventId, direction, limit, minConfidence, minCaseCount };
@@ -129,9 +124,7 @@ export function graphQueryStatus(graph: CausalGraphResponse): GraphQueryStatus {
   return {
     action: 'expand',
     message:
-      stopReason === 'relation_limit'
-        ? '关系较密集，已触发展示保护'
-        : '已达到当前节点显示档位',
+      stopReason === 'relation_limit' ? '关系较密集，已触发展示保护' : '已达到当前节点显示档位',
     nextLimit: nextGraphLimit(nodeLimit)!,
   };
 }

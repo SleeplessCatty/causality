@@ -8,17 +8,23 @@ import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphCanvas, type CausalGraphCanvasHandle } from '../components/CausalGraphCanvas';
 import { CausalGraphInspector } from '../components/CausalGraphInspector';
 import { CausalGraphToolbar } from '../components/CausalGraphToolbar';
+import { GraphFilterPopover } from '../components/GraphFilterPopover';
+import { GraphQueryStatus, type GraphQueryErrorKind } from '../components/GraphQueryStatus';
+import {
+  activeGraphFilterCount,
+  parseGraphQueryState,
+  toGraphSearchParams,
+  type GraphFilterValues,
+  type GraphLimit,
+  type GraphQueryState,
+} from '../graph/graphQueryState';
 import type { GraphElementSelection } from '../graph/graphSelection';
 import '../causalGraph.css';
 
 type GraphDirection = CausalGraphQuery['direction'];
+type LayoutState = 'idle' | 'loading' | 'ready' | 'error';
 
-const directions = new Set<GraphDirection>(['upstream', 'downstream', 'both']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-
-function isDirection(value: string | null): value is GraphDirection {
-  return Boolean(value && directions.has(value as GraphDirection));
-}
 
 function isNotFound(error: unknown): boolean {
   return error instanceof ApiClientError && error.details.code === 'EVENT_NOT_FOUND';
@@ -26,9 +32,9 @@ function isNotFound(error: unknown): boolean {
 
 export function CausalGraphPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const centerEventId = searchParams.get('centerEventId') ?? '';
-  const directionParameter = searchParams.get('direction');
-  const direction: GraphDirection = isDirection(directionParameter) ? directionParameter : 'both';
+  const parsedQuery = parseGraphQueryState(searchParams);
+  const requestedQuery = parsedQuery.state;
+  const { centerEventId, direction, limit, minConfidence, minCaseCount } = requestedQuery;
   const hasValidCenter = uuidPattern.test(centerEventId);
   const hasInvalidCenter = Boolean(centerEventId) && !hasValidCenter;
   const canvasRef = useRef<CausalGraphCanvasHandle>(null);
@@ -37,17 +43,41 @@ export function CausalGraphPage() {
   const [lastGraph, setLastGraph] = useState<CausalGraphResponse | null>(null);
   const [selection, setSelection] = useState<GraphElementSelection | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [layoutState, setLayoutState] = useState<LayoutState>('idle');
+
+  const setGraphQuery = useCallback(
+    (nextQuery: GraphQueryState, replace = false) => {
+      setSearchParams(toGraphSearchParams(nextQuery), { replace });
+    },
+    [setSearchParams],
+  );
 
   useEffect(() => {
-    if (centerEventId && !isDirection(directionParameter)) {
-      setSearchParams({ centerEventId, direction: 'both' }, { replace: true });
-    }
-  }, [centerEventId, directionParameter, setSearchParams]);
+    if (parsedQuery.needsCanonicalization) setGraphQuery(requestedQuery, true);
+  }, [
+    centerEventId,
+    direction,
+    limit,
+    minCaseCount,
+    minConfidence,
+    parsedQuery.needsCanonicalization,
+    requestedQuery,
+    setGraphQuery,
+  ]);
 
   useEffect(() => {
     if (selectedCandidate && selectedCandidate.id !== centerEventId) setSelectedCandidate(null);
-    if (!centerEventId || hasInvalidCenter) setLastGraph(null);
-  }, [centerEventId, hasInvalidCenter, selectedCandidate]);
+    if (!centerEventId) {
+      setLastGraph(null);
+      setSelection(null);
+      setInspectorOpen(false);
+    }
+  }, [centerEventId, selectedCandidate]);
+
+  useEffect(() => {
+    if (hasValidCenter) setLayoutState('loading');
+  }, [centerEventId, direction, hasValidCenter, limit, minCaseCount, minConfidence]);
 
   const centerEvent = useQuery({
     queryKey: ['events', 'detail', 'causal-graph', centerEventId],
@@ -56,18 +86,10 @@ export function CausalGraphPage() {
   });
 
   const graphQuery = useQuery({
-    queryKey: ['causal-graph', centerEventId, direction, 20, 0, 0],
-    queryFn: ({ signal }) => getCausalGraph(centerEventId, direction, signal),
+    queryKey: ['causal-graph', centerEventId, direction, limit, minConfidence, minCaseCount],
+    queryFn: ({ signal }) => getCausalGraph(requestedQuery, signal),
     enabled: hasValidCenter,
   });
-
-  useEffect(() => {
-    if (graphQuery.data) {
-      setLastGraph(graphQuery.data);
-      setSelection(null);
-      setInspectorOpen(false);
-    }
-  }, [graphQuery.data]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -77,38 +99,39 @@ export function CausalGraphPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [inspectorOpen, selection]);
 
-  const displayedGraph = graphQuery.data ?? lastGraph;
   const selectedEvent: EventCandidate | null =
     selectedCandidate?.id === centerEventId
       ? selectedCandidate
       : centerEvent.data
         ? { id: centerEvent.data.id, name: centerEvent.data.name }
-        : displayedGraph
+        : lastGraph?.meta.centerEventId === centerEventId
           ? {
               id: centerEventId,
-              name:
-                displayedGraph.nodes.find((node) => node.id === centerEventId)?.name ?? '中心事件',
+              name: lastGraph.nodes.find((node) => node.id === centerEventId)?.name ?? '中心事件',
             }
           : null;
 
   const chooseEvent = useCallback(
     (event: EventCandidate) => {
-      setSelection(null);
-      setInspectorOpen(false);
       setSelectedCandidate(event);
-      setSearchParams({ centerEventId: event.id, direction: 'both' });
+      setFilterOpen(false);
+      setGraphQuery({
+        ...requestedQuery,
+        centerEventId: event.id,
+        direction: 'both',
+        limit: 20,
+      });
     },
-    [setSearchParams],
+    [requestedQuery, setGraphQuery],
   );
 
   const changeDirection = useCallback(
     (nextDirection: GraphDirection) => {
-      if (!hasValidCenter) return;
-      setSelection(null);
-      setInspectorOpen(false);
-      setSearchParams({ centerEventId, direction: nextDirection });
+      if (!hasValidCenter || nextDirection === direction) return;
+      setFilterOpen(false);
+      setGraphQuery({ ...requestedQuery, direction: nextDirection, limit: 20 });
     },
-    [centerEventId, hasValidCenter, setSearchParams],
+    [direction, hasValidCenter, requestedQuery, setGraphQuery],
   );
 
   const clearCenterEvent = useCallback(() => {
@@ -116,38 +139,78 @@ export function CausalGraphPage() {
     setInspectorOpen(false);
     setSelectedCandidate(null);
     setLastGraph(null);
+    setFilterOpen(false);
     setSearchParams({});
   }, [setSearchParams]);
 
   const setNodeAsCenter = useCallback(
     (eventId: string) => {
-      const eventName = displayedGraph?.nodes.find((node) => node.id === eventId)?.name;
-      setSelection(null);
-      setInspectorOpen(false);
-      setLastGraph(null);
+      const eventName = lastGraph?.nodes.find((node) => node.id === eventId)?.name;
       setSelectedCandidate(eventName ? { id: eventId, name: eventName } : null);
-      setSearchParams({ centerEventId: eventId, direction });
+      setGraphQuery({ ...requestedQuery, centerEventId: eventId, limit: 20 });
     },
-    [direction, displayedGraph, setSearchParams],
+    [lastGraph, requestedQuery, setGraphQuery],
   );
 
-  const retryRequest = useCallback(() => {
-    void centerEvent.refetch();
-    void graphQuery.refetch();
-  }, [centerEvent, graphQuery]);
+  const applyFilters = useCallback(
+    (filters: GraphFilterValues) => {
+      setFilterOpen(false);
+      setGraphQuery({ ...requestedQuery, ...filters, limit: 20 });
+    },
+    [requestedQuery, setGraphQuery],
+  );
+
+  const resetFilters = useCallback(() => {
+    setFilterOpen(false);
+    setGraphQuery({ ...requestedQuery, minConfidence: 0, minCaseCount: 0, limit: 20 });
+  }, [requestedQuery, setGraphQuery]);
+
+  const expandGraph = useCallback(
+    (nextLimit: GraphLimit) => {
+      setFilterOpen(false);
+      setGraphQuery({ ...requestedQuery, limit: nextLimit });
+    },
+    [requestedQuery, setGraphQuery],
+  );
+
+  const commitGraph = useCallback((graph: CausalGraphResponse) => {
+    setLastGraph(graph);
+    setSelection(null);
+    setInspectorOpen(false);
+    setLayoutState('ready');
+  }, []);
 
   const queryError = graphQuery.error ?? centerEvent.error;
+  const errorKind: GraphQueryErrorKind = queryError
+    ? 'query'
+    : layoutState === 'error'
+      ? 'layout'
+      : null;
+
+  const retryRequest = useCallback(() => {
+    if (layoutState === 'error' && !queryError) {
+      canvasRef.current?.retryLayout();
+      return;
+    }
+    void centerEvent.refetch();
+    void graphQuery.refetch();
+  }, [centerEvent, graphQuery, layoutState, queryError]);
+
   const overlay = hasInvalidCenter
     ? { message: '链接中的中心事件无效', actionLabel: '重新选择', onAction: clearCenterEvent }
-    : queryError
+    : queryError && !lastGraph
       ? isNotFound(queryError)
         ? { message: '中心事件不存在', actionLabel: '重新选择', onAction: clearCenterEvent }
         : { message: '无法加载因果图', actionLabel: '重试', onAction: retryRequest }
       : undefined;
 
-  const countText = displayedGraph
-    ? `${displayedGraph.meta.nodeCount} 个节点 · ${displayedGraph.meta.relationCount} 条关系`
+  const countText = lastGraph
+    ? `${lastGraph.meta.nodeCount} 个节点 · ${lastGraph.meta.relationCount} 条关系`
     : '等待选择中心事件';
+  const isReplacing = Boolean(
+    lastGraph &&
+    (graphQuery.isFetching || (graphQuery.data && layoutState === 'loading' && !graphQuery.error)),
+  );
 
   return (
     <section className="causal-graph-page" aria-labelledby="causal-graph-title">
@@ -158,9 +221,6 @@ export function CausalGraphPage() {
         </div>
         <div className="causal-graph-page__count" aria-live="polite">
           <span>{countText}</span>
-          {displayedGraph?.meta.stopReason === 'relation_limit' ? (
-            <small>已按关系上限缩小</small>
-          ) : null}
         </div>
       </header>
       <CausalGraphToolbar
@@ -172,6 +232,27 @@ export function CausalGraphPage() {
         onZoomIn={() => canvasRef.current?.zoomIn()}
         onZoomOut={() => canvasRef.current?.zoomOut()}
         onFit={() => canvasRef.current?.fit()}
+        filterCount={activeGraphFilterCount(requestedQuery)}
+        filterOpen={filterOpen}
+        onFilterToggle={() => setFilterOpen((current) => !current)}
+        filterPopover={
+          <GraphFilterPopover
+            open={filterOpen}
+            values={requestedQuery}
+            onApply={applyFilters}
+            onReset={resetFilters}
+            onClose={() => setFilterOpen(false)}
+          />
+        }
+      />
+      <GraphQueryStatus
+        displayedGraph={lastGraph}
+        requestedQuery={requestedQuery}
+        isPending={isReplacing}
+        errorKind={lastGraph ? errorKind : null}
+        onExpand={expandGraph}
+        onAdjustFilter={() => setFilterOpen(true)}
+        onRetry={retryRequest}
       />
       <div
         className={`causal-graph-workbench${inspectorOpen ? ' has-inspector' : ''}`}
@@ -179,12 +260,14 @@ export function CausalGraphPage() {
       >
         <CausalGraphCanvas
           ref={canvasRef}
-          graph={displayedGraph}
+          graph={graphQuery.data ?? null}
           centerEventName={selectedEvent?.name}
-          isInitialLoading={hasValidCenter && !displayedGraph && graphQuery.isPending}
-          isRefreshing={Boolean(displayedGraph && graphQuery.isFetching)}
+          isInitialLoading={hasValidCenter && !lastGraph && !queryError}
+          isRefreshing={isReplacing}
           overlay={overlay}
           onZoomChange={setZoom}
+          onLayoutStateChange={setLayoutState}
+          onGraphCommit={commitGraph}
           selection={selection}
           inspectorOpen={inspectorOpen}
           onSelectionChange={setSelection}
@@ -198,7 +281,7 @@ export function CausalGraphPage() {
         <CausalGraphInspector
           open={inspectorOpen}
           selection={selection}
-          centerEventId={centerEventId}
+          centerEventId={lastGraph?.meta.centerEventId ?? centerEventId}
           onClose={() => {
             setInspectorOpen(false);
             window.requestAnimationFrame(() => canvasRef.current?.focus());

@@ -44,6 +44,7 @@ interface CausalGraphCanvasProps {
     | undefined;
   onZoomChange?: (zoom: number) => void;
   onLayoutStateChange?: (state: LayoutState) => void;
+  onGraphCommit?: (graph: CausalGraphResponse) => void;
   selection?: GraphElementSelection | null;
   inspectorOpen?: boolean;
   onSelectionChange?: (selection: GraphElementSelection) => void;
@@ -70,6 +71,7 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
       overlay,
       onZoomChange,
       onLayoutStateChange,
+      onGraphCommit,
       selection = null,
       inspectorOpen = false,
       onSelectionChange,
@@ -91,6 +93,7 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
     const layoutRunRef = useRef(0);
     const cancelLayoutRef = useRef<(() => void) | undefined>(undefined);
     const [layoutState, setLayoutState] = useState<LayoutState>(graph ? 'loading' : 'idle');
+    const [committedGraph, setCommittedGraph] = useState<CausalGraphResponse | null>(null);
 
     const updateLayoutState = useCallback(
       (state: LayoutState) => {
@@ -114,15 +117,21 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
           (elements) => {
             if (run !== layoutRunRef.current) return;
             runtime.commit(elements);
-            runtime.setSelection(selectionRef.current);
-            runtime.fit(GRAPH_FIT_PADDING, false);
+            runtime.setSelection(null);
+            if (currentGraph.meta.nodeLimit === 20) {
+              runtime.fit(GRAPH_FIT_PADDING, false);
+            } else {
+              runtime.focusNode(currentGraph.meta.centerEventId, GRAPH_FIT_PADDING, 0.6);
+            }
+            setCommittedGraph(currentGraph);
             updateLayoutState('ready');
+            onGraphCommit?.(currentGraph);
           },
           () => {
             if (run === layoutRunRef.current) updateLayoutState('error');
           },
         ) ?? undefined;
-    }, [updateLayoutState]);
+    }, [onGraphCommit, updateLayoutState]);
 
     useEffect(() => {
       if (!containerRef.current) return;
@@ -170,7 +179,11 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
     useEffect(() => {
       graphRef.current = graph;
       if (graph && runtimeRef.current) runLayout();
-      if (!graph) updateLayoutState('idle');
+      if (!graph) {
+        runtimeRef.current?.commit([]);
+        setCommittedGraph(null);
+        updateLayoutState('idle');
+      }
     }, [graph, runLayout, updateLayoutState]);
 
     useImperativeHandle(
@@ -214,19 +227,20 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
           ArrowRight: 'right',
         };
         const direction = keyDirections[event.key];
-        if (direction && graph) {
+        const navigationGraph = committedGraph ?? graph;
+        if (direction && navigationGraph) {
           event.preventDefault();
           const runtime = runtimeRef.current;
           if (!runtime) return;
           const nextSelection = navigateGraph(
             selectionRef.current,
             direction,
-            runtime.getNavigationSnapshot(graph.meta.centerEventId),
+            runtime.getNavigationSnapshot(navigationGraph.meta.centerEventId),
           );
           onSelectionChange?.(nextSelection);
           return;
         }
-        if (event.key === ' ' && graph) {
+        if (event.key === ' ' && navigationGraph) {
           event.preventDefault();
           onToggleInspector?.();
           return;
@@ -236,27 +250,28 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
           onEscape?.();
         }
       },
-      [graph, onEscape, onSelectionChange, onToggleInspector],
+      [committedGraph, graph, onEscape, onSelectionChange, onToggleInspector],
     );
 
-    const nodeCount = graph?.meta.nodeCount ?? 0;
-    const relationCount = graph?.meta.relationCount ?? 0;
+    const visibleGraph = committedGraph ?? graph;
+    const nodeCount = visibleGraph?.meta.nodeCount ?? 0;
+    const relationCount = visibleGraph?.meta.relationCount ?? 0;
     const accessibleName = centerEventName
       ? `${centerEventName}的局部因果图，${nodeCount} 个节点，${relationCount} 条关系`
       : '局部因果图画布，尚未选择中心事件';
     const selectedNode =
       selection?.type === 'node'
-        ? graph?.nodes.find((node) => node.id === selection.id)
+        ? visibleGraph?.nodes.find((node) => node.id === selection.id)
         : undefined;
     const selectedRelation =
       selection?.type === 'relation'
-        ? graph?.relations.find((relation) => relation.id === selection.id)
+        ? visibleGraph?.relations.find((relation) => relation.id === selection.id)
         : undefined;
     const selectedRelationCause = selectedRelation
-      ? graph?.nodes.find((node) => node.id === selectedRelation.causeEventId)
+      ? visibleGraph?.nodes.find((node) => node.id === selectedRelation.causeEventId)
       : undefined;
     const selectedRelationEffect = selectedRelation
-      ? graph?.nodes.find((node) => node.id === selectedRelation.effectEventId)
+      ? visibleGraph?.nodes.find((node) => node.id === selectedRelation.effectEventId)
       : undefined;
     const selectionAnnouncement = selectedNode
       ? `已选择事件：${selectedNode.name}`
@@ -270,7 +285,7 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
           ref={containerRef}
           className="causal-graph-canvas__renderer"
           role="application"
-          tabIndex={graph ? 0 : -1}
+          tabIndex={visibleGraph ? 0 : -1}
           aria-label={accessibleName}
           onKeyDown={handleKeyDown}
           data-layout-state={layoutState}
@@ -294,11 +309,6 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
             <strong>正在生成因果图…</strong>
           </div>
         ) : null}
-        {isRefreshing ? (
-          <div className="causal-graph-canvas__state is-overlay" role="status">
-            <strong>正在重新生成…</strong>
-          </div>
-        ) : null}
         {overlay ? (
           <div className="causal-graph-canvas__state is-overlay" role={overlay.role ?? 'alert'}>
             <strong>{overlay.message}</strong>
@@ -317,7 +327,7 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
             </button>
           </div>
         ) : null}
-        {layoutState === 'ready' && graph?.relations.length === 0 ? (
+        {layoutState === 'ready' && visibleGraph?.relations.length === 0 ? (
           <p className="causal-graph-canvas__notice">当前方向暂无关联事件</p>
         ) : null}
       </section>

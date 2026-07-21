@@ -15,16 +15,15 @@ function requestSignal(signal?: AbortSignal): AbortSignal {
 }
 
 export async function getCausalGraph(
-  centerEventId: string,
-  direction: CausalGraphQuery['direction'],
+  query: CausalGraphQuery,
   signal?: AbortSignal,
 ): Promise<CausalGraphResponse> {
   const parameters = new URLSearchParams({
-    centerEventId,
-    direction,
-    limit: '20',
-    minConfidence: '0',
-    minCaseCount: '0',
+    centerEventId: query.centerEventId,
+    direction: query.direction,
+    limit: String(query.limit),
+    minConfidence: String(query.minConfidence),
+    minCaseCount: String(query.minCaseCount),
   });
   const response = await fetch(`/api/causal-graph?${parameters}`, {
     signal: requestSignal(signal),
