@@ -13,6 +13,7 @@ import { registerReadinessRoute, type DatabaseReadinessCheck } from './routes/re
 import { registerEventRoutes } from './features/events/eventRoutes.js';
 import { registerRelationRoutes } from './features/relations/relationRoutes.js';
 import { registerCaseRoutes } from './features/cases/caseRoutes.js';
+import { registerCausalGraphRoutes } from './features/causal-graph/causalGraphRoutes.js';
 
 interface BuildAppOptions {
   logger?: FastifyServerOptions['logger'];
@@ -48,6 +49,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       registerEventRoutes(app, options.databasePool);
       registerRelationRoutes(app, options.databasePool);
       registerCaseRoutes(app, options.databasePool);
+      registerCausalGraphRoutes(app, options.databasePool);
     }
 
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());
