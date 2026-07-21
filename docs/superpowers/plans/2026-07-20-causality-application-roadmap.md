@@ -543,7 +543,7 @@ pnpm build
 | P1-04 抽象因果关系管理                 | 已完成 |
 | P1-05 具体因果案例管理                 | 已完成 |
 | P1-06 局部因果图查询 API               | 已完成 |
-| P1-07 局部因果图基础展示               | 等待设计审核 |
+| P1-07 局部因果图基础展示               | 开发中       |
 | P1-08 局部图交互与信息查看             | 未开始 |
 | P1-09 局部图扩展、筛选与布局稳定性     | 未开始 |
 | P1-10 第一阶段整体验收与容器化交付     | 未开始 |
@@ -573,10 +573,14 @@ P1-06 实施计划：
 docs/superpowers/plans/2026-07-24-p1-06-local-causal-graph-query-api-implementation.md
 ```
 
-下一步为 **P1-07 局部因果图基础展示** 设计阶段。未经用户确认设计文档，不开始页面实现。
-
-P1-07 设计文档已编写，当前等待设计审核：
+当前正在实施 **P1-07 局部因果图基础展示**。设计文档已经用户确认：
 
 ```text
 docs/stages/phase-1/P1-07-local-causal-graph-basic-display-design.md
+```
+
+P1-07 实施计划：
+
+```text
+docs/superpowers/plans/2026-07-24-p1-07-local-causal-graph-basic-display-implementation.md
 ```
