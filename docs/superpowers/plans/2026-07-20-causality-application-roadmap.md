@@ -542,7 +542,7 @@ pnpm build
 | P1-03 抽象原子事件管理                 | 已完成 |
 | P1-04 抽象因果关系管理                 | 已完成 |
 | P1-05 具体因果案例管理                 | 已完成 |
-| P1-06 局部因果图查询 API               | 等待设计审核 |
+| P1-06 局部因果图查询 API               | 开发中 |
 | P1-07 局部因果图基础展示               | 未开始 |
 | P1-08 局部图交互与信息查看             | 未开始 |
 | P1-09 局部图扩展、筛选与布局稳定性     | 未开始 |
@@ -559,10 +559,16 @@ P1-05 设计文档：
 docs/stages/phase-1/P1-05-concrete-case-management-design.md
 ```
 
-**P1-06 局部因果图查询 API** 设计文档已编写，当前等待设计审核。未经用户明确批准，不开始实现。
+**P1-06 局部因果图查询 API** 设计已经用户确认，当前按照实施计划开发。完成自动化测试后进入人工复核。
 
 P1-06 设计文档：
 
 ```text
 docs/stages/phase-1/P1-06-local-causal-graph-query-api-design.md
+```
+
+P1-06 实施计划：
+
+```text
+docs/superpowers/plans/2026-07-24-p1-06-local-causal-graph-query-api-implementation.md
 ```
