@@ -90,7 +90,10 @@ describe('API foundation', () => {
     const response = await app.inject({ method: 'GET', url: '/test-error' });
 
     expect(response.statusCode).toBe(500);
-    expect(response.json()).toEqual({ error: 'Internal Server Error' });
+    expect(response.json()).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: '服务器内部错误',
+    });
     expect(response.body).not.toContain('password');
     expect(response.body).not.toContain('private-host');
   });

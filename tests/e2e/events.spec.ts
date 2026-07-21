@@ -1,0 +1,56 @@
+import { expect, test } from '@playwright/test';
+
+test('user can search, create, inspect, edit, and find an atomic event', async ({ page }) => {
+  const browserErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => browserErrors.push(error.message));
+
+  const suffix = `${Date.now()}`;
+  const initialName = `E2E 原油供给减少 ${suffix}`;
+  const updatedName = `E2E 原油供给持续减少 ${suffix}`;
+  const initialAlias = `E2E 油供减少 ${suffix}`;
+  const updatedAlias = `E2E 供应收紧 ${suffix}`;
+
+  await page.goto('/events');
+  const search = page.getByRole('searchbox', { name: '搜索事件' });
+  await search.fill('原油价格上涨');
+  await expect(page.getByRole('link', { name: '原油价格上涨' })).toBeVisible();
+
+  await page.getByRole('link', { name: '创建事件' }).first().click();
+  await expect(page.getByRole('heading', { name: '创建原子事件' })).toBeVisible();
+  await page.getByRole('textbox', { name: '标准名称' }).fill(initialName);
+  await page.getByRole('textbox', { name: '事件说明' }).fill('用于浏览器验收的具体事件定义。');
+  await page.getByRole('textbox', { name: '添加别名' }).fill(initialAlias);
+  await page.getByRole('textbox', { name: '添加别名' }).press('Enter');
+  await page.getByRole('textbox', { name: '添加关键词' }).fill('E2E能源');
+  await page.getByRole('textbox', { name: '添加关键词' }).press('Enter');
+  await page.getByRole('button', { name: '创建事件' }).click();
+
+  await expect(page.getByRole('heading', { name: initialName })).toBeVisible();
+  await expect(page.getByText('事件已创建')).toBeVisible();
+  await expect(page.getByText(initialAlias)).toBeVisible();
+  await expect(page.getByText('E2E能源')).toBeVisible();
+
+  await page.getByRole('link', { name: '编辑事件' }).click();
+  await page.getByRole('textbox', { name: '标准名称' }).fill(updatedName);
+  await page.getByRole('textbox', { name: '添加别名' }).fill(updatedAlias);
+  await page.getByRole('textbox', { name: '添加别名' }).press('Enter');
+  await page.getByRole('button', { name: '保存修改' }).click();
+
+  await expect(page.getByRole('heading', { name: updatedName })).toBeVisible();
+  await expect(page.getByText('修改已保存')).toBeVisible();
+  await expect(page.getByText(updatedAlias)).toBeVisible();
+
+  await page.getByRole('link', { name: '返回事件列表' }).click();
+  await search.fill(updatedAlias);
+  await expect(page.getByRole('link', { name: updatedName })).toBeVisible();
+
+  await page.getByRole('link', { name: '创建事件' }).first().click();
+  await page.getByRole('textbox', { name: '标准名称' }).fill(updatedName);
+  await page.getByRole('button', { name: '创建事件' }).click();
+  await expect(page.getByText('该标准名称已被使用').first()).toBeVisible();
+
+  expect(browserErrors.filter((message) => !message.includes('409 (Conflict)'))).toEqual([]);
+});

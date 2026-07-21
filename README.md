@@ -1,6 +1,14 @@
 # Causality
 
-金融因果知识库。当前开发步骤为 P1-01，仅验证 React、Fastify 与 PostgreSQL 的基础链路。
+金融因果知识库。P1-03 抽象原子事件管理已完成人工复核；下一开发步骤尚未开始。
+
+当前可用功能：
+
+- 浏览和搜索抽象原子事件；
+- 创建、查看和编辑事件、别名及关键词；
+- 创建和编辑时显示可能重复的候选事件；
+- 通过 REST API 完成相同操作；
+- 查看 API 与数据库运行状态。
 
 ## 本地要求
 
@@ -10,14 +18,25 @@
 
 ## 启动
 
+先进入包含 `package.json`、`compose.yaml` 和 `apps` 的仓库根目录：
+
 ```bash
+cd /path/to/causality
 pnpm install
 cp apps/api/.env.example apps/api/.env
 docker compose up -d --wait postgres
 pnpm dev
 ```
 
-浏览器打开 <http://127.0.0.1:5173>。API 默认监听 <http://127.0.0.1:3000>。
+浏览器打开 <http://127.0.0.1:5173>，首页会进入事件列表。系统状态页为 <http://127.0.0.1:5173/system>，API 默认监听 <http://127.0.0.1:3000>。
+
+事件 API：
+
+- `GET /api/events`：列表、传统搜索和游标分页；
+- `GET /api/events/candidates`：重复候选；
+- `GET /api/events/:eventId`：详情；
+- `POST /api/events`：创建；
+- `PUT /api/events/:eventId`：完整更新。
 
 ## 数据库
 
@@ -28,7 +47,7 @@ pnpm db:verify
 pnpm db:simulate -- --events=1000 --relations=3000 --cases=10000 --seed=42
 ```
 
-迁移可重复执行。固定种子采用稳定标识并且不会覆盖已修改的数据；模拟数据只用于开发和性能测试。
+迁移可重复执行。固定种子采用稳定标识并且不会覆盖已修改的数据；模拟数据只用于开发和性能测试。`db:verify` 显示的是数据库内全部记录数量，因此执行模拟数据、浏览器测试或人工录入后会高于固定种子数量。
 
 ## 质量检查
 

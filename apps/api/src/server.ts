@@ -10,6 +10,7 @@ const pool = createDatabasePool(env.DATABASE_URL);
 const app = buildApp({
   corsOrigin: env.CORS_ORIGIN,
   checkDatabase: () => isDatabaseReady(pool),
+  databasePool: pool,
   logger:
     env.NODE_ENV === 'development'
       ? {

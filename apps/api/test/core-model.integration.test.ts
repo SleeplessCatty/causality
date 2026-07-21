@@ -237,7 +237,7 @@ describe.sequential('core PostgreSQL model', () => {
     expect(aliases.rows[0]?.count).toBe('0');
   });
 
-  it('creates indexes for every foreign key and directional query', async () => {
+  it('creates indexes for foreign keys, directional queries, event search, and event pagination', async () => {
     const indexes = await pool!.query<{ indexname: string }>(
       `select indexname
        from pg_indexes
@@ -249,10 +249,20 @@ describe.sequential('core PostgreSQL model', () => {
       expect.arrayContaining([
         'event_aliases_event_id_idx',
         'event_aliases_normalized_alias_idx',
+        'event_aliases_normalized_alias_trgm_idx',
+        'abstract_events_normalized_name_trgm_idx',
+        'abstract_events_updated_at_id_idx',
         'causal_relations_cause_event_id_idx',
         'causal_relations_effect_event_id_idx',
         'concrete_cases_relation_effect_time_idx',
       ]),
     );
+
+    const extension = await pool!.query<{ installed: boolean }>(
+      `select exists (
+         select 1 from pg_extension where extname = 'pg_trgm'
+       ) as installed`,
+    );
+    expect(extension.rows[0]?.installed).toBe(true);
   });
 });

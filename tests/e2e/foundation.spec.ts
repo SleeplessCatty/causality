@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('foundation page reports API and PostgreSQL readiness', async ({ page }, testInfo) => {
+test('application shell opens events and reports system readiness', async ({ page }, testInfo) => {
   const browserErrors: string[] = [];
   page.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(message.text());
@@ -10,7 +10,10 @@ test('foundation page reports API and PostgreSQL readiness', async ({ page }, te
   await page.goto('/');
 
   await expect(page).toHaveTitle('Causality');
-  await expect(page.getByRole('heading', { name: '金融因果知识库' })).toBeVisible();
+  await expect(page).toHaveURL(/\/events$/);
+  await expect(page.getByRole('heading', { name: '原子事件' })).toBeVisible();
+
+  await page.getByRole('link', { name: '系统状态' }).click();
   await expect(page.getByText('正常', { exact: true })).toBeVisible();
   await expect(page.getByText('就绪', { exact: true })).toBeVisible();
 

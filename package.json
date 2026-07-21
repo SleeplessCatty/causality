@@ -22,8 +22,8 @@
     "format": "prettier --write .",
     "typecheck": "pnpm --filter @causality/contracts typecheck && pnpm --filter @causality/api typecheck && pnpm --filter @causality/web typecheck",
     "test": "pnpm --filter @causality/contracts test && pnpm --filter @causality/api test && pnpm --filter @causality/web test",
-    "test:integration": "pnpm --filter @causality/api test:integration",
-    "test:e2e": "pnpm --filter @causality/contracts build && docker compose up -d --wait postgres && playwright test",
+    "test:integration": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api test:integration",
+    "test:e2e": "pnpm --filter @causality/contracts build && docker compose up -d --wait postgres && DATABASE_URL=postgresql://causality:causality@127.0.0.1:5432/causality pnpm db:migrate && DATABASE_URL=postgresql://causality:causality@127.0.0.1:5432/causality pnpm db:seed && playwright test",
     "build": "pnpm --filter @causality/contracts build && pnpm --filter @causality/api build && pnpm --filter @causality/web build"
   },
   "devDependencies": {
