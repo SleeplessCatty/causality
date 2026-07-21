@@ -1,8 +1,4 @@
-import type {
-  CausalGraphNode,
-  CausalGraphQuery,
-  CausalGraphRelation,
-} from '@causality/contracts';
+import type { CausalGraphNode, CausalGraphQuery, CausalGraphRelation } from '@causality/contracts';
 import { describe, expect, it } from 'vitest';
 
 import type {
@@ -99,8 +95,7 @@ class MemorySnapshot implements CausalGraphSnapshot {
 
   private filtered(filters: CausalGraphFilters): CausalGraphRelation[] {
     return this.relations.filter(
-      (edge) =>
-        edge.confidence >= filters.minConfidence && edge.caseCount >= filters.minCaseCount,
+      (edge) => edge.confidence >= filters.minConfidence && edge.caseCount >= filters.minCaseCount,
     );
   }
 }
@@ -126,14 +121,11 @@ describe('CausalGraphService', () => {
     const highCases = ids[1]!;
     const highConfidence = ids[2]!;
     const low = ids[3]!;
-    const setup = service(
-      [centerId, highCases, highConfidence, low].map(node),
-      [
-        relation(3, centerId, low, 80, 10),
-        relation(2, centerId, highConfidence, 90, 1),
-        relation(1, centerId, highCases, 90, 3),
-      ],
-    );
+    const setup = service([centerId, highCases, highConfidence, low].map(node), [
+      relation(3, centerId, low, 80, 10),
+      relation(2, centerId, highConfidence, 90, 1),
+      relation(1, centerId, highCases, 90, 3),
+    ]);
 
     const graph = await setup.service.query(query());
 
@@ -149,10 +141,7 @@ describe('CausalGraphService', () => {
 
   it('traverses upstream relations', async () => {
     const upstream = ids[1]!;
-    const setup = service(
-      [centerId, upstream].map(node),
-      [relation(0, upstream, centerId, 70, 0)],
-    );
+    const setup = service([centerId, upstream].map(node), [relation(0, upstream, centerId, 70, 0)]);
 
     const graph = await setup.service.query(query({ direction: 'upstream' }));
 
@@ -162,14 +151,11 @@ describe('CausalGraphService', () => {
   it('uses one queue for both directions and de-duplicates cycles', async () => {
     const upstream = ids[1]!;
     const downstream = ids[2]!;
-    const setup = service(
-      [centerId, upstream, downstream].map(node),
-      [
-        relation(0, upstream, centerId, 90, 0),
-        relation(1, centerId, downstream, 80, 0),
-        relation(2, downstream, centerId, 70, 0),
-      ],
-    );
+    const setup = service([centerId, upstream, downstream].map(node), [
+      relation(0, upstream, centerId, 90, 0),
+      relation(1, centerId, downstream, 80, 0),
+      relation(2, downstream, centerId, 70, 0),
+    ]);
 
     const graph = await setup.service.query(query({ direction: 'both' }));
 
@@ -211,14 +197,11 @@ describe('CausalGraphService', () => {
   it('forwards filters to traversal and complete-relation queries', async () => {
     const included = ids[1]!;
     const excluded = ids[2]!;
-    const setup = service(
-      [centerId, included, excluded].map(node),
-      [
-        relation(0, centerId, included, 80, 2),
-        relation(1, centerId, excluded, 79, 5),
-        relation(2, centerId, excluded, 90, 1),
-      ],
-    );
+    const setup = service([centerId, included, excluded].map(node), [
+      relation(0, centerId, included, 80, 2),
+      relation(1, centerId, excluded, 79, 5),
+      relation(2, centerId, excluded, 90, 1),
+    ]);
 
     const graph = await setup.service.query(query({ minConfidence: 80, minCaseCount: 2 }));
 

@@ -39,16 +39,10 @@ function adjacentIds(
   direction: CausalGraphQuery['direction'],
 ): string[] {
   const ids: string[] = [];
-  if (
-    (direction === 'downstream' || direction === 'both') &&
-    frontier.has(relation.causeEventId)
-  ) {
+  if ((direction === 'downstream' || direction === 'both') && frontier.has(relation.causeEventId)) {
     ids.push(relation.effectEventId);
   }
-  if (
-    (direction === 'upstream' || direction === 'both') &&
-    frontier.has(relation.effectEventId)
-  ) {
+  if ((direction === 'upstream' || direction === 'both') && frontier.has(relation.effectEventId)) {
     ids.push(relation.causeEventId);
   }
   return ids;

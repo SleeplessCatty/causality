@@ -1,8 +1,4 @@
-import type {
-  CausalGraphNode,
-  CausalGraphQuery,
-  CausalGraphRelation,
-} from '@causality/contracts';
+import type { CausalGraphNode, CausalGraphQuery, CausalGraphRelation } from '@causality/contracts';
 
 export interface CausalGraphFilters {
   minConfidence: number;

@@ -35,7 +35,7 @@
 - Produces: `causalGraphQuerySchema`, `causalGraphResponseSchema`, `CausalGraphQuery`, `CausalGraphResponse`, `CausalGraphNode`, `CausalGraphRelation`, `CausalGraphStopReason`。
 - Query defaults: `limit=20`, `minConfidence=0`, `minCaseCount=0`；`centerEventId` 和 `direction` 必填。
 
-- [ ] **Step 1: Write failing contract tests**
+- [x] **Step 1: Write failing contract tests**
 
 ```ts
 const centerEventId = '11111111-1111-4111-8111-111111111111';
@@ -78,13 +78,13 @@ for (const invalid of [
 
 Also parse a complete response and reject extra node, relation, and meta fields so the response remains strict.
 
-- [ ] **Step 2: Run the contract test and verify RED**
+- [x] **Step 2: Run the contract test and verify RED**
 
 Run: `pnpm --filter @causality/contracts test -- causal-graph.test.ts`
 
 Expected: FAIL because `causalGraphSchemas.ts` and its exports do not exist.
 
-- [ ] **Step 3: Implement strict schemas and types**
+- [x] **Step 3: Implement strict schemas and types**
 
 ```ts
 const graphLimitSchema = z.union([z.literal(20), z.literal(50), z.literal(100)]);
@@ -136,13 +136,13 @@ export const causalGraphResponseSchema = z
 
 Export all schemas and inferred types from `packages/contracts/src/index.ts`.
 
-- [ ] **Step 4: Verify GREEN and contract regressions**
+- [x] **Step 4: Verify GREEN and contract regressions**
 
 Run: `pnpm --filter @causality/contracts test`
 
 Expected: all contract tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add packages/contracts/src/causal-graph packages/contracts/src/index.ts packages/contracts/test/causal-graph.test.ts
@@ -183,7 +183,7 @@ interface CausalGraphRepository {
 }
 ```
 
-- [ ] **Step 1: Write failing BFS tests**
+- [x] **Step 1: Write failing BFS tests**
 
 Build an in-memory repository that records each frontier passed to `findAdjacentRelations`. Cover these behaviors with separate tests:
 
@@ -226,13 +226,13 @@ it('shrinks to the largest stable node prefix when complete relations exceed the
 
 Also cover upstream-only traversal, isolated center, missing center, filter forwarding, transaction failure propagation, stable relation sorting, and 50/100 → 500/1000 relation-limit mapping.
 
-- [ ] **Step 2: Run the service test and verify RED**
+- [x] **Step 2: Run the service test and verify RED**
 
 Run: `pnpm --filter @causality/api test -- causal-graph-service.test.ts`
 
 Expected: FAIL because the causal graph service module does not exist.
 
-- [ ] **Step 3: Implement the minimal deterministic service**
+- [x] **Step 3: Implement the minimal deterministic service**
 
 ```ts
 const relationLimits = { 20: 200, 50: 500, 100: 1_000 } as const;
@@ -300,13 +300,13 @@ export class CausalGraphService {
 
 `applyRelationLimit` must index discovery order, count a relation when both endpoint indexes are inside the prefix, and return the final prefix plus only its internal relations. Populate all `meta` counts from the final arrays.
 
-- [ ] **Step 4: Verify GREEN and API unit regressions**
+- [x] **Step 4: Verify GREEN and API unit regressions**
 
 Run: `pnpm --filter @causality/api test`
 
 Expected: all API unit tests PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/api/src/features/causal-graph apps/api/test/causal-graph-service.test.ts
@@ -328,7 +328,7 @@ git commit -m "feat: add deterministic causal graph traversal"
 - Produces: `PostgresCausalGraphRepository` and `registerCausalGraphRoutes(app, pool)`.
 - Endpoint: `GET /api/causal-graph`.
 
-- [ ] **Step 1: Write failing PostgreSQL/API integration tests**
+- [x] **Step 1: Write failing PostgreSQL/API integration tests**
 
 Create one PostgreSQL 18 Testcontainer, migrate it, and insert a deterministic fixture containing:
 
@@ -370,13 +370,13 @@ expect(release).toHaveBeenCalledOnce();
 
 Repeat with an operation error and assert `rollback` followed by `release`.
 
-- [ ] **Step 2: Run integration test and verify RED**
+- [x] **Step 2: Run integration test and verify RED**
 
 Run: `pnpm test:integration -- causal-graph.integration.test.ts`
 
 Expected: FAIL because the route and PostgreSQL repository do not exist.
 
-- [ ] **Step 3: Implement the snapshot repository**
+- [x] **Step 3: Implement the snapshot repository**
 
 Use one checked-out `PoolClient`:
 
@@ -418,7 +418,7 @@ order by r.confidence desc, case_count desc, r.id asc
 
 `findRelationsBetween` requires both endpoints in `$1::uuid[]`. `findEvents` uses one `where id = any($1::uuid[])` query and returns a map/array that Service reorders by candidate discovery order.
 
-- [ ] **Step 4: Implement and register the Fastify route**
+- [x] **Step 4: Implement and register the Fastify route**
 
 ```ts
 routes.get(
@@ -450,7 +450,7 @@ routes.get(
 
 Register it in `buildApp` only when `databasePool` exists, consistent with events, relations, and cases.
 
-- [ ] **Step 5: Verify GREEN, integration suite, types, and build**
+- [x] **Step 5: Verify GREEN, integration suite, types, and build**
 
 Run:
 
@@ -462,7 +462,7 @@ pnpm build
 
 Expected: all commands exit 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/api/src/features/causal-graph apps/api/src/app.ts apps/api/test/causal-graph.integration.test.ts
@@ -485,7 +485,7 @@ git commit -m "feat: expose local causal graph query API"
 - Produces: root command `pnpm graph:benchmark`.
 - Default benchmark scale: 100,000 events, 500,000 relations; output includes samples, average, P95, maximum, threshold, and pass/fail.
 
-- [ ] **Step 1: Write failing benchmark utility tests**
+- [x] **Step 1: Write failing benchmark utility tests**
 
 Test pure calculations independently from Docker:
 
@@ -501,13 +501,13 @@ expect(summarizeDurations([10, 20, 30])).toEqual({
 
 Test that `assertBenchmarkTarget({ p95Milliseconds: 2_001 }, 2_000)` throws and a P95 of 2,000 passes.
 
-- [ ] **Step 2: Run benchmark utility tests and verify RED**
+- [x] **Step 2: Run benchmark utility tests and verify RED**
 
 Run: `pnpm --filter @causality/api test -- causal-graph-benchmark.test.ts`
 
 Expected: FAIL because the benchmark module does not exist.
 
-- [ ] **Step 3: Implement benchmark command**
+- [x] **Step 3: Implement benchmark command**
 
 The command must:
 
@@ -542,7 +542,7 @@ and root delegation:
 }
 ```
 
-- [ ] **Step 4: Verify benchmark unit tests and run the full extreme benchmark**
+- [x] **Step 4: Verify benchmark unit tests and run the full extreme benchmark**
 
 Run:
 
@@ -553,7 +553,7 @@ pnpm graph:benchmark
 
 Expected: utility tests PASS; generated report shows `p95Milliseconds <= 2000` and exits 0. If it fails, inspect `EXPLAIN (ANALYZE, BUFFERS)` for the slow query before adding any migration or index.
 
-- [ ] **Step 5: Update user documentation and roadmap**
+- [x] **Step 5: Update user documentation and roadmap**
 
 Add to README:
 
@@ -564,7 +564,7 @@ pnpm graph:benchmark：在一次性 PostgreSQL 中验证 100,000 事件、500,00
 
 Keep roadmap state as “开发完成，等待人工复核” after all automated gates pass. Do not mark P1-06 complete before user confirmation.
 
-- [ ] **Step 6: Run the complete automated gate**
+- [x] **Step 6: Run the complete automated gate**
 
 Run:
 
@@ -580,7 +580,7 @@ git diff --check
 
 Expected: every command exits 0, with no test failures or formatting errors.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/api/src/database/benchmark apps/api/test/causal-graph-benchmark.test.ts apps/api/package.json package.json README.md docs/superpowers/plans/2026-07-20-causality-application-roadmap.md docs/superpowers/plans/2026-07-24-p1-06-local-causal-graph-query-api-implementation.md

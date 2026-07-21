@@ -17,6 +17,7 @@
     "db:seed": "pnpm --filter @causality/api db:seed",
     "db:simulate": "pnpm --filter @causality/api db:simulate",
     "db:verify": "pnpm --filter @causality/api db:verify",
+    "graph:benchmark": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api graph:benchmark",
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "format": "prettier --write .",

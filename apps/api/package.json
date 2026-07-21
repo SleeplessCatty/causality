@@ -11,6 +11,7 @@
     "db:seed": "tsx src/database/test-data/fixedSeed.ts",
     "db:simulate": "tsx src/database/test-data/simulate.ts",
     "db:verify": "tsx src/database/verify.ts",
+    "graph:benchmark": "tsx src/database/benchmark/causalGraphBenchmark.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --exclude '**/*.integration.test.ts'",
