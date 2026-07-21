@@ -1,40 +1,32 @@
 import type { CausalGraphResponse } from '@causality/contracts';
-import cytoscape, {
-  type ElementDefinition,
-  type LayoutOptions,
-  type StylesheetJson,
-} from 'cytoscape';
-import elk from 'cytoscape-elk';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 
-import { createGraphElements, type GraphElements } from '../graph/createGraphElements';
+import { createGraphElements } from '../graph/createGraphElements';
+import { createGraphRuntime, type GraphRuntime } from '../graph/createGraphRuntime';
 import { GRAPH_FIT_PADDING, graphLayoutOptions } from '../graph/graphLayoutOptions';
+import { navigateGraph, type GraphNavigationDirection } from '../graph/graphNavigation';
+import type { GraphElementSelection } from '../graph/graphSelection';
 
-cytoscape.use(elk);
+export type { GraphRuntime } from '../graph/createGraphRuntime';
 
 type LayoutState = 'idle' | 'loading' | 'ready' | 'error';
-type LaidOutElements = ElementDefinition[];
-
-export interface GraphRuntime {
-  layout(
-    elements: GraphElements,
-    options: typeof graphLayoutOptions,
-    onSuccess: (elements: LaidOutElements) => void,
-    onError: (error: unknown) => void,
-  ): (() => void) | void;
-  commit(elements: LaidOutElements): void;
-  fit(padding: number, animate: boolean): void;
-  getZoom(): number;
-  setZoom(zoom: number, animate: boolean): void;
-  onZoom(listener: (zoom: number) => void): () => void;
-  destroy(): void;
-}
 
 export interface CausalGraphCanvasHandle {
   zoomIn(): void;
   zoomOut(): void;
   fit(): void;
   retryLayout(): void;
+  resize(): void;
+  ensureSelectionVisible(padding?: number): void;
+  focus(): void;
 }
 
 interface CausalGraphCanvasProps {
@@ -52,140 +44,13 @@ interface CausalGraphCanvasProps {
     | undefined;
   onZoomChange?: (zoom: number) => void;
   onLayoutStateChange?: (state: LayoutState) => void;
+  selection?: GraphElementSelection | null;
+  inspectorOpen?: boolean;
+  onSelectionChange?: (selection: GraphElementSelection) => void;
+  onClearSelection?: () => void;
+  onToggleInspector?: () => void;
+  onEscape?: () => void;
   createRuntime?: (container: HTMLElement) => GraphRuntime;
-}
-
-const graphStyles: StylesheetJson = [
-  {
-    selector: 'node',
-    style: {
-      width: 'data(width)',
-      height: 'data(height)',
-      shape: 'round-rectangle',
-      label: 'data(label)',
-      'font-size': 'data(fontSize)',
-      'font-weight': 600,
-      'text-wrap': 'wrap',
-      'text-valign': 'center',
-      'text-halign': 'center',
-      color: '#183328',
-      'background-color': '#ffffff',
-      'border-width': 1.5,
-      'border-color': '#72a58c',
-      'underlay-color': '#1f513b',
-      'underlay-opacity': 0.07,
-      'underlay-padding': 6,
-    },
-  },
-  {
-    selector: 'node[?isCenter]',
-    style: {
-      'background-color': '#e4f3ea',
-      'border-width': 3,
-      'border-color': '#247052',
-      'font-weight': 700,
-    },
-  },
-  {
-    selector: 'edge',
-    style: {
-      width: 1.6,
-      'line-color': '#4f876d',
-      'target-arrow-color': '#39745a',
-      'target-arrow-shape': 'triangle',
-      'arrow-scale': 0.9,
-      'curve-style': 'bezier',
-      label: 'data(label)',
-      'font-size': 10,
-      'font-weight': 600,
-      color: '#365647',
-      'text-background-color': '#fffefa',
-      'text-background-opacity': 0.86,
-      'text-background-padding': '3px',
-      'text-background-shape': 'roundrectangle',
-      'text-rotation': 'autorotate',
-    },
-  },
-];
-
-function createProductionRuntime(container: HTMLElement): GraphRuntime {
-  const visible = cytoscape({
-    container,
-    elements: [],
-    style: graphStyles,
-    minZoom: 0.25,
-    maxZoom: 2,
-    boxSelectionEnabled: false,
-    autoungrabify: true,
-    autounselectify: true,
-  });
-
-  return {
-    layout(elements, options, onSuccess, onError) {
-      let disposed = false;
-      const staging = cytoscape({
-        headless: true,
-        styleEnabled: true,
-        elements: [...elements.nodes, ...elements.edges] as ElementDefinition[],
-        style: graphStyles,
-        autoungrabify: true,
-        autounselectify: true,
-      });
-      try {
-        const layout = staging.layout(options as unknown as LayoutOptions);
-        layout.one('layoutstop', () => {
-          if (!disposed) {
-            onSuccess(
-              staging.elements().map((element) => {
-                const json = element.json();
-                if (element.isNode()) json.position = element.position();
-                return json;
-              }) as unknown as ElementDefinition[],
-            );
-          }
-          staging.destroy();
-        });
-        layout.run();
-      } catch (error) {
-        staging.destroy();
-        if (!disposed) onError(error);
-      }
-      return () => {
-        disposed = true;
-        staging.destroy();
-      };
-    },
-    commit(elements) {
-      visible.batch(() => {
-        visible.elements().remove();
-        visible.add(elements);
-        visible.nodes().lock().ungrabify().unselectify();
-        visible.edges().unselectify();
-      });
-    },
-    fit(padding, animate) {
-      if (animate) {
-        visible.animate({ fit: { eles: visible.elements(), padding }, duration: 180 });
-      } else {
-        visible.fit(visible.elements(), padding);
-      }
-    },
-    getZoom: () => visible.zoom(),
-    setZoom(zoom, animate) {
-      const position = { x: container.clientWidth / 2, y: container.clientHeight / 2 };
-      if (animate) {
-        visible.animate({ zoom: { level: zoom, position }, duration: 140 });
-      } else {
-        visible.zoom({ level: zoom, renderedPosition: position });
-      }
-    },
-    onZoom(listener) {
-      const handler = () => listener(visible.zoom());
-      visible.on('zoom', handler);
-      return () => visible.off('zoom', handler);
-    },
-    destroy: () => visible.destroy(),
-  };
 }
 
 function prefersReducedMotion(): boolean {
@@ -205,13 +70,24 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
       overlay,
       onZoomChange,
       onLayoutStateChange,
-      createRuntime = createProductionRuntime,
+      selection = null,
+      inspectorOpen = false,
+      onSelectionChange,
+      onClearSelection,
+      onToggleInspector,
+      onEscape,
+      createRuntime = createGraphRuntime,
     },
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const runtimeRef = useRef<GraphRuntime | null>(null);
     const graphRef = useRef(graph);
+    const selectionRef = useRef(selection);
+    const interactionCallbacksRef = useRef({
+      onSelectionChange,
+      onClearSelection,
+    });
     const layoutRunRef = useRef(0);
     const cancelLayoutRef = useRef<(() => void) | undefined>(undefined);
     const [layoutState, setLayoutState] = useState<LayoutState>(graph ? 'loading' : 'idle');
@@ -238,6 +114,7 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
           (elements) => {
             if (run !== layoutRunRef.current) return;
             runtime.commit(elements);
+            runtime.setSelection(selectionRef.current);
             runtime.fit(GRAPH_FIT_PADDING, false);
             updateLayoutState('ready');
           },
@@ -252,14 +129,43 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
       const runtime = createRuntime(containerRef.current);
       runtimeRef.current = runtime;
       const removeZoomListener = runtime.onZoom((zoom) => onZoomChange?.(zoom));
+      const removeInteractionListeners = runtime.subscribeInteractions({
+        onSelect(nextSelection) {
+          interactionCallbacksRef.current.onSelectionChange?.(nextSelection);
+        },
+        onClearSelection() {
+          interactionCallbacksRef.current.onClearSelection?.();
+        },
+      });
       return () => {
         layoutRunRef.current += 1;
         cancelLayoutRef.current?.();
         removeZoomListener();
+        removeInteractionListeners();
         runtime.destroy();
         runtimeRef.current = null;
       };
     }, [createRuntime, onZoomChange, runLayout]);
+
+    useEffect(() => {
+      interactionCallbacksRef.current = { onSelectionChange, onClearSelection };
+    }, [onClearSelection, onSelectionChange]);
+
+    useEffect(() => {
+      const focusAfterCanvasInteraction = (event: PointerEvent) => {
+        const container = containerRef.current;
+        if (container && event.target instanceof Node && container.contains(event.target)) {
+          window.setTimeout(() => container.focus({ preventScroll: true }), 0);
+        }
+      };
+      document.addEventListener('pointerup', focusAfterCanvasInteraction, true);
+      return () => document.removeEventListener('pointerup', focusAfterCanvasInteraction, true);
+    }, []);
+
+    useEffect(() => {
+      selectionRef.current = selection;
+      runtimeRef.current?.setSelection(selection);
+    }, [selection]);
 
     useEffect(() => {
       graphRef.current = graph;
@@ -284,8 +190,53 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
           runtimeRef.current?.fit(GRAPH_FIT_PADDING, !prefersReducedMotion());
         },
         retryLayout: runLayout,
+        resize() {
+          runtimeRef.current?.resize();
+        },
+        ensureSelectionVisible(padding = 32) {
+          const currentSelection = selectionRef.current;
+          if (!currentSelection) return;
+          runtimeRef.current?.ensureVisible(currentSelection, padding, !prefersReducedMotion());
+        },
+        focus() {
+          containerRef.current?.focus({ preventScroll: true });
+        },
       }),
       [runLayout],
+    );
+
+    const handleKeyDown = useCallback(
+      (event: KeyboardEvent<HTMLDivElement>) => {
+        const keyDirections: Partial<Record<string, GraphNavigationDirection>> = {
+          ArrowUp: 'up',
+          ArrowDown: 'down',
+          ArrowLeft: 'left',
+          ArrowRight: 'right',
+        };
+        const direction = keyDirections[event.key];
+        if (direction && graph) {
+          event.preventDefault();
+          const runtime = runtimeRef.current;
+          if (!runtime) return;
+          const nextSelection = navigateGraph(
+            selectionRef.current,
+            direction,
+            runtime.getNavigationSnapshot(graph.meta.centerEventId),
+          );
+          onSelectionChange?.(nextSelection);
+          return;
+        }
+        if (event.key === ' ' && graph) {
+          event.preventDefault();
+          onToggleInspector?.();
+          return;
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          onEscape?.();
+        }
+      },
+      [graph, onEscape, onSelectionChange, onToggleInspector],
     );
 
     const nodeCount = graph?.meta.nodeCount ?? 0;
@@ -293,18 +244,45 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
     const accessibleName = centerEventName
       ? `${centerEventName}的局部因果图，${nodeCount} 个节点，${relationCount} 条关系`
       : '局部因果图画布，尚未选择中心事件';
+    const selectedNode =
+      selection?.type === 'node'
+        ? graph?.nodes.find((node) => node.id === selection.id)
+        : undefined;
+    const selectedRelation =
+      selection?.type === 'relation'
+        ? graph?.relations.find((relation) => relation.id === selection.id)
+        : undefined;
+    const selectedRelationCause = selectedRelation
+      ? graph?.nodes.find((node) => node.id === selectedRelation.causeEventId)
+      : undefined;
+    const selectedRelationEffect = selectedRelation
+      ? graph?.nodes.find((node) => node.id === selectedRelation.effectEventId)
+      : undefined;
+    const selectionAnnouncement = selectedNode
+      ? `已选择事件：${selectedNode.name}`
+      : selectedRelation
+        ? `已选择关系：${selectedRelationCause?.name ?? ''}到${selectedRelationEffect?.name ?? ''}，置信度${selectedRelation.confidence}%，${selectedRelation.caseCount}条案例`
+        : '';
 
     return (
       <section className={`causal-graph-canvas${isRefreshing ? ' is-refreshing' : ''}`}>
         <div
           ref={containerRef}
           className="causal-graph-canvas__renderer"
-          role="img"
+          role="application"
+          tabIndex={graph ? 0 : -1}
           aria-label={accessibleName}
+          onKeyDown={handleKeyDown}
           data-layout-state={layoutState}
           data-node-count={nodeCount}
           data-relation-count={relationCount}
+          data-selection-type={selection?.type ?? ''}
+          data-selection-id={selection?.id ?? ''}
+          data-inspector-open={inspectorOpen ? 'true' : 'false'}
         />
+        <span className="sr-only" aria-live="polite">
+          {selectionAnnouncement}
+        </span>
         {!graph && !isInitialLoading && !overlay ? (
           <div className="causal-graph-canvas__state" role="status">
             <strong>搜索并选择一个中心事件</strong>

@@ -1,5 +1,5 @@
 import { createRef } from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { CausalGraphResponse } from '@causality/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,6 +8,7 @@ import {
   type CausalGraphCanvasHandle,
   type GraphRuntime,
 } from './CausalGraphCanvas';
+import type { GraphElementSelection } from '../graph/graphSelection';
 
 const centerEventId = '11111111-1111-4111-8111-111111111111';
 
@@ -49,6 +50,15 @@ function createFakeRuntime() {
       onZoom = listener;
       return () => undefined;
     }),
+    setSelection: vi.fn(),
+    getNavigationSnapshot: vi.fn(() => ({
+      centerEventId,
+      nodes: [{ id: centerEventId, x: 0, y: 0 }],
+      relations: [],
+    })),
+    resize: vi.fn(),
+    ensureVisible: vi.fn(),
+    subscribeInteractions: vi.fn(() => () => undefined),
     destroy: vi.fn(),
   };
 
@@ -71,7 +81,9 @@ describe('CausalGraphCanvas', () => {
       />,
     );
 
-    const canvas = screen.getByRole('img', { name: /原油价格上涨.*1 个节点.*0 条关系/ });
+    const canvas = screen.getByRole('application', {
+      name: /原油价格上涨.*1 个节点.*0 条关系/,
+    });
     expect(createRuntime).toHaveBeenCalledOnce();
     expect(fake.runtime.layout).toHaveBeenCalledOnce();
     expect(canvas.getAttribute('data-layout-state')).toBe('loading');
@@ -155,5 +167,65 @@ describe('CausalGraphCanvas', () => {
     act(() => ref.current?.zoomIn());
     expect(fake.runtime.setZoom).toHaveBeenLastCalledWith(1.2, false);
     vi.unstubAllGlobals();
+  });
+
+  it('keeps selection and inspector keyboard commands independent', async () => {
+    const fake = createFakeRuntime();
+    const onSelectionChange = vi.fn();
+    const onToggleInspector = vi.fn();
+    const onEscape = vi.fn();
+    const selection: GraphElementSelection = { type: 'node', id: centerEventId };
+    const { rerender } = render(
+      <CausalGraphCanvas
+        graph={graph}
+        centerEventName="原油价格上涨"
+        selection={null}
+        inspectorOpen={false}
+        onSelectionChange={onSelectionChange}
+        onClearSelection={vi.fn()}
+        onToggleInspector={onToggleInspector}
+        onEscape={onEscape}
+        createRuntime={() => fake.runtime}
+      />,
+    );
+    const canvas = screen.getByRole('application');
+    fireEvent.pointerUp(canvas);
+    await waitFor(() => expect(document.activeElement).toBe(canvas));
+    fireEvent.keyDown(canvas, { key: 'ArrowRight' });
+    expect(onSelectionChange).toHaveBeenCalledWith({ type: 'node', id: centerEventId });
+    fireEvent.keyDown(canvas, { key: ' ' });
+    expect(onToggleInspector).toHaveBeenCalledOnce();
+    fireEvent.keyDown(canvas, { key: 'Escape' });
+    expect(onEscape).toHaveBeenCalledOnce();
+
+    rerender(
+      <CausalGraphCanvas
+        graph={graph}
+        centerEventName="原油价格上涨"
+        selection={selection}
+        inspectorOpen
+        onSelectionChange={onSelectionChange}
+        onClearSelection={vi.fn()}
+        onToggleInspector={onToggleInspector}
+        onEscape={onEscape}
+        createRuntime={() => fake.runtime}
+      />,
+    );
+    expect(fake.runtime.setSelection).toHaveBeenLastCalledWith(selection);
+  });
+
+  it('restores canvas focus through its imperative handle', () => {
+    const fake = createFakeRuntime();
+    const ref = createRef<CausalGraphCanvasHandle>();
+    render(
+      <CausalGraphCanvas
+        ref={ref}
+        graph={graph}
+        centerEventName="原油价格上涨"
+        createRuntime={() => fake.runtime}
+      />,
+    );
+    act(() => ref.current?.focus());
+    expect(document.activeElement).toBe(screen.getByRole('application'));
   });
 });

@@ -29,6 +29,8 @@ export interface GraphEdgeElement {
     confidence: number;
     caseCount: number;
     label: string;
+    causeName: string;
+    effectName: string;
   };
 }
 
@@ -41,6 +43,7 @@ export function createGraphElements(
   graph: CausalGraphResponse,
   fitLabel: (name: string) => FittedNodeLabel = fitNodeLabel,
 ): GraphElements {
+  const names = new Map(graph.nodes.map((node) => [node.id, node.name]));
   return {
     nodes: graph.nodes.map((node) => {
       const fitted = fitLabel(node.name);
@@ -57,16 +60,20 @@ export function createGraphElements(
         },
       };
     }),
-    edges: graph.relations.map((relation) => ({
-      group: 'edges' as const,
-      data: {
-        id: relation.id,
-        source: relation.causeEventId,
-        target: relation.effectEventId,
-        confidence: relation.confidence,
-        caseCount: relation.caseCount,
-        label: `${relation.confidence}% · ${relation.caseCount}例`,
-      },
-    })),
+    edges: graph.relations.map((relation) => {
+      return {
+        group: 'edges' as const,
+        data: {
+          id: relation.id,
+          source: relation.causeEventId,
+          target: relation.effectEventId,
+          confidence: relation.confidence,
+          caseCount: relation.caseCount,
+          label: `${relation.confidence}% · ${relation.caseCount}例`,
+          causeName: names.get(relation.causeEventId) ?? '',
+          effectName: names.get(relation.effectEventId) ?? '',
+        },
+      };
+    }),
   };
 }

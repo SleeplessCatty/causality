@@ -6,7 +6,9 @@ import { useSearchParams } from 'react-router';
 import { ApiClientError, getEvent } from '../../events/api/eventApi';
 import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphCanvas, type CausalGraphCanvasHandle } from '../components/CausalGraphCanvas';
+import { CausalGraphInspector } from '../components/CausalGraphInspector';
 import { CausalGraphToolbar } from '../components/CausalGraphToolbar';
+import type { GraphElementSelection } from '../graph/graphSelection';
 import '../causalGraph.css';
 
 type GraphDirection = CausalGraphQuery['direction'];
@@ -33,6 +35,8 @@ export function CausalGraphPage() {
   const [zoom, setZoom] = useState(1);
   const [selectedCandidate, setSelectedCandidate] = useState<EventCandidate | null>(null);
   const [lastGraph, setLastGraph] = useState<CausalGraphResponse | null>(null);
+  const [selection, setSelection] = useState<GraphElementSelection | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   useEffect(() => {
     if (centerEventId && !isDirection(directionParameter)) {
@@ -58,8 +62,20 @@ export function CausalGraphPage() {
   });
 
   useEffect(() => {
-    if (graphQuery.data) setLastGraph(graphQuery.data);
+    if (graphQuery.data) {
+      setLastGraph(graphQuery.data);
+      setSelection(null);
+      setInspectorOpen(false);
+    }
   }, [graphQuery.data]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      canvasRef.current?.resize();
+      if (inspectorOpen && selection) canvasRef.current?.ensureSelectionVisible();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [inspectorOpen, selection]);
 
   const displayedGraph = graphQuery.data ?? lastGraph;
   const selectedEvent: EventCandidate | null =
@@ -77,6 +93,8 @@ export function CausalGraphPage() {
 
   const chooseEvent = useCallback(
     (event: EventCandidate) => {
+      setSelection(null);
+      setInspectorOpen(false);
       setSelectedCandidate(event);
       setSearchParams({ centerEventId: event.id, direction: 'both' });
     },
@@ -86,16 +104,32 @@ export function CausalGraphPage() {
   const changeDirection = useCallback(
     (nextDirection: GraphDirection) => {
       if (!hasValidCenter) return;
+      setSelection(null);
+      setInspectorOpen(false);
       setSearchParams({ centerEventId, direction: nextDirection });
     },
     [centerEventId, hasValidCenter, setSearchParams],
   );
 
-  const clearSelection = useCallback(() => {
+  const clearCenterEvent = useCallback(() => {
+    setSelection(null);
+    setInspectorOpen(false);
     setSelectedCandidate(null);
     setLastGraph(null);
     setSearchParams({});
   }, [setSearchParams]);
+
+  const setNodeAsCenter = useCallback(
+    (eventId: string) => {
+      const eventName = displayedGraph?.nodes.find((node) => node.id === eventId)?.name;
+      setSelection(null);
+      setInspectorOpen(false);
+      setLastGraph(null);
+      setSelectedCandidate(eventName ? { id: eventId, name: eventName } : null);
+      setSearchParams({ centerEventId: eventId, direction });
+    },
+    [direction, displayedGraph, setSearchParams],
+  );
 
   const retryRequest = useCallback(() => {
     void centerEvent.refetch();
@@ -104,10 +138,10 @@ export function CausalGraphPage() {
 
   const queryError = graphQuery.error ?? centerEvent.error;
   const overlay = hasInvalidCenter
-    ? { message: '链接中的中心事件无效', actionLabel: '重新选择', onAction: clearSelection }
+    ? { message: '链接中的中心事件无效', actionLabel: '重新选择', onAction: clearCenterEvent }
     : queryError
       ? isNotFound(queryError)
-        ? { message: '中心事件不存在', actionLabel: '重新选择', onAction: clearSelection }
+        ? { message: '中心事件不存在', actionLabel: '重新选择', onAction: clearCenterEvent }
         : { message: '无法加载因果图', actionLabel: '重试', onAction: retryRequest }
       : undefined;
 
@@ -139,15 +173,39 @@ export function CausalGraphPage() {
         onZoomOut={() => canvasRef.current?.zoomOut()}
         onFit={() => canvasRef.current?.fit()}
       />
-      <CausalGraphCanvas
-        ref={canvasRef}
-        graph={displayedGraph}
-        centerEventName={selectedEvent?.name}
-        isInitialLoading={hasValidCenter && !displayedGraph && graphQuery.isPending}
-        isRefreshing={Boolean(displayedGraph && graphQuery.isFetching)}
-        overlay={overlay}
-        onZoomChange={setZoom}
-      />
+      <div
+        className={`causal-graph-workbench${inspectorOpen ? ' has-inspector' : ''}`}
+        data-inspector-open={inspectorOpen ? 'true' : 'false'}
+      >
+        <CausalGraphCanvas
+          ref={canvasRef}
+          graph={displayedGraph}
+          centerEventName={selectedEvent?.name}
+          isInitialLoading={hasValidCenter && !displayedGraph && graphQuery.isPending}
+          isRefreshing={Boolean(displayedGraph && graphQuery.isFetching)}
+          overlay={overlay}
+          onZoomChange={setZoom}
+          selection={selection}
+          inspectorOpen={inspectorOpen}
+          onSelectionChange={setSelection}
+          onClearSelection={() => setSelection(null)}
+          onToggleInspector={() => setInspectorOpen((current) => !current)}
+          onEscape={() => {
+            setSelection(null);
+            setInspectorOpen(false);
+          }}
+        />
+        <CausalGraphInspector
+          open={inspectorOpen}
+          selection={selection}
+          centerEventId={centerEventId}
+          onClose={() => {
+            setInspectorOpen(false);
+            window.requestAnimationFrame(() => canvasRef.current?.focus());
+          }}
+          onSetCenter={setNodeAsCenter}
+        />
+      </div>
     </section>
   );
 }

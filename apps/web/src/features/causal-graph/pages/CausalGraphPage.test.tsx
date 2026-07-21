@@ -12,6 +12,7 @@ import type {
 import { ApiClientError, getEvent } from '../../events/api/eventApi';
 import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphPage } from './CausalGraphPage';
+import type { GraphElementSelection } from '../graph/graphSelection';
 
 vi.mock('../../events/api/eventApi', () => {
   class MockApiClientError extends Error {
@@ -62,10 +63,20 @@ vi.mock('../components/CausalGraphCanvas', async () => {
           isInitialLoading,
           isRefreshing,
           overlay,
+          selection,
+          onSelectionChange,
+          onClearSelection,
+          onToggleInspector,
+          onEscape,
         }: {
           graph: CausalGraphResponse | null;
           isInitialLoading: boolean;
           isRefreshing: boolean;
+          selection?: GraphElementSelection | null;
+          onSelectionChange?: (selection: GraphElementSelection) => void;
+          onClearSelection?: () => void;
+          onToggleInspector?: () => void;
+          onEscape?: () => void;
           overlay?:
             | {
                 message: string;
@@ -90,12 +101,65 @@ vi.mock('../components/CausalGraphCanvas', async () => {
             {overlay?.actionLabel ? (
               <button onClick={overlay.onAction}>{overlay.actionLabel}</button>
             ) : null}
+            <span>画布选择：{selection ? `${selection.type}:${selection.id}` : '无'}</span>
+            <button
+              type="button"
+              onClick={() => onSelectionChange?.({ type: 'node', id: effectEventId })}
+            >
+              选择结果节点
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                onSelectionChange?.({
+                  type: 'relation',
+                  id: '33333333-3333-4333-8333-333333333333',
+                })
+              }
+            >
+              选择关系
+            </button>
+            <button type="button" onClick={onClearSelection}>
+              点击画布空白
+            </button>
+            <button type="button" onClick={onToggleInspector}>
+              空格
+            </button>
+            <button type="button" onClick={onEscape}>
+              Escape
+            </button>
           </div>
         );
       },
     ),
   };
 });
+vi.mock('../components/CausalGraphInspector', () => ({
+  CausalGraphInspector: ({
+    open,
+    selection,
+    onClose,
+    onSetCenter,
+  }: {
+    open: boolean;
+    selection: GraphElementSelection | null;
+    onClose: () => void;
+    onSetCenter: (id: string) => void;
+  }) =>
+    open ? (
+      <aside>
+        检查器：{selection ? `${selection.type}:${selection.id}` : '请选择节点或关系'}
+        <button type="button" onClick={onClose}>
+          关闭检查器
+        </button>
+        {selection?.type === 'node' ? (
+          <button type="button" onClick={() => onSetCenter(selection.id)}>
+            设为中心事件
+          </button>
+        ) : null}
+      </aside>
+    ) : null,
+}));
 
 const centerEventId = '11111111-1111-4111-8111-111111111111';
 const effectEventId = '22222222-2222-4222-8222-222222222222';
@@ -217,5 +281,40 @@ describe('CausalGraphPage', () => {
     vi.mocked(getCausalGraph).mockResolvedValueOnce(graph('both', 'relation_limit'));
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
     expect(await screen.findByText('已按关系上限缩小')).toBeTruthy();
+  });
+
+  it('keeps selection and inspector open state independent', async () => {
+    renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
+    await screen.findByText('2 个节点 · 1 条关系');
+
+    fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
+    expect(screen.getByText(`画布选择：node:${effectEventId}`)).toBeTruthy();
+    expect(screen.queryByText(/检查器：/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '空格' }));
+    expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '选择关系' }));
+    expect(screen.getByText(/检查器：relation:33333333/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '点击画布空白' }));
+    expect(screen.getByText('检查器：请选择节点或关系')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Escape' }));
+    expect(screen.queryByText(/检查器：/)).toBeNull();
+    expect(screen.getByText('画布选择：无')).toBeTruthy();
+  });
+
+  it('sets a selected node as center while preserving direction and resetting interaction state', async () => {
+    const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=upstream`);
+    await screen.findByText('2 个节点 · 1 条关系');
+    fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
+    fireEvent.click(screen.getByRole('button', { name: '空格' }));
+    fireEvent.click(screen.getByRole('button', { name: '设为中心事件' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(
+        `?centerEventId=${effectEventId}&direction=upstream`,
+      ),
+    );
+    expect(screen.queryByText(/检查器：/)).toBeNull();
+    expect(screen.getByText('画布选择：无')).toBeTruthy();
   });
 });
