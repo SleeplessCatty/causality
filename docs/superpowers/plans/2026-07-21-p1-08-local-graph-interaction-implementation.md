@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19、React Router 8、TanStack Query 5、TypeScript 6、Cytoscape 3.34、Vitest 4、Testing Library 16、Playwright 1.61。
 
-**Status:** 实施完成，等待人工复核（2026-07-21）。检查器内容按当前规模合并在一个组件中，真实浏览器验收使用 Playwright CLI 执行，没有新增重复的 E2E spec。
+**Status:** 已完成开发、自动化测试和用户人工验收（2026-07-21）。检查器内容按当前规模合并在一个组件中，真实浏览器验收使用 Playwright CLI 执行，没有新增重复的 E2E spec。
 
 ## Global Constraints
 
