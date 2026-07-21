@@ -15,6 +15,7 @@ export function AppShell() {
             <NavLink to="/events">事件</NavLink>
             <NavLink to="/relations">因果关系</NavLink>
             <NavLink to="/cases">具体案例</NavLink>
+            <NavLink to="/graph">因果图</NavLink>
             <NavLink to="/system">系统状态</NavLink>
           </nav>
         </div>

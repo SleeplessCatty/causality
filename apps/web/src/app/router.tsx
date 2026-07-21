@@ -14,6 +14,10 @@ import { CaseDetailPage } from '../features/cases/pages/CaseDetailPage';
 import { CaseEditPage } from '../features/cases/pages/CaseEditPage';
 import { CaseListPage } from '../features/cases/pages/CaseListPage';
 
+function GraphRouteFallback() {
+  return <div className="page-state">正在加载因果图…</div>;
+}
+
 export const router = createBrowserRouter([
   {
     path: '/',
@@ -31,6 +35,14 @@ export const router = createBrowserRouter([
       { path: 'cases/new', element: <CaseCreatePage /> },
       { path: 'cases/:caseId', element: <CaseDetailPage /> },
       { path: 'cases/:caseId/edit', element: <CaseEditPage /> },
+      {
+        path: 'graph',
+        HydrateFallback: GraphRouteFallback,
+        lazy: async () => {
+          const module = await import('../features/causal-graph/pages/CausalGraphPage');
+          return { Component: module.CausalGraphPage };
+        },
+      },
       { path: 'system', element: <SystemStatus /> },
       { path: '*', element: <Navigate to="/events" replace /> },
     ],

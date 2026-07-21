@@ -34,7 +34,7 @@
 - Modify: `apps/web/package.json`
 - Modify: `pnpm-lock.yaml`
 
-- [ ] **Step 1: Install the locked graph dependencies**
+- [x] **Step 1: Install the locked graph dependencies**
 
 Run:
 
@@ -44,7 +44,7 @@ pnpm --filter @causality/web add cytoscape@3.34.0 cytoscape-elk@2.3.0 elkjs@0.12
 
 Verify no React Cytoscape wrapper or separate Cytoscape types package is installed.
 
-- [ ] **Step 2: Write failing API and pure-function tests**
+- [x] **Step 2: Write failing API and pure-function tests**
 
 Cover:
 
@@ -74,7 +74,7 @@ expect(graphLayoutOptions.elk).toMatchObject({
 
 Use an injected `measureText(text, fontSize)` in label tests so Happy DOM does not need a real Canvas. Test Chinese, English, mixed text, a no-space long word, and a 120-character name. Assert that the result uses only `14 | 12 | 10 | 9`, preserves every character, and never changes node dimensions.
 
-- [ ] **Step 3: Verify RED**
+- [x] **Step 3: Verify RED**
 
 Run:
 
@@ -84,7 +84,7 @@ pnpm --filter @causality/web test -- causalGraphApi.test.ts fitNodeLabel.test.ts
 
 Expected: FAIL because the graph modules do not exist.
 
-- [ ] **Step 4: Implement the smallest adapters**
+- [x] **Step 4: Implement the smallest adapters**
 
 `getCausalGraph()` constructs the fixed request and parses with `causalGraphResponseSchema`. It uses the same ten-second timeout and `ApiClientError` behavior as the existing web APIs.
 
@@ -92,7 +92,7 @@ Expected: FAIL because the graph modules do not exist.
 
 `createGraphElements()` preserves response order and emits center metadata plus real edge endpoints. `graphLayoutOptions` exports the approved layered/RIGHT configuration and `GRAPH_FIT_PADDING = 48`.
 
-- [ ] **Step 5: Verify GREEN and web regression**
+- [x] **Step 5: Verify GREEN and web regression**
 
 Run:
 
@@ -114,13 +114,13 @@ Expected: all tests and type checks PASS.
 - Create: `apps/web/src/features/causal-graph/components/CausalGraphToolbar.tsx`
 - Create: `apps/web/src/features/causal-graph/components/CausalGraphToolbar.test.tsx`
 
-- [ ] **Step 1: Write failing interaction tests**
+- [x] **Step 1: Write failing interaction tests**
 
 Test 250ms debounce, empty-query suppression, eight-candidate limit, ArrowUp/ArrowDown selection, Enter confirmation, Escape close, and nearby candidate-query error. Candidates show names only.
 
 Test toolbar direction buttons as an accessible single-choice control and assert callbacks for `upstream | downstream | both`, zoom in, zoom out, and fit. Assert zoom buttons disable at 25% and 200%.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -130,11 +130,11 @@ pnpm --filter @causality/web test -- GraphEventSelector.test.tsx CausalGraphTool
 
 Expected: FAIL because both components are missing.
 
-- [ ] **Step 3: Implement selector and toolbar**
+- [x] **Step 3: Implement selector and toolbar**
 
 Use the existing candidate endpoint via `getEventCandidates(query, { limit: 8 }, signal)`. Keep confirmed `value` separate from draft input, update the visible name when URL restoration supplies a value, and expose normal combobox/listbox semantics. The toolbar contains only the approved search, direction, `－`, zoom percentage, `＋`, and `适应画布` controls.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run:
 
@@ -154,7 +154,7 @@ Expected: both test files PASS.
 - Create: `apps/web/src/features/causal-graph/components/CausalGraphCanvas.test.tsx`
 - Create: `apps/web/src/features/causal-graph/causalGraph.css`
 
-- [ ] **Step 1: Write failing canvas tests against a narrow adapter**
+- [x] **Step 1: Write failing canvas tests against a narrow adapter**
 
 Inject a `createGraphRuntime(container)` factory in tests. Verify:
 
@@ -168,7 +168,7 @@ Inject a `createGraphRuntime(container)` factory in tests. Verify:
 - reduced-motion uses no animated viewport transition;
 - stable `data-layout-state`, `data-node-count`, `data-relation-count` attributes and accessible canvas name.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -178,7 +178,7 @@ pnpm --filter @causality/web test -- CausalGraphCanvas.test.tsx
 
 Expected: FAIL because the canvas is missing.
 
-- [ ] **Step 3: Implement production runtime and component**
+- [x] **Step 3: Implement production runtime and component**
 
 Register `cytoscape-elk` once at module scope. `CausalGraphCanvas` owns the Cytoscape instance, exposes only:
 
@@ -193,7 +193,7 @@ interface CausalGraphCanvasHandle {
 
 Apply a common 220×96 node style, center-node variant, compact edge label, triangle target arrow, bezier curves, min/max zoom, panning, wheel zoom, and disabled box selection. Maintain the previous rendered elements until replacement layout succeeds. Render approved empty, initial loading, refresh overlay, isolated-node, request-error, and layout-error layers.
 
-- [ ] **Step 4: Verify GREEN and production build**
+- [x] **Step 4: Verify GREEN and production build**
 
 Run:
 
@@ -216,7 +216,7 @@ Expected: tests PASS and the Vite build emits a separate graph chunk.
 - Modify: `apps/web/src/app/router.tsx`
 - Modify: `apps/web/src/main.tsx`
 
-- [ ] **Step 1: Write failing page and shell tests**
+- [x] **Step 1: Write failing page and shell tests**
 
 Cover:
 
@@ -233,7 +233,7 @@ Cover:
 
 Use a mocked `CausalGraphCanvas` for page tests so URL/query behavior is independent of Canvas rendering.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -243,13 +243,13 @@ pnpm --filter @causality/web test -- CausalGraphPage.test.tsx
 
 Expected: FAIL because the page and route do not exist.
 
-- [ ] **Step 3: Implement page orchestration**
+- [x] **Step 3: Implement page orchestration**
 
 Parse URL state without global storage. Query event details and graph data with TanStack Query and pass each query `AbortSignal`. Selecting a new center resets direction to `both`; direction changes preserve the center. Normalize only invalid/missing direction with `replace: true`.
 
 Add `因果图` between `具体案例` and `系统状态`. Use React Router `lazy` to import the page module. Import `causalGraph.css` from the lazy page module so graph CSS follows the graph chunk rather than the application entry.
 
-- [ ] **Step 4: Verify GREEN and route regression**
+- [x] **Step 4: Verify GREEN and route regression**
 
 Run:
 
@@ -272,15 +272,15 @@ Expected: all web tests, type checks and build PASS; non-graph routes remain fun
 - Modify: `docs/stages/phase-1/P1-07-local-causal-graph-basic-display-design.md`
 - Modify: `docs/superpowers/plans/2026-07-20-causality-application-roadmap.md`
 
-- [ ] **Step 1: Write the Playwright acceptance test**
+- [x] **Step 1: Write the Playwright acceptance test**
 
 With the deterministic seeded database, navigate from the header, search/select a center, assert canonical URL, layout-ready attributes and API-matching counts, switch all directions, reload, use zoom and fit, verify isolated state, collect browser errors, and save `causal-graph-desktop.png` at 1280×720. Do not locate text inside the Cytoscape Canvas.
 
-- [ ] **Step 2: Verify E2E RED before relying on it**
+- [x] **Step 2: Verify E2E RED before relying on it**
 
 Run the graph spec once before the final UI wiring is considered complete. Any failed state/locator becomes a product or test fix; do not weaken the acceptance criteria.
 
-- [ ] **Step 3: Run focused E2E and inspect the screenshot**
+- [x] **Step 3: Run focused E2E and inspect the screenshot**
 
 Run:
 
@@ -290,11 +290,11 @@ pnpm test:e2e -- causal-graph.spec.ts
 
 Expected: PASS with no console/page errors. Inspect the screenshot for 1280×720 clipping, overlaps, label legibility, left-to-right direction, and consistency with existing modules.
 
-- [ ] **Step 4: Update stage documentation**
+- [x] **Step 4: Update stage documentation**
 
 README adds graph-page usage. Mark P1-07 `等待人工复核` in its design and roadmap, record automated commands/results, and leave P1-08 `未开始`.
 
-- [ ] **Step 5: Run the complete verification gate**
+- [x] **Step 5: Run the complete verification gate**
 
 Run:
 
@@ -311,7 +311,7 @@ git status --short
 
 Expected: every command PASS; only intended P1-07 files are changed.
 
-- [ ] **Step 6: Commit and stop for manual review**
+- [x] **Step 6: Commit and stop for manual review**
 
 ```bash
 git add apps/web/src/features/causal-graph apps/web/src/app/AppShell.tsx apps/web/src/app/router.tsx apps/web/package.json pnpm-lock.yaml tests/e2e/causal-graph.spec.ts README.md docs/stages/phase-1/P1-07-local-causal-graph-basic-display-design.md docs/superpowers/plans/2026-07-20-causality-application-roadmap.md
