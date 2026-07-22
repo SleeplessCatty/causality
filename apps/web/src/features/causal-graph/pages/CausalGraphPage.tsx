@@ -110,10 +110,11 @@ export function CausalGraphPage() {
     (event: EventCandidate) => {
       setSelectedCandidate(event);
       setGraphQuery({
-        ...requestedQuery,
         centerEventId: event.id,
         direction: 'both',
         limit: 20,
+        minConfidence: 0,
+        minCaseCount: 0,
       });
     },
     [requestedQuery, setGraphQuery],
@@ -122,7 +123,7 @@ export function CausalGraphPage() {
   const changeDirection = useCallback(
     (nextDirection: GraphDirection) => {
       if (!hasValidCenter || nextDirection === direction) return;
-      setGraphQuery({ ...requestedQuery, direction: nextDirection, limit: 20 });
+      setGraphQuery({ ...requestedQuery, direction: nextDirection });
     },
     [direction, hasValidCenter, requestedQuery, setGraphQuery],
   );
@@ -139,7 +140,7 @@ export function CausalGraphPage() {
     (eventId: string) => {
       const eventName = lastGraph?.nodes.find((node) => node.id === eventId)?.name;
       setSelectedCandidate(eventName ? { id: eventId, name: eventName } : null);
-      setGraphQuery({ ...requestedQuery, centerEventId: eventId, limit: 20 });
+      setGraphQuery({ ...requestedQuery, centerEventId: eventId });
     },
     [lastGraph, requestedQuery, setGraphQuery],
   );

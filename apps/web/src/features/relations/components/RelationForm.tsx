@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
+import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
 import { ApiClientError } from '../../events/api/eventApi';
 import { checkRelationPair } from '../api/relationApi';
 import { EventSelector } from './EventSelector';
@@ -43,7 +44,17 @@ export function RelationForm({
   const [casesIncomplete, setCasesIncomplete] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
+  const [errorRevision, setErrorRevision] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useAutoDismissError(
+    Boolean(formError) || Object.keys(fieldErrors).length > 0,
+    errorRevision,
+    () => {
+      setFieldErrors({});
+      setFormError(undefined);
+    },
+  );
 
   const pair = useQuery({
     queryKey: [
@@ -77,6 +88,7 @@ export function RelationForm({
     };
     if (casesIncomplete) {
       setFieldErrors({ caseSelections: '请选择已有案例或明确创建新案例' });
+      setErrorRevision((revision) => revision + 1);
       return;
     }
     const parsed = relationFormInputSchema.safeParse(raw);
@@ -91,6 +103,7 @@ export function RelationForm({
         else errors[field] = issue.message;
       }
       setFieldErrors(errors);
+      setErrorRevision((revision) => revision + 1);
       return;
     }
     if (pair.data?.sameDirection) return;
@@ -105,6 +118,7 @@ export function RelationForm({
       } else {
         setFormError('保存失败，请稍后重试');
       }
+      setErrorRevision((revision) => revision + 1);
     } finally {
       setIsSubmitting(false);
     }

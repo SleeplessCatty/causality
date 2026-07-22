@@ -958,20 +958,26 @@ body {
   margin-left: 12px;
 }
 
-.relation-direction a {
+.relation-table .relation-entity-link {
+  color: #163f30;
+  font-size: 14px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.relation-table .relation-entity-link:hover,
+.relation-table .relation-entity-link:focus-visible {
+  color: #08734d;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.relation-direction .relation-entity-link {
   display: inline-grid;
   width: 28px;
   height: 28px;
   place-items: center;
-  border-radius: 50%;
-  color: inherit;
-  text-decoration: none;
-}
-
-.relation-direction a:hover,
-.relation-direction a:focus-visible {
-  background: #e7f1eb;
-  outline: 0;
+  font-size: inherit;
 }
 
 .relation-inline-detail span {
@@ -1426,10 +1432,7 @@ body {
 }
 
 .relation-cases-field__heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
+  display: block;
 }
 
 .relation-cases-field legend {
@@ -1447,7 +1450,13 @@ body {
   line-height: 1.55;
 }
 
-.relation-cases-field__heading .button {
+.relation-cases-field__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.relation-cases-field__actions .button {
   min-height: 36px;
   padding: 0 14px;
   font-size: 12px;

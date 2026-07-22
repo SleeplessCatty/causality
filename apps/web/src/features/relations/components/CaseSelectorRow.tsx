@@ -39,19 +39,19 @@ export function CaseSelectorRow({
   const candidates = useExhaustiveCandidates({
     queryKey: ['cases', 'candidates', candidateQuery],
     query: candidateQuery,
-    enabled: isFocused && candidateQuery.length > 0 && candidateQuery.length <= 50 && !selection,
+    enabled: isFocused && candidateQuery.length > 0 && candidateQuery.length <= 100 && !selection,
     loadPage: (search, cursor, signal) =>
       getCaseCandidatePage(search, { limit: 100, ...(cursor ? { cursor } : {}) }, signal),
     getId: (candidate: CaseReference) => candidate.id,
   });
   useEffect(() => setActiveIndex(-1), [candidateQuery]);
   const normalizedQuery = query.trim();
-  const lengthError = normalizedQuery.length > 50 ? '案例内容不能超过 50 字' : undefined;
+  const lengthError = normalizedQuery.length > 100 ? '案例内容不能超过 100 字' : undefined;
   const visibleError = error ?? lengthError;
   const mayCreate =
     !selection &&
     normalizedQuery.length > 0 &&
-    normalizedQuery.length <= 50 &&
+    normalizedQuery.length <= 100 &&
     candidates.hasLoadedPage &&
     !candidates.items.some((candidate) => candidate.content === normalizedQuery);
   const options = useMemo(

@@ -87,7 +87,9 @@ test('user can change node limits, filter, restore, and retry a dense local grap
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '101');
   const zoomText = await page.getByLabel('当前缩放比例').textContent();
-  expect(Number.parseInt(zoomText ?? '0', 10)).toBeGreaterThanOrEqual(60);
+  const zoom = Number.parseInt(zoomText ?? '0', 10);
+  expect(zoom).toBeGreaterThanOrEqual(10);
+  expect(zoom).toBeLessThan(60);
 
   await choose(minConfidence, '90%');
   await choose(minCaseCount, '10');

@@ -86,6 +86,25 @@ function selectionElement(cy: Core, selection: GraphElementSelection) {
   return cy.getElementById(selection.id);
 }
 
+export function applyGraphSelection(visible: Core, selection: GraphElementSelection | null): void {
+  visible.batch(() => {
+    visible.elements().removeClass('is-current is-context is-incoming is-outgoing');
+    if (!selection) return;
+    const current = selectionElement(visible, selection);
+    if (current.empty()) return;
+    current.addClass('is-current');
+    if (selection.type === 'relation') {
+      current.connectedNodes().addClass('is-context');
+      return;
+    }
+    const relations = current.connectedEdges();
+    relations.addClass('is-context');
+    current.incomers('edge').addClass('is-incoming');
+    current.outgoers('edge').addClass('is-outgoing');
+    relations.connectedNodes().not(current).addClass('is-context');
+  });
+}
+
 export function focusVisibleNode(
   visible: Core,
   id: string,
@@ -146,20 +165,7 @@ export function createGraphRuntime(container: HTMLElement): GraphRuntime {
       return () => visible.off('zoom', handler);
     },
     setSelection(selection) {
-      visible.batch(() => {
-        visible.elements().removeClass('is-current is-context');
-        if (!selection) return;
-        const current = selectionElement(visible, selection);
-        if (current.empty()) return;
-        current.addClass('is-current');
-        if (selection.type === 'relation') {
-          current.connectedNodes().addClass('is-context');
-          return;
-        }
-        const relations = current.connectedEdges();
-        relations.addClass('is-context');
-        relations.connectedNodes().not(current).addClass('is-context');
-      });
+      applyGraphSelection(visible, selection);
     },
     getNavigationSnapshot(centerEventId) {
       return {

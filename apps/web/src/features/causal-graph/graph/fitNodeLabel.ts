@@ -1,9 +1,9 @@
 export const GRAPH_NODE_WIDTH = 220;
 export const GRAPH_NODE_HEIGHT = 96;
-export const GRAPH_NODE_TEXT_WIDTH = 196;
-export const GRAPH_NODE_TEXT_HEIGHT = 72;
+export const GRAPH_NODE_TEXT_WIDTH = 204;
+export const GRAPH_NODE_TEXT_HEIGHT = 80;
 
-const fontSizes = [14, 12, 10, 9] as const;
+const fontSizes = [16, 15, 14, 13, 12, 11, 10, 9] as const;
 const lineHeightRatio = 1.3;
 
 export interface FittedNodeLabel {
@@ -41,34 +41,40 @@ function splitOversizedToken(token: string, fontSize: number, measure: TextMeasu
 }
 
 function wrapLabel(name: string, fontSize: number, measure: TextMeasurer): string[] {
-  const tokens = name.match(/[\p{Script=Han}]|[^\s\p{Script=Han}]+|\s+/gu) ?? [name];
+  const tokens = name.match(/\r\n|\r|\n|[^\S\r\n]+|[\p{Script=Han}]|[^\s\p{Script=Han}]+/gu) ?? [
+    name,
+  ];
   const lines: string[] = [];
   let current = '';
-  let pendingSpace = false;
+  let pendingWhitespace = '';
 
   function pushToken(token: string): void {
-    const separator = current && pendingSpace ? ' ' : '';
-    if (measure(current + separator + token, fontSize) <= GRAPH_NODE_TEXT_WIDTH) {
-      current += separator + token;
-      pendingSpace = false;
+    const content = pendingWhitespace + token;
+    pendingWhitespace = '';
+    if (measure(current + content, fontSize) <= GRAPH_NODE_TEXT_WIDTH) {
+      current += content;
       return;
     }
     if (current) lines.push(current);
     current = '';
-    pendingSpace = false;
 
-    const pieces = splitOversizedToken(token, fontSize, measure);
+    const pieces = splitOversizedToken(content, fontSize, measure);
     lines.push(...pieces.slice(0, -1));
     current = pieces.at(-1) ?? '';
   }
 
   for (const token of tokens) {
-    if (/^\s+$/u.test(token)) {
-      pendingSpace = true;
+    if (/^(?:\r\n|\r|\n)$/u.test(token)) {
+      if (pendingWhitespace) pushToken('');
+      lines.push(current);
+      current = '';
+    } else if (/^[^\S\r\n]+$/u.test(token)) {
+      pendingWhitespace += token;
     } else {
       pushToken(token);
     }
   }
+  if (pendingWhitespace) pushToken('');
   if (current) lines.push(current);
   return lines;
 }
@@ -84,5 +90,9 @@ export function fitNodeLabel(
     }
   }
 
-  return { text: wrapLabel(name, 9, measure).join('\n'), fontSize: 9 };
+  const minimumFontSize = fontSizes.at(-1)!;
+  return {
+    text: wrapLabel(name, minimumFontSize, measure).join('\n'),
+    fontSize: minimumFontSize,
+  };
 }

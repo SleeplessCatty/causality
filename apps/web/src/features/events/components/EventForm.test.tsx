@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,12 +13,15 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response);
 }
 
-function renderForm(onSubmit = vi.fn().mockResolvedValue(undefined)) {
+function renderForm(
+  onSubmit = vi.fn().mockResolvedValue(undefined),
+  mode: 'create' | 'edit' = 'create',
+) {
   render(
     <AppProviders>
       <MemoryRouter>
         <EventForm
-          mode="create"
+          mode={mode}
           initialValue={{ name: '', description: null, aliases: [], keywords: [] }}
           onSubmit={onSubmit}
           cancelTo="/events"
@@ -43,7 +46,7 @@ describe('EventForm', () => {
 
     expect(
       screen.getByText(
-        '使用“主体 + 单一状态变化”命名，例如“原油价格上涨”。不要在名称中同时描述原因和结果。',
+        '使用“主体 + 单一状态变化”命名，例如“原油价格上涨”。不要在名称中同时描述原因和结果，最多 50 字。',
       ),
     ).toBeTruthy();
 
@@ -79,6 +82,30 @@ describe('EventForm', () => {
     expect(await screen.findByText('请输入标准名称')).toBeTruthy();
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['create', '创建事件'],
+    ['edit', '保存修改'],
+  ] as const)(
+    'dismisses %s validation errors after three seconds and restarts the timer on resubmit',
+    async (mode, buttonName) => {
+      vi.useFakeTimers();
+      try {
+        renderForm(undefined, mode);
+        const submit = screen.getByRole('button', { name: buttonName });
+
+        fireEvent.click(submit);
+        expect(screen.getByText('请输入标准名称')).toBeTruthy();
+        await act(() => vi.advanceTimersByTimeAsync(3_000));
+        expect(screen.queryByText('请输入标准名称')).toBeNull();
+
+        fireEvent.click(submit);
+        expect(screen.getByText('请输入标准名称')).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it('shows minimal candidates and submits normalized values once', async () => {
     vi.stubGlobal(

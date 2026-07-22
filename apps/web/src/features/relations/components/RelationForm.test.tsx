@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,14 +17,17 @@ function jsonResponse(body: unknown) {
   return Promise.resolve({ ok: true, status: 200, json: async () => body } as Response);
 }
 
-function renderForm(onSubmit = vi.fn().mockResolvedValue(undefined)) {
+function renderForm(
+  onSubmit = vi.fn().mockResolvedValue(undefined),
+  mode: 'create' | 'edit' = 'create',
+) {
   const router = createMemoryRouter(
     [
       {
         path: '/relations/new',
         element: (
           <RelationForm
-            mode="create"
+            mode={mode}
             initialValue={{
               causeEvent: null,
               effectEvent: null,
@@ -67,6 +70,31 @@ describe('RelationForm', () => {
     expect(screen.getByText('请输入 0 到 100 的整数')).toBeTruthy();
     expect(submit).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['create', '创建关系'],
+    ['edit', '保存修改'],
+  ] as const)(
+    'dismisses %s validation errors and restarts them on resubmit',
+    async (mode, buttonName) => {
+      vi.useFakeTimers();
+      try {
+        renderForm(undefined, mode);
+        const submit = screen.getByRole('button', { name: buttonName });
+        fireEvent.click(submit);
+        expect(screen.getByText('请选择原因事件')).toBeTruthy();
+
+        await act(() => vi.advanceTimersByTimeAsync(3_000));
+        expect(screen.queryByText('请选择原因事件')).toBeNull();
+        expect(screen.queryByText('请选择结果事件')).toBeNull();
+        expect(screen.queryByText('请输入 0 到 100 的整数')).toBeNull();
+        fireEvent.click(submit);
+        expect(screen.getByText('请选择原因事件')).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it('loads candidate pages until a later-page event is selectable', async () => {
     vi.stubGlobal(

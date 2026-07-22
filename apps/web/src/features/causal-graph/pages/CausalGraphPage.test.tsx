@@ -67,6 +67,12 @@ vi.mock('../components/CausalGraphToolbar', () => ({
       >
         选择原油
       </button>
+      <button
+        type="button"
+        onClick={() => onEventSelect({ id: effectEventId, name: '航空公司成本上升' })}
+      >
+        选择航空成本
+      </button>
       <button type="button" onClick={() => onDirectionChange('upstream')}>
         切换上游
       </button>
@@ -421,7 +427,7 @@ describe('CausalGraphPage', () => {
     expect(screen.getByText('画布选择：无')).toBeTruthy();
   });
 
-  it('preserves filters while direction and center changes reset the tier', async () => {
+  it('preserves the other parameters when direction or inspector center changes', async () => {
     const router = renderPage(
       `/graph?centerEventId=${centerEventId}&direction=both&limit=50&minConfidence=60&minCaseCount=2`,
     );
@@ -430,7 +436,7 @@ describe('CausalGraphPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
     await waitFor(() =>
       expect(router.state.location.search).toBe(
-        `?centerEventId=${centerEventId}&direction=upstream&limit=20&minConfidence=60&minCaseCount=2`,
+        `?centerEventId=${centerEventId}&direction=upstream&limit=50&minConfidence=60&minCaseCount=2`,
       ),
     );
     await waitFor(() =>
@@ -443,7 +449,21 @@ describe('CausalGraphPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '设为中心事件' }));
     await waitFor(() =>
       expect(router.state.location.search).toBe(
-        `?centerEventId=${effectEventId}&direction=upstream&limit=20&minConfidence=60&minCaseCount=2`,
+        `?centerEventId=${effectEventId}&direction=upstream&limit=50&minConfidence=60&minCaseCount=2`,
+      ),
+    );
+  });
+
+  it('resets all query parameters when the toolbar selects a different center', async () => {
+    const router = renderPage(
+      `/graph?centerEventId=${centerEventId}&direction=upstream&limit=100&minConfidence=60&minCaseCount=2`,
+    );
+    await screen.findByText('节点 2');
+
+    fireEvent.click(screen.getByRole('button', { name: '选择航空成本' }));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(
+        `?centerEventId=${effectEventId}&direction=both&limit=20&minConfidence=0&minCaseCount=0`,
       ),
     );
   });

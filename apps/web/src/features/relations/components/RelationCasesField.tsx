@@ -83,19 +83,9 @@ export function RelationCasesField({
 
   return (
     <fieldset className="relation-cases-field" disabled={disabled}>
+      <legend>具体案例</legend>
       <div className="relation-cases-field__heading">
-        <div>
-          <legend>具体案例</legend>
-          <p>关联真实发生的事件，用于验证这条因果关系。</p>
-        </div>
-        <button
-          className="button button--secondary"
-          type="button"
-          onClick={addRow}
-          disabled={disabled}
-        >
-          添加案例
-        </button>
+        <p>关联真实发生的事件，用于验证这条因果关系。</p>
       </div>
       {rows.length > 0 ? (
         <div className="relation-cases-field__rows">
@@ -121,6 +111,16 @@ export function RelationCasesField({
           {error}
         </span>
       ) : null}
+      <div className="relation-cases-field__actions">
+        <button
+          className="button button--secondary"
+          type="button"
+          onClick={addRow}
+          disabled={disabled}
+        >
+          添加案例
+        </button>
+      </div>
     </fieldset>
   );
 }

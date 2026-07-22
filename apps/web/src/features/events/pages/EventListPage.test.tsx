@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -69,25 +69,32 @@ describe('EventListPage', () => {
     );
   });
 
-  it('links row editing and reveals complete overflowing metadata after two seconds', async () => {
+  it('links row editing and reveals all non-empty metadata after two seconds', async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       'fetch',
       vi.fn(() => jsonResponse({ ...firstPage, nextCursor: null, hasMore: false })),
     );
     renderList();
-    await vi.advanceTimersByTimeAsync(0);
+    await act(() => vi.advanceTimersByTimeAsync(0));
 
     expect(screen.getByRole('link', { name: '编辑' }).getAttribute('href')).toBe(
       '/events/11111111-1111-4111-8111-111111111111/edit',
     );
-    fireEvent.mouseEnter(screen.getByText('油价上涨、原油上涨、国际油价上涨'));
-    await vi.advanceTimersByTimeAsync(2_000);
+    const aliases = screen
+      .getByText('油价上涨、原油上涨、国际油价上涨')
+      .closest('.event-table__metadata')!;
+    fireEvent.mouseEnter(aliases);
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
     expect(screen.getByRole('tooltip').textContent).toContain('第四个别名');
+    fireEvent.mouseLeave(aliases);
 
     const shortKeywords = screen.getByText('原油、能源价格').closest('.event-table__metadata');
-    expect(shortKeywords?.getAttribute('tabindex')).toBeNull();
+    expect(shortKeywords?.getAttribute('tabindex')).toBe('0');
     expect(shortKeywords?.getAttribute('aria-describedby')).toBeNull();
+    fireEvent.mouseEnter(shortKeywords!);
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    expect(screen.getByRole('tooltip').textContent).toBe('原油、能源价格');
     vi.useRealTimers();
   });
 

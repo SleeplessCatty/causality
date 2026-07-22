@@ -33,9 +33,8 @@ test('user can create, search, inspect, edit, and detect a duplicate independent
   await page.getByRole('link', { name: '编辑案例' }).click();
   await page.getByRole('textbox', { name: '案例内容' }).fill(updatedContent);
   await page.getByRole('button', { name: '保存修改' }).click();
-  await expect(page.getByRole('heading', { name: updatedContent })).toBeVisible();
 
-  await page.getByRole('link', { name: '返回案例列表' }).click();
+  await expect(page).toHaveURL(/\/cases$/);
   await page.getByRole('searchbox', { name: '搜索案例' }).fill(suffix);
   await expect(page.getByRole('link', { name: updatedContent })).toBeVisible();
 
@@ -88,6 +87,12 @@ test('relation form reuses an existing case, creates a new case, and unlinks wit
   await existingRow.getByRole('button', { name: '移除案例' }).click();
   await page.getByRole('button', { name: '保存修改' }).click();
 
+  await expect(page).toHaveURL(/\/relations$/);
+  const relationRow = page
+    .getByRole('row')
+    .filter({ hasText: cause.name })
+    .filter({ hasText: effect.name });
+  await relationRow.getByRole('link', { name: '查看因果关系详情' }).click();
   await expect(page).toHaveURL(new RegExp(`/relations/${relationId}$`));
   await expect(page.getByText('1 条', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('link', { name: newContent })).toBeVisible();

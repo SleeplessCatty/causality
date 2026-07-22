@@ -167,17 +167,27 @@ export function RelationListPage() {
                       className={expandedId === relation.id ? 'relation-row--expanded' : undefined}
                     >
                       <td>
-                        <Link to={`/events/${relation.causeEvent.id}`}>
+                        <Link
+                          className="relation-entity-link"
+                          to={`/events/${relation.causeEvent.id}`}
+                        >
                           {relation.causeEvent.name}
                         </Link>
                       </td>
                       <td className="relation-direction" aria-label="导致">
-                        <Link to={`/relations/${relation.id}`} aria-label="查看因果关系详情">
+                        <Link
+                          className="relation-entity-link relation-direction__link"
+                          to={`/relations/${relation.id}`}
+                          aria-label="查看因果关系详情"
+                        >
                           →
                         </Link>
                       </td>
                       <td>
-                        <Link to={`/events/${relation.effectEvent.id}`}>
+                        <Link
+                          className="relation-entity-link"
+                          to={`/events/${relation.effectEvent.id}`}
+                        >
                           {relation.effectEvent.name}
                         </Link>
                       </td>

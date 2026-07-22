@@ -39,11 +39,7 @@ test('user can search, create, inspect, edit, and find an atomic event', async (
   await page.getByRole('textbox', { name: '添加别名' }).press('Enter');
   await page.getByRole('button', { name: '保存修改' }).click();
 
-  await expect(page.getByRole('heading', { name: updatedName })).toBeVisible();
-  await expect(page.getByText('修改已保存')).toBeVisible();
-  await expect(page.getByText(updatedAlias)).toBeVisible();
-
-  await page.getByRole('link', { name: '返回事件列表' }).click();
+  await expect(page).toHaveURL(/\/events$/);
   await search.fill(updatedAlias);
   await expect(page.getByRole('link', { name: updatedName })).toBeVisible();
 

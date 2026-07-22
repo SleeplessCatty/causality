@@ -2,7 +2,6 @@ import {
   cloneElement,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   type FocusEvent,
@@ -27,10 +26,9 @@ export function DelayedOverflowTooltip({
   delay = 2_000,
 }: DelayedOverflowTooltipProps) {
   const tooltipId = useId();
-  const elementRef = useRef<HTMLElement | null>(null);
   const hoverTimerRef = useRef<number | undefined>(undefined);
-  const [enabled, setEnabled] = useState(values.length > 3);
   const [open, setOpen] = useState(false);
+  const enabled = values.length > 0;
 
   function clearHoverTimer(): void {
     if (hoverTimerRef.current === undefined) return;
@@ -43,25 +41,16 @@ export function DelayedOverflowTooltip({
     setOpen(false);
   }
 
-  function measure(): boolean {
-    const element = elementRef.current;
-    const nextEnabled =
-      values.length > 3 || Boolean(element && element.scrollWidth > element.clientWidth);
-    setEnabled(nextEnabled);
-    if (!nextEnabled) setOpen(false);
-    return nextEnabled;
-  }
-
-  useLayoutEffect(() => {
-    measure();
-  }, [values]);
-
   useEffect(
     () => () => {
       clearHoverTimer();
     },
     [],
   );
+
+  useEffect(() => {
+    if (!enabled) close();
+  }, [enabled]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,7 +70,7 @@ export function DelayedOverflowTooltip({
 
   function handleMouseEnter(event: MouseEvent<HTMLElement>): void {
     children.props.onMouseEnter?.(event);
-    if (!measure()) return;
+    if (!enabled) return;
     clearHoverTimer();
     hoverTimerRef.current = window.setTimeout(() => {
       hoverTimerRef.current = undefined;
@@ -96,7 +85,7 @@ export function DelayedOverflowTooltip({
 
   function handleFocus(event: FocusEvent<HTMLElement>): void {
     children.props.onFocus?.(event);
-    if (measure()) setOpen(true);
+    if (enabled) setOpen(true);
   }
 
   function handleBlur(event: FocusEvent<HTMLElement>): void {
@@ -112,7 +101,6 @@ export function DelayedOverflowTooltip({
     <>
       {cloneElement(children, {
         ref: (node: HTMLElement | null) => {
-          elementRef.current = node;
           children.props.ref?.(node);
         },
         tabIndex: enabled ? (children.props.tabIndex ?? 0) : children.props.tabIndex,

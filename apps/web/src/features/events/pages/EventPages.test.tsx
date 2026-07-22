@@ -79,7 +79,7 @@ describe('event route pages', () => {
     );
   });
 
-  it('loads and replaces an event before returning to detail', async () => {
+  it('loads and replaces an event before returning to the list', async () => {
     const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) =>
       init?.method === 'PUT'
         ? jsonResponse({ ...eventDetail, name: '原油价格快速上涨' })
@@ -89,12 +89,14 @@ describe('event route pages', () => {
     renderRoute('/events/:eventId/edit', <EventEditPage />);
 
     const nameInput = await screen.findByRole('textbox', { name: '标准名称' });
+    expect(screen.getByRole('link', { name: '返回事件列表' }).getAttribute('href')).toBe('/events');
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe('/events');
     fireEvent.change(nameInput, { target: { value: '原油价格快速上涨' } });
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(true),
     );
-    expect(await screen.findByText('已进入事件详情')).toBeTruthy();
+    expect(await screen.findByText('事件列表')).toBeTruthy();
   });
 });

@@ -35,16 +35,16 @@ export function CaseEditPage() {
       queryClient.invalidateQueries({ queryKey: ['cases', 'candidates'] }),
       queryClient.invalidateQueries({ queryKey: ['relations'] }),
     ]);
-    navigate(`/cases/${caseId}`, { state: { notice: '修改已保存' } });
+    navigate('/cases', { state: { notice: '修改已保存' } });
   }
 
   return (
     <section className="event-editor-page" aria-labelledby="edit-case-title">
-      <Link className="back-link" to={`/cases/${caseId}`}>
+      <Link className="back-link" to="/cases">
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
-        返回案例详情
+        返回案例列表
       </Link>
       <h1 id="edit-case-title">编辑具体案例</h1>
       {detail.data.relationCount > 0 ? (
@@ -56,7 +56,7 @@ export function CaseEditPage() {
         mode="edit"
         initialContent={detail.data.content}
         onSubmit={submit}
-        cancelTo={`/cases/${caseId}`}
+        cancelTo="/cases"
       />
     </section>
   );

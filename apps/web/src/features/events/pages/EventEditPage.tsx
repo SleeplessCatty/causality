@@ -34,16 +34,16 @@ export function EventEditPage() {
       queryClient.invalidateQueries({ queryKey: ['events', 'list'] }),
       queryClient.invalidateQueries({ queryKey: ['events', 'candidates'] }),
     ]);
-    navigate(`/events/${eventId}`, { state: { notice: '修改已保存' } });
+    navigate('/events', { state: { notice: '修改已保存' } });
   }
 
   return (
     <section className="event-editor-page" aria-labelledby="edit-event-title">
-      <Link className="back-link" to={`/events/${eventId}`}>
+      <Link className="back-link" to="/events">
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
-        返回事件详情
+        返回事件列表
       </Link>
       <h1 id="edit-event-title">编辑原子事件</h1>
       <EventForm
@@ -56,7 +56,7 @@ export function EventEditPage() {
         }}
         excludeId={eventId}
         onSubmit={submit}
-        cancelTo={`/events/${eventId}`}
+        cancelTo="/events"
       />
     </section>
   );

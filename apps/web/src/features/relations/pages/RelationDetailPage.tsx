@@ -141,44 +141,49 @@ export function RelationDetailPage() {
         </div>
         {relation.data.caseCount === 0 ? (
           <div className="case-relations__state">尚未关联具体案例</div>
-        ) : null}
-        {linkedCases.isPending ? <div className="case-relations__state">加载具体案例…</div> : null}
-        {linkedCases.isError && !linkedCases.data ? (
-          <div className="case-relations__state" role="alert">
-            <span>无法读取具体案例</span>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => void linkedCases.refetch()}
-            >
-              重新加载
-            </button>
-          </div>
-        ) : null}
-        {cases.length > 0 ? (
-          <ul className="case-relation-list relation-detail-case-list">
-            {cases.map((item) => (
-              <li key={item.id}>
-                <Link to={`/cases/${item.id}`}>{item.content}</Link>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {linkedCases.isFetchingNextPage ? (
-          <div className="case-relations__state">正在加载其余案例…</div>
-        ) : null}
-        {linkedCases.isFetchNextPageError ? (
-          <div className="case-relations__state case-relations__state--inline" role="alert">
-            <span>其余案例加载失败，已显示成功加载的内容。</span>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => void linkedCases.fetchNextPage()}
-            >
-              重试加载其余案例
-            </button>
-          </div>
-        ) : null}
+        ) : (
+          <>
+            {linkedCases.isPending ? (
+              <div className="case-relations__state">加载具体案例…</div>
+            ) : null}
+            {linkedCases.isError && !linkedCases.data ? (
+              <div className="case-relations__state" role="alert">
+                <span>无法读取具体案例</span>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => void linkedCases.refetch()}
+                >
+                  重新加载
+                </button>
+              </div>
+            ) : null}
+            {cases.length > 0 ? (
+              <ul className="case-relation-list relation-detail-case-list">
+                {cases.map((item) => (
+                  <li key={item.id}>
+                    <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {linkedCases.isFetchingNextPage ? (
+              <div className="case-relations__state">正在加载其余案例…</div>
+            ) : null}
+            {linkedCases.isFetchNextPageError ? (
+              <div className="case-relations__state case-relations__state--inline" role="alert">
+                <span>其余案例加载失败，已显示成功加载的内容。</span>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => void linkedCases.fetchNextPage()}
+                >
+                  重试加载其余案例
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
       </section>
     </section>
   );

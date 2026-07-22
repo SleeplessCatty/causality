@@ -2,6 +2,7 @@ import { caseFormInputSchema, type CaseFormInput } from '@causality/contracts';
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
+import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
 import { ApiClientError } from '../../events/api/eventApi';
 
 interface CaseFormProps {
@@ -16,8 +17,15 @@ export function CaseForm({ mode, initialContent, onSubmit, cancelTo }: CaseFormP
   const [fieldError, setFieldError] = useState<string>();
   const [formError, setFormError] = useState<string>();
   const [conflictingCaseId, setConflictingCaseId] = useState<string>();
+  const [errorRevision, setErrorRevision] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const normalizedLength = content.trim().length;
+
+  useAutoDismissError(Boolean(fieldError || formError), errorRevision, () => {
+    setFieldError(undefined);
+    setFormError(undefined);
+    setConflictingCaseId(undefined);
+  });
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -27,7 +35,8 @@ export function CaseForm({ mode, initialContent, onSubmit, cancelTo }: CaseFormP
 
     const parsed = caseFormInputSchema.safeParse({ content });
     if (!parsed.success) {
-      setFieldError(normalizedLength === 0 ? '请输入案例内容' : '案例内容不能超过 50 字');
+      setFieldError(normalizedLength === 0 ? '请输入案例内容' : '案例内容不能超过 100 字');
+      setErrorRevision((revision) => revision + 1);
       return;
     }
 
@@ -44,6 +53,7 @@ export function CaseForm({ mode, initialContent, onSubmit, cancelTo }: CaseFormP
       } else {
         setFormError('保存失败，请稍后重试');
       }
+      setErrorRevision((revision) => revision + 1);
     } finally {
       setIsSubmitting(false);
     }
@@ -65,6 +75,7 @@ export function CaseForm({ mode, initialContent, onSubmit, cancelTo }: CaseFormP
           <textarea
             id="case-content"
             value={content}
+            maxLength={100}
             aria-invalid={Boolean(fieldError)}
             aria-describedby="case-content-help case-content-count case-content-error"
             onChange={(event) => setContent(event.target.value)}
@@ -74,13 +85,13 @@ export function CaseForm({ mode, initialContent, onSubmit, cancelTo }: CaseFormP
           />
           <div className="case-form__meta">
             <span id="case-content-help" className="field-help">
-              简短记录一件确切发生过的真实事件，最多 50 字。
+              简短记录一件确切发生过的真实事件，最多 100 字。
             </span>
             <span
               id="case-content-count"
-              className={normalizedLength > 50 ? 'field-error' : 'field-help'}
+              className={normalizedLength > 100 ? 'field-error' : 'field-help'}
             >
-              {normalizedLength} / 50
+              {normalizedLength} / 100
             </span>
           </div>
           {fieldError ? (

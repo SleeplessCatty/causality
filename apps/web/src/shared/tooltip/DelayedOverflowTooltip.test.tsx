@@ -41,31 +41,30 @@ describe('DelayedOverflowTooltip', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  it('stays inert when short content fits and activates when the element overflows', () => {
-    const scrollWidth = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(100);
-    const clientWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(100);
-    const { rerender } = render(
+  it('activates for every non-empty value list without measuring overflow', () => {
+    render(
       <DelayedOverflowTooltip values={['原油', '能源价格']}>
         <span data-testid="metadata">原油、能源价格</span>
       </DelayedOverflowTooltip>,
     );
 
-    const fitting = screen.getByTestId('metadata');
-    expect(fitting.getAttribute('tabindex')).toBeNull();
-    fireEvent.focus(fitting);
-    expect(screen.queryByRole('tooltip')).toBeNull();
-
-    scrollWidth.mockReturnValue(180);
-    clientWidth.mockReturnValue(100);
-    rerender(
-      <DelayedOverflowTooltip values={['原油', '能源价格']}>
-        <span data-testid="metadata">原油、能源价格</span>
-      </DelayedOverflowTooltip>,
-    );
-    const overflowing = screen.getByTestId('metadata');
-    expect(overflowing.getAttribute('tabindex')).toBe('0');
-    fireEvent.focus(overflowing);
+    const metadata = screen.getByTestId('metadata');
+    expect(metadata.getAttribute('tabindex')).toBe('0');
+    fireEvent.focus(metadata);
     expect(screen.getByRole('tooltip').textContent).toBe('原油、能源价格');
+  });
+
+  it('stays inert only when there are no values', () => {
+    render(
+      <DelayedOverflowTooltip values={[]}>
+        <span data-testid="metadata">—</span>
+      </DelayedOverflowTooltip>,
+    );
+
+    const metadata = screen.getByTestId('metadata');
+    expect(metadata.getAttribute('tabindex')).toBeNull();
+    fireEvent.focus(metadata);
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
   it('clears a pending hover timer when unmounted', () => {

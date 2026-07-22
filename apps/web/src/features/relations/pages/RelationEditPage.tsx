@@ -43,7 +43,7 @@ export function RelationEditPage() {
       queryClient.invalidateQueries({ queryKey: ['relations', 'pair-check'] }),
       queryClient.invalidateQueries({ queryKey: ['cases'] }),
     ]);
-    navigate(`/relations/${relationId}`, { state: { notice: '修改已保存' } });
+    navigate('/relations', { state: { notice: '修改已保存' } });
   }
 
   return (
@@ -51,11 +51,11 @@ export function RelationEditPage() {
       className="event-editor-page relation-editor-page"
       aria-labelledby="edit-relation-title"
     >
-      <Link className="back-link" to={`/relations/${relationId}`}>
+      <Link className="back-link" to="/relations">
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
-        返回关系详情
+        返回关系列表
       </Link>
       <h1 id="edit-relation-title">编辑因果关系</h1>
       <RelationForm
@@ -73,7 +73,7 @@ export function RelationEditPage() {
           })),
         }}
         onSubmit={submit}
-        cancelTo={`/relations/${relationId}`}
+        cancelTo="/relations"
       />
     </section>
   );

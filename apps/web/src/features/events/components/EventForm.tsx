@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
+import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
 import { ApiClientError, getEventCandidates } from '../api/eventApi';
 import { TagInput } from './TagInput';
 
@@ -22,7 +23,17 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
   const [candidateQuery, setCandidateQuery] = useState(initialValue.name.trim());
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string>();
+  const [errorRevision, setErrorRevision] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useAutoDismissError(
+    Boolean(formError) || Object.keys(fieldErrors).length > 0,
+    errorRevision,
+    () => {
+      setFieldErrors({});
+      setFormError(undefined);
+    },
+  );
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setCandidateQuery(name.trim()), 300);
@@ -50,6 +61,7 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
         }
       }
       setFieldErrors(errors);
+      setErrorRevision((revision) => revision + 1);
       return;
     }
 
@@ -63,6 +75,7 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
       } else {
         setFormError('保存失败，请稍后重试');
       }
+      setErrorRevision((revision) => revision + 1);
     } finally {
       setIsSubmitting(false);
     }
@@ -86,12 +99,14 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
               aria-invalid={Boolean(fieldErrors.name)}
               aria-describedby="event-name-help event-name-error"
               value={name}
+              maxLength={50}
               onChange={(event) => setName(event.target.value)}
               placeholder="例如：原油价格上涨"
               autoFocus={mode === 'create'}
             />
             <span id="event-name-help" className="field-help">
-              使用“主体 + 单一状态变化”命名，例如“原油价格上涨”。不要在名称中同时描述原因和结果。
+              使用“主体 +
+              单一状态变化”命名，例如“原油价格上涨”。不要在名称中同时描述原因和结果，最多 50 字。
             </span>
             {fieldErrors.name ? (
               <span id="event-name-error" className="field-error" role="alert">
@@ -121,7 +136,7 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
             label="别名"
             values={aliases}
             maxItems={20}
-            maxLength={120}
+            maxLength={80}
             helper="可添加多个别名，按 Enter 或逗号确认"
             onChange={setAliases}
           />
@@ -130,7 +145,7 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
             label="关键词"
             values={keywords}
             maxItems={20}
-            maxLength={60}
+            maxLength={50}
             helper="用于传统搜索，可添加多个关键词"
             onChange={setKeywords}
           />

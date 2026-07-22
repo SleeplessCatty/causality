@@ -118,11 +118,7 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
             if (run !== layoutRunRef.current) return;
             runtime.commit(elements);
             runtime.setSelection(null);
-            if (currentGraph.meta.nodeLimit === 20) {
-              runtime.fit(GRAPH_FIT_PADDING, false);
-            } else {
-              runtime.focusNode(currentGraph.meta.centerEventId, GRAPH_FIT_PADDING, 0.6);
-            }
+            runtime.fit(GRAPH_FIT_PADDING, false);
             setCommittedGraph(currentGraph);
             updateLayoutState('ready');
             onGraphCommit?.(currentGraph);

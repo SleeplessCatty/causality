@@ -43,6 +43,15 @@ const graph50: CausalGraphResponse = {
   },
 };
 
+const graph100: CausalGraphResponse = {
+  ...graph50,
+  meta: {
+    ...graph50.meta,
+    nodeLimit: 100,
+    relationLimit: 1_000,
+  },
+};
+
 function createFakeRuntime() {
   let zoom = 1;
   let onZoom: (zoom: number) => void = () => undefined;
@@ -116,24 +125,28 @@ describe('CausalGraphCanvas', () => {
     expect(fake.runtime.destroy).toHaveBeenCalledOnce();
   });
 
-  it('reports a committed graph only after layout and uses a readable large-graph viewport', () => {
-    const fake = createFakeRuntime();
-    const onGraphCommit = vi.fn();
-    render(
-      <CausalGraphCanvas
-        graph={graph50}
-        centerEventName="原油价格上涨"
-        createRuntime={() => fake.runtime}
-        onGraphCommit={onGraphCommit}
-      />,
-    );
+  it.each([graph50, graph100])(
+    'reports a committed $meta.nodeLimit-node graph only after layout and fits the full graph',
+    (largeGraph) => {
+      const fake = createFakeRuntime();
+      const onGraphCommit = vi.fn();
+      render(
+        <CausalGraphCanvas
+          graph={largeGraph}
+          centerEventName="原油价格上涨"
+          createRuntime={() => fake.runtime}
+          onGraphCommit={onGraphCommit}
+        />,
+      );
 
-    expect(onGraphCommit).not.toHaveBeenCalled();
-    act(() => fake.completeLayout());
-    expect(fake.runtime.commit).toHaveBeenCalledWith({ laidOut: true });
-    expect(fake.runtime.focusNode).toHaveBeenCalledWith(centerEventId, 48, 0.6);
-    expect(onGraphCommit).toHaveBeenCalledWith(graph50);
-  });
+      expect(onGraphCommit).not.toHaveBeenCalled();
+      act(() => fake.completeLayout());
+      expect(fake.runtime.commit).toHaveBeenCalledWith({ laidOut: true });
+      expect(fake.runtime.fit).toHaveBeenCalledWith(48, false);
+      expect(fake.runtime.focusNode).not.toHaveBeenCalled();
+      expect(onGraphCommit).toHaveBeenCalledWith(largeGraph);
+    },
+  );
 
   it('keeps committed graph metadata when a replacement layout fails', () => {
     const fake = createFakeRuntime();

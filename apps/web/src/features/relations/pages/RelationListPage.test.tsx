@@ -74,6 +74,13 @@ describe('RelationListPage', () => {
     expect(screen.getByRole('link', { name: '查看因果关系详情' }).getAttribute('href')).toBe(
       `/relations/${relation.id}`,
     );
+    const causeLink = screen.getByRole('link', { name: relation.causeEvent.name });
+    const directionLink = screen.getByRole('link', { name: '查看因果关系详情' });
+    const effectLink = screen.getByRole('link', { name: relation.effectEvent.name });
+    expect(causeLink.className).toContain('relation-entity-link');
+    expect(directionLink.className).toContain('relation-entity-link');
+    expect(directionLink.className).toContain('relation-direction__link');
+    expect(effectLink.className).toBe(causeLink.className);
     expect(screen.getByRole('link', { name: '编辑' }).getAttribute('href')).toBe(
       `/relations/${relation.id}/edit`,
     );

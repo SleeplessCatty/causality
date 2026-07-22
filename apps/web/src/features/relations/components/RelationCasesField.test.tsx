@@ -27,6 +27,19 @@ function Fixture({ initial = [] }: { initial?: RelationCaseSelectionValue[] }) {
 describe('RelationCasesField', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('places the add action below the empty state and keeps it right aligned', () => {
+    render(
+      <AppProviders>
+        <Fixture />
+      </AppProviders>,
+    );
+
+    const fieldset = screen.getByRole('group', { name: '具体案例' });
+    const addButton = screen.getByRole('button', { name: '添加案例' });
+    expect(fieldset.lastElementChild).toBe(addButton.parentElement);
+    expect(addButton.parentElement?.className).toContain('relation-cases-field__actions');
+  });
+
   it('adds a row, searches after debounce, and selects an existing case', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       void input;
@@ -112,6 +125,29 @@ describe('RelationCasesField', () => {
     await waitFor(() =>
       expect(screen.getByTestId('value').textContent).not.toContain(existingCase.id),
     );
+  });
+
+  it('allows creating a case between the old 50-character and new 100-character limits', async () => {
+    const content = `2026年某公司发布长篇盈利预警${'详'.repeat(45)}`;
+    expect(content.length).toBeGreaterThan(50);
+    expect(content.length).toBeLessThanOrEqual(100);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response({ items: [], nextCursor: null, hasMore: false })),
+    );
+    render(
+      <AppProviders>
+        <Fixture />
+      </AppProviders>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '添加案例' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '具体案例 1' }), {
+      target: { value: content },
+    });
+    fireEvent.click(await screen.findByRole('option', { name: `创建新案例：${content}` }));
+
+    expect(screen.getByTestId('value').textContent).toContain(content);
   });
 
   it('supports keyboard selection and rejects a duplicate confirmed row', async () => {

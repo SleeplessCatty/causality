@@ -62,9 +62,6 @@ test('user can create a reverse relation, inspect it inline, edit it, and find i
   await page.getByRole('spinbutton', { name: '置信度数值' }).fill('79');
   await page.getByRole('button', { name: '保存修改' }).click();
 
-  await expect(page).toHaveURL(/\/relations\/[0-9a-f-]+$/);
-  await expect(page.getByText('79%', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: '返回关系列表' }).click();
   await expect(page).toHaveURL(/\/relations$/);
   const savedRow = page
     .getByRole('row')

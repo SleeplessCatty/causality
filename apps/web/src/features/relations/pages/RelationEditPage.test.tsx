@@ -63,15 +63,13 @@ describe('RelationEditPage', () => {
     const input = await screen.findByRole('combobox', { name: '具体案例 1' });
     expect((input as HTMLInputElement).value).toBe(linkedCase.content);
     expect(screen.getByText('已有案例')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '返回关系详情' }).getAttribute('href')).toBe(
-      `/relations/${relationId}`,
+    expect(screen.getByRole('link', { name: '返回关系列表' }).getAttribute('href')).toBe(
+      '/relations',
     );
-    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe(
-      `/relations/${relationId}`,
-    );
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe('/relations');
 
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
-    await screen.findByText('关系详情目标');
-    await waitFor(() => expect(router.state.location.pathname).toBe(`/relations/${relationId}`));
+    await screen.findByText('关系列表');
+    await waitFor(() => expect(router.state.location.pathname).toBe('/relations'));
   });
 });

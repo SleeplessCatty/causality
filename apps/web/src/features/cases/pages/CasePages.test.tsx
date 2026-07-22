@@ -38,6 +38,7 @@ function renderRoute(path: string, element: React.ReactNode) {
       <RouterProvider router={router} />
     </AppProviders>,
   );
+  return router;
 }
 
 describe('case pages', () => {
@@ -92,17 +93,21 @@ describe('case pages', () => {
     );
   });
 
-  it('loads and replaces case content', async () => {
+  it('loads and replaces case content before returning to the list', async () => {
     const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) =>
       init?.method === 'PUT' ? response({ ...detail, content: '更新后的案例' }) : response(detail),
     );
     vi.stubGlobal('fetch', fetchMock);
-    renderRoute('/cases/:caseId/edit', <CaseEditPage />);
+    const router = renderRoute('/cases/:caseId/edit', <CaseEditPage />);
     const input = await screen.findByRole('textbox', { name: '案例内容' });
+    expect(screen.getByRole('link', { name: '返回案例列表' }).getAttribute('href')).toBe('/cases');
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe('/cases');
     fireEvent.change(input, { target: { value: '更新后的案例' } });
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(true),
     );
+    expect(await screen.findByText('案例列表')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/cases');
   });
 });

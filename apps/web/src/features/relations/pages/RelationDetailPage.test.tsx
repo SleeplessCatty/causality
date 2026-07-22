@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AppProviders } from '../../../app/AppProviders';
 import { RelationDetailPage } from './RelationDetailPage';
 
 const detail = {
@@ -49,12 +49,15 @@ function renderDetail() {
     ],
     { initialEntries: [`/relations/${detail.id}`] },
   );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+  });
   render(
-    <AppProviders>
+    <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
-    </AppProviders>,
+    </QueryClientProvider>,
   );
-  return router;
+  return { queryClient, router };
 }
 
 describe('RelationDetailPage', () => {
@@ -96,6 +99,28 @@ describe('RelationDetailPage', () => {
     renderDetail();
 
     expect(await screen.findByText('尚未关联具体案例')).toBeTruthy();
+    expect(screen.queryByText('加载具体案例…')).toBeNull();
+  });
+
+  it('hides cached linked-case state after the relation case count becomes zero', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) =>
+        String(input).startsWith('/api/cases?')
+          ? response({ items: [caseOne], nextCursor: null, hasMore: false })
+          : response(detail),
+      ),
+    );
+    const { queryClient } = renderDetail();
+    expect(await screen.findByRole('link', { name: '案例一' })).toBeTruthy();
+
+    act(() => {
+      queryClient.setQueryData(['relations', 'detail', detail.id], { ...detail, caseCount: 0 });
+    });
+
+    expect(await screen.findByText('尚未关联具体案例')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: '案例一' })).toBeNull();
+    expect(screen.queryByText('加载具体案例…')).toBeNull();
   });
 
   it('preserves the first case page and retries only a failed later page', async () => {
