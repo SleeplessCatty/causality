@@ -111,7 +111,7 @@ describe('RelationForm', () => {
 
     expect(await screen.findByText('反向关系已存在')).toBeTruthy();
     expect(screen.getByRole('link', { name: '查看反向关系' }).getAttribute('href')).toBe(
-      `/relations?expanded=${reverse.id}`,
+      `/relations/${reverse.id}`,
     );
     fireEvent.click(screen.getByRole('button', { name: '创建关系' }));
     await waitFor(() =>
@@ -147,6 +147,9 @@ describe('RelationForm', () => {
       target: { value: '80' },
     });
     expect(await screen.findByText('该方向的因果关系已存在')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '查看已有关系' }).getAttribute('href')).toBe(
+      `/relations/${reverse.id}`,
+    );
     expect(screen.getByRole('button', { name: '创建关系' }).hasAttribute('disabled')).toBe(true);
     expect(submit).not.toHaveBeenCalled();
   });

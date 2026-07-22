@@ -72,8 +72,26 @@ export function RelationListPage() {
 
   function nextPage(): void {
     if (!relations.data?.nextCursor) return;
+    clearExpanded();
     setCursorStack((current) => [...current.slice(0, pageIndex + 1), relations.data!.nextCursor!]);
     setPageIndex((current) => current + 1);
+  }
+
+  function previousPage(): void {
+    if (pageIndex === 0) return;
+    clearExpanded();
+    setPageIndex((current) => Math.max(0, current - 1));
+  }
+
+  function clearExpanded(): void {
+    setSearchParameters(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete('expanded');
+        return next;
+      },
+      { replace: true },
+    );
   }
 
   return (
@@ -154,7 +172,9 @@ export function RelationListPage() {
                         </Link>
                       </td>
                       <td className="relation-direction" aria-label="导致">
-                        →
+                        <Link to={`/relations/${relation.id}`} aria-label="查看因果关系详情">
+                          →
+                        </Link>
                       </td>
                       <td>
                         <Link to={`/events/${relation.effectEvent.id}`}>
@@ -170,15 +190,18 @@ export function RelationListPage() {
                           {dateFormatter.format(new Date(relation.updatedAt))}
                         </time>
                       </td>
-                      <td>
+                      <td className="relation-row-actions">
                         <button
                           className="text-button"
                           type="button"
                           aria-expanded={expandedId === relation.id}
                           onClick={() => toggleDetail(relation.id)}
                         >
-                          {expandedId === relation.id ? '收起详情' : '查看详情'}
+                          {expandedId === relation.id ? '收起' : '展开'}
                         </button>
+                        <Link className="text-button" to={`/relations/${relation.id}/edit`}>
+                          编辑
+                        </Link>
                       </td>
                     </tr>
                     {expandedId === relation.id ? (
@@ -191,16 +214,6 @@ export function RelationListPage() {
                                 <span>关系说明</span>
                                 <p>{expanded.data.description ?? '未填写'}</p>
                               </div>
-                              <div>
-                                <span>创建时间</span>
-                                <p>{dateFormatter.format(new Date(expanded.data.createdAt))}</p>
-                              </div>
-                              <Link
-                                className="button button--secondary"
-                                to={`/relations/${relation.id}/edit`}
-                              >
-                                编辑关系
-                              </Link>
                               <div className="relation-inline-cases">
                                 <div className="relation-inline-cases__heading">
                                   <span>具体案例</span>
@@ -240,7 +253,7 @@ export function RelationListPage() {
             <button
               className="button button--secondary"
               type="button"
-              onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+              onClick={previousPage}
               disabled={pageIndex === 0}
             >
               上一页

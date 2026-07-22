@@ -40,6 +40,7 @@ function renderList(initialEntry = '/relations') {
       { path: '/relations', element: <RelationListPage /> },
       { path: '/relations/new', element: <div>创建关系</div> },
       { path: '/relations/:relationId/edit', element: <div>编辑关系</div> },
+      { path: '/relations/:relationId', element: <div>关系详情</div> },
       { path: '/events/:eventId', element: <div>事件详情</div> },
     ],
     { initialEntries: [initialEntry] },
@@ -55,7 +56,7 @@ function renderList(initialEntry = '/relations') {
 describe('RelationListPage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('renders directed rows and expands detail without leaving the list', async () => {
+  it('links the row entities and keeps expansion concise', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: string | URL | Request) =>
@@ -67,21 +68,62 @@ describe('RelationListPage', () => {
     const router = renderList();
 
     expect(await screen.findByText('原油价格上涨')).toBeTruthy();
-    expect(screen.getByText('→')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '原油价格上涨' }).getAttribute('href')).toBe(
+      `/events/${relation.causeEvent.id}`,
+    );
+    expect(screen.getByRole('link', { name: '查看因果关系详情' }).getAttribute('href')).toBe(
+      `/relations/${relation.id}`,
+    );
+    expect(screen.getByRole('link', { name: '编辑' }).getAttribute('href')).toBe(
+      `/relations/${relation.id}/edit`,
+    );
     expect(screen.getByText('82%')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '查看详情' }));
+    fireEvent.click(screen.getByRole('button', { name: '展开' }));
 
     expect(await screen.findByText('燃油成本传导')).toBeTruthy();
     expect(screen.getByText('2025年4月美国宣布新一轮关税措施')).toBeTruthy();
     expect(screen.getByRole('link', { name: '查看全部 6 条' }).getAttribute('href')).toBe(
       `/cases?relationId=${relation.id}`,
     );
-    expect(screen.getByRole('link', { name: '编辑关系' }).getAttribute('href')).toBe(
-      `/relations/${relation.id}/edit`,
-    );
+    expect(screen.queryByText('创建时间')).toBeNull();
+    expect(screen.queryByRole('link', { name: '编辑关系' })).toBeNull();
     await waitFor(() => expect(router.state.location.search).toContain(`expanded=${relation.id}`));
     await new Promise((resolve) => window.setTimeout(resolve, 350));
     expect(router.state.location.search).toContain(`expanded=${relation.id}`);
+  });
+
+  it('collapses expansion when moving to either adjacent page', async () => {
+    const nextRelation = {
+      ...relation,
+      id: '66666666-6666-4666-8666-666666666666',
+      causeEvent: { ...relation.causeEvent, name: '原油供应下降' },
+    };
+    const nextDetail = { ...detail, ...nextRelation, description: '下一页关系' };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes(`/api/relations/${nextRelation.id}`)) return jsonResponse(nextDetail);
+        if (url.includes(`/api/relations/${relation.id}`)) return jsonResponse(detail);
+        if (url.includes('cursor=next-page')) {
+          return jsonResponse({ items: [nextRelation], nextCursor: null, hasMore: false });
+        }
+        return jsonResponse({ items: [relation], nextCursor: 'next-page', hasMore: true });
+      }),
+    );
+    const router = renderList();
+
+    fireEvent.click(await screen.findByRole('button', { name: '展开' }));
+    await screen.findByText('燃油成本传导');
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await screen.findByText('原油供应下降');
+    expect(router.state.location.search).not.toContain('expanded=');
+
+    fireEvent.click(screen.getByRole('button', { name: '展开' }));
+    await screen.findByText('下一页关系');
+    fireEvent.click(screen.getByRole('button', { name: '上一页' }));
+    await screen.findByText('原油价格上涨');
+    expect(router.state.location.search).not.toContain('expanded=');
   });
 
   it('locates and expands a relation that is not on the current page', async () => {

@@ -1,0 +1,135 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { createMemoryRouter, RouterProvider } from 'react-router';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { AppProviders } from '../../../app/AppProviders';
+import { RelationDetailPage } from './RelationDetailPage';
+
+const detail = {
+  id: '11111111-1111-4111-8111-111111111111',
+  causeEvent: { id: '22222222-2222-4222-8222-222222222222', name: '原油价格上涨' },
+  effectEvent: { id: '33333333-3333-4333-8333-333333333333', name: '航空成本上升' },
+  confidence: 82,
+  caseCount: 2,
+  description: '燃油成本传导',
+  createdAt: '2026-07-20T03:00:00.000Z',
+  updatedAt: '2026-07-21T03:00:00.000Z',
+  recentCases: [],
+};
+
+const caseOne = {
+  id: '44444444-4444-4444-8444-444444444444',
+  content: '案例一',
+  relationCount: 1,
+  updatedAt: '2026-07-21T03:00:00.000Z',
+};
+const caseTwo = {
+  id: '55555555-5555-4555-8555-555555555555',
+  content: '案例二',
+  relationCount: 1,
+  updatedAt: '2026-07-21T04:00:00.000Z',
+};
+
+function response(body: unknown, status = 200) {
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as Response);
+}
+
+function renderDetail() {
+  const router = createMemoryRouter(
+    [
+      { path: '/relations/:relationId', element: <RelationDetailPage /> },
+      { path: '/relations', element: <div>关系列表</div> },
+      { path: '/relations/:relationId/edit', element: <div>编辑关系</div> },
+      { path: '/events/:eventId', element: <div>事件详情</div> },
+      { path: '/cases/:caseId', element: <div>案例详情</div> },
+    ],
+    { initialEntries: [`/relations/${detail.id}`] },
+  );
+  render(
+    <AppProviders>
+      <RouterProvider router={router} />
+    </AppProviders>,
+  );
+  return router;
+}
+
+describe('RelationDetailPage', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows relation fields and combines every linked-case page', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) => {
+        const url = String(input);
+        if (url.startsWith('/api/cases?')) {
+          return url.includes('cursor=next-page')
+            ? response({ items: [caseTwo], nextCursor: null, hasMore: false })
+            : response({ items: [caseOne], nextCursor: 'next-page', hasMore: true });
+        }
+        return response(detail);
+      }),
+    );
+    renderDetail();
+
+    expect(await screen.findByRole('heading', { name: /原油价格上涨.*航空成本上升/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '原油价格上涨' }).getAttribute('href')).toBe(
+      `/events/${detail.causeEvent.id}`,
+    );
+    expect(screen.getByRole('link', { name: '编辑因果关系' }).getAttribute('href')).toBe(
+      `/relations/${detail.id}/edit`,
+    );
+    expect(await screen.findByRole('link', { name: '案例一' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: '案例二' })).toBeTruthy();
+    expect(screen.getByText('燃油成本传导')).toBeTruthy();
+    expect(screen.getByText('82%')).toBeTruthy();
+  });
+
+  it('shows an empty linked-case state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response({ ...detail, caseCount: 0 })),
+    );
+    renderDetail();
+
+    expect(await screen.findByText('尚未关联具体案例')).toBeTruthy();
+  });
+
+  it('preserves the first case page and retries only a failed later page', async () => {
+    let secondPageAttempts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) => {
+        const url = String(input);
+        if (!url.startsWith('/api/cases?')) return response(detail);
+        if (!url.includes('cursor=next-page')) {
+          return response({ items: [caseOne], nextCursor: 'next-page', hasMore: true });
+        }
+        secondPageAttempts += 1;
+        return secondPageAttempts === 1
+          ? response({ code: 'INTERNAL_ERROR', message: '服务暂时不可用' }, 500)
+          : response({ items: [caseTwo], nextCursor: null, hasMore: false });
+      }),
+    );
+    renderDetail();
+
+    expect(await screen.findByRole('link', { name: '案例一' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: '重试加载其余案例' }));
+    expect(await screen.findByRole('link', { name: '案例二' })).toBeTruthy();
+    expect(secondPageAttempts).toBe(2);
+  });
+
+  it('shows an error state when the relation is missing', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response({ code: 'NOT_FOUND', message: '因果关系不存在' }, 404)),
+    );
+    renderDetail();
+
+    expect((await screen.findByRole('alert')).textContent).toContain('无法读取因果关系');
+    await waitFor(() => expect(screen.getByRole('link', { name: '返回关系列表' })).toBeTruthy());
+  });
+});

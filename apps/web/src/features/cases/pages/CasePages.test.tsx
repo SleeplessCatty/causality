@@ -71,16 +71,25 @@ describe('case pages', () => {
   });
 
   it('shows detail relations and edits a case', async () => {
+    const linkedRelation = {
+      id: '22222222-2222-4222-8222-222222222222',
+      causeEvent: { id: '33333333-3333-4333-8333-333333333333', name: '测试原因' },
+      effectEvent: { id: '44444444-4444-4444-8444-444444444444', name: '测试结果' },
+      linkedAt: '2026-07-21T03:00:00.000Z',
+    };
     const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
       if (init?.method === 'PUT') return response({ ...detail, content: '更新后的案例' });
       if (String(input).includes('/relations'))
-        return response({ items: [], nextCursor: null, hasMore: false });
+        return response({ items: [linkedRelation], nextCursor: null, hasMore: false });
       return response(detail);
     });
     vi.stubGlobal('fetch', fetchMock);
     renderRoute('/cases/:caseId', <CaseDetailPage />);
     expect(await screen.findByText(detail.content)).toBeTruthy();
     expect(screen.getByRole('link', { name: '编辑案例' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /测试原因.*测试结果/ }).getAttribute('href')).toBe(
+      `/relations/${linkedRelation.id}`,
+    );
   });
 
   it('loads and replaces case content', async () => {

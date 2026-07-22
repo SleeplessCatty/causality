@@ -24,7 +24,7 @@ export function RelationCreatePage() {
       queryClient.invalidateQueries({ queryKey: ['relations', 'list'] }),
       queryClient.invalidateQueries({ queryKey: ['cases'] }),
     ]);
-    navigate(`/relations?expanded=${relation.id}`, { state: { notice: '因果关系已创建' } });
+    navigate(`/relations/${relation.id}`, { state: { notice: '因果关系已创建' } });
   }
 
   return (

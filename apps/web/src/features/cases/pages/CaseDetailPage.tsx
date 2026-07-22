@@ -90,7 +90,7 @@ export function CaseDetailPage() {
           <ul className="case-relation-list">
             {relations.data.items.map((relation) => (
               <li key={relation.id}>
-                <Link to={`/relations?expanded=${relation.id}`}>
+                <Link to={`/relations/${relation.id}`}>
                   <span>{relation.causeEvent.name}</span>
                   <strong aria-hidden="true">→</strong>
                   <span>{relation.effectEvent.name}</span>

@@ -146,13 +146,13 @@ export function RelationForm({
           {pair.data?.sameDirection ? (
             <div className="relation-pair-notice relation-pair-notice--error" role="alert">
               <span>该方向的因果关系已存在</span>
-              <Link to={`/relations?expanded=${pair.data.sameDirection.id}`}>查看已有关系</Link>
+              <Link to={`/relations/${pair.data.sameDirection.id}`}>查看已有关系</Link>
             </div>
           ) : null}
           {pair.data?.reverseDirection ? (
             <div className="relation-pair-notice" role="status">
               <span>反向关系已存在</span>
-              <Link to={`/relations?expanded=${pair.data.reverseDirection.id}`}>查看反向关系</Link>
+              <Link to={`/relations/${pair.data.reverseDirection.id}`}>查看反向关系</Link>
             </div>
           ) : null}
 

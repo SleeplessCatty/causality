@@ -895,6 +895,30 @@ body {
   padding: 16px 18px 18px;
 }
 
+.relation-row-actions {
+  white-space: nowrap;
+}
+
+.relation-row-actions > * + * {
+  margin-left: 12px;
+}
+
+.relation-direction a {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  color: inherit;
+  text-decoration: none;
+}
+
+.relation-direction a:hover,
+.relation-direction a:focus-visible {
+  background: #e7f1eb;
+  outline: 0;
+}
+
 .relation-inline-detail span {
   color: #6a766f;
   font-size: 11px;
@@ -1198,6 +1222,53 @@ body {
   padding: 34px 0;
   color: #758078;
   font-size: 13px;
+}
+
+.relation-detail-heading h1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.relation-detail-heading h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.relation-detail-heading h1 a:hover {
+  color: #176348;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.relation-detail-heading h1 span {
+  color: #3d745f;
+  font-size: 0.82em;
+}
+
+.relation-detail-case-list li {
+  display: block;
+}
+
+.relation-detail-case-list a {
+  display: block;
+  color: #27483a;
+  font-weight: 620;
+  text-decoration: none;
+}
+
+.relation-detail-case-list a:hover {
+  color: #176348;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.case-relations__state--inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .case-relation-list {
