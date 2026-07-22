@@ -333,7 +333,7 @@ git commit -m "build: add Web production image"
 - Consumes: API and Web Dockerfiles from Tasks 1–2.
 - Produces: services `postgres`, `migrate`, `api`, `web`, and opt-in `seed`; named volume `causality-postgres-data`; root command `pnpm test:compose`; development PostgreSQL host mapping only in `compose.dev.yaml`.
 
-- [ ] **Step 1: Write the failing Compose contract test**
+- [x] **Step 1: Write the failing Compose contract test**
 
 Create `tests/production/compose-contract.test.mjs`:
 
@@ -375,7 +375,7 @@ test('development override exposes only PostgreSQL on loopback', () => {
 });
 ```
 
-- [ ] **Step 2: Add the failing root script and observe the topology failure**
+- [x] **Step 2: Add the failing root script and observe the topology failure**
 
 Add to root `package.json`:
 
@@ -395,7 +395,7 @@ pnpm test:compose
 
 Expected: FAIL because only `postgres` exists and it still exposes port 5432.
 
-- [ ] **Step 3: Replace `compose.yaml` with the production topology**
+- [x] **Step 3: Replace `compose.yaml` with the production topology**
 
 Implement these exact service contracts:
 
@@ -484,7 +484,7 @@ volumes:
   causality-postgres-data:
 ```
 
-- [ ] **Step 4: Add the development-only database port mapping**
+- [x] **Step 4: Add the development-only database port mapping**
 
 Create `compose.dev.yaml`:
 
@@ -495,7 +495,7 @@ services:
       - '127.0.0.1:5432:5432'
 ```
 
-- [ ] **Step 5: Preserve the existing source E2E database startup**
+- [x] **Step 5: Preserve the existing source E2E database startup**
 
 In root `package.json`, change only the Compose portion of `test:e2e` to:
 
@@ -505,7 +505,7 @@ In root `package.json`, change only the Compose portion of `test:e2e` to:
 
 Keep the existing contracts build, migration, seed, and Playwright commands after it.
 
-- [ ] **Step 6: Verify static topology and source-development compatibility**
+- [x] **Step 6: Verify static topology and source-development compatibility**
 
 Run:
 
@@ -520,7 +520,7 @@ pnpm db:verify
 
 Expected: all commands PASS; production config publishes only Web; development config makes the existing local database tools work.
 
-- [ ] **Step 7: Commit the Compose topology task**
+- [x] **Step 7: Commit the Compose topology task**
 
 ```bash
 git add compose.yaml compose.dev.yaml package.json tests/production/compose-contract.test.mjs

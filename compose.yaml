@@ -1,3 +1,15 @@
+x-api-image: &api-image
+  image: causality-api:local
+  build:
+    context: .
+    dockerfile: apps/api/Dockerfile
+
+x-api-environment: &api-environment
+  NODE_ENV: production
+  DATABASE_URL: postgresql://causality:causality@postgres:5432/causality
+  CORS_ORIGIN: http://127.0.0.1:${CAUSALITY_WEB_PORT:-8080}
+  LOG_LEVEL: ${CAUSALITY_LOG_LEVEL:-info}
+
 services:
   postgres:
     image: postgres:18.4-alpine
@@ -5,8 +17,6 @@ services:
       POSTGRES_DB: causality
       POSTGRES_USER: causality
       POSTGRES_PASSWORD: causality
-    ports:
-      - '5432:5432'
     volumes:
       - causality-postgres-data:/var/lib/postgresql
     healthcheck:
@@ -14,6 +24,63 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+    restart: unless-stopped
+
+  migrate:
+    <<: *api-image
+    environment: *api-environment
+    command: ['node', 'dist/database/migrate.js']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    <<: *api-image
+    environment: *api-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/api/ready')
+          .then((response) => { if (!response.ok) process.exit(1); })
+          .catch(() => process.exit(1));
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  web:
+    image: causality-web:local
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - '127.0.0.1:${CAUSALITY_WEB_PORT:-8080}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8080/health']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  seed:
+    <<: *api-image
+    profiles: ['tools']
+    environment: *api-environment
+    command: ['node', 'dist/database/test-data/fixedSeed.js']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: 'no'
 
 volumes:
   causality-postgres-data:
