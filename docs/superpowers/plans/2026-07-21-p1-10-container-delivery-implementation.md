@@ -194,17 +194,18 @@ git commit -m "build: add API production image"
 - Consumes: Web Vite build output and internal Compose hostname `api:3000`.
 - Produces: unprivileged Web image listening on container port 8080, `/health`, SPA fallback, immutable asset caching, and `/api` reverse proxy.
 
-- [ ] **Step 1: Write the failing Web container contract test**
+- [x] **Step 1: Write the failing Web container contract test**
 
 Create `apps/web/src/productionContainer.test.ts`:
 
 ```ts
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('Web production container', () => {
   it('serves the SPA and proxies API requests from an unprivileged port', () => {
-    const nginx = readFileSync(new URL('../nginx.conf', import.meta.url), 'utf8');
+    const nginx = readFileSync(resolve(process.cwd(), 'nginx.conf'), 'utf8');
     expect(nginx).toContain('listen 8080');
     expect(nginx).toContain('location = /health');
     expect(nginx).toContain('proxy_pass http://api:3000');
@@ -212,14 +213,14 @@ describe('Web production container', () => {
   });
 
   it('pins the unprivileged Nginx runtime image', () => {
-    const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
+    const dockerfile = readFileSync(resolve(process.cwd(), 'Dockerfile'), 'utf8');
     expect(dockerfile).toContain('nginxinc/nginx-unprivileged:1.29.4-alpine');
     expect(dockerfile).not.toContain(':latest');
   });
 });
 ```
 
-- [ ] **Step 2: Run the focused test and observe the expected failure**
+- [x] **Step 2: Run the focused test and observe the expected failure**
 
 Run:
 
@@ -229,7 +230,7 @@ pnpm --filter @causality/web exec vitest run src/productionContainer.test.ts
 
 Expected: FAIL with `ENOENT` for `nginx.conf` or `Dockerfile`.
 
-- [ ] **Step 3: Create the Nginx configuration**
+- [x] **Step 3: Create the Nginx configuration**
 
 Create `apps/web/nginx.conf`:
 
@@ -267,7 +268,7 @@ server {
 }
 ```
 
-- [ ] **Step 4: Create the multi-stage Web Dockerfile**
+- [x] **Step 4: Create the multi-stage Web Dockerfile**
 
 Create `apps/web/Dockerfile`:
 
@@ -276,6 +277,7 @@ FROM node:24.18.0-alpine AS build
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+ENV CI=true
 WORKDIR /workspace
 
 RUN corepack enable && corepack prepare pnpm@11.15.1 --activate
@@ -297,7 +299,7 @@ COPY --from=build /workspace/apps/web/dist /usr/share/nginx/html
 EXPOSE 8080
 ```
 
-- [ ] **Step 5: Verify Web tests, build, and image**
+- [x] **Step 5: Verify Web tests, build, and image**
 
 Run:
 
@@ -310,7 +312,7 @@ docker image inspect causality-web:p1-10 --format '{{.Config.User}} {{.Config.Ex
 
 Expected: focused test and Vite build PASS; image build succeeds; runtime exposes `8080/tcp` and uses the unprivileged image user.
 
-- [ ] **Step 6: Commit the Web image task**
+- [x] **Step 6: Commit the Web image task**
 
 ```bash
 git add apps/web/Dockerfile apps/web/nginx.conf apps/web/src/productionContainer.test.ts
