@@ -8,6 +8,8 @@
 
 **Tech Stack:** React 19.2.7, React Router 8.2.0, TanStack Query 5.101.3, TypeScript 6.0.2, CSS, Testing Library 16.3.2, Vitest 4.1.10, Playwright 1.61.1.
 
+**Implementation Status:** 开发与自动化测试完成，等待人工复核。第二阶段仍为未开始。
+
 ## Global Constraints
 
 - Implement only `docs/stages/pre-phase-2/UX-01-compact-layout-full-canvas-graph-design.md`.
@@ -686,3 +688,14 @@ git commit -m "test: prepare UX-01 manual acceptance"
 - [ ] **Step 8: Hand off the manual browser checklist**
 
 Ask the user to inspect sidebar animation and persistence, ordinary-page density, graph toolbar centering, all discrete query choices, refresh/error behavior, overlay status, inspector slide animation, keyboard controls, and 1280×720 overflow. Only after explicit acceptance may UX-01 be marked complete or Phase 2 planning resume.
+
+## Automated Verification Record
+
+Recorded on 2026-07-22:
+
+- Unit tests: `182` passed (`25` Contracts, `63` API, `94` Web).
+- API integration tests: `45` passed.
+- Source E2E: `11` passed.
+- `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff --check`: passed.
+- In-app browser review at `1280×720`: toolbar `1080×52`, center delta at most `1px`, canvas `1224×720` with the sidebar collapsed, no inspector-induced canvas resize, no horizontal overflow, ordinary table rows `56px`.
+- Known non-blocking warning: the existing lazy causal-graph production chunk remains larger than Vite's `500 kB` warning threshold.

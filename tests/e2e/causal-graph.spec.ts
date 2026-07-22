@@ -13,7 +13,7 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   await page.goto('/events');
   await page.getByRole('link', { name: '因果图' }).click();
   await expect(page).toHaveURL(/\/graph$/);
-  await expect(page.getByRole('heading', { name: '局部因果图' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '局部因果图工作台' })).toBeVisible();
   await expect(page.getByText('搜索并选择一个中心事件')).toBeVisible();
 
   const selector = page.getByRole('combobox', { name: '中心事件' });
@@ -40,23 +40,20 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
     String(initialGraph.meta.relationCount),
   );
 
-  for (const target of [
-    { name: '只看上游', direction: 'upstream' },
-    { name: '只看下游', direction: 'downstream' },
-    { name: '查看上游和下游', direction: 'both' },
-  ] as const) {
+  const directionSelect = page.getByRole('combobox', { name: '查询方向' });
+  for (const direction of ['upstream', 'downstream', 'both'] as const) {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().includes('/api/causal-graph?') &&
-        response.url().includes(`direction=${target.direction}`),
+        response.url().includes(`direction=${direction}`),
     );
-    await page.getByRole('radio', { name: target.name }).click();
+    await directionSelect.selectOption(direction);
     const response = await responsePromise;
     expect(response.status()).toBe(200);
     const body = (await response.json()) as {
       meta: { nodeCount: number; relationCount: number };
     };
-    await expect(page).toHaveURL(new RegExp(`direction=${target.direction}`));
+    await expect(page).toHaveURL(new RegExp(`direction=${direction}`));
     await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
     await expect(canvas).toHaveAttribute('data-node-count', String(body.meta.nodeCount));
     await expect(canvas).toHaveAttribute('data-relation-count', String(body.meta.relationCount));

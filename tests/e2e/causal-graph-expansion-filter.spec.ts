@@ -30,7 +30,7 @@ async function createDenseGraph(request: APIRequestContext) {
   return candidates.items[0];
 }
 
-test('user can expand, filter, restore, and retry a dense local graph', async ({
+test('user can change node limits, filter, restore, and retry a dense local graph', async ({
   page,
   request,
 }, testInfo) => {
@@ -47,7 +47,9 @@ test('user can expand, filter, restore, and retry a dense local graph', async ({
   const canvas = page.getByRole('application', { name: new RegExp(center.name) });
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '21');
-  await expect(page.getByRole('button', { name: '扩展至 50 节点' })).toBeVisible();
+  const nodeLimit = page.getByRole('combobox', { name: '节点上限' });
+  const minConfidence = page.getByRole('combobox', { name: '最低置信度' });
+  const minCaseCount = page.getByRole('combobox', { name: '最少案例数' });
 
   let failNextFiftyRequest = true;
   await page.route('**/api/causal-graph?**', async (route) => {
@@ -64,46 +66,42 @@ test('user can expand, filter, restore, and retry a dense local graph', async ({
     await route.continue();
   });
 
-  await page.getByRole('button', { name: '扩展至 50 节点' }).click();
+  await nodeLimit.selectOption('50');
   await expect(page).toHaveURL(/limit=50/);
-  await expect(page.getByText('查询失败，仍显示上一查询结果')).toBeVisible();
+  await expect(page.getByText('查询失败，保留当前图')).toBeVisible();
   await expect(canvas).toHaveAttribute('data-node-count', '21');
-  await page.getByRole('button', { name: '重试' }).click();
+  await page.getByRole('button', { name: '重试因果图查询' }).click();
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '51');
-  await expect(page.getByRole('button', { name: '扩展至 100 节点' })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('causal-graph-50-nodes.png'),
   });
 
-  await page.getByRole('button', { name: '扩展至 100 节点' }).click();
+  await nodeLimit.selectOption('100');
   await expect(page).toHaveURL(/limit=100/);
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '101');
-  await expect(page.getByText('已达到 100 节点显示上限')).toBeVisible();
   const zoomText = await page.getByLabel('当前缩放比例').textContent();
   expect(Number.parseInt(zoomText ?? '0', 10)).toBeGreaterThanOrEqual(60);
 
-  await page.getByRole('button', { name: '调整筛选' }).click();
-  await expect(page.getByRole('region', { name: '筛选因果关系' })).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath('causal-graph-100-filter.png'),
-  });
-  await page.getByRole('textbox', { name: '最少案例数' }).fill('999');
-  await page.getByRole('button', { name: '应用筛选' }).click();
-  await expect(page).toHaveURL(/limit=20.*minConfidence=0.*minCaseCount=999/);
+  await minConfidence.selectOption('90');
+  await minCaseCount.selectOption('10');
+  await expect(page).toHaveURL(/limit=100.*minConfidence=90.*minCaseCount=10/);
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '1');
-  await expect(page.getByText('当前条件下已展示全部可达内容')).toBeVisible();
-  await expect(page.getByRole('button', { name: /扩展至/ })).toHaveCount(0);
-
-  await page.getByRole('button', { name: '筛选 1' }).click();
-  await page.getByRole('button', { name: '重置筛选' }).click();
-  await expect(page).toHaveURL(/limit=20.*minConfidence=0.*minCaseCount=0/);
-  await expect(canvas).toHaveAttribute('data-node-count', '21');
-  await page.goBack();
-  await expect(page).toHaveURL(/minCaseCount=999/);
+  await page.screenshot({
+    path: testInfo.outputPath('causal-graph-filtered.png'),
+  });
+  await page.reload();
+  await expect(minConfidence).toHaveValue('90');
+  await expect(minCaseCount).toHaveValue('10');
   await expect(canvas).toHaveAttribute('data-node-count', '1');
+
+  await minCaseCount.selectOption('0');
+  await minConfidence.selectOption('0');
+  await expect(page).toHaveURL(/limit=100.*minConfidence=0.*minCaseCount=0/);
+  await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
+  await expect(canvas).toHaveAttribute('data-node-count', '101');
 
   expect(browserErrors).toEqual([
     'Failed to load resource: the server responded with a status of 500 (Internal Server Error)',
