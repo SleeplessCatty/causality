@@ -11,8 +11,9 @@
 ## Global Constraints
 
 - 本轮只做第一期正式发布整改，不加入 AI、语义搜索、自动推理、用户系统、删除功能或移动端适配。
-- 保持现有数据库业务含义、REST 路径、响应结构和桌面端视觉风格；需要增加的唯一 API 输入限制是单次关系表单最多关联 `1,000` 条具体案例。
+- 保持现有数据库业务含义、REST 路径和桌面端视觉风格；允许三个主列表 API 将游标响应改为页码响应，并保留单次关系表单最多关联 `1,000` 条具体案例的输入限制。
 - 候选搜索仍不限制匹配结果总数，不显示匹配原因、分页批次或完整匹配数量。
+- 原子事件、因果关系和具体案例三个主列表固定默认每页 `30` 条，支持页码、任意页跳转、当前页、总页数和总条目数；候选搜索、案例详情关系和关系详情案例继续使用游标“加载更多”。
 - 局部图响应仍最多包含 `100` 个非中心节点和 `1,000` 条关系；节点预算必须同时约束数据库遍历工作量。
 - 案例详情每批显示 `30` 条关联关系，关系详情每批显示 `100` 条关联案例；两者都由用户显式点击“加载更多”，不自动读取全部分页。
 - 所有数据库结构变化使用新增迁移完成；禁止修改已执行迁移、静默截断用户数据或要求重建数据库。
@@ -607,7 +608,133 @@ git commit -m "refactor: remove duplicated infrastructure and dead resources"
 
 ---
 
-### Task 7: 重写正式 README、记录 Roadmap 并完成发布候选验证
+### Task 7: 为三个主列表增加完整页码导航
+
+**Files:**
+
+- Create: `packages/contracts/src/pagination/pageSchemas.ts`
+- Modify: `packages/contracts/src/index.ts`
+- Modify: `packages/contracts/src/events/eventSchemas.ts`
+- Modify: `packages/contracts/src/cases/caseSchemas.ts`
+- Modify: `packages/contracts/src/relations/relationSchemas.ts`
+- Modify: `packages/contracts/test/{events,cases,relations}.test.ts`
+- Modify: `apps/api/src/features/{events,cases,relations}/*Repository.ts`
+- Modify: `apps/api/test/{events,cases,relations}.integration.test.ts`
+- Create: `apps/web/src/shared/pagination/ListPagination.tsx`
+- Create: `apps/web/src/shared/pagination/ListPagination.test.tsx`
+- Modify: `apps/web/src/features/{events,cases,relations}/api/*.ts`
+- Modify: `apps/web/src/features/events/pages/EventListPage.tsx`
+- Modify: `apps/web/src/features/cases/pages/CaseListPage.tsx`
+- Modify: `apps/web/src/features/relations/pages/RelationListPage.tsx`
+- Modify: `apps/web/src/features/events/pages/EventListPage.test.tsx`
+- Modify: `apps/web/src/features/cases/pages/CasePages.test.tsx`
+- Modify: `apps/web/src/features/relations/pages/RelationListPage.test.tsx`
+- Modify: `apps/web/src/styles/events.css`
+- Modify: `tests/e2e/{events,cases,relations}.spec.ts`
+
+**Interfaces:**
+
+- 三个主列表查询统一使用：
+
+```ts
+{
+  q: string;
+  page: number; // default 1, min 1, max 100_000
+  limit: number; // default 30, min 1, max 100
+}
+```
+
+- 案例列表继续额外支持 `relationId?: string`。
+- 三个主列表响应统一为：
+
+```ts
+{
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number; // 即使没有结果也至少为 1
+}
+```
+
+- 主列表不再返回 `nextCursor` 和 `hasMore`。候选接口、案例详情关系接口和关系详情案例接口的游标契约保持不变。
+- Produces:
+
+```ts
+export interface ListPaginationProps {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  disabled?: boolean;
+  onPageChange(page: number): void;
+}
+```
+
+- [ ] **Step 1: 先写主列表页码契约失败测试**
+
+三个主列表 Query 测试固定验证：默认 `page=1`、默认 `limit=30`、拒绝 `page=0`、负数、小数和大于 `100_000` 的页码；主列表 Response 必须包含 `page/pageSize/totalItems/totalPages`，且不再接受 `nextCursor/hasMore`。候选和详情分页测试继续验证原游标结构。
+
+- [ ] **Step 2: 运行 Contracts 测试并确认旧契约失败**
+
+Run: `pnpm --filter @causality/contracts test`
+
+Expected: FAIL，旧主列表只接受 `cursor`，响应没有页码和总数元数据。
+
+- [ ] **Step 3: 写三个 Repository 的页码与总数失败测试**
+
+每个资源至少准备 `31` 条记录并验证：第一页 `30` 条、第二页剩余 `1` 条、`totalItems=31`、`totalPages=2`；搜索结果的总数只统计匹配项；案例 `relationId` 筛选总数只统计关联案例；请求超过最后一页时 Repository 把有效页钳制到最后一页。排序必须保持当前确定性规则，不因改成 OFFSET 而变化。
+
+- [ ] **Step 4: 实现主列表页码 SQL**
+
+三个 Repository 先用与数据查询完全相同的筛选条件得到 `totalItems`，再计算：
+
+```ts
+const totalPages = Math.max(1, Math.ceil(totalItems / query.limit));
+const page = Math.min(query.page, totalPages);
+const offset = (page - 1) * query.limit;
+```
+
+随后使用参数化 `LIMIT`/`OFFSET` 读取当前页。搜索 CTE、别名/关键词匹配、关系案例计数和案例关系筛选语义保持不变。禁止为了得到某页而顺序读取前面所有游标；不得将 `page` 或 `offset` 拼接进 SQL。
+
+- [ ] **Step 5: 实现紧凑的共享页码组件**
+
+组件始终显示：`共 N 条 · 第 P/T 页`、上一页、下一页、页码按钮和 `跳至 [输入框] 页`。页码规则固定为首页、末页和当前页前后各 `2` 页，缺口用不可点击省略号表示；当前页使用 `aria-current="page"`。上一页/下一页在边界禁用。跳转输入只接受整数 `1..totalPages`，按 Enter 或点击“跳转”执行；空值和非法值不改变页面。组件不发请求，只调用 `onPageChange`。
+
+- [ ] **Step 6: 将三个列表页改为 URL 页码状态**
+
+三个列表从 `page` 查询参数读取当前页，缺失或非法时使用 `1`。搜索词或案例 `relationId` 筛选发生变化时删除 `page` 并回到第 `1` 页；翻页和跳转写入 URL，因此刷新、浏览器前进/后退能恢复页面。关系列表切换页码时继续清除 `expanded`。Query Key 必须包含 `page`，API 请求发送 `page` 和固定 `limit=30`，删除三个页面的 `cursorStack`。
+
+当后端因总数变化把页码钳制到最后一页时，页面使用 `replace` 把响应中的有效页同步回 URL，不产生历史记录循环。加载新页时保留现有表格直到新数据返回，分页控件在请求中禁用，避免重复跳转。
+
+- [ ] **Step 7: 增加组件、页面和真实浏览器回归测试**
+
+组件测试覆盖少于 `7` 页、很多页的省略号、边界禁用、当前页、点击页码、合法/非法输入跳转。三个页面测试覆盖总数信息、下一页、上一页、点击具体页码、输入任意页、搜索后回第一页、浏览器 URL 页码恢复；关系页面额外验证翻页后详情收起。E2E 为三个资源各准备至少 `31` 条可识别记录，验证第一页/第二页及总数信息；事件 E2E 额外准备超过 `210` 条记录，验证从第一页直接跳至第 `8` 页而不顺序请求中间页。
+
+- [ ] **Step 8: 运行任务门禁**
+
+Run:
+
+```bash
+pnpm --filter @causality/contracts test
+pnpm --filter @causality/api test
+pnpm --filter @causality/web test
+pnpm test:integration
+pnpm typecheck
+pnpm test:e2e
+```
+
+Expected: Contracts、API、Web、集成和 E2E 全部通过；三个主列表均能直接跳页，候选和详情“加载更多”行为不变。
+
+- [ ] **Step 9: 提交主列表分页功能**
+
+```bash
+git add packages/contracts apps/api apps/web tests/e2e
+git commit -m "feat: add numbered pagination to resource lists"
+```
+
+---
+
+### Task 8: 重写正式 README、记录 Roadmap 并完成发布候选验证
 
 **Files:**
 
@@ -631,7 +758,7 @@ README 只保留以下章节和顺序：
 2. `核心能力`：事件与多别名/关键词、带置信度的有向关系、可复用真实案例、局部因果图、传统搜索。
 3. `快速开始`：Docker 要求、`docker compose up -d --build --wait`、访问 `http://127.0.0.1:8080`。
 4. `数据与持久化`：空库启动、显式示例种子、命名卷、停止和危险重置。
-5. `使用说明`：分别简述事件、关系、案例和局部图操作；案例上限写 100 字；图参数变化按最终实现描述。
+5. `使用说明`：分别简述事件、关系、案例和局部图操作；说明三个主列表每页 30 条并支持页码和直接跳转；案例上限写 100 字；图参数变化按最终实现描述。
 6. `配置`：`CAUSALITY_WEB_PORT`、`CAUSALITY_LOG_LEVEL` 和 Docker Context 行为。
 7. `源码开发`：准确的安装、环境文件、开发 PostgreSQL 和 `pnpm dev` 命令。
 8. `API`：仅列资源和入口，不重复完整 OpenAPI Schema；说明 `/api/health` 是进程存活、`/api/ready` 是数据库就绪。
@@ -685,7 +812,7 @@ Expected:
 
 - [ ] **Step 4: 进行桌面端人工复核**
 
-用户在至少 1280×720 下复核：案例详情加载第 31 条关系；关系详情加载第二批案例；图页面直接 URL 恢复、20/50/100 节点、方向和筛选；事件关键词搜索；关系一次关联多条新案例；系统状态；生产容器重启后数据持久化。
+用户在至少 1280×720 下复核：三个主列表的总条目数、当前/总页数、页码按钮、上一页/下一页和任意页跳转；案例详情加载第 31 条关系；关系详情加载第二批案例；图页面直接 URL 恢复、20/50/100 节点、方向和筛选；事件关键词搜索；关系一次关联多条新案例；系统状态；生产容器重启后数据持久化。
 
 - [ ] **Step 5: 记录最终验证但不污染 README**
 
@@ -710,9 +837,10 @@ git commit -m "docs: prepare v0.1.0 GitHub release documentation"
 4. Task 4：完成关键词索引迁移；
 5. Task 5：统一前端数据访问和详情分页；
 6. Task 6：清理重复基础设施、死代码和无效依赖；
-7. Task 7：重写 README、执行全部门禁和人工复核。
+7. Task 7：为事件、关系和案例主列表增加完整页码导航；
+8. Task 8：重写 README、执行全部门禁和人工复核。
 
-每个 Task 完成局部自动化后先报告结果；涉及页面的 Task 1、Task 5 和最终 Task 7 必须提供人工复核路径。任何一步失败都停留在该步修复，不带着已知失败进入下一步。
+每个 Task 完成局部自动化后先报告结果；涉及页面的 Task 1、Task 5、Task 7 和最终 Task 8 必须提供人工复核路径。任何一步失败都停留在该步修复，不带着已知失败进入下一步。
 
 ## 3. 明确不在本轮解决的 Roadmap 项
 
@@ -728,7 +856,7 @@ git commit -m "docs: prepare v0.1.0 GitHub release documentation"
 ## 4. 计划自检
 
 - 审计中的生产烟雾、案例详情遗漏、图查询无界、关系案例串行写入、关键词搜索、关系详情全量读取、重复 HTTP、重复 SQL 工具、重复集成环境、模拟内存、死 CSS、无效依赖、重复候选键、重复中心请求、README 过期和图包 Roadmap 均有对应任务。
-- 数据库迁移不修改历史迁移，API 响应不发生破坏性变化。
+- 数据库迁移不修改历史迁移；仅三个主列表 API 按新增需求从游标响应切换为页码响应，候选和详情分页 API 保持兼容。
 - 所有新增限制、分页批次和性能边界都有明确数值和测试位置。
 - README 重写范围不包含内部开发流水账，也不声明仓库当前不存在的许可证、CI 或远程地址。
 - 计划不包含未定义占位项；实施结束条件是自动化全部通过并获得用户人工复核确认。
