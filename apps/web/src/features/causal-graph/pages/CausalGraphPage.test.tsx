@@ -548,6 +548,12 @@ describe('CausalGraphPage', () => {
     expect(screen.getByText('节点 2')).toBeTruthy();
     expect(screen.getByText('工具栏：原油价格上涨 · upstream')).toBeTruthy();
     expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
-    expect(screen.getByRole('button', { name: '重试因果图查询' })).toBeTruthy();
+    const retry = screen.getByRole('button', { name: '重试因果图查询' });
+    const graphCallsBeforeRetry = vi.mocked(getCausalGraph).mock.calls.length;
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(vi.mocked(getCausalGraph)).toHaveBeenCalledTimes(graphCallsBeforeRetry + 1),
+    );
+    expect(getEvent).not.toHaveBeenCalled();
   });
 });

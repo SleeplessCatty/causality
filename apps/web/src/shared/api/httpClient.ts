@@ -24,21 +24,27 @@ export async function requestJson(
   signal?: AbortSignal,
   timeoutMilliseconds = defaultTimeoutMilliseconds,
 ): Promise<unknown> {
+  const headers = new Headers(options.headers);
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+  if (options.body != null && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
   const response = await fetch(url, {
     ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body != null ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
+    headers,
     signal: withTimeout(signal, timeoutMilliseconds),
   });
-  const body: unknown = await response.json();
 
   if (!response.ok) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new ApiClientError(unavailableError);
+    }
     const parsed = apiErrorSchema.safeParse(body);
     throw new ApiClientError(parsed.success ? parsed.data : unavailableError);
   }
 
-  return body;
+  return response.json();
 }

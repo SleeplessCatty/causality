@@ -93,6 +93,11 @@ describe('RelationDetailPage', () => {
     expect(
       vi.mocked(fetch).mock.calls.filter(([input]) => String(input).startsWith('/api/cases?')),
     ).toHaveLength(1);
+    expect(
+      String(
+        vi.mocked(fetch).mock.calls.find(([input]) => String(input).startsWith('/api/cases?'))?.[0],
+      ),
+    ).toContain('limit=100');
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
     expect(await screen.findByRole('link', { name: '案例二' })).toBeTruthy();
     expect(screen.getByText('燃油成本传导')).toBeTruthy();

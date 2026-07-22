@@ -49,6 +49,23 @@ describe('requestJson', () => {
     );
   });
 
+  it.each([
+    ['HTML', new SyntaxError('Unexpected token < in JSON at position 0')],
+    ['empty', new SyntaxError('Unexpected end of JSON input')],
+  ])('falls back when a %s error response is not JSON', async (_kind, jsonError) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          ({ ok: false, json: async () => Promise.reject(jsonError) }) as unknown as Response,
+      ),
+    );
+
+    await expect(requestJson('/api/events')).rejects.toEqual(
+      new ApiClientError({ code: 'INTERNAL_ERROR', message: '服务暂时不可用，请稍后重试' }),
+    );
+  });
+
   it('forwards caller cancellation to the request', async () => {
     const controller = new AbortController();
     vi.stubGlobal(
@@ -88,11 +105,11 @@ describe('requestJson', () => {
     expect(timeout).toHaveBeenCalledWith(10_000);
     timeoutController.abort(new DOMException('Timed out', 'TimeoutError'));
 
-    await expect(pending).rejects.toBeTruthy();
+    await expect(pending).rejects.toMatchObject({ name: 'TimeoutError' });
   });
 
   it('adds JSON headers when the request has a body', async () => {
-    const fetchMock = vi.fn(async () => response({ id: 'event-1' }));
+    const fetchMock = vi.fn<typeof fetch>(async () => response({ id: 'event-1' }));
     vi.stubGlobal('fetch', fetchMock);
 
     await requestJson('/api/events', {
@@ -100,26 +117,59 @@ describe('requestJson', () => {
       body: JSON.stringify({ name: '油价上涨' }),
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/events',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        }),
-      }),
-    );
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(requestHeaders.get('Accept')).toBe('application/json');
+    expect(requestHeaders.get('Content-Type')).toBe('application/json');
   });
 
   it('does not add Content-Type when the request has no body', async () => {
-    const fetchMock = vi.fn(async () => response({ id: 'event-1' }));
+    const fetchMock = vi.fn<typeof fetch>(async () => response({ id: 'event-1' }));
     vi.stubGlobal('fetch', fetchMock);
 
     await requestJson('/api/events');
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/events',
-      expect.objectContaining({ headers: { Accept: 'application/json' } }),
-    );
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(requestHeaders.get('Accept')).toBe('application/json');
+    expect(requestHeaders.has('Content-Type')).toBe(false);
+  });
+
+  it('preserves Headers custom headers and lets them override defaults', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => response({ id: 'event-1' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await requestJson('/api/events', {
+      method: 'POST',
+      body: '{}',
+      headers: new Headers({
+        Accept: 'application/problem+json',
+        'Content-Type': 'application/problem+json',
+        'X-Request-Id': 'headers',
+      }),
+    });
+
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(requestHeaders.get('Accept')).toBe('application/problem+json');
+    expect(requestHeaders.get('Content-Type')).toBe('application/problem+json');
+    expect(requestHeaders.get('X-Request-Id')).toBe('headers');
+  });
+
+  it('preserves tuple-array custom headers and lets them override defaults', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => response({ id: 'event-1' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await requestJson('/api/events', {
+      method: 'POST',
+      body: '{}',
+      headers: [
+        ['Accept', 'application/problem+json'],
+        ['Content-Type', 'application/problem+json'],
+        ['X-Request-Id', 'tuples'],
+      ],
+    });
+
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(requestHeaders.get('Accept')).toBe('application/problem+json');
+    expect(requestHeaders.get('Content-Type')).toBe('application/problem+json');
+    expect(requestHeaders.get('X-Request-Id')).toBe('tuples');
   });
 });
