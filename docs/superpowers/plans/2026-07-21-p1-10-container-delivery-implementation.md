@@ -4,6 +4,8 @@
 
 验证记录：格式、Lint、类型检查和生产构建通过；单元/组件测试 187 项（Contracts 25、API 63、Web 99），PostgreSQL 集成测试 45 项，源码 E2E 10 项，Compose 合约 2 项，隔离生产烟雾 1 项均通过。API/Web 镜像构建和五个生产页面的 1280×720 浏览器复核通过，console 为 0 error、0 warning。Vite 仅保留既有的因果图模块 chunk 超过 500 kB 非阻断警告。用户于 2026-07-22 确认人工复核通过，P1-10 与第一阶段均已完成；第二阶段尚未开始。
 
+以下任务正文保留实施过程中的原始执行要求和阶段性状态，用作历史记录；其中“等待人工复核”等文字不代表当前状态。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the completed first-phase application as a zero-configuration, local-only production Compose stack with durable PostgreSQL data, automatic migrations, optional seed data, health checks, and isolated production smoke verification.

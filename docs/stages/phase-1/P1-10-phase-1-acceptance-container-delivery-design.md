@@ -44,11 +44,11 @@ P1-10 不实现：
 - 新增 `compose.dev.yaml`，仅为源码开发和现有 E2E 暴露回环数据库端口。
 - P1-10 人工验收通过后，第一阶段才整体完成。
 
-## 4. 当前状态与交付缺口
+## 4. 实施前状态与交付缺口
 
-当前 `compose.yaml` 只启动 PostgreSQL，并将 `5432` 映射到宿主机。Web 和 API 通过 `pnpm dev` 在宿主机运行；迁移和种子需要单独执行；E2E 使用开发服务器而不是生产镜像。
+P1-10 实施前，`compose.yaml` 只启动 PostgreSQL，并将 `5432` 映射到宿主机。Web 和 API 通过 `pnpm dev` 在宿主机运行；迁移和种子需要单独执行；E2E 使用开发服务器而不是生产镜像。
 
-P1-10 需要补齐：
+P1-10 计划补齐并已在本阶段完成：
 
 - Web 和 API 的多阶段生产 Dockerfile；
 - Nginx 静态文件、React Router 回退和 API 代理配置；
