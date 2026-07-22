@@ -71,12 +71,15 @@ describe('event route pages', () => {
     );
     renderRoute('/events/:eventId', <EventDetailPage />);
 
-    expect(await screen.findByRole('heading', { name: eventDetail.name })).toBeTruthy();
+    const title = await screen.findByRole('heading', { name: eventDetail.name });
+    const heading = title.closest('.detail-heading');
+    expect(heading?.querySelector('.detail-label')?.textContent).toBe('原子事件');
+    expect(heading?.firstElementChild?.tagName).toBe('DIV');
     expect(screen.getByText(eventDetail.description)).toBeTruthy();
     expect(screen.getByText('油价上涨')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '编辑事件' }).getAttribute('href')).toBe(
-      `/events/${eventDetail.id}/edit`,
-    );
+    const editLink = screen.getByRole('link', { name: '编辑事件' });
+    expect(editLink.getAttribute('href')).toBe(`/events/${eventDetail.id}/edit`);
+    expect(editLink.parentElement).toBe(heading);
   });
 
   it('loads and replaces an event before returning to the list', async () => {

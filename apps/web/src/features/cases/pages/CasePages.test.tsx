@@ -86,8 +86,11 @@ describe('case pages', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
     renderRoute('/cases/:caseId', <CaseDetailPage />);
-    expect(await screen.findByText(detail.content)).toBeTruthy();
-    expect(screen.getByRole('link', { name: '编辑案例' })).toBeTruthy();
+    const title = await screen.findByRole('heading', { name: detail.content });
+    const heading = title.closest('.detail-heading');
+    expect(heading?.querySelector('.detail-label')?.textContent).toBe('案例内容');
+    const editLink = screen.getByRole('link', { name: '编辑案例' });
+    expect(editLink.parentElement).toBe(heading);
     const relationLink = screen.getByRole('link', { name: /测试原因.*测试结果/ });
     expect(relationLink.getAttribute('href')).toBe(`/relations/${linkedRelation.id}`);
     expect(relationLink.querySelectorAll('.overflow-text--single-line')).toHaveLength(2);

@@ -58,9 +58,12 @@ export function EventDetailPage() {
         返回事件列表
       </Link>
       <div className="detail-heading">
-        <OverflowText content={event.data.name} lines={2}>
-          <h1 id="event-detail-title">{event.data.name}</h1>
-        </OverflowText>
+        <div>
+          <span className="detail-label">原子事件</span>
+          <OverflowText content={event.data.name} lines={2}>
+            <h1 id="event-detail-title">{event.data.name}</h1>
+          </OverflowText>
+        </div>
         <Link className="button button--primary" to={`/events/${event.data.id}/edit`}>
           编辑事件
         </Link>
