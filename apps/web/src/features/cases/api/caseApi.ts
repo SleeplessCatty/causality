@@ -1,5 +1,4 @@
 import {
-  apiErrorSchema,
   caseCandidateListResponseSchema,
   caseDetailSchema,
   caseListResponseSchema,
@@ -12,40 +11,7 @@ import {
   type CaseRelationListResponse,
 } from '@causality/contracts';
 
-import { ApiClientError } from '../../events/api/eventApi';
-
-const requestTimeoutMilliseconds = 10_000;
-
-function requestSignal(signal?: AbortSignal): AbortSignal {
-  const timeout = AbortSignal.timeout(requestTimeoutMilliseconds);
-  return signal ? AbortSignal.any([signal, timeout]) : timeout;
-}
-
-async function requestJson(
-  url: string,
-  options: RequestInit = {},
-  signal?: AbortSignal,
-): Promise<unknown> {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...options.headers,
-    },
-    signal: requestSignal(signal),
-  });
-  const body: unknown = await response.json();
-  if (!response.ok) {
-    const parsed = apiErrorSchema.safeParse(body);
-    throw new ApiClientError(
-      parsed.success
-        ? parsed.data
-        : { code: 'INTERNAL_ERROR', message: '服务暂时不可用，请稍后重试' },
-    );
-  }
-  return body;
-}
+import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getCases(
   query: { q: string; relationId?: string; cursor?: string; limit?: number },

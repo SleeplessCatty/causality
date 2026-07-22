@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
-import { ApiClientError, getEvent } from '../../events/api/eventApi';
+import { ApiClientError } from '../../../shared/api/httpClient';
 import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphCanvas, type CausalGraphCanvasHandle } from '../components/CausalGraphCanvas';
 import { CausalGraphInspector } from '../components/CausalGraphInspector';
@@ -75,12 +75,6 @@ export function CausalGraphPage() {
     if (hasValidCenter) setLayoutState('loading');
   }, [centerEventId, direction, hasValidCenter, limit, minCaseCount, minConfidence]);
 
-  const centerEvent = useQuery({
-    queryKey: ['events', 'detail', 'causal-graph', centerEventId],
-    queryFn: ({ signal }) => getEvent(centerEventId, signal),
-    enabled: hasValidCenter,
-  });
-
   const graphQuery = useQuery({
     queryKey: ['causal-graph', centerEventId, direction, limit, minConfidence, minCaseCount],
     queryFn: ({ signal }) => getCausalGraph(requestedQuery, signal),
@@ -94,16 +88,25 @@ export function CausalGraphPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [inspectorOpen, selection]);
 
+  const successfulCenterGraph =
+    graphQuery.data?.meta.centerEventId === centerEventId
+      ? graphQuery.data
+      : lastGraph?.meta.centerEventId === centerEventId
+        ? lastGraph
+        : null;
+
   const selectedEvent: EventCandidate | null =
     selectedCandidate?.id === centerEventId
       ? selectedCandidate
-      : centerEvent.data
-        ? { id: centerEvent.data.id, name: centerEvent.data.name }
-        : lastGraph?.meta.centerEventId === centerEventId
-          ? {
-              id: centerEventId,
-              name: lastGraph.nodes.find((node) => node.id === centerEventId)?.name ?? '中心事件',
-            }
+      : successfulCenterGraph
+        ? {
+            id: centerEventId,
+            name:
+              successfulCenterGraph.nodes.find((node) => node.id === centerEventId)?.name ??
+              '中心事件',
+          }
+        : hasValidCenter
+          ? { id: centerEventId, name: '中心事件' }
           : null;
 
   const chooseEvent = useCallback(
@@ -169,7 +172,7 @@ export function CausalGraphPage() {
     setLayoutState('ready');
   }, []);
 
-  const queryError = graphQuery.error ?? centerEvent.error;
+  const queryError = graphQuery.error;
   const errorKind: GraphQueryErrorKind = queryError
     ? 'query'
     : layoutState === 'error'
@@ -181,9 +184,8 @@ export function CausalGraphPage() {
       canvasRef.current?.retryLayout();
       return;
     }
-    void centerEvent.refetch();
     void graphQuery.refetch();
-  }, [centerEvent, graphQuery, layoutState, queryError]);
+  }, [graphQuery, layoutState, queryError]);
 
   const overlay = hasInvalidCenter
     ? { message: '链接中的中心事件无效', actionLabel: '重新选择', onAction: clearCenterEvent }

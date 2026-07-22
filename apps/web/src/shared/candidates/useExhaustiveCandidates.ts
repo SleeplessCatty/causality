@@ -7,7 +7,7 @@ export interface CandidatePage<T> {
   hasMore: boolean;
 }
 
-interface UseExhaustiveCandidatesOptions<T> {
+interface UseExhaustiveCandidatesOptions<T extends { id: string }> {
   queryKey: readonly unknown[];
   query: string;
   enabled: boolean;
@@ -16,15 +16,13 @@ interface UseExhaustiveCandidatesOptions<T> {
     cursor: string | undefined,
     signal: AbortSignal,
   ) => Promise<CandidatePage<T>>;
-  getId: (item: T) => string;
 }
 
-export function useExhaustiveCandidates<T>({
+export function useExhaustiveCandidates<T extends { id: string }>({
   queryKey,
   query,
   enabled,
   loadPage,
-  getId,
 }: UseExhaustiveCandidatesOptions<T>) {
   const result = useInfiniteQuery({
     queryKey: [...queryKey, query],
@@ -50,10 +48,10 @@ export function useExhaustiveCandidates<T>({
   const items = useMemo(() => {
     const unique = new Map<string, T>();
     for (const page of result.data?.pages ?? []) {
-      for (const item of page.items) unique.set(getId(item), item);
+      for (const item of page.items) unique.set(item.id, item);
     }
     return [...unique.values()];
-  }, [getId, result.data?.pages]);
+  }, [result.data?.pages]);
 
   return {
     items,

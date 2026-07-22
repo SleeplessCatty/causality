@@ -63,7 +63,7 @@ function renderDetail() {
 describe('RelationDetailPage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('shows relation fields and combines every linked-case page', async () => {
+  it('loads only the first 100 linked cases until the user asks for more', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: string | URL | Request) => {
@@ -88,6 +88,12 @@ describe('RelationDetailPage', () => {
     expect((await screen.findByRole('link', { name: '案例一' })).className).toContain(
       'overflow-text--multi-line',
     );
+    expect(screen.queryByRole('link', { name: '案例二' })).toBeNull();
+    expect(screen.getByRole('button', { name: '加载更多' })).toBeTruthy();
+    expect(
+      vi.mocked(fetch).mock.calls.filter(([input]) => String(input).startsWith('/api/cases?')),
+    ).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
     expect(await screen.findByRole('link', { name: '案例二' })).toBeTruthy();
     expect(screen.getByText('燃油成本传导')).toBeTruthy();
     expect(screen.getByText('82%')).toBeTruthy();
@@ -144,6 +150,8 @@ describe('RelationDetailPage', () => {
     renderDetail();
 
     expect(await screen.findByRole('link', { name: '案例一' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+    expect(await screen.findByRole('button', { name: '重试加载其余案例' })).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: '重试加载其余案例' }));
     expect(await screen.findByRole('link', { name: '案例二' })).toBeTruthy();
     expect(secondPageAttempts).toBe(2);

@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
-import { ApiClientError } from '../../events/api/eventApi';
+import { ApiClientError } from '../../../shared/api/httpClient';
 
 interface CaseFormProps {
   mode: 'create' | 'edit';

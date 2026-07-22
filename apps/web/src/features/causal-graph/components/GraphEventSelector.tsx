@@ -26,12 +26,11 @@ export function GraphEventSelector({ value, onSelect }: GraphEventSelectorProps)
   }, [input, open]);
 
   const candidates = useExhaustiveCandidates({
-    queryKey: ['events', 'candidates', 'graph-selector', query],
+    queryKey: ['events', 'candidates', 'graph-selector'],
     query,
     enabled: open && query.length > 0,
     loadPage: (search, cursor, signal) =>
       getEventCandidatePage(search, { limit: 100, ...(cursor ? { cursor } : {}) }, signal),
-    getId: (candidate: EventCandidate) => candidate.id,
   });
   const items = candidates.items;
   const expanded = open && items.length > 0;

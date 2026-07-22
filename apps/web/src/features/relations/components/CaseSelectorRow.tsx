@@ -38,12 +38,11 @@ export function CaseSelectorRow({
   }, [query]);
 
   const candidates = useExhaustiveCandidates({
-    queryKey: ['cases', 'candidates', candidateQuery],
+    queryKey: ['cases', 'candidates'],
     query: candidateQuery,
     enabled: isFocused && candidateQuery.length > 0 && candidateQuery.length <= 100 && !selection,
     loadPage: (search, cursor, signal) =>
       getCaseCandidatePage(search, { limit: 100, ...(cursor ? { cursor } : {}) }, signal),
-    getId: (candidate: CaseReference) => candidate.id,
   });
   useEffect(() => setActiveIndex(-1), [candidateQuery]);
   const normalizedQuery = query.trim();

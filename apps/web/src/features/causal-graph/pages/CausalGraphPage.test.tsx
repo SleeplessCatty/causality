@@ -9,7 +9,8 @@ import type {
   EventCandidate,
 } from '@causality/contracts';
 
-import { ApiClientError, getEvent } from '../../events/api/eventApi';
+import { ApiClientError } from '../../../shared/api/httpClient';
+import { getEvent } from '../../events/api/eventApi';
 import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphPage } from './CausalGraphPage';
 import type { GraphElementSelection } from '../graph/graphSelection';
@@ -23,12 +24,7 @@ const canvasControl = vi.hoisted(() => ({
 }));
 
 vi.mock('../../events/api/eventApi', () => {
-  class MockApiClientError extends Error {
-    constructor(readonly details: { code: string; message: string }) {
-      super(details.message);
-    }
-  }
-  return { ApiClientError: MockApiClientError, getEvent: vi.fn() };
+  return { getEvent: vi.fn() };
 });
 vi.mock('../api/causalGraphApi', () => ({ getCausalGraph: vi.fn() }));
 vi.mock('../components/CausalGraphToolbar', () => ({
@@ -345,6 +341,14 @@ describe('CausalGraphPage', () => {
     expect(screen.getByText('关系 1')).toBeTruthy();
   });
 
+  it('loads a URL center through the graph query without requesting event detail', async () => {
+    renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
+
+    await screen.findByText('节点 2');
+
+    expect(getEvent).not.toHaveBeenCalled();
+  });
+
   it('restores URL state and canonicalizes an invalid direction', async () => {
     const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=sideways`);
     await waitFor(() =>
@@ -542,6 +546,7 @@ describe('CausalGraphPage', () => {
     expect(await screen.findByText('查询失败，保留当前图')).toBeTruthy();
     expect(screen.getByTestId('graph-canvas').getAttribute('data-node-count')).toBe('2');
     expect(screen.getByText('节点 2')).toBeTruthy();
+    expect(screen.getByText('工具栏：原油价格上涨 · upstream')).toBeTruthy();
     expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
     expect(screen.getByRole('button', { name: '重试因果图查询' })).toBeTruthy();
   });

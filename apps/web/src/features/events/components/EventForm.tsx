@@ -5,7 +5,8 @@ import { Link } from 'react-router';
 
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
-import { ApiClientError, getEventCandidates } from '../api/eventApi';
+import { getEventCandidates } from '../api/eventApi';
+import { ApiClientError } from '../../../shared/api/httpClient';
 import { TagInput } from './TagInput';
 
 interface EventFormProps {

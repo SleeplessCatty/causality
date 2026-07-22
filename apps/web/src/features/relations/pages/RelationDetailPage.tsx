@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
@@ -36,21 +36,6 @@ export function RelationDetailPage() {
     enabled: relation.isSuccess && relation.data.caseCount > 0,
     retry: false,
   });
-
-  useEffect(() => {
-    if (
-      linkedCases.hasNextPage &&
-      !linkedCases.isFetchingNextPage &&
-      !linkedCases.isFetchNextPageError
-    ) {
-      void linkedCases.fetchNextPage();
-    }
-  }, [
-    linkedCases.fetchNextPage,
-    linkedCases.hasNextPage,
-    linkedCases.isFetchingNextPage,
-    linkedCases.isFetchNextPageError,
-  ]);
 
   const cases = useMemo(() => {
     const unique = new Map<
@@ -184,6 +169,17 @@ export function RelationDetailPage() {
             ) : null}
             {linkedCases.isFetchingNextPage ? (
               <div className="case-relations__state">正在加载其余案例…</div>
+            ) : null}
+            {linkedCases.hasNextPage &&
+            !linkedCases.isFetchingNextPage &&
+            !linkedCases.isFetchNextPageError ? (
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => void linkedCases.fetchNextPage()}
+              >
+                加载更多
+              </button>
             ) : null}
             {linkedCases.isFetchNextPageError ? (
               <div className="case-relations__state case-relations__state--inline" role="alert">

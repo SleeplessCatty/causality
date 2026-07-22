@@ -39,7 +39,6 @@ describe('useExhaustiveCandidates', () => {
           query: '测试',
           enabled: true,
           loadPage,
-          getId: (item: { id: string }) => item.id,
         }),
       { wrapper: createWrapper() },
     );
@@ -70,7 +69,6 @@ describe('useExhaustiveCandidates', () => {
           query: '测试',
           enabled: true,
           loadPage,
-          getId: (item: { id: string }) => item.id,
         }),
       { wrapper: createWrapper() },
     );
@@ -113,7 +111,6 @@ describe('useExhaustiveCandidates', () => {
           query,
           enabled: true,
           loadPage,
-          getId: (item: { id: string }) => item.id,
         }),
       { wrapper: createWrapper(), initialProps: { query: '旧查询' } },
     );

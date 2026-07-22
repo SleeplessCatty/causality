@@ -34,12 +34,11 @@ export function EventSelector({
   }, [input, open]);
 
   const candidates = useExhaustiveCandidates({
-    queryKey: ['events', 'candidates', 'relation-selector', query],
+    queryKey: ['events', 'candidates', 'relation-selector'],
     query,
     enabled: open && query.length > 0,
     loadPage: (search, cursor, signal) =>
       getEventCandidatePage(search, { limit: 100, ...(cursor ? { cursor } : {}) }, signal),
-    getId: (candidate: EventCandidate) => candidate.id,
   });
 
   useEffect(() => setActiveIndex(-1), [query]);

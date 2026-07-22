@@ -8,7 +8,7 @@ import { useCallback, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
-import { ApiClientError } from '../../events/api/eventApi';
+import { ApiClientError } from '../../../shared/api/httpClient';
 import { checkRelationPair } from '../api/relationApi';
 import { EventSelector } from './EventSelector';
 import { RelationCasesField, type RelationCaseSelectionValue } from './RelationCasesField';
