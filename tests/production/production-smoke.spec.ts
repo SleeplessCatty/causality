@@ -34,6 +34,16 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   page,
   request,
 }) => {
+  const browserErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      browserErrors.push(`console: ${message.text()}`);
+    }
+  });
+  page.on('pageerror', (error) => {
+    browserErrors.push(`pageerror: ${error.message}`);
+  });
+
   await page.goto('/events');
   await expect(page.getByRole('heading', { name: '原子事件' })).toBeVisible();
   await page.goto('/graph');
@@ -86,4 +96,5 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
     expect(byService[service]).toMatchObject({ State: 'running', Health: 'healthy' });
   }
   expect(byService.migrate).toMatchObject({ State: 'exited', ExitCode: 0 });
+  expect(browserErrors).toEqual([]);
 });
