@@ -12,12 +12,18 @@ const linkedCase = {
   relationCount: 1,
   updatedAt: '2026-07-21T03:00:00.000Z',
 };
+const secondLinkedCase = {
+  id: '55555555-5555-4555-8555-555555555555',
+  content: '2025年5月进口成本继续上升',
+  relationCount: 1,
+  updatedAt: '2026-07-22T03:00:00.000Z',
+};
 const detail = {
   id: relationId,
   causeEvent: { id: '22222222-2222-4222-8222-222222222222', name: '关税上调' },
   effectEvent: { id: '33333333-3333-4333-8333-333333333333', name: '进口成本上升' },
   confidence: 70,
-  caseCount: 1,
+  caseCount: 2,
   description: null,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
@@ -31,7 +37,8 @@ function response(body: unknown) {
 describe('RelationEditPage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('preloads every linked case before rendering the form', async () => {
+  it('preloads and merges every cursor page of linked cases before rendering the form', async () => {
+    const requestedCaseUrls: string[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn((input: string | URL | Request) => {
@@ -40,7 +47,10 @@ describe('RelationEditPage', () => {
           return response({ sameDirection: null, reverseDirection: null });
         }
         if (url.startsWith(`/api/relations/${relationId}/cases?`)) {
-          return response({ items: [linkedCase], nextCursor: null, hasMore: false });
+          requestedCaseUrls.push(url);
+          return url.includes('cursor=second-page')
+            ? response({ items: [secondLinkedCase], nextCursor: null, hasMore: false })
+            : response({ items: [linkedCase], nextCursor: 'second-page', hasMore: true });
         }
         return response(detail);
       }),
@@ -62,7 +72,11 @@ describe('RelationEditPage', () => {
 
     const input = await screen.findByRole('combobox', { name: '具体案例 1' });
     expect((input as HTMLInputElement).value).toBe(linkedCase.content);
-    expect(screen.getByText('已有案例')).toBeTruthy();
+    const secondInput = screen.getByRole('combobox', { name: '具体案例 2' });
+    expect((secondInput as HTMLInputElement).value).toBe(secondLinkedCase.content);
+    expect(requestedCaseUrls).toHaveLength(2);
+    expect(requestedCaseUrls[1]).toContain('cursor=second-page');
+    expect(screen.getAllByText('已有案例')).toHaveLength(2);
     expect(screen.getByRole('link', { name: '返回关系列表' }).getAttribute('href')).toBe(
       '/relations',
     );

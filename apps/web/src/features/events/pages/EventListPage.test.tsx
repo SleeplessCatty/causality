@@ -187,5 +187,8 @@ describe('EventListPage', () => {
     expect(await screen.findByText('无法加载事件')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
     expect(await screen.findByText('还没有原子事件')).toBeTruthy();
+    expect(screen.getByText('共 0 条 · 第 1/1 页')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(true);
   });
 });

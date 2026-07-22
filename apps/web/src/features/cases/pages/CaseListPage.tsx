@@ -140,51 +140,51 @@ export function CaseListPage() {
         </div>
       ) : null}
       {cases.isSuccess && cases.data.items.length > 0 ? (
-        <>
-          <div className="event-table-wrap">
-            <table className="event-table case-table">
-              <thead>
-                <tr>
-                  <th scope="col">案例内容</th>
-                  <th scope="col">关联关系数</th>
-                  <th scope="col">更新时间</th>
-                  <th scope="col">
-                    <span className="sr-only">操作</span>
-                  </th>
+        <div className="event-table-wrap">
+          <table className="event-table case-table">
+            <thead>
+              <tr>
+                <th scope="col">案例内容</th>
+                <th scope="col">关联关系数</th>
+                <th scope="col">更新时间</th>
+                <th scope="col">
+                  <span className="sr-only">操作</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {cases.data.items.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    <OverflowText content={item.content}>
+                      <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                    </OverflowText>
+                  </td>
+                  <td>{item.relationCount}</td>
+                  <td>
+                    <time dateTime={item.updatedAt}>
+                      {dateFormatter.format(new Date(item.updatedAt))}
+                    </time>
+                  </td>
+                  <td>
+                    <Link className="table-action-link" to={`/cases/${item.id}/edit`}>
+                      编辑
+                    </Link>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {cases.data.items.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <OverflowText content={item.content}>
-                        <Link to={`/cases/${item.id}`}>{item.content}</Link>
-                      </OverflowText>
-                    </td>
-                    <td>{item.relationCount}</td>
-                    <td>
-                      <time dateTime={item.updatedAt}>
-                        {dateFormatter.format(new Date(item.updatedAt))}
-                      </time>
-                    </td>
-                    <td>
-                      <Link className="table-action-link" to={`/cases/${item.id}/edit`}>
-                        编辑
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ListPagination
-            page={cases.data.page}
-            totalPages={cases.data.totalPages}
-            totalItems={cases.data.totalItems}
-            disabled={cases.isFetching}
-            onPageChange={changePage}
-          />
-        </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {cases.isSuccess ? (
+        <ListPagination
+          page={cases.data.page}
+          totalPages={cases.data.totalPages}
+          totalItems={cases.data.totalItems}
+          disabled={cases.isFetching}
+          onPageChange={changePage}
+        />
       ) : null}
     </section>
   );

@@ -56,6 +56,19 @@ function renderList(initialEntry = '/relations') {
 describe('RelationListPage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('keeps disabled pagination visible with the empty state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse({ items: [], page: 1, pageSize: 30, totalItems: 0, totalPages: 1 })),
+    );
+    renderList();
+
+    expect(await screen.findByText('还没有因果关系')).toBeTruthy();
+    expect(screen.getByText('共 0 条 · 第 1/1 页')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(true);
+  });
+
   it('links the row entities and keeps expansion concise', async () => {
     vi.stubGlobal(
       'fetch',

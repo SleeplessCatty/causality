@@ -128,57 +128,57 @@ export function EventListPage() {
         </div>
       ) : null}
       {events.isSuccess && events.data.items.length > 0 ? (
-        <>
-          <div className="event-table-wrap">
-            <table className="event-table">
-              <thead>
-                <tr>
-                  <th scope="col">标准名称</th>
-                  <th scope="col">别名</th>
-                  <th scope="col">关键词</th>
-                  <th scope="col">更新时间</th>
-                  <th scope="col">
-                    <span className="sr-only">操作</span>
-                  </th>
+        <div className="event-table-wrap">
+          <table className="event-table">
+            <thead>
+              <tr>
+                <th scope="col">标准名称</th>
+                <th scope="col">别名</th>
+                <th scope="col">关键词</th>
+                <th scope="col">更新时间</th>
+                <th scope="col">
+                  <span className="sr-only">操作</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.data.items.map((event) => (
+                <tr key={event.id}>
+                  <td>
+                    <OverflowText content={event.name}>
+                      <Link to={`/events/${event.id}`}>{event.name}</Link>
+                    </OverflowText>
+                  </td>
+                  <td>
+                    <MetadataCell values={event.aliases} />
+                  </td>
+                  <td>
+                    <MetadataCell values={event.keywords} />
+                  </td>
+                  <td>
+                    <time dateTime={event.updatedAt}>
+                      {dateFormatter.format(new Date(event.updatedAt))}
+                    </time>
+                  </td>
+                  <td className="event-row-actions">
+                    <Link className="text-button" to={`/events/${event.id}/edit`}>
+                      编辑
+                    </Link>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {events.data.items.map((event) => (
-                  <tr key={event.id}>
-                    <td>
-                      <OverflowText content={event.name}>
-                        <Link to={`/events/${event.id}`}>{event.name}</Link>
-                      </OverflowText>
-                    </td>
-                    <td>
-                      <MetadataCell values={event.aliases} />
-                    </td>
-                    <td>
-                      <MetadataCell values={event.keywords} />
-                    </td>
-                    <td>
-                      <time dateTime={event.updatedAt}>
-                        {dateFormatter.format(new Date(event.updatedAt))}
-                      </time>
-                    </td>
-                    <td className="event-row-actions">
-                      <Link className="text-button" to={`/events/${event.id}/edit`}>
-                        编辑
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ListPagination
-            page={events.data.page}
-            totalPages={events.data.totalPages}
-            totalItems={events.data.totalItems}
-            disabled={events.isFetching}
-            onPageChange={changePage}
-          />
-        </>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {events.isSuccess ? (
+        <ListPagination
+          page={events.data.page}
+          totalPages={events.data.totalPages}
+          totalItems={events.data.totalItems}
+          disabled={events.isFetching}
+          onPageChange={changePage}
+        />
       ) : null}
     </section>
   );

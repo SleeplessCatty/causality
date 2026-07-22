@@ -13,7 +13,7 @@ async function createDenseGraph(request: APIRequestContext) {
       encoding: 'utf8',
       env: {
         ...process.env,
-        DATABASE_URL: 'postgresql://causality:causality@127.0.0.1:5432/causality',
+        DATABASE_URL: process.env.DATABASE_URL,
       },
     },
   );

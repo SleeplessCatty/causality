@@ -1,5 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
+import { E2E_WRITE_BATCH_SIZE, runInBatches } from './support/runInBatches';
+
 const apiBase = 'http://127.0.0.1:3000/api';
 
 async function createEvent(request: APIRequestContext, name: string) {
@@ -16,11 +18,14 @@ test('relation list shows totals and numbered pages for 31 recognizable records'
 }) => {
   const token = `RELPAGE${Date.now()}`;
   const cause = await createEvent(request, `${token}-共同原因`);
-  const effects = await Promise.all(
-    Array.from({ length: 31 }, (_, index) =>
-      createEvent(request, `${token}-结果-${String(index + 1).padStart(2, '0')}`),
-    ),
+  const effectNames = Array.from(
+    { length: 31 },
+    (_, index) => `${token}-结果-${String(index + 1).padStart(2, '0')}`,
   );
+  const effects: Array<{ id: string; name: string }> = [];
+  await runInBatches(effectNames, E2E_WRITE_BATCH_SIZE, async (name) => {
+    effects.push(await createEvent(request, name));
+  });
   for (const effect of effects) {
     const response = await request.post(`${apiBase}/relations`, {
       data: {

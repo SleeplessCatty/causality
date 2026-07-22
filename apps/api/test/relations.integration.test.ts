@@ -270,6 +270,29 @@ describe.sequential('relation REST API', () => {
     expect(mismatch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
+  it('returns 404 when relation-detail cases target a missing relation', async () => {
+    const response = await app!.inject({
+      method: 'GET',
+      url: '/api/relations/ffffffff-ffff-4fff-8fff-ffffffffffff/cases',
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: 'RELATION_NOT_FOUND' });
+  });
+
+  it('rejects a malformed relation-detail case cursor', async () => {
+    const cause = await createEvent('测试：损坏详情案例游标原因');
+    const effect = await createEvent('测试：损坏详情案例游标结果');
+    const created = (await createRelation(cause.id, effect.id)).json<RelationDetail>();
+    const response = await app!.inject({
+      method: 'GET',
+      url: `/api/relations/${created.id}/cases?cursor=not-a-valid-cursor`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('rolls back a relation and new cases when an existing selection is missing', async () => {
     const cause = await createEvent('测试：回滚原因');
     const effect = await createEvent('测试：回滚结果');

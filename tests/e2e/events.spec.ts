@@ -1,5 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
+import { E2E_WRITE_BATCH_SIZE, runInBatches } from './support/runInBatches';
+
 const apiBase = 'http://127.0.0.1:3000/api';
 
 async function createEvent(request: APIRequestContext, name: string) {
@@ -15,10 +17,10 @@ test('event list paginates 211 records and jumps directly from page 1 to page 8'
 }) => {
   test.setTimeout(60_000);
   const token = `E2EPAGE${Date.now()}`;
-  await Promise.all(
-    Array.from({ length: 211 }, (_, index) =>
-      createEvent(request, `${token}-${String(index + 1).padStart(3, '0')}`),
-    ),
+  await runInBatches(
+    Array.from({ length: 211 }, (_, index) => `${token}-${String(index + 1).padStart(3, '0')}`),
+    E2E_WRITE_BATCH_SIZE,
+    (name) => createEvent(request, name),
   );
 
   const requestedPages: number[] = [];

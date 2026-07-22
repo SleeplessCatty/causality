@@ -131,7 +131,7 @@ export function RelationListPage() {
           </button>
         </div>
       ) : null}
-      {relations.isSuccess && visibleItems.length === 0 && !expanded.isPending ? (
+      {relations.isSuccess && visibleItems.length === 0 && !expandedId ? (
         <div className="table-state table-state--empty">
           <strong>{query ? '没有找到因果关系' : '还没有因果关系'}</strong>
           <span>{query ? '尝试更换搜索词。' : '创建第一条关系，连接已有的原子事件。'}</span>
@@ -141,143 +141,139 @@ export function RelationListPage() {
         </div>
       ) : null}
       {visibleItems.length > 0 ? (
-        <>
-          <div className="event-table-wrap relation-table-wrap">
-            <table className="event-table relation-table">
-              <thead>
-                <tr>
-                  <th scope="col">原因事件</th>
-                  <th scope="col" aria-label="方向" />
-                  <th scope="col">结果事件</th>
-                  <th scope="col">置信度</th>
-                  <th scope="col">案例数</th>
-                  <th scope="col">更新时间</th>
-                  <th scope="col">
-                    <span className="sr-only">操作</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleItems.map((relation) => (
-                  <Fragment key={relation.id}>
-                    <tr
-                      className={expandedId === relation.id ? 'relation-row--expanded' : undefined}
-                    >
-                      <td>
-                        <OverflowText content={relation.causeEvent.name}>
-                          <Link
-                            className="relation-entity-link"
-                            to={`/events/${relation.causeEvent.id}`}
-                          >
-                            {relation.causeEvent.name}
-                          </Link>
-                        </OverflowText>
-                      </td>
-                      <td className="relation-direction" aria-label="导致">
+        <div className="event-table-wrap relation-table-wrap">
+          <table className="event-table relation-table">
+            <thead>
+              <tr>
+                <th scope="col">原因事件</th>
+                <th scope="col" aria-label="方向" />
+                <th scope="col">结果事件</th>
+                <th scope="col">置信度</th>
+                <th scope="col">案例数</th>
+                <th scope="col">更新时间</th>
+                <th scope="col">
+                  <span className="sr-only">操作</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleItems.map((relation) => (
+                <Fragment key={relation.id}>
+                  <tr className={expandedId === relation.id ? 'relation-row--expanded' : undefined}>
+                    <td>
+                      <OverflowText content={relation.causeEvent.name}>
                         <Link
-                          className="relation-entity-link relation-direction__link"
-                          to={`/relations/${relation.id}`}
-                          aria-label="查看因果关系详情"
+                          className="relation-entity-link"
+                          to={`/events/${relation.causeEvent.id}`}
                         >
-                          →
+                          {relation.causeEvent.name}
                         </Link>
-                      </td>
-                      <td>
-                        <OverflowText content={relation.effectEvent.name}>
-                          <Link
-                            className="relation-entity-link"
-                            to={`/events/${relation.effectEvent.id}`}
-                          >
-                            {relation.effectEvent.name}
-                          </Link>
-                        </OverflowText>
-                      </td>
-                      <td>
-                        <strong className="confidence-value">{relation.confidence}%</strong>
-                      </td>
-                      <td>{relation.caseCount}</td>
-                      <td>
-                        <time dateTime={relation.updatedAt}>
-                          {dateFormatter.format(new Date(relation.updatedAt))}
-                        </time>
-                      </td>
-                      <td className="relation-row-actions">
-                        <button
-                          className="text-button"
-                          type="button"
-                          aria-expanded={expandedId === relation.id}
-                          onClick={() => toggleDetail(relation.id)}
+                      </OverflowText>
+                    </td>
+                    <td className="relation-direction" aria-label="导致">
+                      <Link
+                        className="relation-entity-link relation-direction__link"
+                        to={`/relations/${relation.id}`}
+                        aria-label="查看因果关系详情"
+                      >
+                        →
+                      </Link>
+                    </td>
+                    <td>
+                      <OverflowText content={relation.effectEvent.name}>
+                        <Link
+                          className="relation-entity-link"
+                          to={`/events/${relation.effectEvent.id}`}
                         >
-                          {expandedId === relation.id ? '收起' : '展开'}
-                        </button>
-                        <Link className="text-button" to={`/relations/${relation.id}/edit`}>
-                          编辑
+                          {relation.effectEvent.name}
                         </Link>
+                      </OverflowText>
+                    </td>
+                    <td>
+                      <strong className="confidence-value">{relation.confidence}%</strong>
+                    </td>
+                    <td>{relation.caseCount}</td>
+                    <td>
+                      <time dateTime={relation.updatedAt}>
+                        {dateFormatter.format(new Date(relation.updatedAt))}
+                      </time>
+                    </td>
+                    <td className="relation-row-actions">
+                      <button
+                        className="text-button"
+                        type="button"
+                        aria-expanded={expandedId === relation.id}
+                        onClick={() => toggleDetail(relation.id)}
+                      >
+                        {expandedId === relation.id ? '收起' : '展开'}
+                      </button>
+                      <Link className="text-button" to={`/relations/${relation.id}/edit`}>
+                        编辑
+                      </Link>
+                    </td>
+                  </tr>
+                  {expandedId === relation.id ? (
+                    <tr className="relation-detail-row">
+                      <td colSpan={7}>
+                        {expanded.isPending ? <span>加载详情…</span> : null}
+                        {expanded.data ? (
+                          <div className="relation-inline-detail">
+                            <div>
+                              <span>关系说明</span>
+                              {expanded.data.description ? (
+                                <OverflowText content={expanded.data.description} lines={2}>
+                                  <p>{expanded.data.description}</p>
+                                </OverflowText>
+                              ) : (
+                                <p>未填写</p>
+                              )}
+                            </div>
+                            <div className="relation-inline-cases">
+                              <div className="relation-inline-cases__heading">
+                                <span>具体案例</span>
+                                <strong>{expanded.data.caseCount} 条</strong>
+                              </div>
+                              {expanded.data.recentCases.length > 0 ? (
+                                <ul>
+                                  {expanded.data.recentCases.map((item) => (
+                                    <li key={item.id}>
+                                      <OverflowText content={item.content} lines={2}>
+                                        <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                                      </OverflowText>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p>尚未关联具体案例</p>
+                              )}
+                              {expanded.data.caseCount > 5 ? (
+                                <Link
+                                  className="relation-inline-cases__all"
+                                  to={`/cases?relationId=${expanded.data.id}`}
+                                >
+                                  查看全部 {expanded.data.caseCount} 条
+                                </Link>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
                       </td>
                     </tr>
-                    {expandedId === relation.id ? (
-                      <tr className="relation-detail-row">
-                        <td colSpan={7}>
-                          {expanded.isPending ? <span>加载详情…</span> : null}
-                          {expanded.data ? (
-                            <div className="relation-inline-detail">
-                              <div>
-                                <span>关系说明</span>
-                                {expanded.data.description ? (
-                                  <OverflowText content={expanded.data.description} lines={2}>
-                                    <p>{expanded.data.description}</p>
-                                  </OverflowText>
-                                ) : (
-                                  <p>未填写</p>
-                                )}
-                              </div>
-                              <div className="relation-inline-cases">
-                                <div className="relation-inline-cases__heading">
-                                  <span>具体案例</span>
-                                  <strong>{expanded.data.caseCount} 条</strong>
-                                </div>
-                                {expanded.data.recentCases.length > 0 ? (
-                                  <ul>
-                                    {expanded.data.recentCases.map((item) => (
-                                      <li key={item.id}>
-                                        <OverflowText content={item.content} lines={2}>
-                                          <Link to={`/cases/${item.id}`}>{item.content}</Link>
-                                        </OverflowText>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p>尚未关联具体案例</p>
-                                )}
-                                {expanded.data.caseCount > 5 ? (
-                                  <Link
-                                    className="relation-inline-cases__all"
-                                    to={`/cases?relationId=${expanded.data.id}`}
-                                  >
-                                    查看全部 {expanded.data.caseCount} 条
-                                  </Link>
-                                ) : null}
-                              </div>
-                            </div>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ) : null}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {relations.data ? (
-            <ListPagination
-              page={relations.data.page}
-              totalPages={relations.data.totalPages}
-              totalItems={relations.data.totalItems}
-              disabled={relations.isFetching}
-              onPageChange={changePage}
-            />
-          ) : null}
-        </>
+                  ) : null}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {relations.isSuccess ? (
+        <ListPagination
+          page={relations.data.page}
+          totalPages={relations.data.totalPages}
+          totalItems={relations.data.totalItems}
+          disabled={relations.isFetching}
+          onPageChange={changePage}
+        />
       ) : null}
     </section>
   );

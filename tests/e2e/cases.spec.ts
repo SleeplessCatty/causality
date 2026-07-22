@@ -1,5 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
+import { E2E_WRITE_BATCH_SIZE, runInBatches } from './support/runInBatches';
+
 const apiBase = 'http://127.0.0.1:3000/api';
 
 async function createEvent(request: APIRequestContext, name: string) {
@@ -21,10 +23,10 @@ test('case list shows totals and numbered pages for 31 recognizable records', as
   request,
 }) => {
   const token = `CASEPAGE${Date.now()}`;
-  await Promise.all(
-    Array.from({ length: 31 }, (_, index) =>
-      createCase(request, `${token}-${String(index + 1).padStart(2, '0')}`),
-    ),
+  await runInBatches(
+    Array.from({ length: 31 }, (_, index) => `${token}-${String(index + 1).padStart(2, '0')}`),
+    E2E_WRITE_BATCH_SIZE,
+    (content) => createCase(request, content),
   );
 
   await page.goto(`/cases?q=${token}`);

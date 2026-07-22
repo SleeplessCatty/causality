@@ -71,6 +71,19 @@ describe('case pages', () => {
     expect(screen.getByText('共 31 条 · 第 1/2 页')).toBeTruthy();
   });
 
+  it('keeps disabled pagination visible with the empty state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response({ items: [], page: 1, pageSize: 30, totalItems: 0, totalPages: 1 })),
+    );
+    renderRoute('/cases', <CaseListPage />);
+
+    expect(await screen.findByText('还没有具体案例')).toBeTruthy();
+    expect(screen.getByText('共 0 条 · 第 1/1 页')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(true);
+  });
+
   it('restores URL pages, supports every navigation control, and resets page after filters', async () => {
     const relationId = '22222222-2222-4222-8222-222222222222';
     const fetchMock = vi.fn((input: string | URL | Request) => {

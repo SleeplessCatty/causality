@@ -666,7 +666,7 @@ git commit -m "refactor: remove duplicated infrastructure and dead resources"
   `GET /api/relations/:relationId/cases`；查询为
   `{ limit: number /* default 100 */, cursor?: string }`，响应继续为
   `{ items: CaseSummary[], nextCursor: string | null, hasMore: boolean }`，且游标绑定
-  `relationId`。关系详情与关系编辑页改用此接口，维持每批 100 条的“加载更多”行为。
+  `relationId`。关系详情改用此接口并保留每批 100 条的显式“加载更多”；关系编辑页则在渲染表单前自动遍历并合并全部游标页。
 - Produces:
 
 ```ts
