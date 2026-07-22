@@ -6,6 +6,7 @@ import type {
   causalRelations,
   concreteCases,
   eventAliases,
+  eventKeywords,
 } from '../schema/index.js';
 
 export interface SimulationOptions {
@@ -17,6 +18,7 @@ export interface SimulationOptions {
 
 type SimulatedEvent = typeof abstractEvents.$inferInsert;
 type SimulatedAlias = typeof eventAliases.$inferInsert;
+type SimulatedEventKeyword = typeof eventKeywords.$inferInsert;
 type SimulatedRelation = typeof causalRelations.$inferInsert;
 type SimulatedCase = typeof concreteCases.$inferInsert;
 type SimulatedCaseLink = typeof causalRelationCases.$inferInsert;
@@ -24,6 +26,7 @@ type SimulatedCaseLink = typeof causalRelationCases.$inferInsert;
 export interface SimulationPlan {
   events: SimulatedEvent[];
   aliases: SimulatedAlias[];
+  keywords: SimulatedEventKeyword[];
   relations: SimulatedRelation[];
   cases: () => IterableIterator<SimulatedCase>;
   caseLinks: () => IterableIterator<SimulatedCaseLink>;
@@ -127,13 +130,26 @@ export function buildSimulationPlan(options: SimulationOptions, batchId: string)
     id: deterministicUuid(`${batchId}:event:${index}`),
     name: `SIM-${batchId}-事件-${index + 1}`,
     description: `模拟原子事件 ${index + 1}，仅用于开发和性能测试。`,
-    keywords: [`模拟事件${index + 1}`, `批次${batchId}`],
   }));
   const aliases = events.map((event, index) => ({
     id: deterministicUuid(`${batchId}:alias:${index}`),
     eventId: event.id!,
     alias: `SIM-${batchId}-E${index + 1}`,
   }));
+  const keywords = events.flatMap((event, eventIndex) => [
+    {
+      id: deterministicUuid(`${batchId}:keyword:${eventIndex}:0`),
+      eventId: event.id!,
+      keyword: `模拟事件${eventIndex + 1}`,
+      position: 1,
+    },
+    {
+      id: deterministicUuid(`${batchId}:keyword:${eventIndex}:1`),
+      eventId: event.id!,
+      keyword: `批次${batchId}`,
+      position: 2,
+    },
+  ]);
   const directions = buildDirections(options.events, options.relations, random);
   const relations = directions.map(([cause, effect], index) => ({
     id: deterministicUuid(`${batchId}:relation:${index}`),
@@ -146,6 +162,7 @@ export function buildSimulationPlan(options: SimulationOptions, batchId: string)
   return {
     events,
     aliases,
+    keywords,
     relations,
     cases: function* cases() {
       for (let index = 0; index < options.cases; index += 1) {

@@ -20,7 +20,6 @@ interface EventRow {
   id: string;
   name: string;
   description: string | null;
-  keywords: string[];
   created_at: Date;
   updated_at: Date;
   normalized_name?: string;
@@ -30,6 +29,11 @@ interface EventRow {
 interface AliasRow {
   event_id: string;
   alias: string;
+}
+
+interface KeywordRow {
+  event_id: string;
+  keyword: string;
 }
 
 export interface EventRepository {
@@ -52,19 +56,19 @@ function sortAliases(values: string[]): string[] {
   return values.toSorted((left, right) => left.localeCompare(right, 'zh-CN'));
 }
 
-function createSummary(row: EventRow, aliases: string[]): EventSummary {
+function createSummary(row: EventRow, aliases: string[], keywords: string[]): EventSummary {
   return {
     id: row.id,
     name: row.name,
     aliases: sortAliases(aliases),
-    keywords: row.keywords,
+    keywords,
     updatedAt: row.updated_at.toISOString(),
   };
 }
 
-function createDetail(row: EventRow, aliases: string[]): EventDetail {
+function createDetail(row: EventRow, aliases: string[], keywords: string[]): EventDetail {
   return {
-    ...createSummary(row, aliases),
+    ...createSummary(row, aliases, keywords),
     description: row.description,
     createdAt: row.created_at.toISOString(),
   };
@@ -92,6 +96,25 @@ export class PostgresEventRepository implements EventRepository {
     return aliases;
   }
 
+  private async loadKeywords(eventIds: string[]): Promise<Map<string, string[]>> {
+    if (eventIds.length === 0) return new Map();
+
+    const result = await this.pool.query<KeywordRow>(
+      `select event_id, keyword
+       from event_keywords
+       where event_id = any($1::uuid[])
+       order by event_id, position`,
+      [eventIds],
+    );
+    const keywords = new Map<string, string[]>();
+    for (const row of result.rows) {
+      const values = keywords.get(row.event_id) ?? [];
+      values.push(row.keyword);
+      keywords.set(row.event_id, values);
+    }
+    return keywords;
+  }
+
   async list(query: EventListQuery): Promise<EventListResponse> {
     const normalizedQuery = normalizeQuery(query.q);
     const cursor = query.cursor ? decodeEventCursor(query.cursor, normalizedQuery) : undefined;
@@ -100,8 +123,14 @@ export class PostgresEventRepository implements EventRepository {
       : await this.listRows(query.limit + 1, cursor);
     const hasMore = rows.length > query.limit;
     const pageRows = rows.slice(0, query.limit);
-    const aliasMap = await this.loadAliases(pageRows.map((row) => row.id));
-    const items = pageRows.map((row) => createSummary(row, aliasMap.get(row.id) ?? []));
+    const eventIds = pageRows.map((row) => row.id);
+    const [aliasMap, keywordMap] = await Promise.all([
+      this.loadAliases(eventIds),
+      this.loadKeywords(eventIds),
+    ]);
+    const items = pageRows.map((row) =>
+      createSummary(row, aliasMap.get(row.id) ?? [], keywordMap.get(row.id) ?? []),
+    );
     const last = pageRows.at(-1);
 
     let nextCursor: string | null = null;
@@ -133,7 +162,7 @@ export class PostgresEventRepository implements EventRepository {
     parameters.push(limit);
 
     const result = await this.pool.query<EventRow>(
-      `select id, name, description, keywords, created_at, updated_at
+      `select id, name, description, created_at, updated_at
        from abstract_events
        ${condition}
        order by updated_at desc, id desc
@@ -176,22 +205,16 @@ export class PostgresEventRepository implements EventRepository {
          from event_aliases a
          where a.normalized_alias like $3 escape '\\'
          union all
-         select e.id,
-                case when exists (
-                       select 1 from unnest(e.keywords) keyword
-                       where lower(keyword) = $1
-                     ) then 5 else 6 end as rank
-         from abstract_events e
-         where exists (
-           select 1 from unnest(e.keywords) keyword
-           where lower(keyword) like $3 escape '\\'
-         )
+         select k.event_id,
+                case when k.normalized_keyword = $1 then 5 else 6 end as rank
+         from event_keywords k
+         where k.normalized_keyword like $3 escape '\\'
        ), ranked as (
          select id, min(rank)::int as rank
          from matches
          group by id
        )
-       select e.id, e.name, e.description, e.keywords, e.created_at, e.updated_at,
+       select e.id, e.name, e.description, e.created_at, e.updated_at,
               e.normalized_name, r.rank
        from ranked r
        join abstract_events e on e.id = r.id
@@ -232,15 +255,18 @@ export class PostgresEventRepository implements EventRepository {
 
   async findById(id: string): Promise<EventDetail | null> {
     const result = await this.pool.query<EventRow>(
-      `select id, name, description, keywords, created_at, updated_at
+      `select id, name, description, created_at, updated_at
        from abstract_events
        where id = $1`,
       [id],
     );
     const row = result.rows[0];
     if (!row) return null;
-    const aliases = await this.loadAliases([id]);
-    return createDetail(row, aliases.get(id) ?? []);
+    const [aliases, keywords] = await Promise.all([
+      this.loadAliases([id]),
+      this.loadKeywords([id]),
+    ]);
+    return createDetail(row, aliases.get(id) ?? [], keywords.get(id) ?? []);
   }
 
   async create(input: EventFormInput): Promise<EventDetail> {
@@ -248,15 +274,16 @@ export class PostgresEventRepository implements EventRepository {
     try {
       await client.query('begin');
       const inserted = await client.query<EventRow>(
-        `insert into abstract_events (name, description, keywords)
-         values ($1, $2, $3::text[])
-         returning id, name, description, keywords, created_at, updated_at`,
-        [input.name, input.description, input.keywords],
+        `insert into abstract_events (name, description)
+         values ($1, $2)
+         returning id, name, description, created_at, updated_at`,
+        [input.name, input.description],
       );
       const row = inserted.rows[0]!;
       await this.insertAliases(client, row.id, input.aliases);
+      await this.replaceKeywords(client, row.id, input.keywords);
       await client.query('commit');
-      return createDetail(row, input.aliases);
+      return createDetail(row, input.aliases, input.keywords);
     } catch (error) {
       await client.query('rollback');
       throw error;
@@ -273,11 +300,10 @@ export class PostgresEventRepository implements EventRepository {
         `update abstract_events
          set name = $2,
              description = $3,
-             keywords = $4::text[],
              updated_at = clock_timestamp()
          where id = $1
-         returning id, name, description, keywords, created_at, updated_at`,
-        [id, input.name, input.description, input.keywords],
+         returning id, name, description, created_at, updated_at`,
+        [id, input.name, input.description],
       );
       const row = updated.rows[0];
       if (!row) {
@@ -286,8 +312,9 @@ export class PostgresEventRepository implements EventRepository {
       }
       await client.query('delete from event_aliases where event_id = $1', [id]);
       await this.insertAliases(client, id, input.aliases);
+      await this.replaceKeywords(client, id, input.keywords);
       await client.query('commit');
-      return createDetail(row, input.aliases);
+      return createDetail(row, input.aliases, input.keywords);
     } catch (error) {
       await client.query('rollback');
       throw error;
@@ -307,6 +334,21 @@ export class PostgresEventRepository implements EventRepository {
        select $1::uuid, alias
        from unnest($2::text[]) alias`,
       [eventId, aliases],
+    );
+  }
+
+  private async replaceKeywords(
+    client: PoolClient,
+    eventId: string,
+    keywords: string[],
+  ): Promise<void> {
+    await client.query('delete from event_keywords where event_id = $1', [eventId]);
+    if (keywords.length === 0) return;
+    await client.query(
+      `insert into event_keywords (event_id, keyword, position)
+       select $1::uuid, source.keyword, source.position::integer
+       from unnest($2::text[]) with ordinality as source(keyword, position)`,
+      [eventId, keywords],
     );
   }
 }

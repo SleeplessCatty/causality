@@ -12,6 +12,7 @@ import {
   causalRelations,
   concreteCases,
   eventAliases,
+  eventKeywords,
 } from '../schema/index.js';
 import {
   buildSimulationPlan,
@@ -53,6 +54,11 @@ export async function runSimulation(
       await transaction
         .insert(eventAliases)
         .values(plan.aliases.slice(offset, offset + insertBatchSize));
+    }
+    for (let offset = 0; offset < plan.keywords.length; offset += insertBatchSize) {
+      await transaction
+        .insert(eventKeywords)
+        .values(plan.keywords.slice(offset, offset + insertBatchSize));
     }
     for (let offset = 0; offset < plan.relations.length; offset += insertBatchSize) {
       await transaction

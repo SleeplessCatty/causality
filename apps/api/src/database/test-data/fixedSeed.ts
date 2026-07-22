@@ -12,6 +12,7 @@ import {
   causalRelations,
   concreteCases,
   eventAliases,
+  eventKeywords,
 } from '../schema/index.js';
 
 function stableId(group: number, sequence: number): string {
@@ -33,11 +34,10 @@ const eventDefinitions = [
   ['股票利空', '对相关股票价格形成负面影响', ['利空', '负面影响']],
 ] as const;
 
-const fixedEvents = eventDefinitions.map(([name, description, keywords], index) => ({
+const fixedEvents = eventDefinitions.map(([name, description], index) => ({
   id: stableId(8000, index + 1),
   name,
   description,
-  keywords: [...keywords],
 }));
 
 const fixedAliases = eventDefinitions.map(([, , keywords], index) => ({
@@ -45,6 +45,15 @@ const fixedAliases = eventDefinitions.map(([, , keywords], index) => ({
   eventId: fixedEvents[index]!.id,
   alias: keywords[0],
 }));
+
+const fixedKeywords = eventDefinitions.flatMap(([, , keywords], eventIndex) =>
+  keywords.map((keyword, keywordIndex) => ({
+    id: stableId(8002, eventIndex * 2 + keywordIndex + 1),
+    eventId: fixedEvents[eventIndex]!.id,
+    keyword,
+    position: keywordIndex + 1,
+  })),
+);
 
 const relationDefinitions = [
   [0, 1, 75, '政策利率上升促使市场流动性收紧'],
@@ -102,6 +111,7 @@ export async function runFixedSeed(pool: Pool): Promise<void> {
       .insert(eventAliases)
       .values(fixedAliases)
       .onConflictDoNothing({ target: eventAliases.id });
+    await transaction.insert(eventKeywords).values(fixedKeywords).onConflictDoNothing();
     await transaction
       .insert(causalRelations)
       .values(fixedRelations)

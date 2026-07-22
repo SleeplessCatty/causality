@@ -19,6 +19,9 @@ interface IntegrityCounts {
   invalidConfidence: number;
   duplicateCaseLinks: number;
   invalidForeignKeys: number;
+  orphanedKeywords: number;
+  duplicateNormalizedKeywords: number;
+  invalidKeywordLengths: number;
 }
 
 export interface DatabaseVerificationReport {
@@ -51,8 +54,11 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
   );
   const integrity = await pool.query<{
     duplicate_case_links: number;
+    duplicate_normalized_keywords: number;
     invalid_confidence: number;
     invalid_foreign_keys: number;
+    invalid_keyword_lengths: number;
+    orphaned_keywords: number;
     self_loops: number;
   }>(
     `select
@@ -69,6 +75,20 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
           group by causal_relation_id, concrete_case_id
           having count(*) > 1
         ) duplicates) as duplicate_case_links,
+       (select count(*)::int
+        from (
+          select event_id, normalized_keyword
+          from event_keywords
+          group by event_id, normalized_keyword
+          having count(*) > 1
+        ) duplicates) as duplicate_normalized_keywords,
+       (select count(*)::int
+        from event_keywords
+        where char_length(btrim(keyword)) not between 1 and 50) as invalid_keyword_lengths,
+       (select count(*)::int
+        from event_keywords k
+        left join abstract_events e on e.id = k.event_id
+        where e.id is null) as orphaned_keywords,
        (
          (select count(*) from event_aliases a
           left join abstract_events e on e.id = a.event_id
@@ -100,6 +120,9 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
       invalidConfidence: integrityRow.invalid_confidence,
       duplicateCaseLinks: integrityRow.duplicate_case_links,
       invalidForeignKeys: integrityRow.invalid_foreign_keys,
+      orphanedKeywords: integrityRow.orphaned_keywords,
+      duplicateNormalizedKeywords: integrityRow.duplicate_normalized_keywords,
+      invalidKeywordLengths: integrityRow.invalid_keyword_lengths,
     },
     valid: false,
   };

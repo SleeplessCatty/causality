@@ -56,9 +56,25 @@ describe('simulation plan', () => {
     const second = buildSimulationPlan(options, 'test-batch');
 
     expect(first.events).toEqual(second.events);
+    expect(first.keywords).toEqual(second.keywords);
     expect(first.relations).toEqual(second.relations);
     expect(Array.from(first.cases())).toEqual(Array.from(second.cases()));
     expect(Array.from(first.caseLinks())).toEqual(Array.from(second.caseLinks()));
+  });
+
+  it('creates two ordered keywords for every simulated event', () => {
+    const plan = buildSimulationPlan(options, 'keyword-batch');
+    const byEvent = new Map<string, typeof plan.keywords>();
+    for (const keyword of plan.keywords) {
+      const values = byEvent.get(keyword.eventId) ?? [];
+      values.push(keyword);
+      byEvent.set(keyword.eventId, values);
+    }
+
+    expect(plan.keywords).toHaveLength(options.events * 2);
+    for (const event of plan.events) {
+      expect(byEvent.get(event.id!)).toMatchObject([{ position: 1 }, { position: 2 }]);
+    }
   });
 
   it('creates no self loops or duplicate directed relations', () => {

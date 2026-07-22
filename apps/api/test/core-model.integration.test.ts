@@ -1,13 +1,40 @@
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { createDatabaseClient } from '../src/database/client.js';
 import { runMigrations } from '../src/database/migrate.js';
 
 const eventOneId = '10000000-0000-4000-8000-000000000001';
 const eventTwoId = '10000000-0000-4000-8000-000000000002';
 const relationId = '20000000-0000-4000-8000-000000000001';
 const caseId = '30000000-0000-4000-8000-000000000001';
+const legacyEventId = '10000000-0000-4000-8000-000000000090';
+
+const migrationsFolder = fileURLToPath(new URL('../../../database/migrations', import.meta.url));
+
+async function createLegacyMigrationsFolder(): Promise<string> {
+  const folder = await mkdtemp(join(tmpdir(), 'causality-legacy-migrations-'));
+  await mkdir(join(folder, 'meta'));
+  const journal = JSON.parse(
+    await readFile(join(migrationsFolder, 'meta/_journal.json'), 'utf8'),
+  ) as { entries: Array<{ idx: number; tag: string }> };
+
+  for (let index = 0; index <= 4; index += 1) {
+    const migration = journal.entries[index]!;
+    await cp(join(migrationsFolder, `${migration.tag}.sql`), join(folder, `${migration.tag}.sql`));
+  }
+
+  journal.entries = journal.entries.filter((entry) => entry.idx <= 4);
+  await writeFile(join(folder, 'meta/_journal.json'), `${JSON.stringify(journal, null, 2)}\n`);
+  return folder;
+}
 
 async function expectPgError(operation: Promise<unknown>, expectedCode: string): Promise<void> {
   await expect(operation).rejects.toMatchObject({ code: expectedCode });
@@ -16,6 +43,7 @@ async function expectPgError(operation: Promise<unknown>, expectedCode: string):
 describe.sequential('core PostgreSQL model', () => {
   let container: StartedTestContainer | undefined;
   let pool: Pool | undefined;
+  let legacyMigrationsFolder: string | undefined;
 
   beforeAll(async () => {
     container = await new GenericContainer('postgres:18.4-alpine')
@@ -38,16 +66,54 @@ describe.sequential('core PostgreSQL model', () => {
     pool = new Pool({
       connectionString: `postgresql://causality:causality@${container.getHost()}:${container.getMappedPort(5432)}/causality_test`,
     });
+    legacyMigrationsFolder = await createLegacyMigrationsFolder();
   }, 120_000);
 
   afterAll(async () => {
     await pool?.end();
     await container?.stop();
+    if (legacyMigrationsFolder) await rm(legacyMigrationsFolder, { recursive: true });
   });
 
-  it('migrates an empty database and can be run again', async () => {
+  it('losslessly migrates ordered keyword arrays and can be run again', async () => {
+    await migrate(createDatabaseClient(pool!), { migrationsFolder: legacyMigrationsFolder! });
+    await pool!.query(
+      `insert into abstract_events (id, name, keywords)
+       values ($1, 'Legacy keyword event', $2::text[])`,
+      [legacyEventId, ['First Tag', '第二词', ' spaced ']],
+    );
+
     await runMigrations(pool!);
     await runMigrations(pool!);
+
+    const keywordTable = await pool!.query<{ name: string | null }>(
+      `select to_regclass('public.event_keywords')::text as name`,
+    );
+    expect(keywordTable.rows[0]?.name).toBe('event_keywords');
+
+    const keywords = await pool!.query<{ keyword: string; position: number }>(
+      `select keyword, position
+       from event_keywords
+       where event_id = $1
+       order by position`,
+      [legacyEventId],
+    );
+    expect(keywords.rows).toEqual([
+      { keyword: 'First Tag', position: 1 },
+      { keyword: '第二词', position: 2 },
+      { keyword: ' spaced ', position: 3 },
+    ]);
+
+    const legacyColumn = await pool!.query<{ exists: boolean }>(
+      `select exists (
+         select 1
+         from information_schema.columns
+         where table_schema = 'public'
+           and table_name = 'abstract_events'
+           and column_name = 'keywords'
+       ) as exists`,
+    );
+    expect(legacyColumn.rows[0]?.exists).toBe(false);
 
     const tables = await pool!.query<{ table_name: string }>(
       `select table_name
@@ -62,7 +128,50 @@ describe.sequential('core PostgreSQL model', () => {
       'causal_relations',
       'concrete_cases',
       'event_aliases',
+      'event_keywords',
     ]);
+  });
+
+  it('rolls the whole migration back when legacy keywords cannot be copied', async () => {
+    const rollbackDatabase = 'causality_keyword_rollback_test';
+    await pool!.query(`create database ${rollbackDatabase}`);
+    const rollbackPool = new Pool({
+      connectionString: `postgresql://causality:causality@${container!.getHost()}:${container!.getMappedPort(5432)}/${rollbackDatabase}`,
+    });
+
+    try {
+      await migrate(createDatabaseClient(rollbackPool), {
+        migrationsFolder: legacyMigrationsFolder!,
+      });
+      await rollbackPool.query(
+        `insert into abstract_events (name, keywords)
+         values ('Invalid legacy keyword event', array['Rate Hike', ' rate hike '])`,
+      );
+
+      await expect(runMigrations(rollbackPool)).rejects.toMatchObject({
+        cause: { code: '23505' },
+      });
+
+      const state = await rollbackPool.query<{
+        keyword_column_exists: boolean;
+        keyword_table_exists: boolean;
+      }>(
+        `select
+           exists (
+             select 1 from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'abstract_events'
+               and column_name = 'keywords'
+           ) as keyword_column_exists,
+           to_regclass('public.event_keywords') is not null as keyword_table_exists`,
+      );
+      expect(state.rows[0]).toEqual({
+        keyword_column_exists: true,
+        keyword_table_exists: false,
+      });
+    } finally {
+      await rollbackPool.end();
+    }
   });
 
   it('enforces normalized event names and aliases', async () => {
@@ -103,10 +212,9 @@ describe.sequential('core PostgreSQL model', () => {
   it('enforces 50/80/50 event field boundaries in PostgreSQL', async () => {
     const boundaryEventId = '10000000-0000-4000-8000-000000000010';
     await expect(
-      pool!.query(`insert into abstract_events (id, name, keywords) values ($1, $2, array[$3])`, [
+      pool!.query(`insert into abstract_events (id, name) values ($1, $2)`, [
         boundaryEventId,
         '事'.repeat(50),
-        '词'.repeat(50),
       ]),
     ).resolves.toBeTruthy();
     await expectPgError(
@@ -126,11 +234,53 @@ describe.sequential('core PostgreSQL model', () => {
       ]),
       '22001',
     );
+    await expect(
+      pool!.query(`insert into event_keywords (event_id, keyword, position) values ($1, $2, 1)`, [
+        boundaryEventId,
+        '词'.repeat(50),
+      ]),
+    ).resolves.toBeTruthy();
     await expectPgError(
-      pool!.query(`update abstract_events set keywords = array[$2] where id = $1`, [
+      pool!.query(
+        `insert into event_keywords (event_id, keyword, position) values ($1, '   ', 2)`,
+        [boundaryEventId],
+      ),
+      '23514',
+    );
+    await expectPgError(
+      pool!.query(`insert into event_keywords (event_id, keyword, position) values ($1, $2, 2)`, [
         boundaryEventId,
         '词'.repeat(51),
       ]),
+      '22001',
+    );
+    await pool!.query(
+      `insert into event_keywords (event_id, keyword, position)
+       values ($1, '  Mixed Tag  ', 2)`,
+      [boundaryEventId],
+    );
+    await expectPgError(
+      pool!.query(
+        `insert into event_keywords (event_id, keyword, position)
+         values ($1, 'mixed tag', 3)`,
+        [boundaryEventId],
+      ),
+      '23505',
+    );
+    await expectPgError(
+      pool!.query(
+        `insert into event_keywords (event_id, keyword, position)
+         values ($1, 'invalid zero position', 0)`,
+        [boundaryEventId],
+      ),
+      '23514',
+    );
+    await expectPgError(
+      pool!.query(
+        `insert into event_keywords (event_id, keyword, position)
+         values ($1, 'invalid twenty-first position', 21)`,
+        [boundaryEventId],
+      ),
       '23514',
     );
   });
@@ -295,6 +445,10 @@ describe.sequential('core PostgreSQL model', () => {
         'event_aliases_event_id_idx',
         'event_aliases_normalized_alias_idx',
         'event_aliases_normalized_alias_trgm_idx',
+        'event_keywords_event_normalized_uidx',
+        'event_keywords_event_position_uidx',
+        'event_keywords_normalized_trgm_idx',
+        'event_keywords_event_id_idx',
         'abstract_events_normalized_name_trgm_idx',
         'abstract_events_updated_at_id_idx',
         'causal_relations_cause_event_id_idx',

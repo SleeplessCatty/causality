@@ -58,11 +58,13 @@ describe.sequential('database data tools', () => {
       cases: string;
       caseLinks: string;
       events: string;
+      keywords: string;
       relations: string;
     }>(
       `select
          (select count(*) from abstract_events) as events,
          (select count(*) from event_aliases) as aliases,
+         (select count(*) from event_keywords) as keywords,
          (select count(*) from causal_relations) as relations,
          (select count(*) from concrete_cases) as cases,
          (select count(*) from causal_relation_cases) as "caseLinks"`,
@@ -70,6 +72,7 @@ describe.sequential('database data tools', () => {
     expect(counts.rows[0]).toEqual({
       events: '12',
       aliases: '12',
+      keywords: '24',
       relations: '15',
       cases: '18',
       caseLinks: '18',
@@ -80,6 +83,18 @@ describe.sequential('database data tools', () => {
       [firstFixedEventId],
     );
     expect(event.rows[0]?.description).toBe('User edited description');
+
+    const keywords = await pool!.query<{ keyword: string; position: number }>(
+      `select keyword, position
+       from event_keywords
+       where event_id = $1
+       order by position`,
+      [firstFixedEventId],
+    );
+    expect(keywords.rows).toEqual([
+      { keyword: '政策利率', position: 1 },
+      { keyword: '加息', position: 2 },
+    ]);
   });
 
   it('reports migration state, counts, and zero integrity violations', async () => {
@@ -98,6 +113,9 @@ describe.sequential('database data tools', () => {
       invalidConfidence: 0,
       duplicateCaseLinks: 0,
       invalidForeignKeys: 0,
+      orphanedKeywords: 0,
+      duplicateNormalizedKeywords: 0,
+      invalidKeywordLengths: 0,
     });
     expect(report.valid).toBe(true);
   });
@@ -124,5 +142,10 @@ describe.sequential('database data tools', () => {
       causalRelationCaseLinks: 93,
     });
     expect(report.valid).toBe(true);
+
+    const keywordCount = await pool!.query<{ count: string }>(
+      'select count(*) from event_keywords',
+    );
+    expect(keywordCount.rows[0]?.count).toBe('64');
   });
 });

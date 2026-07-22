@@ -36,6 +36,13 @@
       "when": 1784714216713,
       "tag": "0004_ux_02r1_text_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784737543768,
+      "tag": "0005_event_keywords",
+      "breakpoints": true
     }
   ]
 }

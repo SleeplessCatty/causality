@@ -19,10 +19,6 @@ export const abstractEvents = pgTable(
       .generatedAlwaysAs(sql`lower(btrim(name))`)
       .notNull(),
     description: text('description'),
-    keywords: text('keywords')
-      .array()
-      .default(sql`'{}'::text[]`)
-      .notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -36,10 +32,6 @@ export const abstractEvents = pgTable(
     check(
       'abstract_events_name_length_check',
       sql`char_length(btrim(${table.name})) between 1 and 50`,
-    ),
-    check(
-      'abstract_events_keywords_length_check',
-      sql`text_array_items_length_between(${table.keywords}, 1, 50)`,
     ),
     check(
       'abstract_events_description_check',

@@ -90,6 +90,12 @@ describe.sequential('event REST API', () => {
     const detail = await app!.inject({ method: 'GET', url: `/api/events/${created.id}` });
     expect(detail.statusCode).toBe(200);
     expect(detail.json()).toEqual(created);
+
+    const list = await app!.inject({
+      method: 'GET',
+      url: `/api/events?q=${encodeURIComponent(created.name)}&limit=5`,
+    });
+    expect(list.json<EventListResponse>().items[0]?.keywords).toEqual(['大宗商品', '通胀']);
   });
 
   it('enforces 50/80/50 character event field boundaries', async () => {
@@ -151,6 +157,8 @@ describe.sequential('event REST API', () => {
     });
     expect(updated.aliases).toHaveLength(2);
     expect(updated.aliases).toEqual(expect.arrayContaining(['新别名一', '新别名二']));
+    const updatedDetail = await app!.inject({ method: 'GET', url: `/api/events/${target.id}` });
+    expect(updatedDetail.json<EventDetail>().keywords).toEqual(['更新', '测试']);
     expect(new Date(updated.updatedAt).getTime()).toBeGreaterThanOrEqual(
       new Date(target.updatedAt).getTime(),
     );
@@ -231,7 +239,7 @@ describe.sequential('event REST API', () => {
     await createEvent('SEARCHTOKEN 标准名称', { aliases: ['其他别名'] });
     await createEvent('测试：包含 SEARCHTOKEN 的名称');
     await createEvent('测试：别名命中项', { aliases: ['SEARCHTOKEN'] });
-    await createEvent('测试：关键词命中项', { keywords: ['SEARCHTOKEN'] });
+    await createEvent('测试：关键词命中项', { keywords: ['prefix-SEARCHTOKEN-suffix'] });
 
     const response = await app!.inject({
       method: 'GET',
