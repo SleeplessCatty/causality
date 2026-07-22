@@ -16,7 +16,7 @@ export function RelationEditPage() {
     enabled: Boolean(relationId),
   });
   const linkedCases = useQuery({
-    queryKey: ['cases', 'relation-associations', relationId],
+    queryKey: ['cases', 'relation-associations', 'edit', relationId],
     queryFn: ({ signal }) => getAllCasesForRelation(relationId, signal),
     enabled: relation.isSuccess && relation.data.caseCount > 0,
   });
