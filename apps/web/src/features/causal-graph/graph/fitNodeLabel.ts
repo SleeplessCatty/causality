@@ -1,9 +1,9 @@
 export const GRAPH_NODE_WIDTH = 220;
 export const GRAPH_NODE_HEIGHT = 96;
-export const GRAPH_NODE_TEXT_WIDTH = 204;
-export const GRAPH_NODE_TEXT_HEIGHT = 80;
+export const GRAPH_NODE_TEXT_WIDTH = 208;
+export const GRAPH_NODE_TEXT_HEIGHT = 84;
 
-const fontSizes = [16, 15, 14, 13, 12, 11, 10, 9] as const;
+const fontSizes = [17, 16, 15, 14, 13, 12, 11, 10] as const;
 const lineHeightRatio = 1.3;
 
 export interface FittedNodeLabel {
