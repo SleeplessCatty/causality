@@ -1,11 +1,10 @@
 import { z } from 'zod';
 
 import { caseContentSchema, caseReferenceSchema } from '../cases/caseSchemas.js';
+import { eventNameSchema } from '../events/eventSchemas.js';
 
 const timestampSchema = z.iso.datetime({ offset: true });
-const eventReferenceSchema = z
-  .object({ id: z.uuid(), name: z.string().trim().min(1).max(120) })
-  .strict();
+const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
 
 export const relationFormInputSchema = z
   .object({

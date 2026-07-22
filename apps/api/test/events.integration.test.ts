@@ -92,6 +92,21 @@ describe.sequential('event REST API', () => {
     expect(detail.json()).toEqual(created);
   });
 
+  it('enforces 50/80/50 character event field boundaries', async () => {
+    const accepted = await createEvent('事'.repeat(50), {
+      aliases: ['别'.repeat(80)],
+      keywords: ['词'.repeat(50)],
+    });
+    expect(accepted.statusCode).toBe(201);
+    expect((await createEvent('事'.repeat(51))).statusCode).toBe(400);
+    expect((await createEvent('测试：别名边界', { aliases: ['别'.repeat(81)] })).statusCode).toBe(
+      400,
+    );
+    expect(
+      (await createEvent('测试：关键词边界', { keywords: ['词'.repeat(51)] })).statusCode,
+    ).toBe(400);
+  });
+
   it('rejects normalized duplicate names with a stable conflict response', async () => {
     await createEvent('测试：政策预期转鹰');
     const duplicate = await createEvent('  测试：政策预期转鹰  ');

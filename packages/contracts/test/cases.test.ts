@@ -19,12 +19,13 @@ const effectEventId = '44444444-4444-4444-8444-444444444444';
 const timestamp = '2026-07-21T03:00:00.000Z';
 
 describe('concrete case contracts', () => {
-  it('trims a case statement and enforces the 1–50 character boundary', () => {
+  it('trims a case statement and enforces the 1–100 character boundary', () => {
     expect(caseFormInputSchema.parse({ content: '  2025年4月美国宣布新一轮关税措施  ' })).toEqual({
       content: '2025年4月美国宣布新一轮关税措施',
     });
     expect(caseFormInputSchema.safeParse({ content: '   ' }).success).toBe(false);
-    expect(caseFormInputSchema.safeParse({ content: '事'.repeat(51) }).success).toBe(false);
+    expect(caseFormInputSchema.safeParse({ content: '事'.repeat(100) }).success).toBe(true);
+    expect(caseFormInputSchema.safeParse({ content: '事'.repeat(101) }).success).toBe(false);
     expect(caseFormInputSchema.safeParse({ content: '案例', source: '公告' }).success).toBe(false);
   });
 
@@ -43,6 +44,10 @@ describe('concrete case contracts', () => {
     });
     expect(caseRelationListQuerySchema.parse({ limit: '30' })).toEqual({ limit: 30 });
     expect(caseCandidateQuerySchema.safeParse({ q: '案例', limit: '101' }).success).toBe(false);
+    expect(caseListQuerySchema.safeParse({ q: '查'.repeat(100) }).success).toBe(true);
+    expect(caseListQuerySchema.safeParse({ q: '查'.repeat(101) }).success).toBe(false);
+    expect(caseCandidateQuerySchema.safeParse({ q: '查'.repeat(100) }).success).toBe(true);
+    expect(caseCandidateQuerySchema.safeParse({ q: '查'.repeat(101) }).success).toBe(false);
   });
 
   it('accepts strict case, candidate, list, and linked-relation responses', () => {

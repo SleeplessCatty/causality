@@ -5,7 +5,7 @@ export const concreteCases = pgTable(
   'concrete_cases',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    content: varchar('content', { length: 50 }).notNull(),
+    content: varchar('content', { length: 100 }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -18,7 +18,7 @@ export const concreteCases = pgTable(
     index('concrete_cases_updated_at_id_idx').on(table.updatedAt.desc(), table.id.desc()),
     check(
       'concrete_cases_content_check',
-      sql`${table.content} = btrim(${table.content}) and char_length(${table.content}) between 1 and 50`,
+      sql`${table.content} = btrim(${table.content}) and char_length(${table.content}) between 1 and 100`,
     ),
   ],
 );

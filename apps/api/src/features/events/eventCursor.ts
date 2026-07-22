@@ -13,9 +13,9 @@ const listCursorStateSchema = z
 const searchCursorStateSchema = z
   .object({
     kind: z.literal('search'),
-    query: z.string().min(1).max(120),
+    query: z.string().min(1).max(80),
     rank: z.number().int().min(1).max(6),
-    normalizedName: z.string().min(1).max(120),
+    normalizedName: z.string().min(1).max(50),
     id: z.uuid(),
   })
   .strict();
@@ -23,10 +23,10 @@ const searchCursorStateSchema = z
 const candidateCursorStateSchema = z
   .object({
     kind: z.literal('candidate'),
-    query: z.string().min(1).max(120),
+    query: z.string().min(1).max(80),
     excludeId: z.uuid().nullable(),
     rank: z.number().int().min(1).max(6),
-    normalizedName: z.string().min(1).max(120),
+    normalizedName: z.string().min(1).max(50),
     id: z.uuid(),
   })
   .strict();

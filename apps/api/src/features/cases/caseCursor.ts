@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 const listStateSchema = z
   .object({
-    query: z.string().max(50),
+    query: z.string().max(100),
     filterRelationId: z.uuid().nullable(),
     rank: z.number().int().min(1).max(3).nullable(),
     updatedAt: z.iso.datetime({ offset: true }),
@@ -21,7 +21,7 @@ const relationStateSchema = z
 
 const candidateStateSchema = z
   .object({
-    query: z.string().min(1).max(50),
+    query: z.string().min(1).max(100),
     rank: z.number().int().min(1).max(3),
     updatedAt: z.iso.datetime({ offset: true }),
     id: z.uuid(),

@@ -14,8 +14,8 @@ export const abstractEvents = pgTable(
   'abstract_events',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    name: varchar('name', { length: 120 }).notNull(),
-    normalizedName: varchar('normalized_name', { length: 120 })
+    name: varchar('name', { length: 50 }).notNull(),
+    normalizedName: varchar('normalized_name', { length: 50 })
       .generatedAlwaysAs(sql`lower(btrim(name))`)
       .notNull(),
     description: text('description'),
@@ -35,7 +35,11 @@ export const abstractEvents = pgTable(
     index('abstract_events_updated_at_id_idx').on(table.updatedAt.desc(), table.id.desc()),
     check(
       'abstract_events_name_length_check',
-      sql`char_length(btrim(${table.name})) between 1 and 120`,
+      sql`char_length(btrim(${table.name})) between 1 and 50`,
+    ),
+    check(
+      'abstract_events_keywords_length_check',
+      sql`text_array_items_length_between(${table.keywords}, 1, 50)`,
     ),
     check(
       'abstract_events_description_check',

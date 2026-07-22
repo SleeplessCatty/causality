@@ -1,17 +1,17 @@
 import { z } from 'zod';
 
 const timestampSchema = z.iso.datetime({ offset: true });
-const eventReferenceSchema = z
-  .object({ id: z.uuid(), name: z.string().trim().min(1).max(120) })
-  .strict();
+import { eventNameSchema } from '../events/eventSchemas.js';
 
-export const caseContentSchema = z.string().trim().min(1).max(50);
+const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
+
+export const caseContentSchema = z.string().trim().min(1).max(100);
 
 export const caseFormInputSchema = z.object({ content: caseContentSchema }).strict();
 
 export const caseListQuerySchema = z
   .object({
-    q: z.string().trim().max(50).default(''),
+    q: z.string().trim().max(100).default(''),
     relationId: z.uuid().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(30),
     cursor: z.string().min(1).max(2_000).optional(),
@@ -20,7 +20,7 @@ export const caseListQuerySchema = z
 
 export const caseCandidateQuerySchema = z
   .object({
-    q: z.string().trim().min(1).max(50),
+    q: z.string().trim().min(1).max(100),
     limit: z.coerce.number().int().min(1).max(100).default(100),
     cursor: z.string().min(1).max(2_000).optional(),
   })

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-const eventNameSchema = z.string().trim().min(1).max(120);
-const eventAliasSchema = z.string().trim().min(1).max(120);
-const eventKeywordSchema = z.string().trim().min(1).max(60);
+export const eventNameSchema = z.string().trim().min(1).max(50);
+export const eventAliasSchema = z.string().trim().min(1).max(80);
+export const eventKeywordSchema = z.string().trim().min(1).max(50);
 const timestampSchema = z.iso.datetime({ offset: true });
 
 function addDuplicateIssues(
@@ -46,7 +46,7 @@ export const eventFormInputSchema = z
 
 export const eventListQuerySchema = z
   .object({
-    q: z.string().trim().max(120).default(''),
+    q: z.string().trim().max(80).default(''),
     limit: z.coerce.number().int().min(1).max(100).default(30),
     cursor: z.string().min(1).max(2_000).optional(),
   })
@@ -54,7 +54,7 @@ export const eventListQuerySchema = z
 
 export const eventCandidateQuerySchema = z
   .object({
-    q: z.string().trim().min(1).max(120),
+    q: z.string().trim().min(1).max(80),
     limit: z.coerce.number().int().min(1).max(100).default(100),
     cursor: z.string().min(1).max(2_000).optional(),
     excludeId: z.uuid().optional(),

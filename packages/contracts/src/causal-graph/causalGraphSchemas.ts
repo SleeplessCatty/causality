@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { eventNameSchema } from '../events/eventSchemas.js';
+
 const graphLimitSchema = z.union([z.literal(20), z.literal(50), z.literal(100)]);
 const relationLimitSchema = z.union([z.literal(200), z.literal(500), z.literal(1_000)]);
 const graphDirectionSchema = z.enum(['upstream', 'downstream', 'both']);
@@ -18,7 +20,7 @@ export const causalGraphQuerySchema = z
 export const causalGraphNodeSchema = z
   .object({
     id: z.uuid(),
-    name: z.string().trim().min(1).max(120),
+    name: eventNameSchema,
   })
   .strict();
 

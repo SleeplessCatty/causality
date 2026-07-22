@@ -83,7 +83,7 @@ describe('simulation plan', () => {
 
     expect(cases).toHaveLength(30);
     for (const causalCase of cases) {
-      expect(causalCase.content.length).toBeLessThanOrEqual(50);
+      expect(causalCase.content.length).toBeLessThanOrEqual(100);
     }
     for (const link of links) {
       expect(relationIds.has(link.causalRelationId)).toBe(true);

@@ -40,9 +40,25 @@ describe('event contracts', () => {
     });
   });
 
-  it('rejects invalid field lengths and collection limits', () => {
+  it('enforces event, alias, and keyword length boundaries', () => {
     expect(() => eventFormInputSchema.parse({ name: '   ' })).toThrow();
-    expect(() => eventFormInputSchema.parse({ name: 'a'.repeat(121) })).toThrow();
+    expect(eventFormInputSchema.safeParse({ name: '事'.repeat(50) }).success).toBe(true);
+    expect(eventFormInputSchema.safeParse({ name: '事'.repeat(51) }).success).toBe(false);
+    expect(
+      eventFormInputSchema.safeParse({ name: '事件', aliases: ['别'.repeat(80)] }).success,
+    ).toBe(true);
+    expect(
+      eventFormInputSchema.safeParse({ name: '事件', aliases: ['别'.repeat(81)] }).success,
+    ).toBe(false);
+    expect(
+      eventFormInputSchema.safeParse({ name: '事件', keywords: ['词'.repeat(50)] }).success,
+    ).toBe(true);
+    expect(
+      eventFormInputSchema.safeParse({ name: '事件', keywords: ['词'.repeat(51)] }).success,
+    ).toBe(false);
+  });
+
+  it('rejects invalid collection limits and blank aliases', () => {
     expect(() =>
       eventFormInputSchema.parse({
         name: '事件',
@@ -56,9 +72,6 @@ describe('event contracts', () => {
       }),
     ).toThrow();
     expect(() => eventFormInputSchema.parse({ name: '事件', aliases: [' '] })).toThrow();
-    expect(() =>
-      eventFormInputSchema.parse({ name: '事件', keywords: ['k'.repeat(61)] }),
-    ).toThrow();
   });
 
   it('rejects aliases and keywords duplicated after trim and case normalization', () => {
@@ -101,6 +114,10 @@ describe('event contracts', () => {
     expect(() => eventCandidateQuerySchema.parse({ q: ' ' })).toThrow();
     expect(() => eventCandidateQuerySchema.parse({ q: '事件', limit: '101' })).toThrow();
     expect(() => eventCandidateQuerySchema.parse({ q: '事件', excludeId: 'invalid' })).toThrow();
+    expect(eventListQuerySchema.safeParse({ q: '查'.repeat(80) }).success).toBe(true);
+    expect(eventListQuerySchema.safeParse({ q: '查'.repeat(81) }).success).toBe(false);
+    expect(eventCandidateQuerySchema.safeParse({ q: '查'.repeat(80) }).success).toBe(true);
+    expect(eventCandidateQuerySchema.safeParse({ q: '查'.repeat(81) }).success).toBe(false);
   });
 
   it('accepts documented detail, list, and API error responses', () => {

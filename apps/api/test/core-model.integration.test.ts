@@ -100,6 +100,41 @@ describe.sequential('core PostgreSQL model', () => {
     ).resolves.toBeTruthy();
   });
 
+  it('enforces 50/80/50 event field boundaries in PostgreSQL', async () => {
+    const boundaryEventId = '10000000-0000-4000-8000-000000000010';
+    await expect(
+      pool!.query(`insert into abstract_events (id, name, keywords) values ($1, $2, array[$3])`, [
+        boundaryEventId,
+        '事'.repeat(50),
+        '词'.repeat(50),
+      ]),
+    ).resolves.toBeTruthy();
+    await expectPgError(
+      pool!.query(`insert into abstract_events (name) values ($1)`, ['事'.repeat(51)]),
+      '22001',
+    );
+    await expect(
+      pool!.query(`insert into event_aliases (event_id, alias) values ($1, $2)`, [
+        boundaryEventId,
+        '别'.repeat(80),
+      ]),
+    ).resolves.toBeTruthy();
+    await expectPgError(
+      pool!.query(`insert into event_aliases (event_id, alias) values ($1, $2)`, [
+        boundaryEventId,
+        '别'.repeat(81),
+      ]),
+      '22001',
+    );
+    await expectPgError(
+      pool!.query(`update abstract_events set keywords = array[$2] where id = $1`, [
+        boundaryEventId,
+        '词'.repeat(51),
+      ]),
+      '23514',
+    );
+  });
+
   it('prevents self loops and duplicate directions but allows reverse relations', async () => {
     await expectPgError(
       pool!.query(
@@ -176,13 +211,16 @@ describe.sequential('core PostgreSQL model', () => {
     );
   });
 
-  it('keeps cases independent, unique, short, and reusable through relation links', async () => {
+  it('keeps cases independent, unique, bounded, and reusable through relation links', async () => {
     await expectPgError(
       pool!.query(`insert into concrete_cases (content) values ('   ')`),
       '23514',
     );
+    await expect(
+      pool!.query(`insert into concrete_cases (content) values ($1)`, ['事'.repeat(100)]),
+    ).resolves.toBeTruthy();
     await expectPgError(
-      pool!.query(`insert into concrete_cases (content) values ($1)`, ['事'.repeat(51)]),
+      pool!.query(`insert into concrete_cases (content) values ($1)`, ['事'.repeat(101)]),
       '22001',
     );
     await pool!.query(`insert into concrete_cases (id, content) values ($1, $2)`, [

@@ -10,8 +10,8 @@ export const eventAliases = pgTable(
     eventId: uuid('event_id')
       .notNull()
       .references(() => abstractEvents.id, { onDelete: 'cascade' }),
-    alias: varchar('alias', { length: 120 }).notNull(),
-    normalizedAlias: varchar('normalized_alias', { length: 120 })
+    alias: varchar('alias', { length: 80 }).notNull(),
+    normalizedAlias: varchar('normalized_alias', { length: 80 })
       .generatedAlwaysAs(sql`lower(btrim(alias))`)
       .notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -26,7 +26,7 @@ export const eventAliases = pgTable(
     ),
     check(
       'event_aliases_alias_length_check',
-      sql`char_length(btrim(${table.alias})) between 1 and 120`,
+      sql`char_length(btrim(${table.alias})) between 1 and 80`,
     ),
   ],
 );

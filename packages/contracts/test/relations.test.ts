@@ -72,6 +72,27 @@ describe('relation contracts', () => {
     ).toBe(false);
   });
 
+  it('accepts 100-character new cases and rejects 101 characters', () => {
+    const base = {
+      causeEventId,
+      effectEventId,
+      confidence: 75,
+      description: null,
+    };
+    expect(
+      relationFormInputSchema.safeParse({
+        ...base,
+        caseSelections: [{ type: 'new', content: '例'.repeat(100) }],
+      }).success,
+    ).toBe(true);
+    expect(
+      relationFormInputSchema.safeParse({
+        ...base,
+        caseSelections: [{ type: 'new', content: '例'.repeat(101) }],
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects self loops, null confidence, decimals, and out-of-range values', () => {
     const base = { causeEventId, effectEventId, description: null };
     expect(

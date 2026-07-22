@@ -76,6 +76,11 @@ describe.sequential('case REST API', () => {
     });
   });
 
+  it('accepts 100-character cases and rejects 101 characters', async () => {
+    expect((await createCase('例'.repeat(100))).statusCode).toBe(201);
+    expect((await createCase('例'.repeat(101))).statusCode).toBe(400);
+  });
+
   it('paginates, searches, and returns minimal candidates', async () => {
     for (const content of ['SEARCHCASE 标准案例', '包含 SEARCHCASE 的案例', '无关案例']) {
       await createCase(content);
