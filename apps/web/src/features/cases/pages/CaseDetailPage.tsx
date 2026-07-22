@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router';
 
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getCase, getCaseRelations } from '../api/caseApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -50,7 +51,9 @@ export function CaseDetailPage() {
       <div className="detail-heading case-detail-heading">
         <div>
           <span className="detail-label">案例内容</span>
-          <h1 id="case-detail-title">{detail.data.content}</h1>
+          <OverflowText content={detail.data.content} lines={3}>
+            <h1 id="case-detail-title">{detail.data.content}</h1>
+          </OverflowText>
         </div>
         <Link className="button button--primary" to={`/cases/${detail.data.id}/edit`}>
           编辑案例
@@ -90,10 +93,14 @@ export function CaseDetailPage() {
           <ul className="case-relation-list">
             {relations.data.items.map((relation) => (
               <li key={relation.id}>
-                <Link to={`/relations/${relation.id}`}>
-                  <span>{relation.causeEvent.name}</span>
+                <Link className="case-relation-list__relation" to={`/relations/${relation.id}`}>
+                  <OverflowText content={relation.causeEvent.name}>
+                    <span>{relation.causeEvent.name}</span>
+                  </OverflowText>
                   <strong aria-hidden="true">→</strong>
-                  <span>{relation.effectEvent.name}</span>
+                  <OverflowText content={relation.effectEvent.name}>
+                    <span>{relation.effectEvent.name}</span>
+                  </OverflowText>
                 </Link>
                 <time dateTime={relation.linkedAt}>
                   关联于 {dateFormatter.format(new Date(relation.linkedAt))}

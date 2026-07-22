@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { getCaseCandidatePage } from '../../cases/api/caseApi';
 import { useExhaustiveCandidates } from '../../../shared/candidates/useExhaustiveCandidates';
 import { WindowedListbox } from '../../../shared/listbox/WindowedListbox';
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import type { RelationCaseSelectionValue } from './RelationCasesField';
 
 interface CaseSelectorRowProps {
@@ -105,27 +106,29 @@ export function CaseSelectorRow({
         {index + 1}
       </div>
       <div className="event-selector__control case-selector-row__control">
-        <input
-          role="combobox"
-          aria-label={`具体案例 ${index + 1}`}
-          aria-autocomplete="list"
-          aria-expanded={showOptions}
-          aria-controls={`relation-case-${index}-options`}
-          aria-activedescendant={
-            activeIndex >= 0 ? `relation-case-${index}-option-${activeIndex}` : undefined
-          }
-          aria-invalid={Boolean(visibleError)}
-          value={query}
-          disabled={disabled}
-          placeholder="输入案例内容进行搜索"
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => window.setTimeout(() => setIsFocused(false), 100)}
-          onChange={(event) => {
-            setIsFocused(true);
-            onQueryChange(event.target.value);
-          }}
-          onKeyDown={handleKeyDown}
-        />
+        <OverflowText content={query} disableWhenFocused>
+          <input
+            role="combobox"
+            aria-label={`具体案例 ${index + 1}`}
+            aria-autocomplete="list"
+            aria-expanded={showOptions}
+            aria-controls={`relation-case-${index}-options`}
+            aria-activedescendant={
+              activeIndex >= 0 ? `relation-case-${index}-option-${activeIndex}` : undefined
+            }
+            aria-invalid={Boolean(visibleError)}
+            value={query}
+            disabled={disabled}
+            placeholder="输入案例内容进行搜索"
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => window.setTimeout(() => setIsFocused(false), 100)}
+            onChange={(event) => {
+              setIsFocused(true);
+              onQueryChange(event.target.value);
+            }}
+            onKeyDown={handleKeyDown}
+          />
+        </OverflowText>
         {showOptions ? (
           <div className="event-selector__options case-selector-row__options">
             <WindowedListbox
@@ -139,32 +142,36 @@ export function CaseSelectorRow({
                 const option = options[optionIndex];
                 if (!option) return null;
                 return option.type === 'existing' ? (
-                  <button
-                    id={`relation-case-${index}-option-${optionIndex}`}
-                    role="option"
-                    aria-selected={activeIndex === optionIndex}
-                    type="button"
-                    style={style}
-                    onMouseEnter={() => setActiveIndex(optionIndex)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => chooseExisting(option.candidate)}
-                  >
-                    {option.candidate.content}
-                  </button>
+                  <OverflowText content={option.candidate.content}>
+                    <button
+                      id={`relation-case-${index}-option-${optionIndex}`}
+                      role="option"
+                      aria-selected={activeIndex === optionIndex}
+                      type="button"
+                      style={style}
+                      onMouseEnter={() => setActiveIndex(optionIndex)}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => chooseExisting(option.candidate)}
+                    >
+                      {option.candidate.content}
+                    </button>
+                  </OverflowText>
                 ) : (
-                  <button
-                    id={`relation-case-${index}-option-${optionIndex}`}
-                    role="option"
-                    aria-selected={activeIndex === optionIndex}
-                    type="button"
-                    style={style}
-                    className="case-selector-row__create-option"
-                    onMouseEnter={() => setActiveIndex(optionIndex)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => onSelect({ type: 'new', content: option.content })}
-                  >
-                    创建新案例：{option.content}
-                  </button>
+                  <OverflowText content={`创建新案例：${option.content}`}>
+                    <button
+                      id={`relation-case-${index}-option-${optionIndex}`}
+                      role="option"
+                      aria-selected={activeIndex === optionIndex}
+                      type="button"
+                      style={style}
+                      className="case-selector-row__create-option"
+                      onMouseEnter={() => setActiveIndex(optionIndex)}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => onSelect({ type: 'new', content: option.content })}
+                    >
+                      创建新案例：{option.content}
+                    </button>
+                  </OverflowText>
                 );
               }}
             />

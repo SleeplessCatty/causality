@@ -44,7 +44,9 @@ describe('GraphEventSelector', () => {
     await waitFor(() => expect(getEventCandidatePage).toHaveBeenCalled());
     expect(vi.mocked(getEventCandidatePage).mock.calls[0]?.[0]).toBe('原油');
     expect(vi.mocked(getEventCandidatePage).mock.calls[0]?.[1]).toEqual({ limit: 100 });
-    expect(await screen.findByRole('option', { name: '原油价格上涨' })).toBeTruthy();
+    expect((await screen.findByRole('option', { name: '原油价格上涨' })).className).toContain(
+      'overflow-text--single-line',
+    );
   });
 
   it('does not search an empty draft', async () => {

@@ -35,7 +35,7 @@ const graph: CausalGraphResponse = {
 
 describe('createGraphElements', () => {
   it('preserves order, marks the center, and keeps cause-to-effect direction', () => {
-    const elements = createGraphElements(graph, (name) => ({ text: name, fontSize: 14 }));
+    const elements = createGraphElements(graph, (name) => ({ text: name, fontSize: 22 }));
 
     expect(elements.nodes.map((node) => node.data.id)).toEqual([centerEventId, effectEventId]);
     expect(elements.nodes[0]?.data).toMatchObject({
@@ -49,5 +49,18 @@ describe('createGraphElements', () => {
       target: effectEventId,
       label: '80% · 6例',
     });
+  });
+
+  it('keeps the full node name separate from its fixed-size ellipsized label', () => {
+    const longName = '宏'.repeat(50);
+    const elements = createGraphElements({
+      ...graph,
+      nodes: [{ ...graph.nodes[0]!, name: longName }, graph.nodes[1]!],
+    });
+
+    expect(elements.nodes[0]?.data.name).toBe(longName);
+    expect(elements.nodes[0]?.data.fontSize).toBe(22);
+    expect(elements.nodes[0]?.data.label.split('\n')).toHaveLength(3);
+    expect(elements.nodes[0]?.data.label.endsWith('…')).toBe(true);
   });
 });

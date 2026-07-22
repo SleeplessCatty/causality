@@ -79,13 +79,15 @@ describe('RelationDetailPage', () => {
     renderDetail();
 
     expect(await screen.findByRole('heading', { name: /原油价格上涨.*航空成本上升/ })).toBeTruthy();
-    expect(screen.getByRole('link', { name: '原油价格上涨' }).getAttribute('href')).toBe(
-      `/events/${detail.causeEvent.id}`,
-    );
+    const causeLink = screen.getByRole('link', { name: '原油价格上涨' });
+    expect(causeLink.getAttribute('href')).toBe(`/events/${detail.causeEvent.id}`);
+    expect(causeLink.className).toContain('overflow-text--multi-line');
     expect(screen.getByRole('link', { name: '编辑因果关系' }).getAttribute('href')).toBe(
       `/relations/${detail.id}/edit`,
     );
-    expect(await screen.findByRole('link', { name: '案例一' })).toBeTruthy();
+    expect((await screen.findByRole('link', { name: '案例一' })).className).toContain(
+      'overflow-text--multi-line',
+    );
     expect(await screen.findByRole('link', { name: '案例二' })).toBeTruthy();
     expect(screen.getByText('燃油成本传导')).toBeTruthy();
     expect(screen.getByText('82%')).toBeTruthy();

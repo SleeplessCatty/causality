@@ -470,6 +470,7 @@
   font-size: 20px;
   line-height: 1.45;
   letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
 }
 
 .causal-graph-inspector__body section {
@@ -488,6 +489,7 @@
   color: #33483d;
   font-size: 13px;
   line-height: 1.7;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
@@ -508,6 +510,7 @@
   background: #f3f8f4;
   color: #3b614d;
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .causal-graph-inspector__center-status,
@@ -575,6 +578,10 @@
 .causal-graph-inspector__all-cases {
   color: #27684a;
   text-decoration: none;
+}
+
+.causal-graph-inspector__cases a {
+  overflow-wrap: anywhere;
 }
 
 .causal-graph-inspector__all-cases {

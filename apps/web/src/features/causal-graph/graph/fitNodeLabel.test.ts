@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { fitNodeLabel, GRAPH_NODE_TEXT_HEIGHT, GRAPH_NODE_TEXT_WIDTH } from './fitNodeLabel';
+import {
+  fitNodeLabel,
+  GRAPH_NODE_FONT_SIZE,
+  GRAPH_NODE_MAX_LINES,
+  GRAPH_NODE_TEXT_HEIGHT,
+  GRAPH_NODE_TEXT_WIDTH,
+} from './fitNodeLabel';
 
 const measureText = (text: string, fontSize: number) =>
   Array.from(text).reduce(
@@ -14,35 +20,40 @@ describe('fitNodeLabel', () => {
     expect(GRAPH_NODE_TEXT_HEIGHT).toBe(84);
   });
 
-  it.each([
-    '原油价格持续快速上涨导致能源企业成本承压',
-    'Central bank unexpectedly tightens monetary policy',
-    'OPEC减产 pushes global crude oil prices higher',
-    'SupercalifragilisticexpialidociousWithoutAnyBreakOpportunity',
-    '宏'.repeat(50),
-  ])('keeps every character for %s', (name) => {
+  it('uses a fixed 22px font and no more than three lines', () => {
+    expect(GRAPH_NODE_FONT_SIZE).toBe(22);
+    expect(GRAPH_NODE_MAX_LINES).toBe(3);
+    expect(fitNodeLabel('降息', measureText)).toEqual({ text: '降息', fontSize: 22 });
+  });
+
+  it('keeps a fitting mixed-language name complete', () => {
+    const name = 'OPEC减产 pushes oil prices higher';
     const result = fitNodeLabel(name, measureText);
 
     expect(result.text.replaceAll('\n', '')).toBe(name);
-    expect([19, 18, 17, 16, 15, 14, 13, 12]).toContain(result.fontSize);
+    expect(result.text.split('\n').length).toBeLessThanOrEqual(GRAPH_NODE_MAX_LINES);
   });
 
-  it('preserves repeated internal whitespace while wrapping', () => {
-    const name = 'Central  bank unexpectedly   tightens policy';
-    const result = fitNodeLabel(name, measureText);
+  it('breaks a continuous Latin token without exceeding three lines', () => {
+    const result = fitNodeLabel(
+      'SupercalifragilisticexpialidociousWithoutAnyBreakOpportunity',
+      measureText,
+    );
 
-    expect(result.text.replaceAll('\n', '')).toBe(name);
+    expect(result.fontSize).toBe(22);
+    expect(result.text.split('\n')).toHaveLength(3);
+    expect(result.text.endsWith('…')).toBe(true);
   });
 
-  it('uses the largest fitting size for a short name', () => {
-    expect(fitNodeLabel('降息', measureText)).toEqual({ text: '降息', fontSize: 19 });
-  });
-
-  it('selects the largest fitting size for a 50-character event name', () => {
+  it('ellipsizes a 50-character CJK name within the measured third-line width', () => {
     const name = '宏'.repeat(50);
     const result = fitNodeLabel(name, measureText);
+    const lines = result.text.split('\n');
 
-    expect(result.fontSize).toBe(16);
-    expect(result.text.replaceAll('\n', '')).toBe(name);
+    expect(result.fontSize).toBe(22);
+    expect(lines).toHaveLength(3);
+    expect(lines[2]?.endsWith('…')).toBe(true);
+    expect(measureText(lines[2]!, GRAPH_NODE_FONT_SIZE)).toBeLessThanOrEqual(GRAPH_NODE_TEXT_WIDTH);
+    expect(result.text.replaceAll('\n', '').length).toBeLessThan(name.length);
   });
 });

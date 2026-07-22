@@ -88,9 +88,27 @@ describe('case pages', () => {
     renderRoute('/cases/:caseId', <CaseDetailPage />);
     expect(await screen.findByText(detail.content)).toBeTruthy();
     expect(screen.getByRole('link', { name: '编辑案例' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: /测试原因.*测试结果/ }).getAttribute('href')).toBe(
-      `/relations/${linkedRelation.id}`,
+    const relationLink = screen.getByRole('link', { name: /测试原因.*测试结果/ });
+    expect(relationLink.getAttribute('href')).toBe(`/relations/${linkedRelation.id}`);
+    expect(relationLink.querySelectorAll('.overflow-text--single-line')).toHaveLength(2);
+  });
+
+  it('keeps a 100-character case complete behind the three-line detail clamp', async () => {
+    const longContent = 'C'.repeat(100);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) =>
+        String(input).includes('/relations')
+          ? response({ items: [], nextCursor: null, hasMore: false })
+          : response({ ...detail, content: longContent, relationCount: 0 }),
+      ),
     );
+    renderRoute('/cases/:caseId', <CaseDetailPage />);
+
+    const heading = await screen.findByRole('heading', { name: longContent });
+    expect(heading.textContent).toBe(longContent);
+    expect(heading.className).toContain('overflow-text--multi-line');
+    expect(heading.style.getPropertyValue('--overflow-text-lines')).toBe('3');
   });
 
   it('loads and replaces case content before returning to the list', async () => {

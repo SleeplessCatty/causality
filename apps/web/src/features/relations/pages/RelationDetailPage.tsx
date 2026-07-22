@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getCases } from '../../cases/api/caseApi';
 import { getRelation } from '../api/relationApi';
 
@@ -94,13 +95,17 @@ export function RelationDetailPage() {
         <div>
           <span className="detail-label">因果关系</span>
           <h1 id="relation-detail-title">
-            <Link to={`/events/${relation.data.causeEvent.id}`}>
-              {relation.data.causeEvent.name}
-            </Link>
+            <OverflowText content={relation.data.causeEvent.name} lines={2}>
+              <Link to={`/events/${relation.data.causeEvent.id}`}>
+                {relation.data.causeEvent.name}
+              </Link>
+            </OverflowText>
             <span aria-hidden="true">→</span>
-            <Link to={`/events/${relation.data.effectEvent.id}`}>
-              {relation.data.effectEvent.name}
-            </Link>
+            <OverflowText content={relation.data.effectEvent.name} lines={2}>
+              <Link to={`/events/${relation.data.effectEvent.id}`}>
+                {relation.data.effectEvent.name}
+              </Link>
+            </OverflowText>
           </h1>
         </div>
         <Link className="button button--primary" to={`/relations/${relation.data.id}/edit`}>
@@ -111,7 +116,15 @@ export function RelationDetailPage() {
       <dl className="event-detail-grid relation-detail-grid">
         <div className="detail-wide">
           <dt>关系说明</dt>
-          <dd>{relation.data.description ?? <span className="detail-empty">未填写</span>}</dd>
+          <dd>
+            {relation.data.description ? (
+              <OverflowText content={relation.data.description} lines={6}>
+                <span>{relation.data.description}</span>
+              </OverflowText>
+            ) : (
+              <span className="detail-empty">未填写</span>
+            )}
+          </dd>
         </div>
         <div>
           <dt>置信度</dt>
@@ -162,7 +175,9 @@ export function RelationDetailPage() {
               <ul className="case-relation-list relation-detail-case-list">
                 {cases.map((item) => (
                   <li key={item.id}>
-                    <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                    <OverflowText content={item.content} lines={2}>
+                      <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                    </OverflowText>
                   </li>
                 ))}
               </ul>

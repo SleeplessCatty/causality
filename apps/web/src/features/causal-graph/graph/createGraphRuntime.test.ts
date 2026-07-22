@@ -35,6 +35,10 @@ describe('graphStyles', () => {
     const node = graphStyles.find((block) => block.selector === 'node');
     const edge = graphStyles.find((block) => block.selector === 'edge');
     expect(node && 'style' in node ? node.style : {}).not.toHaveProperty('underlay-opacity');
+    expect(node && 'style' in node ? node.style : {}).toMatchObject({
+      'font-family': 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif',
+      'font-size': 22,
+    });
     expect(edge && 'style' in edge ? edge.style : {}).toMatchObject({
       'font-size': 12,
       'arrow-scale': 1.3,

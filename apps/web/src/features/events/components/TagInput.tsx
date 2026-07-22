@@ -1,5 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
 
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
+
 interface TagInputProps {
   id: string;
   label: '别名' | '关键词';
@@ -61,7 +63,9 @@ export function TagInput({
       <div className={`tag-input${error ? ' tag-input--error' : ''}`}>
         {values.map((value) => (
           <span className="tag-input__tag" key={value}>
-            {value}
+            <OverflowText content={value}>
+              <span className="tag-input__value">{value}</span>
+            </OverflowText>
             <button
               type="button"
               onClick={() => remove(value)}

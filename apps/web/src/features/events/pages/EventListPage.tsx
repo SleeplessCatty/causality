@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
-import { DelayedOverflowTooltip } from '../../../shared/tooltip/DelayedOverflowTooltip';
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getEvents } from '../api/eventApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -14,14 +14,14 @@ function MetadataCell({ values }: { values: string[] }) {
   if (values.length === 0) return <span className="event-table__empty-value">—</span>;
   const visible = values.slice(0, 3);
   return (
-    <DelayedOverflowTooltip values={values}>
+    <OverflowText content={values.join('、')} mode="always">
       <span className="event-table__metadata">
         <span>{visible.join('、')}</span>
         {values.length > visible.length ? (
           <span className="metadata-more">+{values.length - visible.length}</span>
         ) : null}
       </span>
-    </DelayedOverflowTooltip>
+    </OverflowText>
   );
 }
 
@@ -127,7 +127,9 @@ export function EventListPage() {
                 {events.data.items.map((event) => (
                   <tr key={event.id}>
                     <td>
-                      <Link to={`/events/${event.id}`}>{event.name}</Link>
+                      <OverflowText content={event.name}>
+                        <Link to={`/events/${event.id}`}>{event.name}</Link>
+                      </OverflowText>
                     </td>
                     <td>
                       <MetadataCell values={event.aliases} />

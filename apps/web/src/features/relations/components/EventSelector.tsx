@@ -4,6 +4,7 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { getEventCandidatePage } from '../../events/api/eventApi';
 import { useExhaustiveCandidates } from '../../../shared/candidates/useExhaustiveCandidates';
 import { WindowedListbox } from '../../../shared/listbox/WindowedListbox';
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 
 interface EventSelectorProps {
   id: string;
@@ -83,28 +84,30 @@ export function EventSelector({
         {label} <span aria-hidden="true">*</span>
       </label>
       <div className="event-selector__control">
-        <input
-          id={id}
-          role="combobox"
-          aria-label={label}
-          aria-autocomplete="list"
-          aria-expanded={showOptions}
-          aria-controls={`${id}-options`}
-          aria-activedescendant={
-            activeIndex >= 0 ? `${id}-option-${candidates.items[activeIndex]?.id}` : undefined
-          }
-          aria-invalid={Boolean(error)}
-          value={input}
-          onChange={(event) => {
-            setInput(event.target.value);
-            onChange(null);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={handleKeyDown}
-          placeholder="输入名称或别名查找已有事件"
-          autoFocus={autoFocus}
-        />
+        <OverflowText content={input} disableWhenFocused>
+          <input
+            id={id}
+            role="combobox"
+            aria-label={label}
+            aria-autocomplete="list"
+            aria-expanded={showOptions}
+            aria-controls={`${id}-options`}
+            aria-activedescendant={
+              activeIndex >= 0 ? `${id}-option-${candidates.items[activeIndex]?.id}` : undefined
+            }
+            aria-invalid={Boolean(error)}
+            value={input}
+            onChange={(event) => {
+              setInput(event.target.value);
+              onChange(null);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={handleKeyDown}
+            placeholder="输入名称或别名查找已有事件"
+            autoFocus={autoFocus}
+          />
+        </OverflowText>
         {showOptions ? (
           <div className="event-selector__options">
             <WindowedListbox
@@ -117,18 +120,20 @@ export function EventSelector({
                 const candidate = candidates.items[index];
                 if (!candidate) return null;
                 return (
-                  <button
-                    id={`${id}-option-${candidate.id}`}
-                    type="button"
-                    role="option"
-                    style={style}
-                    aria-selected={activeIndex === index || value?.id === candidate.id}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => select(candidate)}
-                  >
-                    {candidate.name}
-                  </button>
+                  <OverflowText content={candidate.name}>
+                    <button
+                      id={`${id}-option-${candidate.id}`}
+                      type="button"
+                      role="option"
+                      style={style}
+                      aria-selected={activeIndex === index || value?.id === candidate.id}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => select(candidate)}
+                    >
+                      {candidate.name}
+                    </button>
+                  </OverflowText>
                 );
               }}
             />

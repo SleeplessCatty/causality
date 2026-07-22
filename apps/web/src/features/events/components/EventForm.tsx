@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ApiClientError, getEventCandidates } from '../api/eventApi';
 import { TagInput } from './TagInput';
 
@@ -94,16 +95,18 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
             <label htmlFor="event-name">
               标准名称 <span aria-hidden="true">*</span>
             </label>
-            <input
-              id="event-name"
-              aria-invalid={Boolean(fieldErrors.name)}
-              aria-describedby="event-name-help event-name-error"
-              value={name}
-              maxLength={50}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="例如：原油价格上涨"
-              autoFocus={mode === 'create'}
-            />
+            <OverflowText content={name} disableWhenFocused>
+              <input
+                id="event-name"
+                aria-invalid={Boolean(fieldErrors.name)}
+                aria-describedby="event-name-help event-name-error"
+                value={name}
+                maxLength={50}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="例如：原油价格上涨"
+                autoFocus={mode === 'create'}
+              />
+            </OverflowText>
             <span id="event-name-help" className="field-help">
               使用“主体 +
               单一状态变化”命名，例如“原油价格上涨”。不要在名称中同时描述原因和结果，最多 50 字。
@@ -158,7 +161,9 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
               <ul>
                 {candidates.data.map((candidate) => (
                   <li key={candidate.id}>
-                    <Link to={`/events/${candidate.id}`}>{candidate.name}</Link>
+                    <OverflowText content={candidate.name}>
+                      <Link to={`/events/${candidate.id}`}>{candidate.name}</Link>
+                    </OverflowText>
                   </li>
                 ))}
               </ul>

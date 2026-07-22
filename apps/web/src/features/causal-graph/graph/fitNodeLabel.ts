@@ -2,13 +2,15 @@ export const GRAPH_NODE_WIDTH = 220;
 export const GRAPH_NODE_HEIGHT = 96;
 export const GRAPH_NODE_TEXT_WIDTH = 208;
 export const GRAPH_NODE_TEXT_HEIGHT = 84;
+export const GRAPH_NODE_FONT_SIZE = 22;
+export const GRAPH_NODE_MAX_LINES = 3;
+export const GRAPH_NODE_FONT_FAMILY = 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif';
 
-const fontSizes = [19, 18, 17, 16, 15, 14, 13, 12] as const;
-const lineHeightRatio = 1.3;
+const ellipsis = '…';
 
 export interface FittedNodeLabel {
   text: string;
-  fontSize: (typeof fontSizes)[number];
+  fontSize: typeof GRAPH_NODE_FONT_SIZE;
 }
 
 export type TextMeasurer = (text: string, fontSize: number) => number;
@@ -20,7 +22,7 @@ function browserMeasureText(text: string, fontSize: number): number {
     measurementContext = document.createElement('canvas').getContext('2d');
   }
   if (!measurementContext) return Array.from(text).length * fontSize;
-  measurementContext.font = `600 ${fontSize}px Inter, "PingFang SC", "Microsoft YaHei", sans-serif`;
+  measurementContext.font = `600 ${fontSize}px ${GRAPH_NODE_FONT_FAMILY}`;
   return measurementContext.measureText(text).width;
 }
 
@@ -83,16 +85,23 @@ export function fitNodeLabel(
   name: string,
   measure: TextMeasurer = browserMeasureText,
 ): FittedNodeLabel {
-  for (const fontSize of fontSizes) {
-    const lines = wrapLabel(name, fontSize, measure);
-    if (lines.length * fontSize * lineHeightRatio <= GRAPH_NODE_TEXT_HEIGHT) {
-      return { text: lines.join('\n'), fontSize };
-    }
+  const lines = wrapLabel(name, GRAPH_NODE_FONT_SIZE, measure);
+  if (lines.length <= GRAPH_NODE_MAX_LINES) {
+    return { text: lines.join('\n'), fontSize: GRAPH_NODE_FONT_SIZE };
   }
 
-  const minimumFontSize = fontSizes.at(-1)!;
+  const visibleLines = lines.slice(0, GRAPH_NODE_MAX_LINES);
+  const finalLine = Array.from(visibleLines.at(-1)?.trimEnd() ?? '');
+  while (
+    finalLine.length > 0 &&
+    measure(finalLine.join('') + ellipsis, GRAPH_NODE_FONT_SIZE) > GRAPH_NODE_TEXT_WIDTH
+  ) {
+    finalLine.pop();
+  }
+  visibleLines[GRAPH_NODE_MAX_LINES - 1] = finalLine.join('') + ellipsis;
+
   return {
-    text: wrapLabel(name, minimumFontSize, measure).join('\n'),
-    fontSize: minimumFontSize,
+    text: visibleLines.join('\n'),
+    fontSize: GRAPH_NODE_FONT_SIZE,
   };
 }

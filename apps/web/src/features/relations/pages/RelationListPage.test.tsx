@@ -78,6 +78,7 @@ describe('RelationListPage', () => {
     const directionLink = screen.getByRole('link', { name: '查看因果关系详情' });
     const effectLink = screen.getByRole('link', { name: relation.effectEvent.name });
     expect(causeLink.className).toContain('relation-entity-link');
+    expect(causeLink.className).toContain('overflow-text--single-line');
     expect(directionLink.className).toContain('relation-entity-link');
     expect(directionLink.className).toContain('relation-direction__link');
     expect(effectLink.className).toBe(causeLink.className);
@@ -87,7 +88,9 @@ describe('RelationListPage', () => {
     expect(screen.getByText('82%')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '展开' }));
 
-    expect(await screen.findByText('燃油成本传导')).toBeTruthy();
+    expect((await screen.findByText('燃油成本传导')).className).toContain(
+      'overflow-text--multi-line',
+    );
     expect(screen.getByText('2025年4月美国宣布新一轮关税措施')).toBeTruthy();
     expect(screen.getByRole('link', { name: '查看全部 6 条' }).getAttribute('href')).toBe(
       `/cases?relationId=${relation.id}`,

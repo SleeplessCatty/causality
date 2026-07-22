@@ -105,4 +105,26 @@ describe('CausalGraphInspector', () => {
       `/cases?relationId=${relationId}`,
     );
   });
+
+  it('keeps boundary-length event content complete without nested tooltips', async () => {
+    const longName = 'N'.repeat(50);
+    const longDescription = 'D'.repeat(2_000);
+    const longAlias = 'A'.repeat(80);
+    const longKeyword = 'K'.repeat(50);
+    vi.mocked(getEvent).mockResolvedValue({
+      ...eventDetail,
+      name: longName,
+      description: longDescription,
+      aliases: [longAlias],
+      keywords: [longKeyword],
+    });
+
+    renderInspector({ selection: { type: 'node', id: eventId } });
+    const inspector = screen.getByRole('complementary');
+    expect(await screen.findByRole('heading', { name: longName })).toBeTruthy();
+    expect(inspector.textContent).toContain(longDescription);
+    expect(inspector.textContent).toContain(longAlias);
+    expect(inspector.textContent).toContain(longKeyword);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
 });

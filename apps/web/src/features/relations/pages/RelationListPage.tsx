@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Fragment, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getRelation, getRelations } from '../api/relationApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -167,12 +168,14 @@ export function RelationListPage() {
                       className={expandedId === relation.id ? 'relation-row--expanded' : undefined}
                     >
                       <td>
-                        <Link
-                          className="relation-entity-link"
-                          to={`/events/${relation.causeEvent.id}`}
-                        >
-                          {relation.causeEvent.name}
-                        </Link>
+                        <OverflowText content={relation.causeEvent.name}>
+                          <Link
+                            className="relation-entity-link"
+                            to={`/events/${relation.causeEvent.id}`}
+                          >
+                            {relation.causeEvent.name}
+                          </Link>
+                        </OverflowText>
                       </td>
                       <td className="relation-direction" aria-label="导致">
                         <Link
@@ -184,12 +187,14 @@ export function RelationListPage() {
                         </Link>
                       </td>
                       <td>
-                        <Link
-                          className="relation-entity-link"
-                          to={`/events/${relation.effectEvent.id}`}
-                        >
-                          {relation.effectEvent.name}
-                        </Link>
+                        <OverflowText content={relation.effectEvent.name}>
+                          <Link
+                            className="relation-entity-link"
+                            to={`/events/${relation.effectEvent.id}`}
+                          >
+                            {relation.effectEvent.name}
+                          </Link>
+                        </OverflowText>
                       </td>
                       <td>
                         <strong className="confidence-value">{relation.confidence}%</strong>
@@ -222,7 +227,13 @@ export function RelationListPage() {
                             <div className="relation-inline-detail">
                               <div>
                                 <span>关系说明</span>
-                                <p>{expanded.data.description ?? '未填写'}</p>
+                                {expanded.data.description ? (
+                                  <OverflowText content={expanded.data.description} lines={2}>
+                                    <p>{expanded.data.description}</p>
+                                  </OverflowText>
+                                ) : (
+                                  <p>未填写</p>
+                                )}
                               </div>
                               <div className="relation-inline-cases">
                                 <div className="relation-inline-cases__heading">
@@ -233,7 +244,9 @@ export function RelationListPage() {
                                   <ul>
                                     {expanded.data.recentCases.map((item) => (
                                       <li key={item.id}>
-                                        <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                                        <OverflowText content={item.content} lines={2}>
+                                          <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                                        </OverflowText>
                                       </li>
                                     ))}
                                   </ul>

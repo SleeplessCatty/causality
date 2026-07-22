@@ -1,5 +1,11 @@
 import type { StylesheetJson } from 'cytoscape';
 
+import {
+  GRAPH_NODE_FONT_FAMILY,
+  GRAPH_NODE_FONT_SIZE,
+  GRAPH_NODE_TEXT_WIDTH,
+} from './fitNodeLabel';
+
 export const graphStyles: StylesheetJson = [
   {
     selector: 'node',
@@ -8,9 +14,13 @@ export const graphStyles: StylesheetJson = [
       height: 'data(height)',
       shape: 'round-rectangle',
       label: 'data(label)',
-      'font-size': 'data(fontSize)',
+      'font-family': GRAPH_NODE_FONT_FAMILY,
+      'font-size': GRAPH_NODE_FONT_SIZE,
       'font-weight': 600,
       'text-wrap': 'wrap',
+      'text-max-width': `${GRAPH_NODE_TEXT_WIDTH}px`,
+      'text-overflow-wrap': 'anywhere',
+      'line-height': 1.2,
       'text-valign': 'center',
       'text-halign': 'center',
       color: '#183328',

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getCases } from '../api/caseApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -130,7 +131,9 @@ export function CaseListPage() {
                 {cases.data.items.map((item) => (
                   <tr key={item.id}>
                     <td>
-                      <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                      <OverflowText content={item.content}>
+                        <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                      </OverflowText>
                     </td>
                     <td>{item.relationCount}</td>
                     <td>

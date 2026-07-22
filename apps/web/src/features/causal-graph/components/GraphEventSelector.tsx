@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from 'react';
 
 import { useExhaustiveCandidates } from '../../../shared/candidates/useExhaustiveCandidates';
 import { WindowedListbox } from '../../../shared/listbox/WindowedListbox';
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getEventCandidatePage } from '../../events/api/eventApi';
 
 interface GraphEventSelectorProps {
@@ -48,53 +49,55 @@ export function GraphEventSelector({ value, onSelect }: GraphEventSelectorProps)
     <div className="graph-event-selector">
       <label htmlFor={`${listboxId}-input`}>中心事件</label>
       <div className="graph-event-selector__control">
-        <input
-          id={`${listboxId}-input`}
-          role="combobox"
-          aria-label="中心事件"
-          aria-autocomplete="list"
-          aria-expanded={expanded}
-          aria-controls={listboxId}
-          aria-activedescendant={
-            expanded && activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined
-          }
-          value={input}
-          placeholder="搜索中心事件"
-          autoComplete="off"
-          onFocus={() => setOpen(true)}
-          onChange={(event) => {
-            setInput(event.target.value);
-            setOpen(true);
-            setActiveIndex(-1);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              setOpen(false);
+        <OverflowText content={input} disableWhenFocused>
+          <input
+            id={`${listboxId}-input`}
+            role="combobox"
+            aria-label="中心事件"
+            aria-autocomplete="list"
+            aria-expanded={expanded}
+            aria-controls={listboxId}
+            aria-activedescendant={
+              expanded && activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined
+            }
+            value={input}
+            placeholder="搜索中心事件"
+            autoComplete="off"
+            onFocus={() => setOpen(true)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              setOpen(true);
               setActiveIndex(-1);
-              return;
-            }
-            if (!items.length) return;
-            if (event.key === 'ArrowDown') {
-              event.preventDefault();
-              setOpen(true);
-              setActiveIndex((index) => (index + 1) % items.length);
-            } else if (event.key === 'ArrowUp') {
-              event.preventDefault();
-              setOpen(true);
-              setActiveIndex((index) => (index <= 0 ? items.length - 1 : index - 1));
-            } else if (event.key === 'Home') {
-              event.preventDefault();
-              setActiveIndex(0);
-            } else if (event.key === 'End') {
-              event.preventDefault();
-              setActiveIndex(items.length - 1);
-            } else if (event.key === 'Enter' && activeIndex >= 0) {
-              event.preventDefault();
-              const candidate = items[activeIndex];
-              if (candidate) select(candidate);
-            }
-          }}
-        />
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setOpen(false);
+                setActiveIndex(-1);
+                return;
+              }
+              if (!items.length) return;
+              if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setOpen(true);
+                setActiveIndex((index) => (index + 1) % items.length);
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                setOpen(true);
+                setActiveIndex((index) => (index <= 0 ? items.length - 1 : index - 1));
+              } else if (event.key === 'Home') {
+                event.preventDefault();
+                setActiveIndex(0);
+              } else if (event.key === 'End') {
+                event.preventDefault();
+                setActiveIndex(items.length - 1);
+              } else if (event.key === 'Enter' && activeIndex >= 0) {
+                event.preventDefault();
+                const candidate = items[activeIndex];
+                if (candidate) select(candidate);
+              }
+            }}
+          />
+        </OverflowText>
         {expanded ? (
           <div className="graph-event-selector__options">
             <WindowedListbox
@@ -108,18 +111,20 @@ export function GraphEventSelector({ value, onSelect }: GraphEventSelectorProps)
                 const candidate = items[index];
                 if (!candidate) return null;
                 return (
-                  <button
-                    id={`${listboxId}-option-${index}`}
-                    type="button"
-                    role="option"
-                    style={style}
-                    aria-selected={index === activeIndex}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    onClick={() => select(candidate)}
-                  >
-                    {candidate.name}
-                  </button>
+                  <OverflowText content={candidate.name}>
+                    <button
+                      id={`${listboxId}-option-${index}`}
+                      type="button"
+                      role="option"
+                      style={style}
+                      aria-selected={index === activeIndex}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onClick={() => select(candidate)}
+                    >
+                      {candidate.name}
+                    </button>
+                  </OverflowText>
                 );
               }}
             />

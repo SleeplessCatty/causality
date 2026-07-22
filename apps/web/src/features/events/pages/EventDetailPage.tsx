@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router';
 
+import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getEvent } from '../api/eventApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -12,7 +13,9 @@ function ValueList({ values, empty }: { values: string[]; empty: string }) {
   return values.length > 0 ? (
     <div className="detail-tags">
       {values.map((value) => (
-        <span key={value}>{value}</span>
+        <OverflowText key={value} content={value}>
+          <span>{value}</span>
+        </OverflowText>
       ))}
     </div>
   ) : (
@@ -55,7 +58,9 @@ export function EventDetailPage() {
         返回事件列表
       </Link>
       <div className="detail-heading">
-        <h1 id="event-detail-title">{event.data.name}</h1>
+        <OverflowText content={event.data.name} lines={2}>
+          <h1 id="event-detail-title">{event.data.name}</h1>
+        </OverflowText>
         <Link className="button button--primary" to={`/events/${event.data.id}/edit`}>
           编辑事件
         </Link>
@@ -63,7 +68,15 @@ export function EventDetailPage() {
       <dl className="event-detail-grid">
         <div className="detail-wide">
           <dt>事件说明</dt>
-          <dd>{event.data.description ?? <span className="detail-empty">未填写</span>}</dd>
+          <dd>
+            {event.data.description ? (
+              <OverflowText content={event.data.description} lines={6}>
+                <span>{event.data.description}</span>
+              </OverflowText>
+            ) : (
+              <span className="detail-empty">未填写</span>
+            )}
+          </dd>
         </div>
         <div>
           <dt>别名</dt>
