@@ -1,8 +1,9 @@
 import type { EventCandidate } from '@causality/contracts';
-import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 
-import { getEventCandidates } from '../../events/api/eventApi';
+import { useExhaustiveCandidates } from '../../../shared/candidates/useExhaustiveCandidates';
+import { WindowedListbox } from '../../../shared/listbox/WindowedListbox';
+import { getEventCandidatePage } from '../../events/api/eventApi';
 
 interface GraphEventSelectorProps {
   value: EventCandidate | null;
@@ -23,13 +24,18 @@ export function GraphEventSelector({ value, onSelect }: GraphEventSelectorProps)
     return () => window.clearTimeout(timeout);
   }, [input, open]);
 
-  const candidates = useQuery({
+  const candidates = useExhaustiveCandidates({
     queryKey: ['events', 'candidates', 'graph-selector', query],
-    queryFn: ({ signal }) => getEventCandidates(query, { limit: 8 }, signal),
+    query,
     enabled: open && query.length > 0,
+    loadPage: (search, cursor, signal) =>
+      getEventCandidatePage(search, { limit: 100, ...(cursor ? { cursor } : {}) }, signal),
+    getId: (candidate: EventCandidate) => candidate.id,
   });
-  const items = candidates.data ?? [];
+  const items = candidates.items;
   const expanded = open && items.length > 0;
+
+  useEffect(() => setActiveIndex(-1), [query]);
 
   function select(candidate: EventCandidate): void {
     setInput(candidate.name);
@@ -76,6 +82,12 @@ export function GraphEventSelector({ value, onSelect }: GraphEventSelectorProps)
               event.preventDefault();
               setOpen(true);
               setActiveIndex((index) => (index <= 0 ? items.length - 1 : index - 1));
+            } else if (event.key === 'Home') {
+              event.preventDefault();
+              setActiveIndex(0);
+            } else if (event.key === 'End') {
+              event.preventDefault();
+              setActiveIndex(items.length - 1);
             } else if (event.key === 'Enter' && activeIndex >= 0) {
               event.preventDefault();
               const candidate = items[activeIndex];
@@ -84,25 +96,50 @@ export function GraphEventSelector({ value, onSelect }: GraphEventSelectorProps)
           }}
         />
         {expanded ? (
-          <div className="graph-event-selector__options" id={listboxId} role="listbox">
-            {items.map((candidate, index) => (
+          <div className="graph-event-selector__options">
+            <WindowedListbox
+              id={listboxId}
+              itemCount={items.length}
+              itemHeight={34}
+              activeIndex={activeIndex}
+              className="graph-event-selector__window"
+              ariaLabel="中心事件候选项"
+              renderOption={(index, style) => {
+                const candidate = items[index];
+                if (!candidate) return null;
+                return (
+                  <button
+                    id={`${listboxId}-option-${index}`}
+                    type="button"
+                    role="option"
+                    style={style}
+                    aria-selected={index === activeIndex}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => select(candidate)}
+                  >
+                    {candidate.name}
+                  </button>
+                );
+              }}
+            />
+            {candidates.isFetchingNextPage ? (
+              <span className="graph-event-selector__loading">正在加载全部候选项…</span>
+            ) : null}
+            {candidates.nextPageError ? (
               <button
-                id={`${listboxId}-option-${index}`}
-                key={candidate.id}
                 type="button"
-                role="option"
-                aria-selected={index === activeIndex}
+                className="graph-event-selector__retry"
                 onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => select(candidate)}
+                onClick={() => void candidates.retryNextPage()}
               >
-                {candidate.name}
+                加载未完成，点击重试
               </button>
-            ))}
+            ) : null}
           </div>
         ) : null}
       </div>
-      {candidates.isError && query ? (
+      {candidates.isInitialError && query ? (
         <span className="graph-event-selector__error" role="alert">
           无法搜索事件
         </span>

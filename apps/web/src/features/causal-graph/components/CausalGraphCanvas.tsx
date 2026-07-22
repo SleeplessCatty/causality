@@ -197,7 +197,7 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
         zoomOut() {
           const runtime = runtimeRef.current;
           if (!runtime) return;
-          runtime.setZoom(Math.max(0.25, runtime.getZoom() / 1.2), !prefersReducedMotion());
+          runtime.setZoom(Math.max(0.1, runtime.getZoom() / 1.2), !prefersReducedMotion());
         },
         fit() {
           runtimeRef.current?.fit(GRAPH_FIT_PADDING, !prefersReducedMotion());

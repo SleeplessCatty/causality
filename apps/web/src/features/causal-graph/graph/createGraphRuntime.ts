@@ -103,7 +103,7 @@ export function createGraphRuntime(container: HTMLElement): GraphRuntime {
     container,
     elements: [],
     style: graphStyles,
-    minZoom: 0.25,
+    minZoom: 0.1,
     maxZoom: 2,
     boxSelectionEnabled: false,
     autoungrabify: false,

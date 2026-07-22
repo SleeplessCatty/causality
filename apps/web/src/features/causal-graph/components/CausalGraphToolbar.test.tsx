@@ -22,7 +22,7 @@ describe('CausalGraphToolbar', () => {
     onFit: vi.fn(),
   };
 
-  it('changes discrete query options and sends viewport commands', () => {
+  it('uses custom controls in the approved order and emits typed query values', () => {
     const onDirectionChange = vi.fn();
     const onLimitChange = vi.fn();
     const onMinConfidenceChange = vi.fn();
@@ -30,7 +30,7 @@ describe('CausalGraphToolbar', () => {
     const onZoomIn = vi.fn();
     const onZoomOut = vi.fn();
     const onFit = vi.fn();
-    render(
+    const { container } = render(
       <AppProviders>
         <CausalGraphToolbar
           {...baseProps}
@@ -45,23 +45,20 @@ describe('CausalGraphToolbar', () => {
       </AppProviders>,
     );
 
-    expect(screen.getByRole('combobox', { name: '查询方向' })).toHaveProperty('value', 'both');
-    expect(screen.getByRole('combobox', { name: '节点上限' })).toHaveProperty('value', '20');
-    expect(screen.getByRole('combobox', { name: '最低置信度' })).toHaveProperty('value', '30');
-    expect(screen.getByRole('combobox', { name: '最少案例数' })).toHaveProperty('value', '2');
-
-    fireEvent.change(screen.getByRole('combobox', { name: '查询方向' }), {
-      target: { value: 'upstream' },
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: '节点上限' }), {
-      target: { value: '50' },
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: '最低置信度' }), {
-      target: { value: '70' },
-    });
-    fireEvent.change(screen.getByRole('combobox', { name: '最少案例数' }), {
-      target: { value: '4' },
-    });
+    expect(container.querySelectorAll('select')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: '查询方向' }));
+    expect(screen.getAllByRole('option').map((item) => item.textContent)).toEqual([
+      '双向',
+      '下游',
+      '上游',
+    ]);
+    fireEvent.click(screen.getByRole('option', { name: '上游' }));
+    fireEvent.click(screen.getByRole('button', { name: '节点上限' }));
+    fireEvent.click(screen.getByRole('option', { name: '50' }));
+    fireEvent.click(screen.getByRole('button', { name: '最低置信度' }));
+    fireEvent.click(screen.getByRole('option', { name: '70%' }));
+    fireEvent.click(screen.getByRole('button', { name: '最少案例数' }));
+    fireEvent.click(screen.getByRole('option', { name: '4' }));
     fireEvent.click(screen.getByRole('button', { name: '缩小因果图' }));
     fireEvent.click(screen.getByRole('button', { name: '放大因果图' }));
     fireEvent.click(screen.getByRole('button', { name: '适应画布' }));
@@ -79,7 +76,7 @@ describe('CausalGraphToolbar', () => {
   it('disables zoom controls at the approved boundaries', () => {
     const { rerender } = render(
       <AppProviders>
-        <CausalGraphToolbar {...baseProps} zoom={0.25} />
+        <CausalGraphToolbar {...baseProps} zoom={0.1} />
       </AppProviders>,
     );
     expect((screen.getByRole('button', { name: '缩小因果图' }) as HTMLButtonElement).disabled).toBe(

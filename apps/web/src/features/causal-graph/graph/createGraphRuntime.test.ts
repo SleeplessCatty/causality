@@ -1,7 +1,20 @@
 import type { Core } from 'cytoscape';
-import { describe, expect, it } from 'vitest';
+import cytoscape from 'cytoscape';
+import { describe, expect, it, vi } from 'vitest';
 
-import { focusVisibleNode } from './createGraphRuntime';
+const { visibleRuntime } = vi.hoisted(() => ({
+  visibleRuntime: { destroy: vi.fn() },
+}));
+
+vi.mock('cytoscape', () => {
+  const cytoscapeMock = Object.assign(
+    vi.fn(() => visibleRuntime),
+    { use: vi.fn() },
+  );
+  return { default: cytoscapeMock };
+});
+
+import { createGraphRuntime, focusVisibleNode } from './createGraphRuntime';
 import { graphStyles } from './graphStyles';
 
 describe('graphStyles', () => {
@@ -20,6 +33,12 @@ describe('graphStyles', () => {
 });
 
 describe('createGraphRuntime viewport', () => {
+  it('configures Cytoscape with a 10% minimum zoom', () => {
+    const runtime = createGraphRuntime(document.createElement('div'));
+    expect(cytoscape).toHaveBeenCalledWith(expect.objectContaining({ minZoom: 0.1 }));
+    runtime.destroy();
+  });
+
   it('focuses a node without shrinking below the readable zoom floor', () => {
     let zoom = 0.25;
     const center = { empty: () => false };

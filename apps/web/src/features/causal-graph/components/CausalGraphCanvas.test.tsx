@@ -186,7 +186,7 @@ describe('CausalGraphCanvas', () => {
       for (let index = 0; index < 40; index += 1) ref.current?.zoomOut();
       ref.current?.fit();
     });
-    expect(fake.runtime.setZoom).toHaveBeenLastCalledWith(0.25, true);
+    expect(fake.runtime.setZoom).toHaveBeenLastCalledWith(0.1, true);
     expect(fake.runtime.fit).toHaveBeenLastCalledWith(48, true);
     expect(fake.runtime.layout).toHaveBeenCalledOnce();
   });
