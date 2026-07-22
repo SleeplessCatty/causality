@@ -320,24 +320,29 @@ export class PostgresRelationRepository implements RelationRepository {
       }
     }
 
+    const newContents = selections
+      .filter((selection) => selection.type === 'new')
+      .map((selection) => selection.content);
     const caseIds = [...existingIds];
-    for (const selection of selections) {
-      if (selection.type !== 'new') continue;
-      const inserted = await client.query<{ id: string }>(
+    if (newContents.length > 0) {
+      const inserted = await client.query<{ id: string; content: string }>(
         `insert into concrete_cases (content)
-         values ($1)
+         select content
+         from unnest($1::text[]) as selected(content)
          on conflict (content) do nothing
-         returning id`,
-        [selection.content],
+         returning id, content`,
+        [newContents],
       );
-      if (!inserted.rows[0]) {
-        const existing = await client.query<{ id: string }>(
-          `select id from concrete_cases where content = $1`,
-          [selection.content],
+      if (inserted.rows.length < newContents.length) {
+        const insertedContents = new Set(inserted.rows.map((row) => row.content));
+        const matching = await client.query<{ id: string; content: string }>(
+          `select id, content from concrete_cases where content = any($1::text[])`,
+          [newContents],
         );
-        throw new RelationCaseContentConflictError(existing.rows[0]!.id);
+        const conflict = matching.rows.find((row) => !insertedContents.has(row.content));
+        throw new RelationCaseContentConflictError(conflict!.id);
       }
-      caseIds.push(inserted.rows[0].id);
+      caseIds.push(...inserted.rows.map((row) => row.id));
     }
 
     if (caseIds.length === 0) {

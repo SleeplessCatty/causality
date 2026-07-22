@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AppProviders } from '../../../app/AppProviders';
 import { RelationForm } from './RelationForm';
+import type { RelationFormValue } from './RelationForm';
 
 const cause = { id: '11111111-1111-4111-8111-111111111111', name: '原油价格上涨' };
 const effect = { id: '22222222-2222-4222-8222-222222222222', name: '航空成本上升' };
@@ -20,6 +21,13 @@ function jsonResponse(body: unknown) {
 function renderForm(
   onSubmit = vi.fn().mockResolvedValue(undefined),
   mode: 'create' | 'edit' = 'create',
+  initialValue: RelationFormValue = {
+    causeEvent: null,
+    effectEvent: null,
+    confidence: null,
+    description: null,
+    caseSelections: [],
+  },
 ) {
   const router = createMemoryRouter(
     [
@@ -28,13 +36,7 @@ function renderForm(
         element: (
           <RelationForm
             mode={mode}
-            initialValue={{
-              causeEvent: null,
-              effectEvent: null,
-              confidence: null,
-              description: null,
-              caseSelections: [],
-            }}
+            initialValue={initialValue}
             onSubmit={onSubmit}
             cancelTo="/relations"
           />
@@ -180,5 +182,26 @@ describe('RelationForm', () => {
     );
     expect(screen.getByRole('button', { name: '创建关系' }).hasAttribute('disabled')).toBe(true);
     expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('disables adding cases and shows the field error at 1,000 rows', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse({ sameDirection: null, reverseDirection: null })),
+    );
+    renderForm(undefined, 'edit', {
+      causeEvent: cause,
+      effectEvent: effect,
+      confidence: 80,
+      description: null,
+      caseSelections: Array.from({ length: 1_000 }, (_, index) => ({
+        type: 'existing' as const,
+        caseId: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        content: `案例 ${index + 1}`,
+      })),
+    });
+
+    expect(screen.getByRole('button', { name: '添加案例' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('单条因果关系最多关联 1000 条具体案例')).toBeTruthy();
   });
 });

@@ -25,6 +25,7 @@ export const relationFormInputSchema = z
           z.object({ type: z.literal('new'), content: caseContentSchema }).strict(),
         ]),
       )
+      .max(1_000, '单条因果关系最多关联 1000 条具体案例')
       .default([]),
   })
   .strict()

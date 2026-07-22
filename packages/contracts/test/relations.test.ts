@@ -72,6 +72,35 @@ describe('relation contracts', () => {
     ).toBe(false);
   });
 
+  it('accepts 1,000 case selections and rejects 1,001 at the caseSelections path', () => {
+    const base = {
+      causeEventId,
+      effectEventId,
+      confidence: 75,
+      description: null,
+    };
+    const selections = Array.from({ length: 1_001 }, (_, index) => ({
+      type: 'existing' as const,
+      caseId: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+    }));
+
+    expect(
+      relationFormInputSchema.safeParse({ ...base, caseSelections: selections.slice(0, 1_000) })
+        .success,
+    ).toBe(true);
+
+    const overLimit = relationFormInputSchema.safeParse({ ...base, caseSelections: selections });
+    expect(overLimit.success).toBe(false);
+    if (!overLimit.success) {
+      expect(overLimit.error.issues).toContainEqual(
+        expect.objectContaining({
+          path: ['caseSelections'],
+          message: '单条因果关系最多关联 1000 条具体案例',
+        }),
+      );
+    }
+  });
+
   it('accepts 100-character new cases and rejects 101 characters', () => {
     const base = {
       causeEventId,

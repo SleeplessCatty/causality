@@ -18,6 +18,7 @@ interface RelationCasesFieldProps {
   onIncompleteChange: (incomplete: boolean) => void;
   error?: string | undefined;
   disabled?: boolean;
+  maxRows?: number;
 }
 
 function selectionKey(selection: RelationCaseSelectionValue): string {
@@ -32,12 +33,15 @@ export function RelationCasesField({
   onIncompleteChange,
   error,
   disabled = false,
+  maxRows,
 }: RelationCasesFieldProps) {
   const nextKey = useRef(value.length);
   const [rows, setRows] = useState<CaseRow[]>(() =>
     value.map((selection, key) => ({ key, query: selection.content, selection })),
   );
   const rowsRef = useRef(rows);
+  const isAtRowLimit = maxRows !== undefined && rows.length >= maxRows;
+  const visibleError = isAtRowLimit ? `单条因果关系最多关联 ${maxRows} 条具体案例` : error;
 
   useEffect(() => {
     onIncompleteChange(rows.some((row) => !row.selection));
@@ -54,6 +58,7 @@ export function RelationCasesField({
   }
 
   function addRow(): void {
+    if (maxRows !== undefined && rowsRef.current.length >= maxRows) return;
     commit([...rowsRef.current, { key: nextKey.current++, query: '' }]);
   }
 
@@ -106,9 +111,9 @@ export function RelationCasesField({
       ) : (
         <p className="relation-cases-field__empty">尚未关联具体案例，可稍后添加。</p>
       )}
-      {error ? (
+      {visibleError ? (
         <span className="field-error" role="alert">
-          {error}
+          {visibleError}
         </span>
       ) : null}
       <div className="relation-cases-field__actions">
@@ -116,7 +121,7 @@ export function RelationCasesField({
           className="button button--secondary"
           type="button"
           onClick={addRow}
-          disabled={disabled}
+          disabled={disabled || isAtRowLimit}
         >
           添加案例
         </button>

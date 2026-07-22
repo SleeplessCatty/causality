@@ -232,6 +232,7 @@ export function RelationForm({
             onIncompleteChange={handleCasesIncomplete}
             error={fieldErrors.caseSelections}
             disabled={isSubmitting}
+            maxRows={1_000}
           />
         </div>
 
