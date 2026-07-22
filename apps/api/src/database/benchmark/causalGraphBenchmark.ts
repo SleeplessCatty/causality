@@ -28,6 +28,11 @@ interface DegreeRow {
   degree: number;
 }
 
+interface HubDegreeRow {
+  degree: number;
+  distinct_neighbors: number;
+}
+
 interface BenchmarkScenario {
   name: string;
   query: Omit<CausalGraphQuery, 'centerEventId'>;
@@ -72,6 +77,19 @@ export function assertBenchmarkTarget(
       `Causal graph benchmark P95 ${summary.p95Milliseconds}ms exceeds ${threshold}ms`,
     );
   }
+}
+
+export function assertInstalledHubDegree(
+  requestedDegree: number,
+  actualDegree: number,
+  distinctNeighbors: number,
+): number {
+  if (actualDegree !== requestedDegree || distinctNeighbors !== requestedDegree) {
+    throw new Error(
+      `Benchmark hub expected degree ${requestedDegree} with ${requestedDegree} distinct neighbors, found degree ${actualDegree} with ${distinctNeighbors} distinct neighbors`,
+    );
+  }
+  return actualDegree;
 }
 
 export function benchmarkScenariosForCenter(center: BenchmarkCenterName): BenchmarkScenario[] {
@@ -204,10 +222,27 @@ async function installBenchmarkHub(pool: Pool, degree: number): Promise<Benchmar
       throw new Error(`Benchmark requires at least ${degree} distinct hub neighbors`);
     }
 
+    const installedResult = await client.query<HubDegreeRow>(
+      `select count(*)::int as degree,
+              count(distinct case
+                when cause_event_id = $1 then effect_event_id
+                else cause_event_id
+              end)::int as distinct_neighbors
+       from causal_relations
+       where cause_event_id = $1 or effect_event_id = $1`,
+      [hubId],
+    );
+    const installed = installedResult.rows[0]!;
+    const installedDegree = assertInstalledHubDegree(
+      degree,
+      Number(installed.degree),
+      Number(installed.distinct_neighbors),
+    );
+
     await client.query('analyze causal_relations');
     await client.query('analyze causal_relation_cases');
     await client.query('commit');
-    return { name: 'hub', eventId: hubId, degree };
+    return { name: 'hub', eventId: hubId, degree: installedDegree };
   } catch (error) {
     await client.query('rollback');
     throw error;

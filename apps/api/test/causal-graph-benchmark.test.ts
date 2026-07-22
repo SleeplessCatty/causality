@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assertBenchmarkTarget,
+  assertInstalledHubDegree,
   benchmarkScenariosForCenter,
   percentile95,
   summarizeDurations,
@@ -51,5 +52,11 @@ describe('causal graph benchmark statistics', () => {
         query: { direction: 'both', limit: 100, minConfidence: 75, minCaseCount: 1 },
       },
     ]);
+  });
+
+  it('rejects a hub whose installed database degree does not match the request', () => {
+    expect(() => assertInstalledHubDegree(10_000, 10_001, 10_000)).toThrow(
+      'Benchmark hub expected degree 10000 with 10000 distinct neighbors, found degree 10001 with 10000 distinct neighbors',
+    );
   });
 });
