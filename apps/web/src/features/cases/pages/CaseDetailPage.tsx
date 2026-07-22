@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
@@ -17,11 +17,23 @@ export function CaseDetailPage() {
     queryFn: ({ signal }) => getCase(caseId, signal),
     enabled: Boolean(caseId),
   });
-  const relations = useQuery({
+  const relations = useInfiniteQuery({
     queryKey: ['cases', 'relations', caseId],
-    queryFn: ({ signal }) => getCaseRelations(caseId, {}, signal),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) =>
+      getCaseRelations(caseId, { limit: 30, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
+    getNextPageParam: (page) => (page.hasMore ? (page.nextCursor ?? undefined) : undefined),
     enabled: Boolean(caseId),
+    retry: false,
   });
+  const relationItems = Array.from(
+    new Map(
+      (relations.data?.pages.flatMap((page) => page.items) ?? []).map((relation) => [
+        relation.id,
+        relation,
+      ]),
+    ).values(),
+  );
 
   if (detail.isPending) return <div className="page-state">加载案例详情…</div>;
   if (detail.isError) {
@@ -81,17 +93,17 @@ export function CaseDetailPage() {
           <span>{detail.data.relationCount} 条</span>
         </div>
         {relations.isPending ? <div className="case-relations__state">加载关联关系…</div> : null}
-        {relations.isError ? (
+        {relations.isError && !relations.data ? (
           <div className="case-relations__state" role="alert">
             无法读取关联关系
           </div>
         ) : null}
-        {relations.isSuccess && relations.data.items.length === 0 ? (
+        {relations.isSuccess && relationItems.length === 0 ? (
           <div className="case-relations__state">当前案例尚未关联因果关系</div>
         ) : null}
-        {relations.isSuccess && relations.data.items.length > 0 ? (
+        {relationItems.length > 0 ? (
           <ul className="case-relation-list">
-            {relations.data.items.map((relation) => (
+            {relationItems.map((relation) => (
               <li key={relation.id}>
                 <Link className="case-relation-list__relation" to={`/relations/${relation.id}`}>
                   <OverflowText content={relation.causeEvent.name}>
@@ -108,6 +120,33 @@ export function CaseDetailPage() {
               </li>
             ))}
           </ul>
+        ) : null}
+        {relations.isFetchNextPageError ? (
+          <div className="case-relations__state case-relations__state--inline" role="alert">
+            <span>其余关联关系加载失败，已显示成功加载的内容。</span>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => void relations.fetchNextPage()}
+            >
+              重试加载其余关联关系
+            </button>
+          </div>
+        ) : null}
+        {relations.hasNextPage && !relations.isFetchNextPageError ? (
+          <div
+            className="case-relations__state case-relations__state--inline"
+            style={{ justifyContent: 'flex-end' }}
+          >
+            <button
+              type="button"
+              className="text-button"
+              disabled={relations.isFetchingNextPage}
+              onClick={() => void relations.fetchNextPage()}
+            >
+              {relations.isFetchingNextPage ? '加载中…' : '加载更多'}
+            </button>
+          </div>
         ) : null}
       </section>
     </section>

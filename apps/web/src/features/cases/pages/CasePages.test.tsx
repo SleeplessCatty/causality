@@ -96,6 +96,47 @@ describe('case pages', () => {
     expect(relationLink.querySelectorAll('.overflow-text--single-line')).toHaveLength(2);
   });
 
+  it('loads the next relation page and deduplicates relation ids', async () => {
+    const firstRelation = {
+      id: '22222222-2222-4222-8222-222222222222',
+      causeEvent: { id: '33333333-3333-4333-8333-333333333333', name: '第一页原因' },
+      effectEvent: { id: '44444444-4444-4444-8444-444444444444', name: '第一页结果' },
+      linkedAt: '2026-07-21T03:00:00.000Z',
+    };
+    const secondRelation = {
+      id: '55555555-5555-4555-8555-555555555555',
+      causeEvent: { id: '66666666-6666-4666-8666-666666666666', name: '第二页原因' },
+      effectEvent: { id: '77777777-7777-4777-8777-777777777777', name: '第二页结果' },
+      linkedAt: '2026-07-20T03:00:00.000Z',
+    };
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/relations?') && url.includes('cursor=next-page')) {
+        return response({
+          items: [firstRelation, secondRelation],
+          nextCursor: null,
+          hasMore: false,
+        });
+      }
+      if (url.includes('/relations?')) {
+        return response({ items: [firstRelation], nextCursor: 'next-page', hasMore: true });
+      }
+      return response({ ...detail, relationCount: 2 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/cases/:caseId', <CaseDetailPage />);
+
+    expect(await screen.findByRole('link', { name: /第一页原因.*第一页结果/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /第二页原因.*第二页结果/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+
+    expect(await screen.findByRole('link', { name: /第二页原因.*第二页结果/ })).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: /第一页原因.*第一页结果/ })).toHaveLength(1);
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain(
+      `/api/cases/${detail.id}/relations?limit=30&cursor=next-page`,
+    );
+  });
+
   it('keeps a 100-character case complete behind the three-line detail clamp', async () => {
     const longContent = 'C'.repeat(100);
     vi.stubGlobal(

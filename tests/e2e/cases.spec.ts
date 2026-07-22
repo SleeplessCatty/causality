@@ -140,6 +140,32 @@ test('relation detail shows only five recent cases and links to the complete fil
   await expect(page.locator('.case-table tbody tr')).toHaveCount(6);
 });
 
+test('case detail loads all relations beyond the first 30', async ({ page, request }) => {
+  const suffix = `${Date.now()}`.slice(-8);
+  const linkedCase = await createCase(request, `E2E ${suffix} 关系分页案例`);
+  const cause = await createEvent(request, `E2E ${suffix} 分页原因`);
+
+  for (let index = 1; index <= 31; index += 1) {
+    const effect = await createEvent(request, `E2E ${suffix} 分页结果 ${index}`);
+    const response = await request.post(`${apiBase}/relations`, {
+      data: {
+        causeEventId: cause.id,
+        effectEventId: effect.id,
+        confidence: 50,
+        description: null,
+        caseSelections: [{ type: 'existing', caseId: linkedCase.id }],
+      },
+    });
+    expect(response.status()).toBe(201);
+  }
+
+  await page.goto(`/cases/${linkedCase.id}`);
+  const relationItems = page.locator('.case-relation-list > li');
+  await expect(relationItems).toHaveCount(30);
+  await page.getByRole('button', { name: '加载更多' }).click();
+  await expect(relationItems).toHaveCount(31);
+});
+
 test('case pages fit the supported desktop viewports', async ({ page }, testInfo) => {
   for (const viewport of [
     { width: 1280, height: 800 },

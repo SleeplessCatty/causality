@@ -47,7 +47,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   await page.goto('/events');
   await expect(page.getByRole('heading', { name: '原子事件' })).toBeVisible();
   await page.goto('/graph');
-  await expect(page.getByRole('heading', { name: '局部因果图' })).toBeVisible();
+  await expect(page.getByRole('region', { name: '局部因果图工作台' })).toBeVisible();
 
   await expect.poll(async () => (await request.get('/api/ready')).status()).toBe(200);
   expect(verifyDatabase()).toMatchObject({
