@@ -549,7 +549,7 @@ pnpm build
 | P1-07 局部因果图基础展示               | 已完成 |
 | P1-08 局部图交互与信息查看             | 已完成 |
 | P1-09 局部图扩展、筛选与布局稳定性     | 已完成 |
-| P1-10 第一阶段整体验收与容器化交付     | 等待设计审核 |
+| P1-10 第一阶段整体验收与容器化交付     | 开发中 |
 | P2-01 至 P2-07                         | 未开始 |
 
 ## 12. 下一步
@@ -612,10 +612,16 @@ P1-09 实施计划：
 docs/superpowers/plans/2026-07-21-p1-09-local-graph-expansion-filter-layout-implementation.md
 ```
 
-**P1-10 第一阶段整体验收与容器化交付** 已完成交互式设计，等待用户审核书面设计。设计文档：
+**P1-10 第一阶段整体验收与容器化交付** 已完成书面设计审核，正在编写和执行实施计划。设计文档：
 
 ```text
 docs/stages/phase-1/P1-10-phase-1-acceptance-container-delivery-design.md
 ```
 
-未经用户确认 P1-10 书面设计，不编写实施计划，不开始容器实现。
+P1-10 实施计划：
+
+```text
+docs/superpowers/plans/2026-07-21-p1-10-container-delivery-implementation.md
+```
+
+实施完成并通过全部自动化门禁后进入用户人工复核；未经用户确认，不将 P1-10 或第一阶段标记为已完成。
