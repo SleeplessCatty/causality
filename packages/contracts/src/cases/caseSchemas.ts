@@ -21,7 +21,8 @@ export const caseListQuerySchema = z
 export const caseCandidateQuerySchema = z
   .object({
     q: z.string().trim().min(1).max(50),
-    limit: z.coerce.number().int().min(1).max(10).default(10),
+    limit: z.coerce.number().int().min(1).max(100).default(100),
+    cursor: z.string().min(1).max(2_000).optional(),
   })
   .strict();
 
@@ -52,7 +53,11 @@ export const caseListResponseSchema = z
   .strict();
 
 export const caseCandidateListResponseSchema = z
-  .object({ items: z.array(caseReferenceSchema) })
+  .object({
+    items: z.array(caseReferenceSchema),
+    nextCursor: z.string().nullable(),
+    hasMore: z.boolean(),
+  })
   .strict();
 
 export const caseRelationSummarySchema = z

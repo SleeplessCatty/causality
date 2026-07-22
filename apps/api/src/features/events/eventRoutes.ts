@@ -78,7 +78,13 @@ export function registerEventRoutes(app: FastifyInstance, pool: Pool): void {
         },
       },
     },
-    async (request) => ({ items: await service.findCandidates(request.query) }),
+    async (request, reply) => {
+      try {
+        return await service.findCandidates(request.query);
+      } catch (error) {
+        return sendEventError(error, reply);
+      }
+    },
   );
 
   routes.get(

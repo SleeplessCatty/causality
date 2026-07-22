@@ -1,4 +1,8 @@
-import type { EventDetail, EventListResponse } from '@causality/contracts';
+import type {
+  EventCandidateListResponse,
+  EventDetail,
+  EventListResponse,
+} from '@causality/contracts';
 import { Pool } from 'pg';
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -242,12 +246,44 @@ describe.sequential('event REST API', () => {
       method: 'GET',
       url: `/api/events/candidates?q=${encodeURIComponent('候选油价上涨')}&limit=5&excludeId=${current.id}`,
     });
-    const body = response.json<{ items: Array<Record<string, unknown>> }>();
+    const body = response.json<EventCandidateListResponse>();
 
     expect(response.statusCode).toBe(200);
     expect(body.items.length).toBeGreaterThan(0);
     expect(body.items.every((item) => Object.keys(item).sort().join(',') === 'id,name')).toBe(true);
     expect(body.items.some((item) => item.id === current.id)).toBe(false);
+  });
+
+  it('paginates candidates without duplicates and rejects mismatched cursors', async () => {
+    for (const index of [1, 2, 3, 4, 5]) {
+      await createEvent(`CANDIDATEPAGE 事件 ${index}`);
+    }
+
+    const first = await app!.inject({
+      method: 'GET',
+      url: '/api/events/candidates?q=CANDIDATEPAGE&limit=2',
+    });
+    const firstPage = first.json<EventCandidateListResponse>();
+    const second = await app!.inject({
+      method: 'GET',
+      url: `/api/events/candidates?q=CANDIDATEPAGE&limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+    const secondPage = second.json<EventCandidateListResponse>();
+
+    expect(first.statusCode).toBe(200);
+    expect(firstPage).toMatchObject({ hasMore: true });
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+    expect(second.statusCode).toBe(200);
+    expect(secondPage.items.map((item) => item.id)).not.toEqual(
+      expect.arrayContaining(firstPage.items.map((item) => item.id)),
+    );
+
+    const mismatch = await app!.inject({
+      method: 'GET',
+      url: `/api/events/candidates?q=OTHER&limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+    expect(mismatch.statusCode).toBe(400);
+    expect(mismatch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
   it('publishes event paths in OpenAPI', async () => {

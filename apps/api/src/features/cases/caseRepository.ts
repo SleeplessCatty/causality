@@ -14,8 +14,10 @@ import type {
 import type { Pool } from 'pg';
 
 import {
+  decodeCaseCandidateCursor,
   decodeCaseListCursor,
   decodeCaseRelationCursor,
+  encodeCaseCandidateCursor,
   encodeCaseListCursor,
   encodeCaseRelationCursor,
 } from './caseCursor.js';
@@ -150,22 +152,53 @@ export class PostgresCaseRepository implements CaseRepository {
 
   async candidates(query: CaseCandidateQuery): Promise<CaseCandidateListResponse> {
     const normalized = normalizeQuery(query.q);
+    const cursor = query.cursor ? decodeCaseCandidateCursor(query.cursor, normalized) : undefined;
     const escaped = escapeLike(normalized);
+    const parameters: unknown[] = [normalized, `${escaped}%`, `%${escaped}%`];
+    const cursorCondition = cursor
+      ? `where ranked.rank > $4::int
+           or (ranked.rank = $4::int and
+               (ranked.updated_at, ranked.id) < ($5::timestamptz, $6::uuid))`
+      : '';
+    if (cursor) parameters.push(cursor.rank, cursor.updatedAt, cursor.id);
+    parameters.push(query.limit + 1);
     const result = await this.pool.query<CaseRow>(
-      `select c.id, c.content, c.created_at, c.updated_at, 0::int as relation_count
-       from concrete_cases c
-       where lower(c.content) like $3 escape '\\'
-       order by case
+      `with ranked as (
+         select c.id,
+                c.content,
+                c.created_at,
+                c.updated_at,
+                0::int as relation_count,
+                case
                   when lower(c.content) = $1 then 1
                   when lower(c.content) like $2 escape '\\' then 2
                   else 3
-                end,
-                c.updated_at desc,
-                c.id desc
-       limit $4`,
-      [normalized, `${escaped}%`, `%${escaped}%`, query.limit],
+                end::int as rank
+         from concrete_cases c
+         where lower(c.content) like $3 escape '\\'
+       )
+       select * from ranked
+       ${cursorCondition}
+       order by ranked.rank, ranked.updated_at desc, ranked.id desc
+       limit $${parameters.length}`,
+      parameters,
     );
-    return { items: result.rows.map(reference) };
+    const hasMore = result.rows.length > query.limit;
+    const rows = result.rows.slice(0, query.limit);
+    const last = rows.at(-1);
+    return {
+      items: rows.map(reference),
+      hasMore,
+      nextCursor:
+        hasMore && last
+          ? encodeCaseCandidateCursor({
+              query: normalized,
+              rank: last.rank!,
+              updatedAt: last.updated_at.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
   }
 
   async findById(id: string): Promise<CaseDetail | null> {

@@ -69,7 +69,13 @@ export function registerCaseRoutes(app: FastifyInstance, pool: Pool): void {
         },
       },
     },
-    async (request) => service.candidates(request.query),
+    async (request, reply) => {
+      try {
+        return await service.candidates(request.query);
+      } catch (error) {
+        return sendCaseError(error, reply);
+      }
+    },
   );
 
   routes.get(

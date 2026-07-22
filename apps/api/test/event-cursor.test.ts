@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { decodeEventCursor, encodeEventCursor } from '../src/features/events/eventCursor.js';
+import {
+  decodeEventCandidateCursor,
+  decodeEventCursor,
+  encodeEventCandidateCursor,
+  encodeEventCursor,
+} from '../src/features/events/eventCursor.js';
 
 const eventId = '11111111-1111-4111-8111-111111111111';
 
@@ -56,5 +61,24 @@ describe('event cursor', () => {
       id: eventId,
     });
     expect(() => decodeEventCursor(cursor, '油价')).toThrow('Invalid event cursor');
+  });
+
+  it('round-trips candidates and binds them to query and exclusion', () => {
+    const cursor = encodeEventCandidateCursor({
+      query: '油价',
+      excludeId: null,
+      rank: 2,
+      normalizedName: '原油价格上涨',
+      id: eventId,
+    });
+
+    expect(decodeEventCandidateCursor(cursor, ' 油价 ')).toMatchObject({
+      rank: 2,
+      normalizedName: '原油价格上涨',
+    });
+    expect(() => decodeEventCandidateCursor(cursor, '利率')).toThrow('Invalid event cursor');
+    expect(() => decodeEventCandidateCursor(cursor, '油价', eventId)).toThrow(
+      'Invalid event cursor',
+    );
   });
 });

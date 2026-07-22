@@ -1,5 +1,5 @@
 import type {
-  EventCandidate,
+  EventCandidateListResponse,
   EventCandidateQuery,
   EventDetail,
   EventFormInput,
@@ -52,7 +52,7 @@ export class EventService {
     return this.repository.list(query);
   }
 
-  findCandidates(query: EventCandidateQuery): Promise<EventCandidate[]> {
+  findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse> {
     return this.repository.findCandidates(query);
   }
 

@@ -20,9 +20,21 @@ const searchCursorStateSchema = z
   })
   .strict();
 
+const candidateCursorStateSchema = z
+  .object({
+    kind: z.literal('candidate'),
+    query: z.string().min(1).max(120),
+    excludeId: z.uuid().nullable(),
+    rank: z.number().int().min(1).max(6),
+    normalizedName: z.string().min(1).max(120),
+    id: z.uuid(),
+  })
+  .strict();
+
 const eventCursorStateSchema = z.discriminatedUnion('kind', [
   listCursorStateSchema,
   searchCursorStateSchema,
+  candidateCursorStateSchema,
 ]);
 
 const eventCursorEnvelopeSchema = z
@@ -34,6 +46,7 @@ const eventCursorEnvelopeSchema = z
   .strict();
 
 export type EventCursorState = z.infer<typeof eventCursorStateSchema>;
+export type EventCandidateCursorState = z.infer<typeof candidateCursorStateSchema>;
 
 export class InvalidEventCursorError extends Error {
   constructor() {
@@ -63,7 +76,7 @@ export function encodeEventCursor(input: EventCursorState): string {
   ).toString('base64url');
 }
 
-export function decodeEventCursor(cursor: string, query: string): EventCursorState {
+function decodeVerifiedEventEnvelope(cursor: string): EventCursorState {
   try {
     const envelope = eventCursorEnvelopeSchema.parse(
       JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')),
@@ -74,18 +87,41 @@ export function decodeEventCursor(cursor: string, query: string): EventCursorSta
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       throw new Error('checksum mismatch');
     }
-    if (envelope.state.query !== normalizeQuery(query)) {
-      throw new Error('query mismatch');
-    }
-    if (query.trim() === '' && envelope.state.kind !== 'list') {
-      throw new Error('cursor kind mismatch');
-    }
-    if (query.trim() !== '' && envelope.state.kind !== 'search') {
-      throw new Error('cursor kind mismatch');
-    }
-
     return envelope.state;
   } catch {
     throw new InvalidEventCursorError();
   }
+}
+
+export function decodeEventCursor(cursor: string, query: string): EventCursorState {
+  const state = decodeVerifiedEventEnvelope(cursor);
+  const normalized = normalizeQuery(query);
+  if (
+    state.query !== normalized ||
+    (normalized === '' && state.kind !== 'list') ||
+    (normalized !== '' && state.kind !== 'search')
+  ) {
+    throw new InvalidEventCursorError();
+  }
+  return state;
+}
+
+export function encodeEventCandidateCursor(input: Omit<EventCandidateCursorState, 'kind'>): string {
+  return encodeEventCursor({ kind: 'candidate', ...input });
+}
+
+export function decodeEventCandidateCursor(
+  cursor: string,
+  query: string,
+  excludeId?: string,
+): EventCandidateCursorState {
+  const state = decodeVerifiedEventEnvelope(cursor);
+  if (
+    state.kind !== 'candidate' ||
+    state.query !== normalizeQuery(query) ||
+    state.excludeId !== (excludeId ?? null)
+  ) {
+    throw new InvalidEventCursorError();
+  }
+  return state;
 }

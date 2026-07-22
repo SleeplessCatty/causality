@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   apiErrorSchema,
+  eventCandidateListResponseSchema,
   eventCandidateQuerySchema,
   eventCandidateSchema,
   eventDetailSchema,
@@ -82,16 +83,23 @@ describe('event contracts', () => {
       limit: 30,
     });
     expect(
-      eventCandidateQuerySchema.parse({ q: ' 加息 ', limit: '5', excludeId: eventId }),
+      eventCandidateQuerySchema.parse({
+        q: ' 加息 ',
+        limit: '100',
+        cursor: 'cursor-value',
+        excludeId: eventId,
+      }),
     ).toEqual({
       q: '加息',
-      limit: 5,
+      limit: 100,
+      cursor: 'cursor-value',
       excludeId: eventId,
     });
 
     expect(() => eventListQuerySchema.parse({ limit: '0' })).toThrow();
     expect(() => eventListQuerySchema.parse({ limit: '101' })).toThrow();
     expect(() => eventCandidateQuerySchema.parse({ q: ' ' })).toThrow();
+    expect(() => eventCandidateQuerySchema.parse({ q: '事件', limit: '101' })).toThrow();
     expect(() => eventCandidateQuerySchema.parse({ q: '事件', excludeId: 'invalid' })).toThrow();
   });
 
@@ -143,5 +151,12 @@ describe('event contracts', () => {
         matchReason: '命中别名',
       }),
     ).toThrow();
+    expect(
+      eventCandidateListResponseSchema.parse({
+        items: [{ id: eventId, name: '原油价格上涨' }],
+        nextCursor: 'next',
+        hasMore: true,
+      }),
+    ).toMatchObject({ nextCursor: 'next', hasMore: true });
   });
 });

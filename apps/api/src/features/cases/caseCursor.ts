@@ -19,10 +19,19 @@ const relationStateSchema = z
   })
   .strict();
 
+const candidateStateSchema = z
+  .object({
+    query: z.string().min(1).max(50),
+    rank: z.number().int().min(1).max(3),
+    updatedAt: z.iso.datetime({ offset: true }),
+    id: z.uuid(),
+  })
+  .strict();
+
 const envelopeSchema = z
   .object({
     version: z.literal(1),
-    kind: z.enum(['list', 'relations']),
+    kind: z.enum(['list', 'relations', 'candidates']),
     state: z.unknown(),
     checksum: z.string().min(1),
   })
@@ -30,6 +39,7 @@ const envelopeSchema = z
 
 export type CaseListCursorState = z.infer<typeof listStateSchema>;
 export type CaseRelationCursorState = z.infer<typeof relationStateSchema>;
+export type CaseCandidateCursorState = z.infer<typeof candidateStateSchema>;
 
 export class InvalidCaseCursorError extends Error {
   constructor() {
@@ -48,14 +58,14 @@ function checksum(kind: string, state: unknown): string {
     .digest('base64url');
 }
 
-function encode(kind: 'list' | 'relations', state: unknown): string {
+function encode(kind: 'list' | 'relations' | 'candidates', state: unknown): string {
   return Buffer.from(
     JSON.stringify({ version: 1, kind, state, checksum: checksum(kind, state) }),
     'utf8',
   ).toString('base64url');
 }
 
-function decode(cursor: string, kind: 'list' | 'relations'): unknown {
+function decode(cursor: string, kind: 'list' | 'relations' | 'candidates'): unknown {
   const envelope = envelopeSchema.parse(JSON.parse(Buffer.from(cursor, 'base64url').toString()));
   const expected = Buffer.from(checksum(envelope.kind, envelope.state));
   const actual = Buffer.from(envelope.checksum);
@@ -103,6 +113,21 @@ export function decodeCaseRelationCursor(cursor: string, caseId: string): CaseRe
   try {
     const state = relationStateSchema.parse(decode(cursor, 'relations'));
     if (state.caseId !== caseId) throw new Error('case mismatch');
+    return state;
+  } catch {
+    throw new InvalidCaseCursorError();
+  }
+}
+
+export function encodeCaseCandidateCursor(input: CaseCandidateCursorState): string {
+  const state = candidateStateSchema.parse({ ...input, query: normalizeQuery(input.query) });
+  return encode('candidates', state);
+}
+
+export function decodeCaseCandidateCursor(cursor: string, query: string): CaseCandidateCursorState {
+  try {
+    const state = candidateStateSchema.parse(decode(cursor, 'candidates'));
+    if (state.query !== normalizeQuery(query)) throw new Error('query mismatch');
     return state;
   } catch {
     throw new InvalidCaseCursorError();

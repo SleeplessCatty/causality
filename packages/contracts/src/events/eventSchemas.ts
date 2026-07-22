@@ -55,7 +55,8 @@ export const eventListQuerySchema = z
 export const eventCandidateQuerySchema = z
   .object({
     q: z.string().trim().min(1).max(120),
-    limit: z.coerce.number().int().min(1).max(20).default(10),
+    limit: z.coerce.number().int().min(1).max(100).default(100),
+    cursor: z.string().min(1).max(2_000).optional(),
     excludeId: z.uuid().optional(),
   })
   .strict();
@@ -95,7 +96,11 @@ export const eventListResponseSchema = z
   .strict();
 
 export const eventCandidateListResponseSchema = z
-  .object({ items: z.array(eventCandidateSchema) })
+  .object({
+    items: z.array(eventCandidateSchema),
+    nextCursor: z.string().nullable(),
+    hasMore: z.boolean(),
+  })
   .strict();
 
 export const apiErrorCodeSchema = z.enum([

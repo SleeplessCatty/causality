@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  decodeCaseCandidateCursor,
   decodeCaseListCursor,
   decodeCaseRelationCursor,
+  encodeCaseCandidateCursor,
   encodeCaseListCursor,
   encodeCaseRelationCursor,
 } from '../src/features/cases/caseCursor.js';
@@ -44,5 +46,18 @@ describe('case cursors', () => {
     expect(() => decodeCaseListCursor('invalid', '', undefined)).toThrow('Invalid case cursor');
     const unsupported = Buffer.from(JSON.stringify({ version: 2 }), 'utf8').toString('base64url');
     expect(() => decodeCaseListCursor(unsupported, '', undefined)).toThrow('Invalid case cursor');
+  });
+
+  it('round-trips candidate state and binds it to the query', () => {
+    const cursor = encodeCaseCandidateCursor({
+      query: '关税',
+      rank: 2,
+      updatedAt: '2026-07-22T00:00:00.000Z',
+      id: caseId,
+    });
+
+    expect(decodeCaseCandidateCursor(cursor, ' 关税 ')).toMatchObject({ rank: 2 });
+    expect(() => decodeCaseCandidateCursor(cursor, '油价')).toThrow('Invalid case cursor');
+    expect(() => decodeCaseCandidateCursor(`${cursor}x`, '关税')).toThrow('Invalid case cursor');
   });
 });

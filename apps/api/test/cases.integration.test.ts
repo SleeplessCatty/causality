@@ -1,4 +1,9 @@
-import type { CaseDetail, CaseListResponse, CaseRelationListResponse } from '@causality/contracts';
+import type {
+  CaseCandidateListResponse,
+  CaseDetail,
+  CaseListResponse,
+  CaseRelationListResponse,
+} from '@causality/contracts';
 import { Pool } from 'pg';
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -139,6 +144,36 @@ describe.sequential('case REST API', () => {
       causeEvent: { name: '测试原因' },
       effectEvent: { name: '测试结果' },
     });
+  });
+
+  it('paginates candidate cases without duplicates and binds cursors to the query', async () => {
+    for (const index of [1, 2, 3, 4, 5]) {
+      await createCase(`CASEPAGE 候选案例 ${index}`);
+    }
+
+    const first = await app!.inject({
+      method: 'GET',
+      url: '/api/cases/candidates?q=CASEPAGE&limit=2',
+    });
+    const firstPage = first.json<CaseCandidateListResponse>();
+    const second = await app!.inject({
+      method: 'GET',
+      url: `/api/cases/candidates?q=CASEPAGE&limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+    const secondPage = second.json<CaseCandidateListResponse>();
+
+    expect(first.statusCode).toBe(200);
+    expect(firstPage).toMatchObject({ hasMore: true });
+    expect(secondPage.items.map((item) => item.id)).not.toEqual(
+      expect.arrayContaining(firstPage.items.map((item) => item.id)),
+    );
+
+    const mismatch = await app!.inject({
+      method: 'GET',
+      url: `/api/cases/candidates?q=OTHER&limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+    expect(mismatch.statusCode).toBe(400);
+    expect(mismatch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
   it('returns stable client errors and publishes case paths', async () => {

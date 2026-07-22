@@ -1,5 +1,5 @@
 import type {
-  EventCandidate,
+  EventCandidateListResponse,
   EventCandidateQuery,
   EventDetail,
   EventFormInput,
@@ -10,6 +10,11 @@ import type {
 import type { Pool, PoolClient } from 'pg';
 
 import { decodeEventCursor, encodeEventCursor, type EventCursorState } from './eventCursor.js';
+import {
+  decodeEventCandidateCursor,
+  encodeEventCandidateCursor,
+  type EventCandidateCursorState,
+} from './eventCursor.js';
 
 interface EventRow {
   id: string;
@@ -29,7 +34,7 @@ interface AliasRow {
 
 export interface EventRepository {
   list(query: EventListQuery): Promise<EventListResponse>;
-  findCandidates(query: EventCandidateQuery): Promise<EventCandidate[]>;
+  findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse>;
   findById(id: string): Promise<EventDetail | null>;
   create(input: EventFormInput): Promise<EventDetail>;
   replace(id: string, input: EventFormInput): Promise<EventDetail | null>;
@@ -141,9 +146,10 @@ export class PostgresEventRepository implements EventRepository {
   private async searchRows(
     query: string,
     limit: number,
-    cursor?: EventCursorState,
+    cursor?: EventCursorState | EventCandidateCursorState,
   ): Promise<EventRow[]> {
-    const searchCursor = cursor?.kind === 'search' ? cursor : undefined;
+    const searchCursor =
+      cursor?.kind === 'search' || cursor?.kind === 'candidate' ? cursor : undefined;
     const escaped = escapeLike(query);
     const parameters: unknown[] = [query, `${escaped}%`, `%${escaped}%`];
     const cursorCondition = searchCursor
@@ -197,13 +203,31 @@ export class PostgresEventRepository implements EventRepository {
     return result.rows;
   }
 
-  async findCandidates(query: EventCandidateQuery): Promise<EventCandidate[]> {
+  async findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse> {
     const normalizedQuery = normalizeQuery(query.q);
-    const rows = await this.searchRows(normalizedQuery, query.limit + 1);
-    return rows
-      .filter((row) => row.id !== query.excludeId)
-      .slice(0, query.limit)
-      .map((row) => ({ id: row.id, name: row.name }));
+    const cursor = query.cursor
+      ? decodeEventCandidateCursor(query.cursor, normalizedQuery, query.excludeId)
+      : undefined;
+    const rows = await this.searchRows(normalizedQuery, query.limit + 2, cursor);
+    const eligible = rows.filter((row) => row.id !== query.excludeId).slice(0, query.limit + 1);
+    const hasMore = eligible.length > query.limit;
+    const pageRows = eligible.slice(0, query.limit);
+    const last = pageRows.at(-1);
+
+    return {
+      items: pageRows.map((row) => ({ id: row.id, name: row.name })),
+      hasMore,
+      nextCursor:
+        hasMore && last
+          ? encodeEventCandidateCursor({
+              query: normalizedQuery,
+              excludeId: query.excludeId ?? null,
+              rank: last.rank!,
+              normalizedName: last.normalized_name!,
+              id: last.id,
+            })
+          : null,
+    };
   }
 
   async findById(id: string): Promise<EventDetail | null> {

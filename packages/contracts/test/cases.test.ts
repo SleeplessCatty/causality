@@ -34,12 +34,15 @@ describe('concrete case contracts', () => {
       relationId,
       limit: 30,
     });
-    expect(caseCandidateQuerySchema.parse({ q: ' 关税 ', limit: '10' })).toEqual({
+    expect(
+      caseCandidateQuerySchema.parse({ q: ' 关税 ', limit: '100', cursor: 'cursor-value' }),
+    ).toEqual({
       q: '关税',
-      limit: 10,
+      limit: 100,
+      cursor: 'cursor-value',
     });
     expect(caseRelationListQuerySchema.parse({ limit: '30' })).toEqual({ limit: 30 });
-    expect(caseCandidateQuerySchema.safeParse({ q: '案例', limit: '11' }).success).toBe(false);
+    expect(caseCandidateQuerySchema.safeParse({ q: '案例', limit: '101' }).success).toBe(false);
   });
 
   it('accepts strict case, candidate, list, and linked-relation responses', () => {
@@ -65,11 +68,19 @@ describe('concrete case contracts', () => {
         hasMore: false,
       }),
     ).toBeTruthy();
-    expect(caseCandidateListResponseSchema.parse({ items: [reference] })).toEqual({
-      items: [reference],
-    });
+    expect(
+      caseCandidateListResponseSchema.parse({
+        items: [reference],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    ).toEqual({ items: [reference], nextCursor: null, hasMore: false });
     expect(() =>
-      caseCandidateListResponseSchema.parse({ items: [{ ...reference, matchReason: '内容命中' }] }),
+      caseCandidateListResponseSchema.parse({
+        items: [{ ...reference, matchReason: '内容命中' }],
+        nextCursor: null,
+        hasMore: false,
+      }),
     ).toThrow();
     expect(
       caseRelationListResponseSchema.parse({
