@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
+    "start:migrate": "node dist/database/migrate.js",
+    "start:seed": "node dist/database/test-data/fixedSeed.js",
+    "start:verify": "node dist/database/verify.js",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts --name core_model",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed": "tsx src/database/test-data/fixedSeed.ts",

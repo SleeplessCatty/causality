@@ -37,7 +37,7 @@
 - Consumes: root pnpm workspace, `pnpm-lock.yaml`, API `dist`, `database/migrations`, and existing `DATABASE_URL` configuration.
 - Produces: image build context `apps/api/Dockerfile`; commands `start`, `start:migrate`, `start:seed`, and `start:verify`; runtime files `/app/dist`, `/app/node_modules`, and `/database/migrations`.
 
-- [ ] **Step 1: Write the failing API production-entrypoint test**
+- [x] **Step 1: Write the failing API production-entrypoint test**
 
 Create `apps/api/test/production-entrypoints.test.ts`:
 
@@ -69,7 +69,7 @@ describe('API production entrypoints', () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused test and observe the expected failure**
+- [x] **Step 2: Run the focused test and observe the expected failure**
 
 Run:
 
@@ -79,7 +79,7 @@ pnpm --filter @causality/api exec vitest run test/production-entrypoints.test.ts
 
 Expected: FAIL because `start:migrate`, `start:seed`, and `start:verify` are absent.
 
-- [ ] **Step 3: Add compiled production scripts**
+- [x] **Step 3: Add compiled production scripts**
 
 Add to `apps/api/package.json`:
 
@@ -94,7 +94,7 @@ Add to `apps/api/package.json`:
 }
 ```
 
-- [ ] **Step 4: Add a minimal root Docker context**
+- [x] **Step 4: Add a minimal root Docker context**
 
 Create `.dockerignore`:
 
@@ -113,7 +113,7 @@ test-results
 .DS_Store
 ```
 
-- [ ] **Step 5: Create the multi-stage API Dockerfile**
+- [x] **Step 5: Create the multi-stage API Dockerfile**
 
 Create `apps/api/Dockerfile`:
 
@@ -122,6 +122,7 @@ FROM node:24.18.0-alpine AS build
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+ENV CI=true
 WORKDIR /workspace
 
 RUN corepack enable && corepack prepare pnpm@11.15.1 --activate
@@ -160,7 +161,7 @@ EXPOSE 3000
 CMD ["node", "dist/server.js"]
 ```
 
-- [ ] **Step 6: Verify API tests, production build, and image contents**
+- [x] **Step 6: Verify API tests, production build, and image contents**
 
 Run:
 
@@ -173,7 +174,7 @@ docker image inspect causality-api:p1-10 --format '{{.Config.User}} {{.Config.Ex
 
 Expected: focused test and build PASS; Docker build succeeds; inspection reports user `node` and port `3000/tcp`.
 
-- [ ] **Step 7: Commit the API image task**
+- [x] **Step 7: Commit the API image task**
 
 ```bash
 git add .dockerignore apps/api/Dockerfile apps/api/package.json apps/api/test/production-entrypoints.test.ts
