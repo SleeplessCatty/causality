@@ -3,8 +3,7 @@ import { useMemo } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
-import { getCases } from '../../cases/api/caseApi';
-import { getRelation } from '../api/relationApi';
+import { getRelation, getRelationCases } from '../api/relationApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   dateStyle: 'long',
@@ -22,13 +21,9 @@ export function RelationDetailPage() {
   const linkedCases = useInfiniteQuery({
     queryKey: ['cases', 'relation-associations', relationId],
     queryFn: ({ pageParam, signal }) =>
-      getCases(
-        {
-          q: '',
-          relationId,
-          limit: 100,
-          ...(pageParam ? { cursor: pageParam } : {}),
-        },
+      getRelationCases(
+        relationId,
+        { limit: 100, ...(pageParam ? { cursor: pageParam } : {}) },
         signal,
       ),
     initialPageParam: undefined as string | undefined,

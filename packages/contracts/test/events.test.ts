@@ -90,11 +90,24 @@ describe('event contracts', () => {
     expect(duplicateKeyword.error?.issues[0]?.path).toEqual(['keywords', 1]);
   });
 
-  it('normalizes list and candidate queries and rejects invalid bounds', () => {
+  it('normalizes page-based list queries and rejects invalid page bounds', () => {
     expect(eventListQuerySchema.parse({ q: '  原油 ', limit: '30' })).toEqual({
       q: '原油',
+      page: 1,
       limit: 30,
     });
+    expect(eventListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 30 });
+    expect(eventListQuerySchema.parse({ page: '100000' })).toEqual({
+      q: '',
+      page: 100_000,
+      limit: 30,
+    });
+    for (const page of ['0', '-1', '1.5', '100001']) {
+      expect(eventListQuerySchema.safeParse({ page }).success).toBe(false);
+    }
+  });
+
+  it('keeps candidate queries cursor-based and rejects invalid bounds', () => {
     expect(
       eventCandidateQuerySchema.parse({
         q: ' 加息 ',
@@ -143,10 +156,23 @@ describe('event contracts', () => {
             updatedAt: timestamp,
           },
         ],
+        page: 1,
+        pageSize: 30,
+        totalItems: 1,
+        totalPages: 1,
+      }),
+    ).toMatchObject({ page: 1, pageSize: 30, totalItems: 1, totalPages: 1 });
+    expect(() =>
+      eventListResponseSchema.parse({
+        items: [],
+        page: 1,
+        pageSize: 30,
+        totalItems: 0,
+        totalPages: 1,
         nextCursor: null,
         hasMore: false,
       }),
-    ).toMatchObject({ hasMore: false, nextCursor: null });
+    ).toThrow();
     expect(
       apiErrorSchema.parse({
         code: 'EVENT_NAME_CONFLICT',

@@ -11,7 +11,7 @@ import type {
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
-import { decodeRelationCursor, encodeRelationCursor } from './relationCursor.js';
+import { resolvePageWindow, type CountRow } from '../shared/pagePagination.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface RelationRow {
@@ -91,70 +91,7 @@ const selectRelation = `select r.id,
                         join abstract_events cause on cause.id = r.cause_event_id
                         join abstract_events effect on effect.id = r.effect_event_id`;
 
-export class PostgresRelationRepository implements RelationRepository {
-  constructor(private readonly pool: Pool) {}
-
-  async list(query: RelationListQuery): Promise<RelationListResponse> {
-    const normalizedQuery = normalizeSearchQuery(query.q);
-    const cursor = query.cursor ? decodeRelationCursor(query.cursor, normalizedQuery) : undefined;
-    const rowsWithExtra = normalizedQuery
-      ? await this.searchRows(normalizedQuery, query.limit + 1, cursor)
-      : await this.listRows(query.limit + 1, cursor);
-    const hasMore = rowsWithExtra.length > query.limit;
-    const rows = rowsWithExtra.slice(0, query.limit);
-    const last = rows.at(-1);
-    return {
-      items: rows.map(summary),
-      hasMore,
-      nextCursor:
-        hasMore && last
-          ? encodeRelationCursor({
-              query: normalizedQuery,
-              rank: normalizedQuery ? last.rank! : null,
-              updatedAt: last.updated_at.toISOString(),
-              id: last.id,
-            })
-          : null,
-    };
-  }
-
-  private async listRows(
-    limit: number,
-    cursor?: ReturnType<typeof decodeRelationCursor>,
-  ): Promise<RelationRow[]> {
-    const parameters: unknown[] = [];
-    const condition = cursor ? `where (r.updated_at, r.id) < ($1::timestamptz, $2::uuid)` : '';
-    if (cursor) parameters.push(cursor.updatedAt, cursor.id);
-    parameters.push(limit);
-    const result = await this.pool.query<RelationRow>(
-      `${selectRelation}
-       ${condition}
-       order by r.updated_at desc, r.id desc
-       limit $${parameters.length}`,
-      parameters,
-    );
-    return result.rows;
-  }
-
-  private async searchRows(
-    query: string,
-    limit: number,
-    cursor?: ReturnType<typeof decodeRelationCursor>,
-  ): Promise<RelationRow[]> {
-    const escaped = escapeLikePattern(query);
-    const parameters: unknown[] = [query, `${escaped}%`, `%${escaped}%`];
-    const cursorCondition = cursor
-      ? `and (
-           ranked.rank > $4::int
-           or (ranked.rank = $4::int
-               and (ranked.updated_at, ranked.id) < ($5::timestamptz, $6::uuid))
-         )`
-      : '';
-    if (cursor) parameters.push(cursor.rank, cursor.updatedAt, cursor.id);
-    parameters.push(limit);
-
-    const result = await this.pool.query<RelationRow>(
-      `with ranked as (
+const rankedRelationsCte = `with ranked as (
          select r.id,
                 r.cause_event_id,
                 cause.name as cause_event_name,
@@ -193,13 +130,69 @@ export class PostgresRelationRepository implements RelationRepository {
          from causal_relations r
          join abstract_events cause on cause.id = r.cause_event_id
          join abstract_events effect on effect.id = r.effect_event_id
-       )
+       )`;
+
+export class PostgresRelationRepository implements RelationRepository {
+  constructor(private readonly pool: Pool) {}
+
+  async list(query: RelationListQuery): Promise<RelationListResponse> {
+    const normalizedQuery = normalizeSearchQuery(query.q);
+    const totalItems = normalizedQuery
+      ? await this.countSearchRows(normalizedQuery)
+      : await this.countListRows();
+    const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
+    const rows = normalizedQuery
+      ? await this.searchRows(normalizedQuery, query.limit, offset)
+      : await this.listRows(query.limit, offset);
+    return {
+      items: rows.map(summary),
+      page,
+      pageSize: query.limit,
+      totalItems,
+      totalPages,
+    };
+  }
+
+  private async countListRows(): Promise<number> {
+    const result = await this.pool.query<CountRow>(
+      `select count(*)::int as total from causal_relations`,
+    );
+    return result.rows[0]!.total;
+  }
+
+  private async listRows(limit: number, offset: number): Promise<RelationRow[]> {
+    const result = await this.pool.query<RelationRow>(
+      `${selectRelation}
+       order by r.updated_at desc, r.id desc
+       limit $1 offset $2`,
+      [limit, offset],
+    );
+    return result.rows;
+  }
+
+  private async countSearchRows(query: string): Promise<number> {
+    const escaped = escapeLikePattern(query);
+    const result = await this.pool.query<CountRow>(
+      `${rankedRelationsCte}
+       select count(*)::int as total
+       from ranked
+       where ranked.rank <= 6`,
+      [query, `${escaped}%`, `%${escaped}%`],
+    );
+    return result.rows[0]!.total;
+  }
+
+  private async searchRows(query: string, limit: number, offset: number): Promise<RelationRow[]> {
+    const escaped = escapeLikePattern(query);
+    const parameters: unknown[] = [query, `${escaped}%`, `%${escaped}%`, limit, offset];
+
+    const result = await this.pool.query<RelationRow>(
+      `${rankedRelationsCte}
        select *
        from ranked
        where ranked.rank <= 6
-       ${cursorCondition}
        order by ranked.rank, ranked.updated_at desc, ranked.id desc
-       limit $${parameters.length}`,
+       limit $4 offset $5`,
       parameters,
     );
     return result.rows;

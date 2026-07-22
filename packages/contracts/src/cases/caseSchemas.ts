@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const timestampSchema = z.iso.datetime({ offset: true });
 import { eventNameSchema } from '../events/eventSchemas.js';
+import { pageListMetadataSchema, pageListQuerySchema } from '../pagination/pageSchemas.js';
 
 const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
 
@@ -13,8 +14,7 @@ export const caseListQuerySchema = z
   .object({
     q: z.string().trim().max(100).default(''),
     relationId: z.uuid().optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(30),
-    cursor: z.string().min(1).max(2_000).optional(),
+    ...pageListQuerySchema.shape,
   })
   .strict();
 
@@ -47,8 +47,7 @@ export const caseDetailSchema = caseSummarySchema.extend({ createdAt: timestampS
 export const caseListResponseSchema = z
   .object({
     items: z.array(caseSummarySchema),
-    nextCursor: z.string().nullable(),
-    hasMore: z.boolean(),
+    ...pageListMetadataSchema.shape,
   })
   .strict();
 

@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
+import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getRelation, getRelations } from '../api/relationApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -14,10 +15,8 @@ export function RelationListPage() {
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
   const expandedId = searchParameters.get('expanded') ?? '';
+  const page = readListPage(searchParameters.get('page'));
   const [searchInput, setSearchInput] = useState(query);
-  const [cursorStack, setCursorStack] = useState<Array<string | undefined>>([undefined]);
-  const [pageIndex, setPageIndex] = useState(0);
-  const cursor = cursorStack[pageIndex];
 
   useEffect(() => {
     setSearchInput(query);
@@ -33,19 +32,19 @@ export function RelationListPage() {
           if (normalized) next.set('q', normalized);
           else next.delete('q');
           next.delete('expanded');
+          next.delete('page');
           return next;
         },
         { replace: true },
       );
-      setCursorStack([undefined]);
-      setPageIndex(0);
     }, 300);
     return () => window.clearTimeout(timeout);
   }, [query, searchInput, setSearchParameters]);
 
   const relations = useQuery({
-    queryKey: ['relations', 'list', query, cursor ?? null],
-    queryFn: ({ signal }) => getRelations({ q: query, ...(cursor ? { cursor } : {}) }, signal),
+    queryKey: ['relations', 'list', query, page],
+    queryFn: ({ signal }) => getRelations({ q: query, page, limit: 30 }, signal),
+    placeholderData: (previous) => previous,
   });
   const expanded = useQuery({
     queryKey: ['relations', 'detail', expandedId],
@@ -59,6 +58,18 @@ export function RelationListPage() {
       ? [expanded.data, ...items]
       : items;
 
+  useEffect(() => {
+    if (!relations.data || relations.isPlaceholderData || relations.data.page === page) return;
+    setSearchParameters(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set('page', String(relations.data!.page));
+        return next;
+      },
+      { replace: true },
+    );
+  }, [page, relations.data, relations.isPlaceholderData, setSearchParameters]);
+
   function toggleDetail(id: string): void {
     setSearchParameters(
       (current) => {
@@ -71,28 +82,13 @@ export function RelationListPage() {
     );
   }
 
-  function nextPage(): void {
-    if (!relations.data?.nextCursor) return;
-    clearExpanded();
-    setCursorStack((current) => [...current.slice(0, pageIndex + 1), relations.data!.nextCursor!]);
-    setPageIndex((current) => current + 1);
-  }
-
-  function previousPage(): void {
-    if (pageIndex === 0) return;
-    clearExpanded();
-    setPageIndex((current) => Math.max(0, current - 1));
-  }
-
-  function clearExpanded(): void {
-    setSearchParameters(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.delete('expanded');
-        return next;
-      },
-      { replace: true },
-    );
+  function changePage(nextPage: number): void {
+    setSearchParameters((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('expanded');
+      next.set('page', String(nextPage));
+      return next;
+    });
   }
 
   return (
@@ -272,24 +268,15 @@ export function RelationListPage() {
               </tbody>
             </table>
           </div>
-          <nav className="pagination" aria-label="因果关系分页">
-            <button
-              className="button button--secondary"
-              type="button"
-              onClick={previousPage}
-              disabled={pageIndex === 0}
-            >
-              上一页
-            </button>
-            <button
-              className="button button--primary"
-              type="button"
-              onClick={nextPage}
-              disabled={!relations.data?.hasMore || !relations.data.nextCursor}
-            >
-              下一页
-            </button>
-          </nav>
+          {relations.data ? (
+            <ListPagination
+              page={relations.data.page}
+              totalPages={relations.data.totalPages}
+              totalItems={relations.data.totalItems}
+              disabled={relations.isFetching}
+              onPageChange={changePage}
+            />
+          ) : null}
         </>
       ) : null}
     </section>

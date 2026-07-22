@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { pageListMetadataSchema, pageListQuerySchema } from '../pagination/pageSchemas.js';
+
 export const eventNameSchema = z.string().trim().min(1).max(50);
 export const eventAliasSchema = z.string().trim().min(1).max(80);
 export const eventKeywordSchema = z.string().trim().min(1).max(50);
@@ -47,8 +49,7 @@ export const eventFormInputSchema = z
 export const eventListQuerySchema = z
   .object({
     q: z.string().trim().max(80).default(''),
-    limit: z.coerce.number().int().min(1).max(100).default(30),
-    cursor: z.string().min(1).max(2_000).optional(),
+    ...pageListQuerySchema.shape,
   })
   .strict();
 
@@ -90,8 +91,7 @@ export const eventDetailSchema = eventSummarySchema
 export const eventListResponseSchema = z
   .object({
     items: z.array(eventSummarySchema),
-    nextCursor: z.string().nullable(),
-    hasMore: z.boolean(),
+    ...pageListMetadataSchema.shape,
   })
   .strict();
 

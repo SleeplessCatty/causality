@@ -68,7 +68,7 @@ describe('RelationDetailPage', () => {
       'fetch',
       vi.fn((input: string | URL | Request) => {
         const url = String(input);
-        if (url.startsWith('/api/cases?')) {
+        if (url.startsWith(`/api/relations/${detail.id}/cases?`)) {
           return url.includes('cursor=next-page')
             ? response({ items: [caseTwo], nextCursor: null, hasMore: false })
             : response({ items: [caseOne], nextCursor: 'next-page', hasMore: true });
@@ -91,11 +91,19 @@ describe('RelationDetailPage', () => {
     expect(screen.queryByRole('link', { name: '案例二' })).toBeNull();
     expect(screen.getByRole('button', { name: '加载更多' })).toBeTruthy();
     expect(
-      vi.mocked(fetch).mock.calls.filter(([input]) => String(input).startsWith('/api/cases?')),
+      vi
+        .mocked(fetch)
+        .mock.calls.filter(([input]) =>
+          String(input).startsWith(`/api/relations/${detail.id}/cases?`),
+        ),
     ).toHaveLength(1);
     expect(
       String(
-        vi.mocked(fetch).mock.calls.find(([input]) => String(input).startsWith('/api/cases?'))?.[0],
+        vi
+          .mocked(fetch)
+          .mock.calls.find(([input]) =>
+            String(input).startsWith(`/api/relations/${detail.id}/cases?`),
+          )?.[0],
       ),
     ).toContain('limit=100');
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
@@ -119,7 +127,7 @@ describe('RelationDetailPage', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: string | URL | Request) =>
-        String(input).startsWith('/api/cases?')
+        String(input).startsWith(`/api/relations/${detail.id}/cases?`)
           ? response({ items: [caseOne], nextCursor: null, hasMore: false })
           : response(detail),
       ),
@@ -142,7 +150,7 @@ describe('RelationDetailPage', () => {
       'fetch',
       vi.fn((input: string | URL | Request) => {
         const url = String(input);
-        if (!url.startsWith('/api/cases?')) return response(detail);
+        if (!url.startsWith(`/api/relations/${detail.id}/cases?`)) return response(detail);
         if (!url.includes('cursor=next-page')) {
           return response({ items: [caseOne], nextCursor: 'next-page', hasMore: true });
         }

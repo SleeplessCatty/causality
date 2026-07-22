@@ -12,12 +12,12 @@ import {
 import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getEvents(
-  query: { q: string; cursor?: string; limit?: number },
+  query: { q: string; page: number; limit?: number },
   signal?: AbortSignal,
 ): Promise<EventListResponse> {
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
-  if (query.cursor) parameters.set('cursor', query.cursor);
+  parameters.set('page', String(query.page));
   parameters.set('limit', String(query.limit ?? 30));
 
   return eventListResponseSchema.parse(await requestJson(`/api/events?${parameters}`, {}, signal));

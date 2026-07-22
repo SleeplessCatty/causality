@@ -6,6 +6,8 @@ import {
   relationFormInputSchema,
   relationListQuerySchema,
   relationListResponseSchema,
+  relationCaseListQuerySchema,
+  relationCaseListResponseSchema,
   relationPairCheckQuerySchema,
   relationPairCheckResponseSchema,
 } from '../src/index.js';
@@ -133,14 +135,49 @@ describe('relation contracts', () => {
     expect(relationFormInputSchema.safeParse({ ...base, confidence: 101 }).success).toBe(false);
   });
 
-  it('normalizes list and pair-check queries', () => {
+  it('normalizes page-based list queries and rejects invalid page bounds', () => {
     expect(relationListQuerySchema.parse({ q: '  流动性  ', limit: '30' })).toEqual({
       q: '流动性',
+      page: 1,
       limit: 30,
     });
+    expect(relationListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 30 });
+    expect(relationListQuerySchema.parse({ page: '100000' })).toEqual({
+      q: '',
+      page: 100_000,
+      limit: 30,
+    });
+    for (const page of ['0', '-1', '1.5', '100001']) {
+      expect(relationListQuerySchema.safeParse({ page }).success).toBe(false);
+    }
+  });
+
+  it('normalizes pair-check queries', () => {
     expect(
       relationPairCheckQuerySchema.parse({ causeEventId, effectEventId, excludeId: relationId }),
     ).toEqual({ causeEventId, effectEventId, excludeId: relationId });
+  });
+
+  it('keeps relation-detail cases cursor-based with a 100-item default', () => {
+    expect(relationCaseListQuerySchema.parse({})).toEqual({ limit: 100 });
+    expect(relationCaseListQuerySchema.parse({ limit: '30', cursor: 'next-page' })).toEqual({
+      limit: 30,
+      cursor: 'next-page',
+    });
+    expect(
+      relationCaseListResponseSchema.parse({
+        items: [
+          {
+            id: '44444444-4444-4444-8444-444444444444',
+            content: '2025年4月美国宣布新一轮关税措施',
+            relationCount: 1,
+            updatedAt: '2026-07-21T00:00:00.000Z',
+          },
+        ],
+        nextCursor: 'next-page',
+        hasMore: true,
+      }),
+    ).toMatchObject({ nextCursor: 'next-page', hasMore: true });
   });
 
   it('accepts strict list, detail, and pair-check responses with real case data', () => {
@@ -168,10 +205,23 @@ describe('relation contracts', () => {
     expect(
       relationListResponseSchema.parse({
         items: [{ ...reference, confidence: 75, caseCount: 2, updatedAt: detail.updatedAt }],
+        page: 1,
+        pageSize: 30,
+        totalItems: 1,
+        totalPages: 1,
+      }),
+    ).toBeTruthy();
+    expect(() =>
+      relationListResponseSchema.parse({
+        items: [],
+        page: 1,
+        pageSize: 30,
+        totalItems: 0,
+        totalPages: 1,
         nextCursor: null,
         hasMore: false,
       }),
-    ).toBeTruthy();
+    ).toThrow();
     expect(
       relationPairCheckResponseSchema.parse({ sameDirection: null, reverseDirection: reference }),
     ).toBeTruthy();

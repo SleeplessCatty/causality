@@ -1,4 +1,53 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
+
+const apiBase = 'http://127.0.0.1:3000/api';
+
+async function createEvent(request: APIRequestContext, name: string) {
+  const response = await request.post(`${apiBase}/events`, {
+    data: { name, description: null, aliases: [], keywords: [] },
+  });
+  expect(response.status()).toBe(201);
+  return response.json() as Promise<{ id: string; name: string }>;
+}
+
+test('relation list shows totals and numbered pages for 31 recognizable records', async ({
+  page,
+  request,
+}) => {
+  const token = `RELPAGE${Date.now()}`;
+  const cause = await createEvent(request, `${token}-共同原因`);
+  const effects = await Promise.all(
+    Array.from({ length: 31 }, (_, index) =>
+      createEvent(request, `${token}-结果-${String(index + 1).padStart(2, '0')}`),
+    ),
+  );
+  for (const effect of effects) {
+    const response = await request.post(`${apiBase}/relations`, {
+      data: {
+        causeEventId: cause.id,
+        effectEventId: effect.id,
+        confidence: 50,
+        description: null,
+        caseSelections: [],
+      },
+    });
+    expect(response.status()).toBe(201);
+  }
+
+  await page.goto(`/relations?q=${token}`);
+  await expect(page.getByText('共 31 条 · 第 1/2 页')).toBeVisible();
+  await expect(page.locator('.relation-table tbody tr')).toHaveCount(30);
+  const firstPageEffects = await page
+    .locator('.relation-table tbody tr td:nth-child(3)')
+    .allTextContents();
+  await page.getByRole('button', { name: '下一页' }).click();
+  await expect(page.getByText('共 31 条 · 第 2/2 页')).toBeVisible();
+  await expect(page.locator('.relation-table tbody tr')).toHaveCount(1);
+  const secondPageEffects = await page
+    .locator('.relation-table tbody tr td:nth-child(3)')
+    .allTextContents();
+  expect(secondPageEffects.every((name) => !firstPageEffects.includes(name))).toBe(true);
+});
 
 test('user can create a reverse relation, inspect it inline, edit it, and find it', async ({
   page,
@@ -14,16 +63,8 @@ test('user can create a reverse relation, inspect it inline, edit it, and find i
   const causeName = `E2E 原因事件 ${suffix}`;
   const effectName = `E2E 结果事件 ${suffix}`;
 
-  async function createEvent(name: string) {
-    const response = await request.post('http://127.0.0.1:3000/api/events', {
-      data: { name, description: null, aliases: [], keywords: [] },
-    });
-    expect(response.status()).toBe(201);
-    return response.json() as Promise<{ id: string; name: string }>;
-  }
-
-  const cause = await createEvent(causeName);
-  const effect = await createEvent(effectName);
+  const cause = await createEvent(request, causeName);
+  const effect = await createEvent(request, effectName);
   const forward = await request.post('http://127.0.0.1:3000/api/relations', {
     data: {
       causeEventId: cause.id,

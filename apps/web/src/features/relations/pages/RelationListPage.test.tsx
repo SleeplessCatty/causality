@@ -62,7 +62,13 @@ describe('RelationListPage', () => {
       vi.fn((input: string | URL | Request) =>
         String(input).includes(`/api/relations/${relation.id}`)
           ? jsonResponse(detail)
-          : jsonResponse({ items: [relation], nextCursor: null, hasMore: false }),
+          : jsonResponse({
+              items: [relation],
+              page: 1,
+              pageSize: 30,
+              totalItems: 1,
+              totalPages: 1,
+            }),
       ),
     );
     const router = renderList();
@@ -115,16 +121,29 @@ describe('RelationListPage', () => {
         const url = String(input);
         if (url.includes(`/api/relations/${nextRelation.id}`)) return jsonResponse(nextDetail);
         if (url.includes(`/api/relations/${relation.id}`)) return jsonResponse(detail);
-        if (url.includes('cursor=next-page')) {
-          return jsonResponse({ items: [nextRelation], nextCursor: null, hasMore: false });
+        if (url.includes('page=2')) {
+          return jsonResponse({
+            items: [nextRelation],
+            page: 2,
+            pageSize: 30,
+            totalItems: 31,
+            totalPages: 2,
+          });
         }
-        return jsonResponse({ items: [relation], nextCursor: 'next-page', hasMore: true });
+        return jsonResponse({
+          items: [relation],
+          page: 1,
+          pageSize: 30,
+          totalItems: 31,
+          totalPages: 2,
+        });
       }),
     );
     const router = renderList();
 
     fireEvent.click(await screen.findByRole('button', { name: '展开' }));
     await screen.findByText('燃油成本传导');
+    expect(screen.getByText('共 31 条 · 第 1/2 页')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
     await screen.findByText('原油供应下降');
     expect(router.state.location.search).not.toContain('expanded=');
@@ -134,6 +153,17 @@ describe('RelationListPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '上一页' }));
     await screen.findByText('原油价格上涨');
     expect(router.state.location.search).not.toContain('expanded=');
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '第 2 页' }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '第 2 页' }));
+    await screen.findByText('原油供应下降');
+    const jump = screen.getByRole('spinbutton', { name: '跳转页码' });
+    await waitFor(() => expect(jump.hasAttribute('disabled')).toBe(false));
+    fireEvent.change(jump, { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: '跳转' }));
+    await screen.findByText('原油价格上涨');
   });
 
   it('locates and expands a relation that is not on the current page', async () => {
@@ -142,7 +172,13 @@ describe('RelationListPage', () => {
       vi.fn((input: string | URL | Request) =>
         String(input).includes(`/api/relations/${relation.id}`)
           ? jsonResponse(detail)
-          : jsonResponse({ items: [], nextCursor: null, hasMore: false }),
+          : jsonResponse({
+              items: [],
+              page: 1,
+              pageSize: 30,
+              totalItems: 0,
+              totalPages: 1,
+            }),
       ),
     );
     const router = renderList(`/relations?expanded=${relation.id}`);
@@ -155,12 +191,20 @@ describe('RelationListPage', () => {
 
   it('debounces search and requests a relation query', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
-      void input;
-      return jsonResponse({ items: [relation], nextCursor: null, hasMore: false });
+      const url = new URL(String(input), 'http://localhost');
+      const page = url.searchParams.has('q') ? 1 : 2;
+      return jsonResponse({
+        items: [relation],
+        page,
+        pageSize: 30,
+        totalItems: 31,
+        totalPages: 2,
+      });
     });
     vi.stubGlobal('fetch', fetchMock);
-    const router = renderList();
+    const router = renderList('/relations?page=2');
     await screen.findByText('原油价格上涨');
+    expect(screen.getByText('共 31 条 · 第 2/2 页')).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索因果关系' }), {
       target: { value: '  油价  ' },
     });

@@ -228,6 +228,48 @@ describe.sequential('relation REST API', () => {
     }
   });
 
+  it('paginates relation-detail cases with cursors bound to the relation id', async () => {
+    const cause = await createEvent('测试：详情案例游标原因');
+    const effect = await createEvent('测试：详情案例游标结果');
+    const contents = Array.from({ length: 3 }, (_, index) => `关系详情游标案例 ${index + 1}`);
+    const created = (
+      await createRelation(cause.id, effect.id, {
+        caseSelections: contents.map((content) => ({ type: 'new' as const, content })),
+      })
+    ).json<RelationDetail>();
+    const otherCause = await createEvent('测试：详情案例游标其他原因');
+    const otherEffect = await createEvent('测试：详情案例游标其他结果');
+    const other = (await createRelation(otherCause.id, otherEffect.id)).json<RelationDetail>();
+
+    const first = await app!.inject({
+      method: 'GET',
+      url: `/api/relations/${created.id}/cases?limit=2`,
+    });
+    const firstPage = first.json<{
+      items: Array<{ id: string; content: string }>;
+      nextCursor: string | null;
+      hasMore: boolean;
+    }>();
+    const second = await app!.inject({
+      method: 'GET',
+      url: `/api/relations/${created.id}/cases?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+    const mismatch = await app!.inject({
+      method: 'GET',
+      url: `/api/relations/${other.id}/cases?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(firstPage.items).toHaveLength(2);
+    expect(firstPage.hasMore).toBe(true);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+    expect(second.statusCode).toBe(200);
+    expect(second.json<{ items: unknown[]; hasMore: boolean }>().items).toHaveLength(1);
+    expect(second.json<{ items: unknown[]; hasMore: boolean }>().hasMore).toBe(false);
+    expect(mismatch.statusCode).toBe(400);
+    expect(mismatch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('rolls back a relation and new cases when an existing selection is missing', async () => {
     const cause = await createEvent('测试：回滚原因');
     const effect = await createEvent('测试：回滚结果');
@@ -324,27 +366,41 @@ describe.sequential('relation REST API', () => {
     expect(ids.indexOf(exactRelation.id)).toBeLessThan(ids.indexOf(aliasRelation.id));
   });
 
-  it('paginates without duplicate rows and rejects invalid cursors', async () => {
-    for (const index of [1, 2, 3]) {
-      const cause = await createEvent(`测试：游标原因 ${index}`);
-      const effect = await createEvent(`测试：游标结果 ${index}`);
+  it('returns numbered pages, matching totals, and clamps an out-of-range page', async () => {
+    const cause = await createEvent('RELATION_PAGE_TOKEN 共同原因');
+    for (let index = 1; index <= 31; index += 1) {
+      const effect = await createEvent(`测试：页码结果 ${String(index).padStart(2, '0')}`);
       await createRelation(cause.id, effect.id);
     }
+    const unrelatedCause = await createEvent('测试：页码计数无关原因');
+    const unrelatedEffect = await createEvent('测试：页码计数无关结果');
+    await createRelation(unrelatedCause.id, unrelatedEffect.id);
     const first = (
-      await app!.inject({ method: 'GET', url: '/api/relations?limit=2' })
+      await app!.inject({
+        method: 'GET',
+        url: '/api/relations?q=RELATION_PAGE_TOKEN&page=1&limit=30',
+      })
     ).json<RelationListResponse>();
     const secondResponse = await app!.inject({
       method: 'GET',
-      url: `/api/relations?limit=2&cursor=${encodeURIComponent(first.nextCursor!)}`,
+      url: '/api/relations?q=RELATION_PAGE_TOKEN&page=2&limit=30',
     });
     const second = secondResponse.json<RelationListResponse>();
-    expect(first.hasMore).toBe(true);
+    const clamped = (
+      await app!.inject({
+        method: 'GET',
+        url: '/api/relations?q=RELATION_PAGE_TOKEN&page=999&limit=30',
+      })
+    ).json<RelationListResponse>();
+    expect(first).toMatchObject({ page: 1, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(first.items).toHaveLength(30);
+    expect(second).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(second.items).toHaveLength(1);
     expect(second.items.map((item) => item.id)).not.toEqual(
       expect.arrayContaining(first.items.map((item) => item.id)),
     );
-    expect(
-      (await app!.inject({ method: 'GET', url: '/api/relations?cursor=invalid' })).statusCode,
-    ).toBe(400);
+    expect(clamped).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(clamped.items).toHaveLength(1);
   });
 
   it('returns not found and publishes relation paths in OpenAPI', async () => {

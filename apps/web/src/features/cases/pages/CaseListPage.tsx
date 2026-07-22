@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
+import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getCases } from '../api/caseApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -14,43 +15,68 @@ export function CaseListPage() {
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
   const relationId = searchParameters.get('relationId') ?? '';
+  const page = readListPage(searchParameters.get('page'));
   const [searchInput, setSearchInput] = useState(query);
-  const [cursorStack, setCursorStack] = useState<Array<string | undefined>>([undefined]);
-  const [pageIndex, setPageIndex] = useState(0);
-  const cursor = cursorStack[pageIndex];
+
+  useEffect(() => setSearchInput(query), [query]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       const normalized = searchInput.trim();
-      const next = new URLSearchParams();
-      if (normalized) next.set('q', normalized);
-      if (relationId) next.set('relationId', relationId);
-      setSearchParameters(next, { replace: true });
-      setCursorStack([undefined]);
-      setPageIndex(0);
+      if (normalized === query) return;
+      setSearchParameters(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (normalized) next.set('q', normalized);
+          else next.delete('q');
+          next.delete('page');
+          return next;
+        },
+        { replace: true },
+      );
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [relationId, searchInput, setSearchParameters]);
+  }, [query, searchInput, setSearchParameters]);
 
   const cases = useQuery({
-    queryKey: ['cases', 'list', query, relationId || null, cursor ?? null],
+    queryKey: ['cases', 'list', query, relationId || null, page],
     queryFn: ({ signal }) =>
       getCases(
         {
           q: query,
+          page,
+          limit: 30,
           ...(relationId ? { relationId } : {}),
-          ...(cursor ? { cursor } : {}),
         },
         signal,
       ),
+    placeholderData: (previous) => previous,
   });
+
+  useEffect(() => {
+    if (!cases.data || cases.isPlaceholderData || cases.data.page === page) return;
+    setSearchParameters(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set('page', String(cases.data!.page));
+        return next;
+      },
+      { replace: true },
+    );
+  }, [cases.data, cases.isPlaceholderData, page, setSearchParameters]);
 
   function clearRelationFilter(): void {
     const next = new URLSearchParams();
     if (query) next.set('q', query);
     setSearchParameters(next);
-    setCursorStack([undefined]);
-    setPageIndex(0);
+  }
+
+  function changePage(nextPage: number): void {
+    setSearchParameters((current) => {
+      const next = new URLSearchParams(current);
+      next.set('page', String(nextPage));
+      return next;
+    });
   }
 
   return (
@@ -151,31 +177,13 @@ export function CaseListPage() {
               </tbody>
             </table>
           </div>
-          <nav className="pagination" aria-label="案例分页">
-            <button
-              className="button button--secondary"
-              type="button"
-              onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
-              disabled={pageIndex === 0}
-            >
-              上一页
-            </button>
-            <button
-              className="button button--primary"
-              type="button"
-              onClick={() => {
-                if (!cases.data.nextCursor) return;
-                setCursorStack((current) => [
-                  ...current.slice(0, pageIndex + 1),
-                  cases.data.nextCursor ?? undefined,
-                ]);
-                setPageIndex((current) => current + 1);
-              }}
-              disabled={!cases.data.hasMore || !cases.data.nextCursor}
-            >
-              下一页
-            </button>
-          </nav>
+          <ListPagination
+            page={cases.data.page}
+            totalPages={cases.data.totalPages}
+            totalItems={cases.data.totalItems}
+            disabled={cases.isFetching}
+            onPageChange={changePage}
+          />
         </>
       ) : null}
     </section>

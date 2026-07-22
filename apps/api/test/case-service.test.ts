@@ -15,6 +15,7 @@ const detail: CaseDetail = {
 function repository(overrides: Partial<CaseRepository> = {}): CaseRepository {
   return {
     list: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
+    listForRelation: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
     candidates: vi.fn().mockResolvedValue({ items: [] }),
     findById: vi.fn().mockResolvedValue(detail),
     listRelations: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),

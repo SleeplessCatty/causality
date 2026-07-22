@@ -15,8 +15,10 @@ const firstPage = {
       updatedAt: '2026-07-21T03:00:00.000Z',
     },
   ],
-  nextCursor: 'cursor-next',
-  hasMore: true,
+  page: 1,
+  pageSize: 30,
+  totalItems: 61,
+  totalPages: 3,
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -73,7 +75,7 @@ describe('EventListPage', () => {
     vi.useFakeTimers();
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse({ ...firstPage, nextCursor: null, hasMore: false })),
+      vi.fn(() => jsonResponse({ ...firstPage, totalItems: 1, totalPages: 1 })),
     );
     renderList();
     await act(() => vi.advanceTimersByTimeAsync(0));
@@ -100,12 +102,19 @@ describe('EventListPage', () => {
 
   it('debounces search, stores it in the URL, and requests the normalized query', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
-      void input;
-      return jsonResponse({ ...firstPage, nextCursor: null, hasMore: false });
+      const url = new URL(String(input), 'http://localhost');
+      const hasQuery = url.searchParams.has('q');
+      return jsonResponse({
+        ...firstPage,
+        page: hasQuery ? 1 : 3,
+        totalItems: hasQuery ? 1 : 61,
+        totalPages: hasQuery ? 1 : 3,
+      });
     });
     vi.stubGlobal('fetch', fetchMock);
-    const router = renderList();
+    const router = renderList('/events?page=3');
     await screen.findByRole('link', { name: '原油价格上涨' });
+    expect(screen.getByText('共 61 条 · 第 3/3 页')).toBeTruthy();
 
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索事件' }), {
       target: { value: '  油价  ' },
@@ -119,10 +128,11 @@ describe('EventListPage', () => {
     );
   });
 
-  it('uses the next cursor and can return to the previous page', async () => {
+  it('restores URL pages and supports adjacent, numbered, and arbitrary page navigation', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
-      return url.includes('cursor=cursor-next')
+      const page = Number(new URL(url, 'http://localhost').searchParams.get('page') ?? '1');
+      return page > 1
         ? jsonResponse({
             items: [
               {
@@ -133,26 +143,44 @@ describe('EventListPage', () => {
                 updatedAt: '2026-07-20T03:00:00.000Z',
               },
             ],
-            nextCursor: null,
-            hasMore: false,
+            page,
+            pageSize: 30,
+            totalItems: 61,
+            totalPages: 3,
           })
         : jsonResponse(firstPage);
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderList();
+    const router = renderList('/events?page=2');
 
-    await screen.findByRole('link', { name: '原油价格上涨' });
-    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
-    expect(await screen.findByRole('link', { name: '市场流动性收紧' })).toBeTruthy();
+    expect(await screen.findByText('共 61 条 · 第 2/3 页')).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('page=2'))).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '上一页' }));
     expect(await screen.findByRole('link', { name: '原油价格上涨' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    expect(await screen.findByRole('link', { name: '市场流动性收紧' })).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '第 3 页' }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '第 3 页' }));
+    await waitFor(() => expect(router.state.location.search).toBe('?page=3'));
+    const jump = screen.getByRole('spinbutton', { name: '跳转页码' });
+    await waitFor(() => expect(jump.hasAttribute('disabled')).toBe(false));
+    fireEvent.change(jump, { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: '跳转' }));
+    await waitFor(() => expect(router.state.location.search).toBe('?page=1'));
+    await router.navigate(-1);
+    await waitFor(() => expect(router.state.location.search).toBe('?page=3'));
+    expect(await screen.findByText('共 61 条 · 第 3/3 页')).toBeTruthy();
   });
 
   it('shows empty and retryable failure states', async () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => jsonResponse({ code: 'INTERNAL_ERROR', message: '失败' }, 500))
-      .mockImplementationOnce(() => jsonResponse({ items: [], nextCursor: null, hasMore: false }));
+      .mockImplementationOnce(() =>
+        jsonResponse({ items: [], page: 1, pageSize: 30, totalItems: 0, totalPages: 1 }),
+      );
     vi.stubGlobal('fetch', fetchMock);
     renderList();
 

@@ -14,13 +14,13 @@ import {
 import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getCases(
-  query: { q: string; relationId?: string; cursor?: string; limit?: number },
+  query: { q: string; relationId?: string; page: number; limit?: number },
   signal?: AbortSignal,
 ): Promise<CaseListResponse> {
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
   if (query.relationId) parameters.set('relationId', query.relationId);
-  if (query.cursor) parameters.set('cursor', query.cursor);
+  parameters.set('page', String(query.page));
   parameters.set('limit', String(query.limit ?? 30));
   return caseListResponseSchema.parse(await requestJson(`/api/cases?${parameters}`, {}, signal));
 }
@@ -58,29 +58,6 @@ export async function getCaseRelations(
   return caseRelationListResponseSchema.parse(
     await requestJson(`/api/cases/${id}/relations?${parameters}`, {}, signal),
   );
-}
-
-export async function getAllCasesForRelation(
-  relationId: string,
-  signal?: AbortSignal,
-): Promise<CaseReference[]> {
-  const items: CaseReference[] = [];
-  let cursor: string | undefined;
-  const visitedCursors = new Set<string>();
-
-  do {
-    const page = await getCases(
-      { q: '', relationId, limit: 100, ...(cursor ? { cursor } : {}) },
-      signal,
-    );
-    items.push(...page.items.map(({ id, content }) => ({ id, content })));
-    if (!page.hasMore || !page.nextCursor) break;
-    if (visitedCursors.has(page.nextCursor)) throw new Error('案例分页游标重复');
-    visitedCursors.add(page.nextCursor);
-    cursor = page.nextCursor;
-  } while (cursor);
-
-  return items;
 }
 
 export async function createCase(input: CaseFormInput): Promise<CaseDetail> {

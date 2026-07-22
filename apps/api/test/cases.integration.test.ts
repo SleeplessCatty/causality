@@ -58,29 +58,41 @@ describe.sequential('case REST API', () => {
     expect((await createCase('例'.repeat(101))).statusCode).toBe(400);
   });
 
-  it('paginates, searches, and returns minimal candidates', async () => {
-    for (const content of ['SEARCHCASE 标准案例', '包含 SEARCHCASE 的案例', '无关案例']) {
-      await createCase(content);
+  it('returns numbered pages, matching totals, clamps an out-of-range page, and keeps candidates minimal', async () => {
+    for (let index = 1; index <= 31; index += 1) {
+      await createCase(`CASE_PAGE_TOKEN 案例 ${String(index).padStart(2, '0')}`);
     }
-    const first = await app!.inject({ method: 'GET', url: '/api/cases?limit=2' });
+    await createCase('测试：页码计数无关案例');
+    const first = await app!.inject({
+      method: 'GET',
+      url: '/api/cases?q=CASE_PAGE_TOKEN&page=1&limit=30',
+    });
     const firstPage = first.json<CaseListResponse>();
     const second = await app!.inject({
       method: 'GET',
-      url: `/api/cases?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+      url: '/api/cases?q=CASE_PAGE_TOKEN&page=2&limit=30',
     });
+    const secondPage = second.json<CaseListResponse>();
+    const clamped = (
+      await app!.inject({
+        method: 'GET',
+        url: '/api/cases?q=CASE_PAGE_TOKEN&page=999&limit=30',
+      })
+    ).json<CaseListResponse>();
     expect(first.statusCode).toBe(200);
-    expect(firstPage.items).toHaveLength(2);
-    expect(second.json<CaseListResponse>().items.map((item) => item.id)).not.toEqual(
+    expect(firstPage).toMatchObject({ page: 1, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(firstPage.items).toHaveLength(30);
+    expect(secondPage).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(secondPage.items).toHaveLength(1);
+    expect(secondPage.items.map((item) => item.id)).not.toEqual(
       expect.arrayContaining(firstPage.items.map((item) => item.id)),
     );
+    expect(clamped).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(clamped.items).toHaveLength(1);
 
-    const search = await app!.inject({ method: 'GET', url: '/api/cases?q=SEARCHCASE' });
-    expect(search.json<CaseListResponse>().items.map((item) => item.content)).toEqual(
-      expect.arrayContaining(['SEARCHCASE 标准案例', '包含 SEARCHCASE 的案例']),
-    );
     const candidates = await app!.inject({
       method: 'GET',
-      url: '/api/cases/candidates?q=SEARCHCASE&limit=10',
+      url: '/api/cases/candidates?q=CASE_PAGE_TOKEN&limit=10',
     });
     const items = candidates.json<{ items: Array<Record<string, unknown>> }>().items;
     expect(items.length).toBeGreaterThan(0);
@@ -112,6 +124,12 @@ describe.sequential('case REST API', () => {
       url: `/api/cases?relationId=${relationId}`,
     });
     expect(filtered.json<CaseListResponse>().items).toHaveLength(1);
+    expect(filtered.json<CaseListResponse>()).toMatchObject({
+      page: 1,
+      pageSize: 30,
+      totalItems: 1,
+      totalPages: 1,
+    });
     expect(filtered.json<CaseListResponse>().items[0]).toMatchObject({
       id: linkedCase.id,
       relationCount: 1,
@@ -163,9 +181,6 @@ describe.sequential('case REST API', () => {
     expect((await app!.inject({ method: 'GET', url: `/api/cases/${missing}` })).statusCode).toBe(
       404,
     );
-    expect(
-      (await app!.inject({ method: 'GET', url: '/api/cases?cursor=invalid' })).statusCode,
-    ).toBe(400);
     const openapi = await app!.inject({ method: 'GET', url: '/api/openapi.json' });
     const paths = openapi.json<{ paths: Record<string, unknown> }>().paths;
     expect(paths).toHaveProperty('/api/cases');

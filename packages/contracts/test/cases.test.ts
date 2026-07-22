@@ -29,12 +29,25 @@ describe('concrete case contracts', () => {
     expect(caseFormInputSchema.safeParse({ content: '案例', source: '公告' }).success).toBe(false);
   });
 
-  it('normalizes list, candidate, and relation-list queries', () => {
+  it('normalizes page-based list queries and rejects invalid page bounds', () => {
     expect(caseListQuerySchema.parse({ q: '  关税  ', relationId, limit: '30' })).toEqual({
       q: '关税',
       relationId,
+      page: 1,
       limit: 30,
     });
+    expect(caseListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 30 });
+    expect(caseListQuerySchema.parse({ page: '100000' })).toEqual({
+      q: '',
+      page: 100_000,
+      limit: 30,
+    });
+    for (const page of ['0', '-1', '1.5', '100001']) {
+      expect(caseListQuerySchema.safeParse({ page }).success).toBe(false);
+    }
+  });
+
+  it('keeps candidate and linked-relation queries cursor-based', () => {
     expect(
       caseCandidateQuerySchema.parse({ q: ' 关税 ', limit: '100', cursor: 'cursor-value' }),
     ).toEqual({
@@ -69,10 +82,23 @@ describe('concrete case contracts', () => {
     expect(
       caseListResponseSchema.parse({
         items: [{ ...reference, relationCount: 2, updatedAt: timestamp }],
+        page: 1,
+        pageSize: 30,
+        totalItems: 1,
+        totalPages: 1,
+      }),
+    ).toBeTruthy();
+    expect(() =>
+      caseListResponseSchema.parse({
+        items: [],
+        page: 1,
+        pageSize: 30,
+        totalItems: 0,
+        totalPages: 1,
         nextCursor: null,
         hasMore: false,
       }),
-    ).toBeTruthy();
+    ).toThrow();
     expect(
       caseCandidateListResponseSchema.parse({
         items: [reference],

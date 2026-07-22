@@ -1,22 +1,25 @@
 import {
   relationDetailSchema,
+  relationCaseListResponseSchema,
   relationListResponseSchema,
   relationPairCheckResponseSchema,
   type RelationDetail,
+  type RelationCaseListResponse,
   type RelationFormInput,
   type RelationListResponse,
   type RelationPairCheckResponse,
 } from '@causality/contracts';
+import type { CaseReference } from '@causality/contracts';
 
 import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getRelations(
-  query: { q: string; cursor?: string; limit?: number },
+  query: { q: string; page: number; limit?: number },
   signal?: AbortSignal,
 ): Promise<RelationListResponse> {
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
-  if (query.cursor) parameters.set('cursor', query.cursor);
+  parameters.set('page', String(query.page));
   parameters.set('limit', String(query.limit ?? 30));
   return relationListResponseSchema.parse(
     await requestJson(`/api/relations?${parameters}`, {}, signal),
@@ -25,6 +28,42 @@ export async function getRelations(
 
 export async function getRelation(id: string, signal?: AbortSignal): Promise<RelationDetail> {
   return relationDetailSchema.parse(await requestJson(`/api/relations/${id}`, {}, signal));
+}
+
+export async function getRelationCases(
+  relationId: string,
+  options: { limit?: number; cursor?: string } = {},
+  signal?: AbortSignal,
+): Promise<RelationCaseListResponse> {
+  const parameters = new URLSearchParams({ limit: String(options.limit ?? 100) });
+  if (options.cursor) parameters.set('cursor', options.cursor);
+  return relationCaseListResponseSchema.parse(
+    await requestJson(`/api/relations/${relationId}/cases?${parameters}`, {}, signal),
+  );
+}
+
+export async function getAllRelationCases(
+  relationId: string,
+  signal?: AbortSignal,
+): Promise<CaseReference[]> {
+  const items: CaseReference[] = [];
+  let cursor: string | undefined;
+  const visitedCursors = new Set<string>();
+
+  do {
+    const page = await getRelationCases(
+      relationId,
+      { limit: 100, ...(cursor ? { cursor } : {}) },
+      signal,
+    );
+    items.push(...page.items.map(({ id, content }) => ({ id, content })));
+    if (!page.hasMore || !page.nextCursor) break;
+    if (visitedCursors.has(page.nextCursor)) throw new Error('关系案例分页游标重复');
+    visitedCursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+  } while (cursor);
+
+  return items;
 }
 
 export async function checkRelationPair(

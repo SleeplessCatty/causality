@@ -25,9 +25,10 @@ function response(body: unknown, status = 200) {
 }
 
 function renderRoute(path: string, element: React.ReactNode) {
+  const routePath = path.split('?')[0]!;
   const router = createMemoryRouter(
     [
-      { path, element },
+      { path: routePath, element },
       { path: '/cases', element: <div>案例列表</div> },
       { path: '/cases/:caseId', element: <div>案例详情目标</div> },
     ],
@@ -41,6 +42,15 @@ function renderRoute(path: string, element: React.ReactNode) {
   return router;
 }
 
+function listSummary(page: number) {
+  return {
+    id: `00000000-0000-4000-8000-${String(page).padStart(12, '0')}`,
+    content: `第 ${page} 页案例`,
+    relationCount: page,
+    updatedAt: detail.updatedAt,
+  };
+}
+
 describe('case pages', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -51,11 +61,67 @@ describe('case pages', () => {
       relationCount: detail.relationCount,
       updatedAt: detail.updatedAt,
     };
-    const fetchMock = vi.fn(() => response({ items: [summary], nextCursor: null, hasMore: false }));
+    const fetchMock = vi.fn(() =>
+      response({ items: [summary], page: 1, pageSize: 30, totalItems: 31, totalPages: 2 }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     renderRoute('/cases', <CaseListPage />);
     expect(await screen.findByText(detail.content)).toBeTruthy();
-    expect(screen.getByText('1')).toBeTruthy();
+    expect(screen.getAllByText('1').length).toBeGreaterThan(0);
+    expect(screen.getByText('共 31 条 · 第 1/2 页')).toBeTruthy();
+  });
+
+  it('restores URL pages, supports every navigation control, and resets page after filters', async () => {
+    const relationId = '22222222-2222-4222-8222-222222222222';
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = new URL(String(input), 'http://localhost');
+      const page = Number(url.searchParams.get('page') ?? '1');
+      return response({
+        items: [listSummary(page)],
+        page,
+        pageSize: 30,
+        totalItems: 61,
+        totalPages: 3,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderRoute(`/cases?relationId=${relationId}&page=2`, <CaseListPage />);
+
+    expect(await screen.findByText('第 2 页案例')).toBeTruthy();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('page=2'))).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '上一页' }));
+    expect(await screen.findByText('第 1 页案例')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    expect(await screen.findByText('第 2 页案例')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '第 3 页' }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '第 3 页' }));
+    expect(await screen.findByText('第 3 页案例')).toBeTruthy();
+    const jump = screen.getByRole('spinbutton', { name: '跳转页码' });
+    await waitFor(() => expect(jump.hasAttribute('disabled')).toBe(false));
+    fireEvent.change(jump, { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: '跳转' }));
+    expect(await screen.findByText('第 1 页案例')).toBeTruthy();
+
+    await router.navigate(`/cases?relationId=${relationId}&page=3`);
+    await screen.findByText('第 3 页案例');
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索案例' }), {
+      target: { value: ' 新查询 ' },
+    });
+    await waitFor(() => {
+      const parameters = new URLSearchParams(router.state.location.search);
+      expect(parameters.get('q')).toBe('新查询');
+      expect(parameters.get('relationId')).toBe(relationId);
+      expect(parameters.has('page')).toBe(false);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '清除筛选' }));
+    await waitFor(() => {
+      const parameters = new URLSearchParams(router.state.location.search);
+      expect(parameters.get('q')).toBe('新查询');
+      expect(parameters.has('relationId')).toBe(false);
+      expect(parameters.has('page')).toBe(false);
+    });
   });
 
   it('creates a case and navigates to its detail', async () => {

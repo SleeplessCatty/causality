@@ -1,4 +1,50 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
+
+const apiBase = 'http://127.0.0.1:3000/api';
+
+async function createEvent(request: APIRequestContext, name: string) {
+  const response = await request.post(`${apiBase}/events`, {
+    data: { name, description: null, aliases: [], keywords: [] },
+  });
+  expect(response.status()).toBe(201);
+}
+
+test('event list paginates 211 records and jumps directly from page 1 to page 8', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  const token = `E2EPAGE${Date.now()}`;
+  await Promise.all(
+    Array.from({ length: 211 }, (_, index) =>
+      createEvent(request, `${token}-${String(index + 1).padStart(3, '0')}`),
+    ),
+  );
+
+  const requestedPages: number[] = [];
+  page.on('request', (browserRequest) => {
+    const url = new URL(browserRequest.url());
+    if (url.pathname !== '/api/events' || url.searchParams.get('q') !== token) return;
+    requestedPages.push(Number(url.searchParams.get('page')));
+  });
+
+  await page.goto(`/events?q=${token}`);
+  await expect(page.getByText('共 211 条 · 第 1/8 页')).toBeVisible();
+  await expect(page.locator('.event-table tbody tr')).toHaveCount(30);
+  await page.getByRole('button', { name: '下一页' }).click();
+  await expect(page.getByText('共 211 条 · 第 2/8 页')).toBeVisible();
+  await expect(page.locator('.event-table tbody tr')).toHaveCount(30);
+  await page.getByRole('button', { name: '上一页' }).click();
+  await expect(page.getByText('共 211 条 · 第 1/8 页')).toBeVisible();
+
+  requestedPages.length = 0;
+  await page.getByRole('spinbutton', { name: '跳转页码' }).fill('8');
+  await page.getByRole('button', { name: '跳转' }).click();
+  await expect(page.getByText('共 211 条 · 第 8/8 页')).toBeVisible();
+  await expect(page.locator('.event-table tbody tr')).toHaveCount(1);
+  await expect(page.getByRole('link', { name: `${token}-211` })).toBeVisible();
+  expect(requestedPages).toEqual([8]);
+});
 
 test('user can search, create, inspect, edit, and find an atomic event', async ({ page }) => {
   const browserErrors: string[] = [];

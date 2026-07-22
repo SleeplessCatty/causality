@@ -9,12 +9,12 @@ import type {
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
-import { decodeEventCursor, encodeEventCursor, type EventCursorState } from './eventCursor.js';
 import {
   decodeEventCandidateCursor,
   encodeEventCandidateCursor,
   type EventCandidateCursorState,
 } from './eventCursor.js';
+import { resolvePageWindow, type CountRow } from '../shared/pagePagination.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface EventRow {
@@ -36,6 +36,31 @@ interface KeywordRow {
   event_id: string;
   keyword: string;
 }
+
+const eventSearchCte = `with matches as (
+         select e.id,
+                case when e.normalized_name = $1 then 1
+                     when e.normalized_name like $2 escape '\\' then 2
+                     else 6 end as rank
+         from abstract_events e
+         where e.normalized_name like $3 escape '\\'
+         union all
+         select a.event_id,
+                case when a.normalized_alias = $1 then 3
+                     when a.normalized_alias like $2 escape '\\' then 4
+                     else 6 end as rank
+         from event_aliases a
+         where a.normalized_alias like $3 escape '\\'
+         union all
+         select k.event_id,
+                case when k.normalized_keyword = $1 then 5 else 6 end as rank
+         from event_keywords k
+         where k.normalized_keyword like $3 escape '\\'
+       ), ranked as (
+         select id, min(rank)::int as rank
+         from matches
+         group by id
+       )`;
 
 export interface EventRepository {
   list(query: EventListQuery): Promise<EventListResponse>;
@@ -110,68 +135,60 @@ export class PostgresEventRepository implements EventRepository {
 
   async list(query: EventListQuery): Promise<EventListResponse> {
     const normalizedQuery = normalizeSearchQuery(query.q);
-    const cursor = query.cursor ? decodeEventCursor(query.cursor, normalizedQuery) : undefined;
+    const totalItems = normalizedQuery
+      ? await this.countSearchRows(normalizedQuery)
+      : await this.countListRows();
+    const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
     const rows = normalizedQuery
-      ? await this.searchRows(normalizedQuery, query.limit + 1, cursor)
-      : await this.listRows(query.limit + 1, cursor);
-    const hasMore = rows.length > query.limit;
-    const pageRows = rows.slice(0, query.limit);
-    const eventIds = pageRows.map((row) => row.id);
+      ? await this.searchRows(normalizedQuery, query.limit, undefined, offset)
+      : await this.listRows(query.limit, offset);
+    const eventIds = rows.map((row) => row.id);
     const [aliasMap, keywordMap] = await Promise.all([
       this.loadAliases(eventIds),
       this.loadKeywords(eventIds),
     ]);
-    const items = pageRows.map((row) =>
+    const items = rows.map((row) =>
       createSummary(row, aliasMap.get(row.id) ?? [], keywordMap.get(row.id) ?? []),
     );
-    const last = pageRows.at(-1);
 
-    let nextCursor: string | null = null;
-    if (hasMore && last) {
-      nextCursor = normalizedQuery
-        ? encodeEventCursor({
-            kind: 'search',
-            query: normalizedQuery,
-            rank: last.rank!,
-            normalizedName: last.normalized_name!,
-            id: last.id,
-          })
-        : encodeEventCursor({
-            kind: 'list',
-            query: '',
-            updatedAt: last.updated_at.toISOString(),
-            id: last.id,
-          });
-    }
-
-    return { items, nextCursor, hasMore };
+    return { items, page, pageSize: query.limit, totalItems, totalPages };
   }
 
-  private async listRows(limit: number, cursor?: EventCursorState): Promise<EventRow[]> {
-    const listCursor = cursor?.kind === 'list' ? cursor : undefined;
-    const parameters: unknown[] = [];
-    const condition = listCursor ? `where (updated_at, id) < ($1::timestamptz, $2::uuid)` : '';
-    if (listCursor) parameters.push(listCursor.updatedAt, listCursor.id);
-    parameters.push(limit);
+  private async countListRows(): Promise<number> {
+    const result = await this.pool.query<CountRow>(
+      `select count(*)::int as total from abstract_events`,
+    );
+    return result.rows[0]!.total;
+  }
 
+  private async listRows(limit: number, offset: number): Promise<EventRow[]> {
     const result = await this.pool.query<EventRow>(
       `select id, name, description, created_at, updated_at
        from abstract_events
-       ${condition}
        order by updated_at desc, id desc
-       limit $${parameters.length}`,
-      parameters,
+       limit $1 offset $2`,
+      [limit, offset],
     );
     return result.rows;
+  }
+
+  private async countSearchRows(query: string): Promise<number> {
+    const escaped = escapeLikePattern(query);
+    const result = await this.pool.query<CountRow>(
+      `${eventSearchCte}
+       select count(*)::int as total from ranked`,
+      [query, `${escaped}%`, `%${escaped}%`],
+    );
+    return result.rows[0]!.total;
   }
 
   private async searchRows(
     query: string,
     limit: number,
-    cursor?: EventCursorState | EventCandidateCursorState,
+    cursor?: EventCandidateCursorState,
+    offset = 0,
   ): Promise<EventRow[]> {
-    const searchCursor =
-      cursor?.kind === 'search' || cursor?.kind === 'candidate' ? cursor : undefined;
+    const searchCursor = cursor;
     const escaped = escapeLikePattern(query);
     const parameters: unknown[] = [query, `${escaped}%`, `%${escaped}%`];
     const cursorCondition = searchCursor
@@ -180,40 +197,17 @@ export class PostgresEventRepository implements EventRepository {
     if (searchCursor) {
       parameters.push(searchCursor.rank, searchCursor.normalizedName, searchCursor.id);
     }
-    parameters.push(limit);
+    parameters.push(limit, offset);
 
     const result = await this.pool.query<EventRow>(
-      `with matches as (
-         select e.id,
-                case when e.normalized_name = $1 then 1
-                     when e.normalized_name like $2 escape '\\' then 2
-                     else 6 end as rank
-         from abstract_events e
-         where e.normalized_name like $3 escape '\\'
-         union all
-         select a.event_id,
-                case when a.normalized_alias = $1 then 3
-                     when a.normalized_alias like $2 escape '\\' then 4
-                     else 6 end as rank
-         from event_aliases a
-         where a.normalized_alias like $3 escape '\\'
-         union all
-         select k.event_id,
-                case when k.normalized_keyword = $1 then 5 else 6 end as rank
-         from event_keywords k
-         where k.normalized_keyword like $3 escape '\\'
-       ), ranked as (
-         select id, min(rank)::int as rank
-         from matches
-         group by id
-       )
+      `${eventSearchCte}
        select e.id, e.name, e.description, e.created_at, e.updated_at,
               e.normalized_name, r.rank
        from ranked r
        join abstract_events e on e.id = r.id
        ${cursorCondition}
        order by r.rank, e.normalized_name, e.id
-       limit $${parameters.length}`,
+       limit $${parameters.length - 1} offset $${parameters.length}`,
       parameters,
     );
     return result.rows;

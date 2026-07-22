@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
+import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getEvents } from '../api/eventApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -28,35 +29,53 @@ function MetadataCell({ values }: { values: string[] }) {
 export function EventListPage() {
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
+  const page = readListPage(searchParameters.get('page'));
   const [searchInput, setSearchInput] = useState(query);
-  const [cursorStack, setCursorStack] = useState<Array<string | undefined>>([undefined]);
-  const [pageIndex, setPageIndex] = useState(0);
-  const cursor = cursorStack[pageIndex];
+
+  useEffect(() => setSearchInput(query), [query]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       const normalized = searchInput.trim();
-      setSearchParameters(normalized ? { q: normalized } : {}, { replace: true });
-      setCursorStack([undefined]);
-      setPageIndex(0);
+      if (normalized === query) return;
+      setSearchParameters(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (normalized) next.set('q', normalized);
+          else next.delete('q');
+          next.delete('page');
+          return next;
+        },
+        { replace: true },
+      );
     }, 300);
     return () => window.clearTimeout(timeout);
-  }, [searchInput, setSearchParameters]);
+  }, [query, searchInput, setSearchParameters]);
 
   const events = useQuery({
-    queryKey: ['events', 'list', query, cursor ?? null],
-    queryFn: ({ signal }) => getEvents({ q: query, ...(cursor ? { cursor } : {}) }, signal),
+    queryKey: ['events', 'list', query, page],
+    queryFn: ({ signal }) => getEvents({ q: query, page, limit: 30 }, signal),
+    placeholderData: (previous) => previous,
   });
 
-  function nextPage(): void {
-    if (!events.data?.nextCursor) return;
-    const nextCursor = events.data.nextCursor;
-    setCursorStack((current) => [...current.slice(0, pageIndex + 1), nextCursor]);
-    setPageIndex((current) => current + 1);
-  }
+  useEffect(() => {
+    if (!events.data || events.isPlaceholderData || events.data.page === page) return;
+    setSearchParameters(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set('page', String(events.data!.page));
+        return next;
+      },
+      { replace: true },
+    );
+  }, [events.data, events.isPlaceholderData, page, setSearchParameters]);
 
-  function previousPage(): void {
-    setPageIndex((current) => Math.max(0, current - 1));
+  function changePage(nextPage: number): void {
+    setSearchParameters((current) => {
+      const next = new URLSearchParams(current);
+      next.set('page', String(nextPage));
+      return next;
+    });
   }
 
   return (
@@ -152,24 +171,13 @@ export function EventListPage() {
               </tbody>
             </table>
           </div>
-          <nav className="pagination" aria-label="事件分页">
-            <button
-              className="button button--secondary"
-              type="button"
-              onClick={previousPage}
-              disabled={pageIndex === 0}
-            >
-              上一页
-            </button>
-            <button
-              className="button button--primary"
-              type="button"
-              onClick={nextPage}
-              disabled={!events.data.hasMore || !events.data.nextCursor}
-            >
-              下一页
-            </button>
-          </nav>
+          <ListPagination
+            page={events.data.page}
+            totalPages={events.data.totalPages}
+            totalItems={events.data.totalItems}
+            disabled={events.isFetching}
+            onPageChange={changePage}
+          />
         </>
       ) : null}
     </section>

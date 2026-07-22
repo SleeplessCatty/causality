@@ -618,7 +618,9 @@ git commit -m "refactor: remove duplicated infrastructure and dead resources"
 - Modify: `packages/contracts/src/cases/caseSchemas.ts`
 - Modify: `packages/contracts/src/relations/relationSchemas.ts`
 - Modify: `packages/contracts/test/{events,cases,relations}.test.ts`
+- Create: `apps/api/src/features/shared/pagePagination.ts`
 - Modify: `apps/api/src/features/{events,cases,relations}/*Repository.ts`
+- Modify: `apps/api/src/features/relations/relationRoutes.ts`
 - Modify: `apps/api/test/{events,cases,relations}.integration.test.ts`
 - Create: `apps/web/src/shared/pagination/ListPagination.tsx`
 - Create: `apps/web/src/shared/pagination/ListPagination.test.tsx`
@@ -626,9 +628,11 @@ git commit -m "refactor: remove duplicated infrastructure and dead resources"
 - Modify: `apps/web/src/features/events/pages/EventListPage.tsx`
 - Modify: `apps/web/src/features/cases/pages/CaseListPage.tsx`
 - Modify: `apps/web/src/features/relations/pages/RelationListPage.tsx`
+- Modify: `apps/web/src/features/relations/pages/{RelationDetailPage,RelationEditPage}.tsx`
 - Modify: `apps/web/src/features/events/pages/EventListPage.test.tsx`
 - Modify: `apps/web/src/features/cases/pages/CasePages.test.tsx`
 - Modify: `apps/web/src/features/relations/pages/RelationListPage.test.tsx`
+- Modify: `apps/web/src/features/relations/pages/{RelationDetailPage,RelationEditPage}.test.tsx`
 - Modify: `apps/web/src/styles/events.css`
 - Modify: `tests/e2e/{events,cases,relations}.spec.ts`
 
@@ -658,6 +662,11 @@ git commit -m "refactor: remove duplicated infrastructure and dead resources"
 ```
 
 - 主列表不再返回 `nextCursor` 和 `hasMore`。候选接口、案例详情关系接口和关系详情案例接口的游标契约保持不变。
+- 为避免关系详情复用已改为页码契约的案例主列表，新增内部接口
+  `GET /api/relations/:relationId/cases`；查询为
+  `{ limit: number /* default 100 */, cursor?: string }`，响应继续为
+  `{ items: CaseSummary[], nextCursor: string | null, hasMore: boolean }`，且游标绑定
+  `relationId`。关系详情与关系编辑页改用此接口，维持每批 100 条的“加载更多”行为。
 - Produces:
 
 ```ts

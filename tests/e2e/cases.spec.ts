@@ -16,6 +16,32 @@ async function createCase(request: APIRequestContext, content: string) {
   return response.json() as Promise<{ id: string; content: string }>;
 }
 
+test('case list shows totals and numbered pages for 31 recognizable records', async ({
+  page,
+  request,
+}) => {
+  const token = `CASEPAGE${Date.now()}`;
+  await Promise.all(
+    Array.from({ length: 31 }, (_, index) =>
+      createCase(request, `${token}-${String(index + 1).padStart(2, '0')}`),
+    ),
+  );
+
+  await page.goto(`/cases?q=${token}`);
+  await expect(page.getByText('共 31 条 · 第 1/2 页')).toBeVisible();
+  await expect(page.locator('.case-table tbody tr')).toHaveCount(30);
+  const firstPageContents = await page
+    .locator('.case-table tbody tr td:first-child')
+    .allTextContents();
+  await page.getByRole('button', { name: '下一页' }).click();
+  await expect(page.getByText('共 31 条 · 第 2/2 页')).toBeVisible();
+  await expect(page.locator('.case-table tbody tr')).toHaveCount(1);
+  const secondPageContents = await page
+    .locator('.case-table tbody tr td:first-child')
+    .allTextContents();
+  expect(secondPageContents.every((content) => !firstPageContents.includes(content))).toBe(true);
+});
+
 test('user can create, search, inspect, edit, and detect a duplicate independent case', async ({
   page,
 }) => {

@@ -168,41 +168,40 @@ describe.sequential('event REST API', () => {
     expect(detail.json()).toMatchObject({ code: 'EVENT_NOT_FOUND' });
   });
 
-  it('paginates the default list without duplicate rows', async () => {
-    for (const index of [1, 2, 3, 4]) {
-      await createEvent(`测试：游标事件 ${index}`);
+  it('returns numbered pages, matching totals, and clamps an out-of-range page', async () => {
+    for (let index = 1; index <= 31; index += 1) {
+      await createEvent(`EVENT_PAGE_TOKEN 事件 ${String(index).padStart(2, '0')}`);
     }
+    await createEvent('测试：页码计数无关事件');
 
-    const first = await app!.inject({ method: 'GET', url: '/api/events?limit=2' });
+    const first = await app!.inject({
+      method: 'GET',
+      url: '/api/events?q=EVENT_PAGE_TOKEN&page=1&limit=30',
+    });
     const firstPage = first.json<EventListResponse>();
     const second = await app!.inject({
       method: 'GET',
-      url: `/api/events?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+      url: '/api/events?q=EVENT_PAGE_TOKEN&page=2&limit=30',
     });
     const secondPage = second.json<EventListResponse>();
+    const clamped = (
+      await app!.inject({
+        method: 'GET',
+        url: '/api/events?q=EVENT_PAGE_TOKEN&page=999&limit=30',
+      })
+    ).json<EventListResponse>();
 
     expect(first.statusCode).toBe(200);
-    expect(firstPage.items).toHaveLength(2);
-    expect(firstPage.hasMore).toBe(true);
-    expect(firstPage.nextCursor).toEqual(expect.any(String));
+    expect(firstPage).toMatchObject({ page: 1, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(firstPage.items).toHaveLength(30);
     expect(second.statusCode).toBe(200);
-    expect(secondPage.items).toHaveLength(2);
+    expect(secondPage).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(secondPage.items).toHaveLength(1);
     expect(secondPage.items.map((event) => event.id)).not.toEqual(
       expect.arrayContaining(firstPage.items.map((event) => event.id)),
     );
-  });
-
-  it('rejects an invalid pagination cursor as a client error', async () => {
-    const response = await app!.inject({
-      method: 'GET',
-      url: '/api/events?cursor=not-a-valid-cursor',
-    });
-
-    expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({
-      code: 'VALIDATION_ERROR',
-      message: '分页游标不合法',
-    });
+    expect(clamped).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
+    expect(clamped.items).toHaveLength(1);
   });
 
   it('searches names, aliases, and keywords with stable ranking', async () => {

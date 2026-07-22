@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-import { caseContentSchema, caseReferenceSchema } from '../cases/caseSchemas.js';
+import { caseContentSchema, caseReferenceSchema, caseSummarySchema } from '../cases/caseSchemas.js';
 import { eventNameSchema } from '../events/eventSchemas.js';
+import { pageListMetadataSchema, pageListQuerySchema } from '../pagination/pageSchemas.js';
 
 const timestampSchema = z.iso.datetime({ offset: true });
 const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
@@ -55,8 +56,7 @@ export const relationFormInputSchema = z
 export const relationListQuerySchema = z
   .object({
     q: z.string().trim().max(120).default(''),
-    limit: z.coerce.number().int().min(1).max(100).default(30),
-    cursor: z.string().min(1).max(2_000).optional(),
+    ...pageListQuerySchema.shape,
   })
   .strict();
 
@@ -65,6 +65,13 @@ export const relationPairCheckQuerySchema = z
     causeEventId: z.uuid(),
     effectEventId: z.uuid(),
     excludeId: z.uuid().optional(),
+  })
+  .strict();
+
+export const relationCaseListQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(100),
+    cursor: z.string().min(1).max(2_000).optional(),
   })
   .strict();
 
@@ -95,8 +102,7 @@ export const relationDetailSchema = relationSummarySchema
 export const relationListResponseSchema = z
   .object({
     items: z.array(relationSummarySchema),
-    nextCursor: z.string().nullable(),
-    hasMore: z.boolean(),
+    ...pageListMetadataSchema.shape,
   })
   .strict();
 
@@ -107,12 +113,22 @@ export const relationPairCheckResponseSchema = z
   })
   .strict();
 
+export const relationCaseListResponseSchema = z
+  .object({
+    items: z.array(caseSummarySchema),
+    nextCursor: z.string().nullable(),
+    hasMore: z.boolean(),
+  })
+  .strict();
+
 export type RelationFormInput = z.infer<typeof relationFormInputSchema>;
 export type RelationListQuery = z.infer<typeof relationListQuerySchema>;
 export type RelationPairCheckQuery = z.infer<typeof relationPairCheckQuerySchema>;
+export type RelationCaseListQuery = z.infer<typeof relationCaseListQuerySchema>;
 export type RelationReference = z.infer<typeof relationReferenceSchema>;
 export type RelationSummary = z.infer<typeof relationSummarySchema>;
 export type RelationDetail = z.infer<typeof relationDetailSchema>;
 export type RelationListResponse = z.infer<typeof relationListResponseSchema>;
 export type RelationPairCheckResponse = z.infer<typeof relationPairCheckResponseSchema>;
+export type RelationCaseListResponse = z.infer<typeof relationCaseListResponseSchema>;
 export type CaseSelection = RelationFormInput['caseSelections'][number];

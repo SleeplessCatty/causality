@@ -2,8 +2,7 @@ import type { RelationFormInput } from '@causality/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router';
 
-import { getAllCasesForRelation } from '../../cases/api/caseApi';
-import { getRelation, replaceRelation } from '../api/relationApi';
+import { getAllRelationCases, getRelation, replaceRelation } from '../api/relationApi';
 import { RelationForm } from '../components/RelationForm';
 
 export function RelationEditPage() {
@@ -17,7 +16,7 @@ export function RelationEditPage() {
   });
   const linkedCases = useQuery({
     queryKey: ['cases', 'relation-associations', 'edit', relationId],
-    queryFn: ({ signal }) => getAllCasesForRelation(relationId, signal),
+    queryFn: ({ signal }) => getAllRelationCases(relationId, signal),
     enabled: relation.isSuccess && relation.data.caseCount > 0,
   });
   const casesPending = relation.isSuccess && relation.data.caseCount > 0 && linkedCases.isPending;

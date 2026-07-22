@@ -1,6 +1,8 @@
 import {
   apiErrorSchema,
   relationDetailSchema,
+  relationCaseListQuerySchema,
+  relationCaseListResponseSchema,
   relationFormInputSchema,
   relationListQuerySchema,
   relationListResponseSchema,
@@ -17,13 +19,15 @@ import {
 import { z } from 'zod';
 
 import { InvalidRelationCursorError } from './relationCursor.js';
+import { InvalidCaseCursorError } from '../cases/caseCursor.js';
+import { PostgresCaseRepository } from '../cases/caseRepository.js';
 import { PostgresRelationRepository } from './relationRepository.js';
 import { RelationService, RelationServiceError } from './relationService.js';
 
 const relationParamsSchema = z.object({ relationId: z.uuid() }).strict();
 
 function sendRelationError(error: unknown, reply: FastifyReply) {
-  if (error instanceof InvalidRelationCursorError) {
+  if (error instanceof InvalidRelationCursorError || error instanceof InvalidCaseCursorError) {
     return reply.status(400).send({ code: 'VALIDATION_ERROR', message: '分页游标不合法' });
   }
   if (error instanceof RelationServiceError) {
@@ -49,6 +53,7 @@ export function registerRelationRoutes(app: FastifyInstance, pool: Pool): void {
   routes.setValidatorCompiler(validatorCompiler);
   routes.setSerializerCompiler(serializerCompiler);
   const service = new RelationService(new PostgresRelationRepository(pool));
+  const caseRepository = new PostgresCaseRepository(pool);
 
   routes.get(
     '/api/relations',
@@ -82,6 +87,31 @@ export function registerRelationRoutes(app: FastifyInstance, pool: Pool): void {
       },
     },
     async (request) => service.checkPair(request.query),
+  );
+
+  routes.get(
+    '/api/relations/:relationId/cases',
+    {
+      schema: {
+        tags: ['relations'],
+        params: relationParamsSchema,
+        querystring: relationCaseListQuerySchema,
+        response: {
+          200: relationCaseListResponseSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await service.findById(request.params.relationId);
+        return await caseRepository.listForRelation(request.params.relationId, request.query);
+      } catch (error) {
+        return sendRelationError(error, reply);
+      }
+    },
   );
 
   routes.get(

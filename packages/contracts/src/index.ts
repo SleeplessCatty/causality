@@ -68,7 +68,16 @@ export {
 } from './events/eventSchemas.js';
 
 export {
+  pageListMetadataSchema,
+  pageListQuerySchema,
+  type PageListMetadata,
+  type PageListQuery,
+} from './pagination/pageSchemas.js';
+
+export {
   relationDetailSchema,
+  relationCaseListQuerySchema,
+  relationCaseListResponseSchema,
   relationFormInputSchema,
   relationListQuerySchema,
   relationListResponseSchema,
@@ -77,6 +86,8 @@ export {
   relationReferenceSchema,
   relationSummarySchema,
   type RelationDetail,
+  type RelationCaseListQuery,
+  type RelationCaseListResponse,
   type RelationFormInput,
   type RelationListQuery,
   type RelationListResponse,

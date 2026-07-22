@@ -39,7 +39,7 @@ describe('RelationEditPage', () => {
         if (url.includes('/pair-check')) {
           return response({ sameDirection: null, reverseDirection: null });
         }
-        if (url.startsWith('/api/cases?')) {
+        if (url.startsWith(`/api/relations/${relationId}/cases?`)) {
           return response({ items: [linkedCase], nextCursor: null, hasMore: false });
         }
         return response(detail);

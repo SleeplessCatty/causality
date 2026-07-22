@@ -10,6 +10,8 @@ import type {
   CaseRelationListResponse,
   CaseRelationSummary,
   CaseSummary,
+  RelationCaseListQuery,
+  RelationCaseListResponse,
 } from '@causality/contracts';
 import type { Pool } from 'pg';
 
@@ -21,6 +23,7 @@ import {
   encodeCaseListCursor,
   encodeCaseRelationCursor,
 } from './caseCursor.js';
+import { resolvePageWindow, type CountRow } from '../shared/pagePagination.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface CaseRow {
@@ -43,6 +46,10 @@ interface CaseRelationRow {
 
 export interface CaseRepository {
   list(query: CaseListQuery): Promise<CaseListResponse>;
+  listForRelation(
+    relationId: string,
+    query: RelationCaseListQuery,
+  ): Promise<RelationCaseListResponse>;
   candidates(query: CaseCandidateQuery): Promise<CaseCandidateListResponse>;
   findById(id: string): Promise<CaseDetail | null>;
   listRelations(id: string, query: CaseRelationListQuery): Promise<CaseRelationListResponse>;
@@ -74,36 +81,7 @@ const caseSelect = `select c.id,
                            (select count(*)::int from causal_relation_cases crc
                             where crc.concrete_case_id = c.id) as relation_count`;
 
-export class PostgresCaseRepository implements CaseRepository {
-  constructor(private readonly pool: Pool) {}
-
-  async list(query: CaseListQuery): Promise<CaseListResponse> {
-    const normalized = normalizeSearchQuery(query.q);
-    const cursor = query.cursor
-      ? decodeCaseListCursor(query.cursor, normalized, query.relationId)
-      : undefined;
-    const escaped = escapeLikePattern(normalized);
-    const parameters: unknown[] = [
-      normalized,
-      `${escaped}%`,
-      `%${escaped}%`,
-      query.relationId ?? null,
-    ];
-    const cursorCondition = cursor
-      ? normalized
-        ? `and (ranked.rank > $5::int or
-                 (ranked.rank = $5::int and
-                  (ranked.updated_at, ranked.id) < ($6::timestamptz, $7::uuid)))`
-        : `and (ranked.updated_at, ranked.id) < ($5::timestamptz, $6::uuid)`
-      : '';
-    if (cursor) {
-      if (normalized) parameters.push(cursor.rank, cursor.updatedAt, cursor.id);
-      else parameters.push(cursor.updatedAt, cursor.id);
-    }
-    parameters.push(query.limit + 1);
-    const result = await this.pool.query<CaseRow>(
-      `with ranked as (
-         ${caseSelect},
+const rankedCasesCte = `${caseSelect},
                 case
                   when lower(c.content) = $1 then 1
                   when lower(c.content) like $2 escape '\\' then 2
@@ -115,31 +93,47 @@ export class PostgresCaseRepository implements CaseRepository {
            and ($4::uuid is null or exists (
              select 1 from causal_relation_cases f
              where f.concrete_case_id = c.id and f.causal_relation_id = $4
-           ))
+           ))`;
+
+export class PostgresCaseRepository implements CaseRepository {
+  constructor(private readonly pool: Pool) {}
+
+  async list(query: CaseListQuery): Promise<CaseListResponse> {
+    const normalized = normalizeSearchQuery(query.q);
+    const escaped = escapeLikePattern(normalized);
+    const filterParameters: unknown[] = [
+      normalized,
+      `${escaped}%`,
+      `%${escaped}%`,
+      query.relationId ?? null,
+    ];
+    const countResult = await this.pool.query<CountRow>(
+      `with ranked as (
+         ${rankedCasesCte}
+       )
+       select count(*)::int as total from ranked
+       where ($1 = '' or ranked.rank is not null)`,
+      filterParameters,
+    );
+    const totalItems = countResult.rows[0]!.total;
+    const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
+    const parameters = [...filterParameters, query.limit, offset];
+    const result = await this.pool.query<CaseRow>(
+      `with ranked as (
+         ${rankedCasesCte}
        )
        select * from ranked
        where ($1 = '' or ranked.rank is not null)
-       ${cursorCondition}
        order by ${normalized ? 'ranked.rank,' : ''} ranked.updated_at desc, ranked.id desc
-       limit $${parameters.length}`,
+       limit $5 offset $6`,
       parameters,
     );
-    const hasMore = result.rows.length > query.limit;
-    const rows = result.rows.slice(0, query.limit);
-    const last = rows.at(-1);
     return {
-      items: rows.map(summary),
-      hasMore,
-      nextCursor:
-        hasMore && last
-          ? encodeCaseListCursor({
-              query: normalized,
-              filterRelationId: query.relationId ?? null,
-              rank: normalized ? last.rank! : null,
-              updatedAt: last.updated_at.toISOString(),
-              id: last.id,
-            })
-          : null,
+      items: result.rows.map(summary),
+      page,
+      pageSize: query.limit,
+      totalItems,
+      totalPages,
     };
   }
 
@@ -187,6 +181,48 @@ export class PostgresCaseRepository implements CaseRepository {
           ? encodeCaseCandidateCursor({
               query: normalized,
               rank: last.rank!,
+              updatedAt: last.updated_at.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
+  }
+
+  async listForRelation(
+    relationId: string,
+    query: RelationCaseListQuery,
+  ): Promise<RelationCaseListResponse> {
+    const cursor = query.cursor ? decodeCaseListCursor(query.cursor, '', relationId) : undefined;
+    const parameters: unknown[] = [relationId];
+    const cursorCondition = cursor
+      ? `and (date_trunc('milliseconds', c.updated_at), c.id) < ($2::timestamptz, $3::uuid)`
+      : '';
+    if (cursor) parameters.push(cursor.updatedAt, cursor.id);
+    parameters.push(query.limit + 1);
+    const result = await this.pool.query<CaseRow>(
+      `${caseSelect}
+       from concrete_cases c
+       where exists (
+         select 1 from causal_relation_cases crc
+         where crc.concrete_case_id = c.id and crc.causal_relation_id = $1
+       )
+       ${cursorCondition}
+       order by date_trunc('milliseconds', c.updated_at) desc, c.id desc
+       limit $${parameters.length}`,
+      parameters,
+    );
+    const hasMore = result.rows.length > query.limit;
+    const rows = result.rows.slice(0, query.limit);
+    const last = rows.at(-1);
+    return {
+      items: rows.map(summary),
+      hasMore,
+      nextCursor:
+        hasMore && last
+          ? encodeCaseListCursor({
+              query: '',
+              filterRelationId: relationId,
+              rank: null,
               updatedAt: last.updated_at.toISOString(),
               id: last.id,
             })
