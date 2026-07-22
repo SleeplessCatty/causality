@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -307,6 +307,9 @@ describe('CausalGraphPage', () => {
 
   it('waits for a center event without requesting graph data', () => {
     renderPage();
+    expect(screen.getByRole('region', { name: '局部因果图工作台' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '局部因果图' })).toBeNull();
+    expect(screen.getByRole('complementary', { name: '因果图状态' })).toBeTruthy();
     expect(screen.getByText('搜索并选择一个中心事件')).toBeTruthy();
     expect(getCausalGraph).not.toHaveBeenCalled();
   });
@@ -332,7 +335,8 @@ describe('CausalGraphPage', () => {
         expect.anything(),
       ),
     );
-    expect(await screen.findAllByText('2 个节点 · 1 条关系')).toHaveLength(2);
+    expect(await screen.findByText('节点 2')).toBeTruthy();
+    expect(screen.getByText('关系 1')).toBeTruthy();
   });
 
   it('restores URL state and canonicalizes an invalid direction', async () => {
@@ -354,7 +358,7 @@ describe('CausalGraphPage', () => {
 
   it('automatically requests a changed direction', async () => {
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findAllByText('2 个节点 · 1 条关系');
+    await screen.findByText('节点 2');
     fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
     await waitFor(() =>
       expect(getCausalGraph).toHaveBeenCalledWith(
@@ -370,22 +374,17 @@ describe('CausalGraphPage', () => {
     );
   });
 
-  it('shows not-found, retryable errors, and relation-limit notice', async () => {
+  it('shows a not-found error when the initial query has no graph to preserve', async () => {
     vi.mocked(getCausalGraph).mockRejectedValueOnce(
       new ApiClientError({ code: 'EVENT_NOT_FOUND', message: '中心事件不存在' }),
     );
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
     expect(await screen.findByText('中心事件不存在')).toBeTruthy();
-    cleanup();
-
-    vi.mocked(getCausalGraph).mockResolvedValueOnce(graph('both', 'relation_limit'));
-    renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    expect(await screen.findByText('关系较密集，已触发展示保护')).toBeTruthy();
   });
 
   it('keeps selection and inspector open state independent', async () => {
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findAllByText('2 个节点 · 1 条关系');
+    await screen.findByText('节点 2');
 
     fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
     expect(screen.getByText(`画布选择：node:${effectEventId}`)).toBeTruthy();
@@ -405,7 +404,7 @@ describe('CausalGraphPage', () => {
 
   it('sets a selected node as center while preserving direction and resetting interaction state', async () => {
     const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=upstream`);
-    await screen.findAllByText('2 个节点 · 1 条关系');
+    await screen.findByText('节点 2');
     fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
     fireEvent.click(screen.getByRole('button', { name: '空格' }));
     const commitsBeforeCenterChange = canvasControl.commitCount;
@@ -426,7 +425,7 @@ describe('CausalGraphPage', () => {
     const router = renderPage(
       `/graph?centerEventId=${centerEventId}&direction=both&limit=50&minConfidence=60&minCaseCount=2`,
     );
-    await screen.findAllByText('2 个节点 · 1 条关系');
+    await screen.findByText('节点 2');
     const commitsBeforeDirectionChange = canvasControl.commitCount;
     fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
     await waitFor(() =>
@@ -451,7 +450,7 @@ describe('CausalGraphPage', () => {
 
   it('applies discrete filters immediately while preserving the selected node tier', async () => {
     const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findAllByText('2 个节点 · 1 条关系');
+    await screen.findByText('节点 2');
     fireEvent.click(screen.getByRole('button', { name: '设置 50 节点' }));
     await waitFor(() =>
       expect(router.state.location.search).toBe(
@@ -470,7 +469,7 @@ describe('CausalGraphPage', () => {
 
   it('changes the node tier directly without waiting for a limited graph', async () => {
     const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findAllByText('2 个节点 · 1 条关系');
+    await screen.findByText('节点 2');
     fireEvent.click(screen.getByRole('button', { name: '设置 50 节点' }));
     await waitFor(() => expect(router.state.location.search).toContain('limit=50'));
   });
@@ -483,7 +482,7 @@ describe('CausalGraphPage', () => {
       }),
     );
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findAllByText('2 个节点 · 1 条关系');
+    await screen.findByText('节点 2');
     fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
     fireEvent.click(screen.getByRole('button', { name: '空格' }));
     expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
@@ -492,11 +491,11 @@ describe('CausalGraphPage', () => {
     canvasControl.commit = null;
     fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
     await waitFor(() => expect(canvasControl.candidateNodeCount).toBe(3));
-    expect(screen.getAllByText('2 个节点 · 1 条关系')).toHaveLength(2);
+    expect(screen.getByText('节点 2')).toBeTruthy();
     expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
 
     act(() => canvasControl.commit?.());
-    expect(await screen.findAllByText('3 个节点 · 1 条关系')).toHaveLength(2);
+    expect(await screen.findByText('节点 3')).toBeTruthy();
     expect(screen.queryByText(/检查器：/)).toBeNull();
     expect(screen.getByText('画布选择：无')).toBeTruthy();
   });
@@ -512,7 +511,7 @@ describe('CausalGraphPage', () => {
       return Promise.resolve(graph(query.direction, 'exhausted', query));
     });
     renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findAllByText('2 个节点 · 1 条关系');
+    await screen.findByText('节点 2');
     fireEvent.click(screen.getByRole('button', { name: '选择结果节点' }));
     fireEvent.click(screen.getByRole('button', { name: '空格' }));
     fireEvent.click(screen.getByRole('button', { name: '切换上游' }));
@@ -520,10 +519,10 @@ describe('CausalGraphPage', () => {
     expect(screen.getByTestId('graph-canvas').getAttribute('data-node-count')).toBe('2');
     act(() => rejectReplacement?.(new Error('network failed')));
 
-    expect(await screen.findByText('查询失败，仍显示上一查询结果')).toBeTruthy();
+    expect(await screen.findByText('查询失败，保留当前图')).toBeTruthy();
     expect(screen.getByTestId('graph-canvas').getAttribute('data-node-count')).toBe('2');
-    expect(screen.getAllByText('2 个节点 · 1 条关系')).toHaveLength(2);
+    expect(screen.getByText('节点 2')).toBeTruthy();
     expect(screen.getByText(`检查器：node:${effectEventId}`)).toBeTruthy();
-    expect(screen.getByRole('button', { name: '重试' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重试因果图查询' })).toBeTruthy();
   });
 });

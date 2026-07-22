@@ -8,7 +8,7 @@ import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphCanvas, type CausalGraphCanvasHandle } from '../components/CausalGraphCanvas';
 import { CausalGraphInspector } from '../components/CausalGraphInspector';
 import { CausalGraphToolbar } from '../components/CausalGraphToolbar';
-import { GraphQueryStatus, type GraphQueryErrorKind } from '../components/GraphQueryStatus';
+import { GraphStatusOverlay, type GraphQueryErrorKind } from '../components/GraphStatusOverlay';
 import {
   parseGraphQueryState,
   toGraphSearchParams,
@@ -89,7 +89,6 @@ export function CausalGraphPage() {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      canvasRef.current?.resize();
       if (inspectorOpen && selection) canvasRef.current?.ensureSelectionVisible();
     });
     return () => window.cancelAnimationFrame(frame);
@@ -193,54 +192,15 @@ export function CausalGraphPage() {
         : { message: '无法加载因果图', actionLabel: '重试', onAction: retryRequest }
       : undefined;
 
-  const countText = lastGraph
-    ? `${lastGraph.meta.nodeCount} 个节点 · ${lastGraph.meta.relationCount} 条关系`
-    : '等待选择中心事件';
   const isReplacing = Boolean(
     lastGraph &&
     (graphQuery.isFetching || (graphQuery.data && layoutState === 'loading' && !graphQuery.error)),
   );
 
   return (
-    <section className="causal-graph-page" aria-labelledby="causal-graph-title">
-      <header className="causal-graph-page__heading">
-        <div>
-          <h1 id="causal-graph-title">局部因果图</h1>
-          <p>从一个原子事件查看局部因果网络</p>
-        </div>
-        <div className="causal-graph-page__count" aria-live="polite">
-          <span>{countText}</span>
-        </div>
-      </header>
-      <CausalGraphToolbar
-        selectedEvent={selectedEvent}
-        direction={direction}
-        limit={limit}
-        minConfidence={minConfidence}
-        minCaseCount={minCaseCount}
-        zoom={zoom}
-        onEventSelect={chooseEvent}
-        onDirectionChange={changeDirection}
-        onLimitChange={changeLimit}
-        onMinConfidenceChange={changeMinConfidence}
-        onMinCaseCountChange={changeMinCaseCount}
-        onZoomIn={() => canvasRef.current?.zoomIn()}
-        onZoomOut={() => canvasRef.current?.zoomOut()}
-        onFit={() => canvasRef.current?.fit()}
-      />
-      <GraphQueryStatus
-        displayedGraph={lastGraph}
-        requestedQuery={requestedQuery}
-        isPending={isReplacing}
-        errorKind={lastGraph ? errorKind : null}
-        onExpand={changeLimit}
-        onAdjustFilter={() =>
-          document.querySelector<HTMLSelectElement>('select[aria-label="最低置信度"]')?.focus()
-        }
-        onRetry={retryRequest}
-      />
+    <section className="causal-graph-page" aria-label="局部因果图工作台">
       <div
-        className={`causal-graph-workbench${inspectorOpen ? ' has-inspector' : ''}`}
+        className="causal-graph-workbench"
         data-inspector-open={inspectorOpen ? 'true' : 'false'}
       >
         <CausalGraphCanvas
@@ -263,17 +223,40 @@ export function CausalGraphPage() {
             setInspectorOpen(false);
           }}
         />
-        <CausalGraphInspector
-          open={inspectorOpen}
-          selection={selection}
-          centerEventId={lastGraph?.meta.centerEventId ?? centerEventId}
-          onClose={() => {
-            setInspectorOpen(false);
-            window.requestAnimationFrame(() => canvasRef.current?.focus());
-          }}
-          onSetCenter={setNodeAsCenter}
-        />
       </div>
+      <CausalGraphToolbar
+        selectedEvent={selectedEvent}
+        direction={direction}
+        limit={limit}
+        minConfidence={minConfidence}
+        minCaseCount={minCaseCount}
+        zoom={zoom}
+        onEventSelect={chooseEvent}
+        onDirectionChange={changeDirection}
+        onLimitChange={changeLimit}
+        onMinConfidenceChange={changeMinConfidence}
+        onMinCaseCountChange={changeMinCaseCount}
+        onZoomIn={() => canvasRef.current?.zoomIn()}
+        onZoomOut={() => canvasRef.current?.zoomOut()}
+        onFit={() => canvasRef.current?.fit()}
+      />
+      <GraphStatusOverlay
+        graph={lastGraph}
+        isPending={isReplacing}
+        errorKind={lastGraph ? errorKind : null}
+        empty={!centerEventId}
+        onRetry={retryRequest}
+      />
+      <CausalGraphInspector
+        open={inspectorOpen}
+        selection={selection}
+        centerEventId={lastGraph?.meta.centerEventId ?? centerEventId}
+        onClose={() => {
+          setInspectorOpen(false);
+          window.requestAnimationFrame(() => canvasRef.current?.focus());
+        }}
+        onSetCenter={setNodeAsCenter}
+      />
     </section>
   );
 }

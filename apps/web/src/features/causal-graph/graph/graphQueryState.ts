@@ -1,4 +1,4 @@
-import type { CausalGraphQuery, CausalGraphResponse } from '@causality/contracts';
+import type { CausalGraphQuery } from '@causality/contracts';
 
 export type GraphLimit = CausalGraphQuery['limit'];
 
@@ -6,11 +6,6 @@ export type GraphQueryState = Pick<
   CausalGraphQuery,
   'centerEventId' | 'direction' | 'limit' | 'minConfidence' | 'minCaseCount'
 >;
-
-export type GraphQueryStatus =
-  | { action: 'none'; message: string; nextLimit: null }
-  | { action: 'expand'; message: string; nextLimit: 50 | 100 }
-  | { action: 'adjust_filter'; message: string; nextLimit: null };
 
 export const DEFAULT_GRAPH_QUERY_STATE = {
   direction: 'both',
@@ -76,35 +71,5 @@ export function parseGraphQueryState(search: URLSearchParams): {
   return {
     state,
     needsCanonicalization: Boolean(centerEventId) && canonical !== search.toString(),
-  };
-}
-
-export function nextGraphLimit(limit: GraphLimit): 50 | 100 | null {
-  if (limit === 20) return 50;
-  if (limit === 50) return 100;
-  return null;
-}
-
-export function graphQueryStatus(graph: CausalGraphResponse): GraphQueryStatus {
-  const { nodeLimit, stopReason } = graph.meta;
-  if (stopReason === 'exhausted') {
-    return {
-      action: 'none',
-      message: '当前条件下已展示全部可达内容',
-      nextLimit: null,
-    };
-  }
-  if (nodeLimit === 100) {
-    return {
-      action: 'adjust_filter',
-      message: '已达到 100 节点显示上限',
-      nextLimit: null,
-    };
-  }
-  return {
-    action: 'expand',
-    message:
-      stopReason === 'relation_limit' ? '关系较密集，已触发展示保护' : '已达到当前节点显示档位',
-    nextLimit: nextGraphLimit(nodeLimit)!,
   };
 }

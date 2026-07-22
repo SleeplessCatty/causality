@@ -65,13 +65,19 @@ describe('CausalGraphInspector', () => {
 
   it('only requests details when open with a selection', () => {
     renderInspector({ open: false, selection: { type: 'node', id: eventId } });
-    expect(screen.queryByRole('complementary')).toBeNull();
+    const inspector = screen.getByRole('complementary', { hidden: true });
+    expect(inspector.getAttribute('aria-hidden')).toBe('true');
+    expect(inspector.classList.contains('is-open')).toBe(false);
+    expect(inspector.hasAttribute('inert')).toBe(true);
     expect(getEvent).not.toHaveBeenCalled();
     expect(getRelation).not.toHaveBeenCalled();
   });
 
   it('shows an empty prompt while open without a selection', () => {
     renderInspector();
+    const inspector = screen.getByRole('complementary');
+    expect(inspector.getAttribute('aria-hidden')).toBe('false');
+    expect(inspector.classList.contains('is-open')).toBe(true);
     expect(screen.getByText('请选择节点或关系')).toBeTruthy();
   });
 

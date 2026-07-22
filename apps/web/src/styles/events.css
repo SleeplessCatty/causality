@@ -204,6 +204,12 @@ body {
   overflow: auto;
 }
 
+.product-shell.is-graph-route .product-main {
+  height: 100vh;
+  padding: 0;
+  overflow: hidden;
+}
+
 .page-heading {
   display: flex;
   align-items: flex-start;

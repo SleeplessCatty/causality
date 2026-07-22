@@ -45,10 +45,13 @@ export function CausalGraphInspector({
     enabled: open && Boolean(relationId),
   });
 
-  if (!open) return null;
-
   return (
-    <aside className="causal-graph-inspector" aria-label="图元素详情">
+    <aside
+      className={`causal-graph-inspector${open ? ' is-open' : ''}`}
+      aria-label="图元素详情"
+      aria-hidden={!open}
+      inert={!open}
+    >
       <header className="causal-graph-inspector__header">
         <div>
           <span>{selection?.type === 'relation' ? '因果关系' : '原子事件'}</span>
