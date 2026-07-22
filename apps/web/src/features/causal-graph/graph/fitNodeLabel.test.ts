@@ -24,7 +24,7 @@ describe('fitNodeLabel', () => {
     const result = fitNodeLabel(name, measureText);
 
     expect(result.text.replaceAll('\n', '')).toBe(name);
-    expect([17, 16, 15, 14, 13, 12, 11, 10]).toContain(result.fontSize);
+    expect([19, 18, 17, 16, 15, 14, 13, 12]).toContain(result.fontSize);
   });
 
   it('preserves repeated internal whitespace while wrapping', () => {
@@ -35,7 +35,7 @@ describe('fitNodeLabel', () => {
   });
 
   it('uses the largest fitting size for a short name', () => {
-    expect(fitNodeLabel('降息', measureText)).toEqual({ text: '降息', fontSize: 17 });
+    expect(fitNodeLabel('降息', measureText)).toEqual({ text: '降息', fontSize: 19 });
   });
 
   it('selects the largest fitting size for a 50-character event name', () => {
