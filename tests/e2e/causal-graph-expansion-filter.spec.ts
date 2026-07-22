@@ -47,9 +47,14 @@ test('user can change node limits, filter, restore, and retry a dense local grap
   const canvas = page.getByRole('application', { name: new RegExp(center.name) });
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '21');
-  const nodeLimit = page.getByRole('combobox', { name: '节点上限' });
-  const minConfidence = page.getByRole('combobox', { name: '最低置信度' });
-  const minCaseCount = page.getByRole('combobox', { name: '最少案例数' });
+  const nodeLimit = page.getByRole('button', { name: '节点上限' });
+  const minConfidence = page.getByRole('button', { name: '最低置信度' });
+  const minCaseCount = page.getByRole('button', { name: '最少案例数' });
+
+  async function choose(trigger: typeof nodeLimit, option: string) {
+    await trigger.click();
+    await page.getByRole('option', { name: option, exact: true }).click();
+  }
 
   let failNextFiftyRequest = true;
   await page.route('**/api/causal-graph?**', async (route) => {
@@ -66,7 +71,7 @@ test('user can change node limits, filter, restore, and retry a dense local grap
     await route.continue();
   });
 
-  await nodeLimit.selectOption('50');
+  await choose(nodeLimit, '50');
   await expect(page).toHaveURL(/limit=50/);
   await expect(page.getByText('查询失败，保留当前图')).toBeVisible();
   await expect(canvas).toHaveAttribute('data-node-count', '21');
@@ -77,15 +82,15 @@ test('user can change node limits, filter, restore, and retry a dense local grap
     path: testInfo.outputPath('causal-graph-50-nodes.png'),
   });
 
-  await nodeLimit.selectOption('100');
+  await choose(nodeLimit, '100');
   await expect(page).toHaveURL(/limit=100/);
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '101');
   const zoomText = await page.getByLabel('当前缩放比例').textContent();
   expect(Number.parseInt(zoomText ?? '0', 10)).toBeGreaterThanOrEqual(60);
 
-  await minConfidence.selectOption('90');
-  await minCaseCount.selectOption('10');
+  await choose(minConfidence, '90%');
+  await choose(minCaseCount, '10');
   await expect(page).toHaveURL(/limit=100.*minConfidence=90.*minCaseCount=10/);
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '1');
@@ -93,12 +98,12 @@ test('user can change node limits, filter, restore, and retry a dense local grap
     path: testInfo.outputPath('causal-graph-filtered.png'),
   });
   await page.reload();
-  await expect(minConfidence).toHaveValue('90');
-  await expect(minCaseCount).toHaveValue('10');
+  await expect(minConfidence).toContainText('90%');
+  await expect(minCaseCount).toContainText('10');
   await expect(canvas).toHaveAttribute('data-node-count', '1');
 
-  await minCaseCount.selectOption('0');
-  await minConfidence.selectOption('0');
+  await choose(minCaseCount, '0');
+  await choose(minConfidence, '0%');
   await expect(page).toHaveURL(/limit=100.*minConfidence=0.*minCaseCount=0/);
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', '101');

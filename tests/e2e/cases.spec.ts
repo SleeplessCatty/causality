@@ -74,26 +74,22 @@ test('relation form reuses an existing case, creates a new case, and unlinks wit
   await page.getByRole('option', { name: `创建新案例：${newContent}` }).click();
   await page.getByRole('button', { name: '创建关系' }).click();
 
-  await expect(page).toHaveURL(/\/relations\?expanded=/);
-  const relationRow = page
-    .getByRole('row')
-    .filter({ hasText: cause.name })
-    .filter({ hasText: effect.name });
-  await expect(relationRow).toContainText('2');
+  await expect(page).toHaveURL(/\/relations\/[0-9a-f-]+$/);
+  await expect(page.getByText('2 条', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('link', { name: existingContent })).toBeVisible();
   await expect(page.getByRole('link', { name: newContent })).toBeVisible();
 
-  const relationId = new URL(page.url()).searchParams.get('expanded');
+  const relationId = page.url().split('/').at(-1);
   expect(relationId).toBeTruthy();
-  await page.getByRole('link', { name: '编辑关系' }).click();
+  await page.getByRole('link', { name: '编辑因果关系' }).click();
   const existingRow = page.locator('.case-selector-row').filter({
     has: page.locator(`input[value="${existingContent}"]`),
   });
   await existingRow.getByRole('button', { name: '移除案例' }).click();
   await page.getByRole('button', { name: '保存修改' }).click();
 
-  await expect(page).toHaveURL(/\/relations\?expanded=/);
-  await expect(page.getByRole('row').filter({ hasText: cause.name })).toContainText('1');
+  await expect(page).toHaveURL(new RegExp(`/relations/${relationId}$`));
+  await expect(page.getByText('1 条', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('link', { name: newContent })).toBeVisible();
   const caseResponse = await request.get(`${apiBase}/cases/${existing.id}`);
   expect(caseResponse.status()).toBe(200);

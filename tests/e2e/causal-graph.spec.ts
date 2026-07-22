@@ -40,14 +40,23 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
     String(initialGraph.meta.relationCount),
   );
 
-  const directionSelect = page.getByRole('combobox', { name: '查询方向' });
-  for (const direction of ['upstream', 'downstream', 'both'] as const) {
+  const directionButton = page.getByRole('button', { name: '查询方向' });
+  await directionButton.click();
+  await expect(page.getByRole('option')).toHaveText(['双向', '下游', '上游']);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.causal-graph-toolbar select')).toHaveCount(0);
+  for (const [direction, label] of [
+    ['upstream', '上游'],
+    ['downstream', '下游'],
+    ['both', '双向'],
+  ] as const) {
     const responsePromise = page.waitForResponse(
       (response) =>
         response.url().includes('/api/causal-graph?') &&
         response.url().includes(`direction=${direction}`),
     );
-    await directionSelect.selectOption(direction);
+    await directionButton.click();
+    await page.getByRole('option', { name: label }).click();
     const response = await responsePromise;
     expect(response.status()).toBe(200);
     const body = (await response.json()) as {
@@ -68,6 +77,19 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   await page.getByRole('button', { name: '放大因果图' }).click();
   await expect(zoomOutput).not.toHaveText(initialZoom ?? '');
   await page.getByRole('button', { name: '缩小因果图' }).click();
+  await page.getByRole('button', { name: '适应画布' }).click();
+
+  const zoomOut = page.getByRole('button', { name: '缩小因果图' });
+  for (let index = 0; index < 20; index += 1) {
+    if (await zoomOut.isDisabled()) break;
+    await zoomOut.click();
+    await page.waitForTimeout(180);
+  }
+  await expect(zoomOutput).toHaveText('10%');
+  await expect(zoomOut).toBeDisabled();
+  expect(await zoomOutput.evaluate((element) => getComputedStyle(element).borderRightWidth)).toBe(
+    '1px',
+  );
   await page.getByRole('button', { name: '适应画布' }).click();
 
   const canvasBox = await canvas.boundingBox();

@@ -55,14 +55,17 @@ test('user can create a reverse relation, inspect it inline, edit it, and find i
   await page.getByRole('textbox', { name: '关系说明' }).fill('E2E 反向关系说明');
   await page.getByRole('button', { name: '创建关系' }).click();
 
-  await expect(page).toHaveURL(/\/relations\?expanded=/);
+  await expect(page).toHaveURL(/\/relations\/[0-9a-f-]+$/);
   await expect(page.getByText('E2E 反向关系说明', { exact: true })).toBeVisible();
   await expect(page.getByText('76%', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: '编辑关系' }).click();
+  await page.getByRole('link', { name: '编辑因果关系' }).click();
   await page.getByRole('spinbutton', { name: '置信度数值' }).fill('79');
   await page.getByRole('button', { name: '保存修改' }).click();
 
-  await expect(page).toHaveURL(/\/relations\?expanded=/);
+  await expect(page).toHaveURL(/\/relations\/[0-9a-f-]+$/);
+  await expect(page.getByText('79%', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '返回关系列表' }).click();
+  await expect(page).toHaveURL(/\/relations$/);
   const savedRow = page
     .getByRole('row')
     .filter({ hasText: causeName })
@@ -88,6 +91,11 @@ test('relation pages fit the supported desktop viewports', async ({ page }, test
       name: 'expanded',
       url: `/relations?expanded=${fixedRelationId}`,
       heading: '因果关系',
+    },
+    {
+      name: 'detail',
+      url: `/relations/${fixedRelationId}`,
+      heading: /央行提高政策利率.*市场流动性收紧/,
     },
     { name: 'create', url: '/relations/new', heading: '创建因果关系' },
     {
