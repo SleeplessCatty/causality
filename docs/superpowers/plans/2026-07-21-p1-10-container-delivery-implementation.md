@@ -1,5 +1,9 @@
 # P1-10 Container Delivery Implementation Plan
 
+状态：开发与自动化测试完成，等待人工复核（2026-07-22）
+
+验证记录：格式、Lint、类型检查和生产构建通过；单元/组件测试 187 项（Contracts 25、API 63、Web 99），PostgreSQL 集成测试 45 项，源码 E2E 10 项，Compose 合约 2 项，隔离生产烟雾 1 项均通过。API/Web 镜像构建和五个生产页面的 1280×720 浏览器复核通过，console 为 0 error、0 warning。Vite 仅保留既有的因果图模块 chunk 超过 500 kB 非阻断警告。P1-10 与第一阶段尚未完成，等待用户人工复核。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the completed first-phase application as a zero-configuration, local-only production Compose stack with durable PostgreSQL data, automatic migrations, optional seed data, health checks, and isolated production smoke verification.
@@ -752,7 +756,7 @@ git commit -m "test: add production Compose smoke verification"
 - Consumes: all production and development commands implemented in Tasks 1–4.
 - Produces: user-facing production/development runbooks, destructive-reset warning, known limitations, exact P1-10 manual checklist, and roadmap status `等待人工复核`.
 
-- [ ] **Step 1: Rewrite README startup around the production default**
+- [x] **Step 1: Rewrite README startup around the production default**
 
 Document these exact primary commands near the top of `README.md`:
 
@@ -778,7 +782,7 @@ Add separate sections for:
 - `pnpm test:compose` and `pnpm test:production`;
 - the ten first-phase known limitations copied from the approved design.
 
-- [ ] **Step 2: Record automated verification without marking P1-10 complete**
+- [x] **Step 2: Record automated verification without marking P1-10 complete**
 
 After all gates pass, update:
 
@@ -789,7 +793,7 @@ After all gates pass, update:
 
 Do not mark P1-10 or Phase 1 complete before the user reports successful manual verification.
 
-- [ ] **Step 3: Run the complete local quality gate**
+- [x] **Step 3: Run the complete local quality gate**
 
 Run:
 
@@ -808,7 +812,7 @@ git diff --check
 
 Expected: every command PASS. Record exact test counts and any non-failing build warnings in the design and implementation-plan status.
 
-- [ ] **Step 4: Inspect the real production browser and container state**
+- [x] **Step 4: Inspect the real production browser and container state**
 
 Start the default stack:
 
@@ -827,14 +831,14 @@ At 1280×720 verify in a real browser:
 
 Stop with `docker compose down` after visual inspection so the named volume remains available for user manual review.
 
-- [ ] **Step 5: Commit the delivery documentation and gate results**
+- [x] **Step 5: Commit the delivery documentation and gate results**
 
 ```bash
 git add README.md docs/stages/phase-1/P1-10-phase-1-acceptance-container-delivery-design.md docs/superpowers/plans/2026-07-20-causality-application-roadmap.md docs/superpowers/plans/2026-07-21-p1-10-container-delivery-implementation.md
 git commit -m "docs: prepare P1-10 container acceptance"
 ```
 
-- [ ] **Step 6: Hand off the P1-10 manual acceptance checklist**
+- [x] **Step 6: Hand off the P1-10 manual acceptance checklist**
 
 Report:
 

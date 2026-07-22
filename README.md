@@ -1,6 +1,6 @@
 # Causality
 
-金融因果知识库。P1-03 至 P1-09 均已完成开发、自动化测试和人工验收。
+金融因果知识库。P1-03 至 P1-09 均已完成开发、自动化测试和人工验收；P1-10 容器化交付已完成开发与自动化测试，等待人工复核。
 
 当前可用功能：
 
@@ -32,19 +32,59 @@
 - pnpm 11.15.1
 - Docker（包含 Compose）
 
-## 启动
+## 生产容器启动
 
-先进入包含 `package.json`、`compose.yaml` 和 `apps` 的仓库根目录：
+进入包含 `package.json`、`compose.yaml` 和 `apps` 的仓库根目录，一条命令构建并启动完整应用：
 
 ```bash
 cd /path/to/causality
+docker compose up -d --build --wait
+```
+
+浏览器打开 <http://127.0.0.1:8080>。Web 容器同时提供页面和 `/api` 反向代理；API 与 PostgreSQL 只在 Compose 内部网络访问。首次启动会自动执行数据库迁移，但不会自动写入示例业务数据。
+
+常用操作：
+
+```bash
+# 查看容器、健康状态和已结束的迁移任务
+docker compose ps --all
+
+# 查看启动链日志
+docker compose logs -f web api migrate postgres
+
+# 停止应用但保留数据库卷
+docker compose down
+
+# 可选：显式加载固定示例数据
+docker compose run --rm seed
+```
+
+Compose 使用当前活动的 Docker Context，兼容 Colima 和 Docker Desktop，不会主动切换环境。可按需覆盖本机 Web 端口和 API 日志级别：
+
+```bash
+CAUSALITY_WEB_PORT=9080 CAUSALITY_LOG_LEVEL=debug docker compose up -d --build --wait
+```
+
+### 源码开发
+
+源码开发需要 Node.js 与 pnpm，并使用开发覆盖文件把 PostgreSQL 仅映射到本机回环地址：
+
+```bash
 pnpm install
 cp apps/api/.env.example apps/api/.env
-docker compose up -d --wait postgres
+docker compose -f compose.yaml -f compose.dev.yaml up -d --wait postgres
 pnpm dev
 ```
 
-浏览器打开 <http://127.0.0.1:5173>，首页会进入事件列表。因果关系页为 <http://127.0.0.1:5173/relations>，具体案例页为 <http://127.0.0.1:5173/cases>，局部因果图页为 <http://127.0.0.1:5173/graph>，系统状态页为 <http://127.0.0.1:5173/system>，API 默认监听 <http://127.0.0.1:3000>。
+开发服务器地址为 <http://127.0.0.1:5173>，API 为 <http://127.0.0.1:3000>。生产启动不需要复制 `.env`。
+
+### 完全重置（危险操作）
+
+以下命令会永久删除 Compose 命名卷中的全部事件、关系和案例，无法恢复。普通停止不要使用 `--volumes`：
+
+```bash
+docker compose down --volumes
+```
 
 在“因果图”页面输入事件名称或别名并选择候选项，系统会自动生成默认双向图。方向和中心事件保存在 URL 中，刷新或复制链接后可以恢复同一张图。
 
@@ -108,5 +148,22 @@ pnpm typecheck
 pnpm test
 pnpm test:integration
 pnpm test:e2e
+pnpm test:compose
+pnpm test:production
 pnpm build
 ```
+
+`test:production` 使用唯一命名的临时 Compose 项目、端口 18080 和专用数据卷，验证空库迁移、生产页面、API、重启持久化以及显式种子幂等性；结束后只清理该临时项目。
+
+## 第一阶段已知限制
+
+- 仅支持本机、单用户和 HTTP 回环地址；
+- 没有账号、权限和多人协作；
+- 没有自动备份、恢复和跨机器迁移工具；
+- 没有业务数据删除、版本历史和审计；
+- 没有 AI、语义搜索和自动因果推断；
+- 没有移动端适配；
+- 局部因果图最多整体展示 100 个关联节点；
+- 置信度完全由用户人工填写；
+- 示例数据只由用户显式加载；
+- 不提供公网部署安全保证。

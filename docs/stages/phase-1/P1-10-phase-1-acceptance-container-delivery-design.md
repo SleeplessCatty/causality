@@ -2,7 +2,7 @@
 
 版本：V1.0
 日期：2026-07-21
-状态：书面设计审核通过，等待实施
+状态：开发与自动化测试完成，等待人工复核
 所属路线图步骤：P1-10 第一阶段整体验收与容器化交付
 前置步骤：P1-01 至 P1-09 已完成开发、自动化测试、人工验收和提交
 
@@ -305,6 +305,24 @@ pnpm test:production
 10. 无论成功或失败，都只清理该次烟雾测试创建的项目和卷。
 
 清理逻辑必须使用脚本已解析的专用项目名和端口，不得使用默认项目名、未解析变量、通配符或广泛删除命令。
+
+### 13.4 自动化实施记录（2026-07-22）
+
+P1-10 实施与自动化验证结果：
+
+- `pnpm format:check`、`pnpm lint` 和 `pnpm typecheck` 通过；
+- `pnpm test` 通过：Contracts 25、API 63、Web 99，共 187 项测试；
+- `pnpm test:integration` 使用一次性 PostgreSQL 通过 45 项测试；
+- `pnpm test:e2e` 通过 10 项桌面浏览器测试；由于测试文件共享同一个开发数据库和图运行时，固定使用 1 个 worker，避免文件级并行互相干扰；
+- `pnpm build` 完成 Contracts、API 和 Web 生产构建；Vite 仅报告既有的因果图模块 chunk 超过 500 kB 警告，不影响构建；
+- `pnpm test:compose` 通过 2 项 Compose 合约测试，确认生产只暴露 Web，开发覆盖只在回环地址暴露 PostgreSQL；
+- API 与 Web 生产镜像构建成功，API 使用非 root `node` 用户，Web 使用非特权 Nginx；
+- `pnpm test:production` 通过 1 项隔离生产烟雾测试：从专用空卷迁移、生产页面与 API、人工创建数据、停止后重启持久化、显式种子及第二次种子幂等性均通过；专用项目结束后容器、网络和卷已清理；
+- 真实默认生产拓扑中 PostgreSQL、API、Web 均为 healthy，`migrate` 以状态 0 结束；`/health`、`/api/health`、`/api/ready` 和直接刷新 `/graph` 均返回 200；
+- 1280×720 真实浏览器逐页检查 `/events`、`/relations`、`/cases`、`/graph` 和 `/system`，系统状态显示 API 正常、PostgreSQL 就绪，浏览器 console 为 0 error、0 warning；
+- 默认生产栈检查后执行 `docker compose down`，保留现有命名卷，未执行任何卷删除操作。
+
+以上结果只表示开发与自动化测试完成。P1-10 和第一阶段仍需用户完成下列人工验收并明确确认后才能标记为“已完成”。
 
 ## 14. 人工验收
 
