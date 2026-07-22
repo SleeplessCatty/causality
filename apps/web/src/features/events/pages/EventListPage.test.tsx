@@ -33,6 +33,7 @@ function renderList(initialEntry = '/events') {
       { path: '/events', element: <EventListPage /> },
       { path: '/events/new', element: <div>创建页面</div> },
       { path: '/events/:eventId', element: <div>详情页面</div> },
+      { path: '/events/:eventId/edit', element: <div>编辑页面</div> },
     ],
     { initialEntries: [initialEntry] },
   );
@@ -47,6 +48,7 @@ function renderList(initialEntry = '/events') {
 
 describe('EventListPage', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -65,6 +67,28 @@ describe('EventListPage', () => {
     expect(screen.getByRole('link', { name: '原油价格上涨' }).getAttribute('href')).toBe(
       '/events/11111111-1111-4111-8111-111111111111',
     );
+  });
+
+  it('links row editing and reveals complete overflowing metadata after two seconds', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse({ ...firstPage, nextCursor: null, hasMore: false })),
+    );
+    renderList();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(screen.getByRole('link', { name: '编辑' }).getAttribute('href')).toBe(
+      '/events/11111111-1111-4111-8111-111111111111/edit',
+    );
+    fireEvent.mouseEnter(screen.getByText('油价上涨、原油上涨、国际油价上涨'));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(screen.getByRole('tooltip').textContent).toContain('第四个别名');
+
+    const shortKeywords = screen.getByText('原油、能源价格').closest('.event-table__metadata');
+    expect(shortKeywords?.getAttribute('tabindex')).toBeNull();
+    expect(shortKeywords?.getAttribute('aria-describedby')).toBeNull();
+    vi.useRealTimers();
   });
 
   it('debounces search, stores it in the URL, and requests the normalized query', async () => {

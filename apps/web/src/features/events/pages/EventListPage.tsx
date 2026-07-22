@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
+import { DelayedOverflowTooltip } from '../../../shared/tooltip/DelayedOverflowTooltip';
 import { getEvents } from '../api/eventApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -13,12 +14,14 @@ function MetadataCell({ values }: { values: string[] }) {
   if (values.length === 0) return <span className="event-table__empty-value">—</span>;
   const visible = values.slice(0, 3);
   return (
-    <span className="event-table__metadata">
-      <span>{visible.join('、')}</span>
-      {values.length > visible.length ? (
-        <span className="metadata-more">+{values.length - visible.length}</span>
-      ) : null}
-    </span>
+    <DelayedOverflowTooltip values={values}>
+      <span className="event-table__metadata">
+        <span>{visible.join('、')}</span>
+        {values.length > visible.length ? (
+          <span className="metadata-more">+{values.length - visible.length}</span>
+        ) : null}
+      </span>
+    </DelayedOverflowTooltip>
   );
 }
 
@@ -115,6 +118,9 @@ export function EventListPage() {
                   <th scope="col">别名</th>
                   <th scope="col">关键词</th>
                   <th scope="col">更新时间</th>
+                  <th scope="col">
+                    <span className="sr-only">操作</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -133,6 +139,11 @@ export function EventListPage() {
                       <time dateTime={event.updatedAt}>
                         {dateFormatter.format(new Date(event.updatedAt))}
                       </time>
+                    </td>
+                    <td className="event-row-actions">
+                      <Link className="text-button" to={`/events/${event.id}/edit`}>
+                        编辑
+                      </Link>
                     </td>
                   </tr>
                 ))}
