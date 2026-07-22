@@ -12,6 +12,13 @@ test('application shell opens events and reports system readiness', async ({ pag
   await expect(page).toHaveTitle('Causality');
   await expect(page).toHaveURL(/\/events$/);
   await expect(page.getByRole('heading', { name: '原子事件' })).toBeVisible();
+  await expect(page.locator('.product-shell')).toHaveAttribute('data-sidebar-state', 'expanded');
+  expect(
+    (await page.locator('.event-table tbody tr').first().boundingBox())?.height,
+  ).toBeLessThanOrEqual(60);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  );
 
   await page.getByRole('link', { name: '具体案例' }).click();
   await expect(page.getByRole('heading', { name: '具体案例' })).toBeVisible();

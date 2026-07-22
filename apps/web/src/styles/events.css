@@ -199,8 +199,8 @@ body {
   display: block;
   width: 100%;
   min-width: 0;
-  min-height: 100vh;
-  padding: 48px max(40px, calc((100% - 1280px) / 2)) 72px;
+  height: 100vh;
+  padding: 26px 28px 36px;
   overflow: auto;
 }
 
@@ -214,29 +214,29 @@ body {
 .page-heading h1 {
   margin: 0;
   color: #123c2e;
-  font-size: 34px;
+  font-size: 29px;
   font-weight: 720;
   letter-spacing: -0.035em;
   line-height: 1.2;
 }
 
 .page-heading p {
-  margin: 13px 0 0;
+  margin: 7px 0 0;
   color: #66736b;
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .button {
   display: inline-flex;
-  min-height: 42px;
+  min-height: 38px;
   align-items: center;
   justify-content: center;
-  padding: 0 19px;
+  padding: 0 15px;
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 680;
   line-height: 1;
   text-decoration: none;
@@ -291,15 +291,15 @@ body {
 
 .event-search {
   position: relative;
-  margin-top: 38px;
+  margin-top: 22px;
 }
 
 .event-search svg {
   position: absolute;
   top: 50%;
-  left: 19px;
-  width: 21px;
-  height: 21px;
+  left: 15px;
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: #567166;
   stroke-linecap: round;
@@ -309,14 +309,14 @@ body {
 
 .event-search input {
   width: 100%;
-  height: 54px;
-  padding: 0 20px 0 54px;
+  height: 42px;
+  padding: 0 16px 0 44px;
   border: 1px solid #cfd8d2;
   border-radius: 7px;
   background: white;
   color: #1b2f26;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .event-search input::placeholder {
@@ -329,7 +329,7 @@ body {
 }
 
 .event-table-wrap {
-  margin-top: 28px;
+  margin-top: 18px;
   border: 1px solid #d4ddd7;
   border-radius: 8px;
   background: white;
@@ -344,7 +344,7 @@ body {
 
 .event-table th,
 .event-table td {
-  padding: 0 24px;
+  padding: 0 16px;
   border-right: 1px solid #e7ece8;
   border-bottom: 1px solid #e2e8e4;
   text-align: left;
@@ -361,7 +361,7 @@ body {
 }
 
 .event-table th {
-  height: 54px;
+  height: 44px;
   background: #fafbfa;
   color: #24382f;
   font-size: 12px;
@@ -370,7 +370,7 @@ body {
 }
 
 .event-table td {
-  height: 76px;
+  height: 56px;
   color: #35443c;
   font-size: 13px;
   line-height: 1.55;
@@ -433,22 +433,22 @@ body {
 .pagination {
   display: flex;
   justify-content: center;
-  gap: 14px;
-  margin-top: 30px;
+  gap: 10px;
+  margin-top: 18px;
 }
 
 .pagination .button {
-  min-width: 100px;
+  min-width: 86px;
 }
 
 .table-state {
   display: flex;
-  min-height: 300px;
+  min-height: 220px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 9px;
-  margin-top: 28px;
+  margin-top: 18px;
   border: 1px solid #d4ddd7;
   border-radius: 8px;
   background: white;
@@ -500,32 +500,32 @@ body {
 
 .event-editor-page > h1,
 .detail-heading h1 {
-  margin: 30px 0 0;
+  margin: 20px 0 0;
   color: #102f24;
-  font-size: 34px;
+  font-size: 29px;
   font-weight: 720;
   letter-spacing: -0.035em;
   line-height: 1.2;
 }
 
 .event-form {
-  margin-top: 34px;
+  margin-top: 24px;
 }
 
 .form-layout {
   display: grid;
   grid-template-columns: minmax(0, 760px) minmax(220px, 1fr);
-  gap: 64px;
+  gap: 36px;
 }
 
 .form-fields {
   display: grid;
-  gap: 25px;
+  gap: 18px;
 }
 
 .form-field {
   display: grid;
-  gap: 9px;
+  gap: 7px;
 }
 
 .form-field > label {
@@ -551,14 +551,14 @@ body {
 }
 
 .form-field > input {
-  height: 48px;
+  height: 44px;
   padding: 0 14px;
 }
 
 .form-field > textarea {
-  min-height: 122px;
-  padding: 13px 14px;
-  line-height: 1.65;
+  min-height: 96px;
+  padding: 11px 14px;
+  line-height: 1.55;
   resize: vertical;
 }
 
@@ -591,7 +591,7 @@ body {
 
 .tag-input {
   display: flex;
-  min-height: 48px;
+  min-height: 44px;
   flex-wrap: wrap;
   align-items: center;
   gap: 7px;
@@ -652,8 +652,8 @@ body {
 }
 
 .candidate-panel {
-  min-height: 240px;
-  padding-left: 34px;
+  min-height: 200px;
+  padding-left: 24px;
   border-left: 1px solid #d7dfda;
 }
 
@@ -666,8 +666,8 @@ body {
 
 .candidate-panel ul {
   display: grid;
-  gap: 15px;
-  margin: 19px 0 0;
+  gap: 11px;
+  margin: 14px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -681,8 +681,8 @@ body {
 .form-actions {
   display: flex;
   gap: 12px;
-  margin-top: 32px;
-  padding-top: 24px;
+  margin-top: 22px;
+  padding-top: 18px;
   border-top: 1px solid #d7dfda;
 }
 
@@ -692,7 +692,7 @@ body {
 
 .form-alert,
 .success-notice {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   padding: 12px 14px;
   border: 1px solid #d9aaa6;
   border-radius: 6px;
@@ -731,15 +731,15 @@ body {
 .event-detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  margin: 38px 0 0;
+  margin: 24px 0 0;
   border-top: 1px solid #d8e0da;
   border-left: 1px solid #d8e0da;
   background: white;
 }
 
 .event-detail-grid > div {
-  min-height: 132px;
-  padding: 24px 26px;
+  min-height: 102px;
+  padding: 18px 20px;
   border-right: 1px solid #d8e0da;
   border-bottom: 1px solid #d8e0da;
 }
@@ -756,10 +756,10 @@ body {
 }
 
 .event-detail-grid dd {
-  margin: 13px 0 0;
+  margin: 9px 0 0;
   color: #26382f;
   font-size: 14px;
-  line-height: 1.75;
+  line-height: 1.6;
 }
 
 .detail-tags {
@@ -774,7 +774,7 @@ body {
 
 .page-state {
   display: grid;
-  min-height: 420px;
+  min-height: 300px;
   place-items: center;
   color: #68756e;
   font-size: 14px;
@@ -783,6 +783,24 @@ body {
 .page-state--error {
   align-content: center;
   gap: 16px;
+}
+
+.product-main > .status-card {
+  max-width: 960px;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgb(35 50 41 / 7%);
+}
+
+.product-main .status-card__heading {
+  padding: 18px 20px 16px;
+}
+
+.product-main .status-list {
+  padding: 6px 20px 10px;
+}
+
+.product-main .status-row {
+  min-height: 66px;
 }
 
 .relation-table {
@@ -867,8 +885,8 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px auto;
   align-items: center;
-  gap: 34px;
-  padding: 22px 24px 24px;
+  gap: 24px;
+  padding: 16px 18px 18px;
 }
 
 .relation-inline-detail span {
@@ -899,7 +917,7 @@ body {
 
 .relation-form-layout {
   grid-template-columns: minmax(0, 850px) minmax(220px, 1fr);
-  gap: 56px;
+  gap: 36px;
 }
 
 .relation-event-pair {
@@ -909,7 +927,7 @@ body {
 }
 
 .relation-event-pair__arrow {
-  padding-top: 40px;
+  padding-top: 36px;
   color: #2d7659;
   font-size: 22px;
   text-align: center;
@@ -921,7 +939,7 @@ body {
 
 .event-selector__control > input {
   width: 100%;
-  height: 48px;
+  height: 44px;
   padding: 0 14px;
   border: 1px solid #b8c5bd;
   border-radius: 6px;
@@ -1014,7 +1032,7 @@ body {
 
 .confidence-control > div {
   display: flex;
-  height: 48px;
+  height: 44px;
   align-items: center;
   border: 1px solid #b8c5bd;
   border-radius: 6px;
@@ -1051,8 +1069,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  margin-top: 28px;
-  padding: 12px 15px;
+  margin-top: 18px;
+  padding: 10px 13px;
   border: 1px solid #cbd9d0;
   border-radius: 6px;
   background: #f6faf7;
@@ -1063,7 +1081,7 @@ body {
 .case-edit-notice {
   max-width: 760px;
   justify-content: flex-start;
-  margin-top: 26px;
+  margin-top: 20px;
   border-color: #d9c99d;
   background: #fffaf0;
   color: #675421;
@@ -1117,7 +1135,7 @@ body {
 
 .detail-label {
   display: block;
-  margin-top: 29px;
+  margin-top: 20px;
   color: #6a766f;
   font-size: 11px;
   font-weight: 720;
@@ -1127,12 +1145,12 @@ body {
 .case-detail-heading h1 {
   max-width: 900px;
   margin-top: 10px;
-  font-size: 29px;
+  font-size: 26px;
   line-height: 1.45;
 }
 
 .case-detail-heading .button {
-  margin-top: 30px;
+  margin-top: 20px;
 }
 
 .case-detail-grid {
@@ -1140,11 +1158,11 @@ body {
 }
 
 .case-detail-grid > div {
-  min-height: 112px;
+  min-height: 92px;
 }
 
 .case-relations {
-  margin-top: 42px;
+  margin-top: 28px;
 }
 
 .section-heading {
@@ -1180,7 +1198,7 @@ body {
 
 .case-relation-list li {
   display: flex;
-  min-height: 68px;
+  min-height: 56px;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
@@ -1218,7 +1236,7 @@ body {
 .relation-inline-cases {
   position: relative;
   grid-column: 1 / -1;
-  padding-top: 20px;
+  padding-top: 15px;
   border-top: 1px solid #d8e3db;
 }
 
@@ -1236,7 +1254,7 @@ body {
 .relation-inline-cases ul {
   display: grid;
   gap: 8px;
-  margin: 12px 160px 0 0;
+  margin: 9px 160px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -1255,7 +1273,7 @@ body {
 
 .relation-inline-cases__all {
   position: absolute;
-  top: 19px;
+  top: 14px;
   right: 0;
   color: #176348;
   font-size: 12px;
@@ -1266,7 +1284,7 @@ body {
 .relation-cases-field {
   min-width: 0;
   margin: 5px 0 0;
-  padding: 25px 0 0;
+  padding: 19px 0 0;
   border: 0;
   border-top: 1px solid #d7dfda;
 }
@@ -1302,7 +1320,7 @@ body {
 .relation-cases-field__rows {
   display: grid;
   gap: 12px;
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
 .case-selector-row {

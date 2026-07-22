@@ -109,6 +109,11 @@ test('relation pages fit the supported desktop viewports', async ({ page }, test
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
       );
       expect(hasHorizontalOverflow).toBe(false);
+      if (target.name === 'list') {
+        expect(
+          (await page.locator('.relation-table tbody tr').first().boundingBox())?.height,
+        ).toBeLessThanOrEqual(60);
+      }
       await page.screenshot({
         path: testInfo.outputPath(`${target.name}-${viewport.width}x${viewport.height}.png`),
         fullPage: true,

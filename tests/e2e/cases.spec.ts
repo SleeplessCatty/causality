@@ -156,6 +156,11 @@ test('case pages fit the supported desktop viewports', async ({ page }, testInfo
           () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
         ),
       ).toBe(false);
+      if (target.name === 'list') {
+        expect(
+          (await page.locator('.case-table tbody tr').first().boundingBox())?.height,
+        ).toBeLessThanOrEqual(60);
+      }
       await page.screenshot({
         path: testInfo.outputPath(`cases-${target.name}-${viewport.width}x${viewport.height}.png`),
         fullPage: true,
