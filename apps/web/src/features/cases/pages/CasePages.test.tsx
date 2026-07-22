@@ -137,6 +137,52 @@ describe('case pages', () => {
     );
   });
 
+  it('keeps loaded relations while retrying a failed next page', async () => {
+    const firstRelation = {
+      id: '88888888-8888-4888-8888-888888888888',
+      causeEvent: { id: '99999999-9999-4999-8999-999999999999', name: '保留原因' },
+      effectEvent: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: '保留结果' },
+      linkedAt: '2026-07-21T03:00:00.000Z',
+    };
+    const secondRelation = {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      causeEvent: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: '重试原因' },
+      effectEvent: { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', name: '重试结果' },
+      linkedAt: '2026-07-20T03:00:00.000Z',
+    };
+    let relationRequests = 0;
+    let resolveRetry: (value: Response | PromiseLike<Response>) => void = () => {};
+    const retryResponse = new Promise<Response>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      if (!String(input).includes('/relations?')) return response({ ...detail, relationCount: 2 });
+      relationRequests += 1;
+      if (relationRequests === 1) {
+        return response({ items: [firstRelation], nextCursor: 'retry-page', hasMore: true });
+      }
+      if (relationRequests === 2) {
+        return response({ code: 'INTERNAL_ERROR', message: '加载失败' }, 500);
+      }
+      return retryResponse;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/cases/:caseId', <CaseDetailPage />);
+
+    expect(await screen.findByRole('link', { name: /保留原因.*保留结果/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+    expect(await screen.findByRole('button', { name: '重试加载其余关联关系' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /保留原因.*保留结果/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '重试加载其余关联关系' }));
+    const loadingButton = await screen.findByRole('button', { name: '加载中…' });
+    expect(loadingButton.hasAttribute('disabled')).toBe(true);
+
+    resolveRetry(response({ items: [secondRelation], nextCursor: null, hasMore: false }));
+    expect(await screen.findByRole('link', { name: /重试原因.*重试结果/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /保留原因.*保留结果/ })).toBeTruthy();
+  });
+
   it('keeps a 100-character case complete behind the three-line detail clamp', async () => {
     const longContent = 'C'.repeat(100);
     vi.stubGlobal(

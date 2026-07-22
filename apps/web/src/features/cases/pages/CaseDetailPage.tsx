@@ -127,9 +127,10 @@ export function CaseDetailPage() {
             <button
               type="button"
               className="text-button"
+              disabled={relations.isFetchingNextPage}
               onClick={() => void relations.fetchNextPage()}
             >
-              重试加载其余关联关系
+              {relations.isFetchingNextPage ? '加载中…' : '重试加载其余关联关系'}
             </button>
           </div>
         ) : null}
