@@ -24,6 +24,11 @@ test('production Compose exposes only the Web entry point', () => {
   assert.equal(config.services.web.ports[0].host_ip, '127.0.0.1');
   assert.equal(String(config.services.web.ports[0].published), '8080');
   assert.deepEqual(config.services.seed.profiles, ['tools']);
+  assert.ok(config.services.api.build);
+  assert.equal(config.services.migrate.build, undefined);
+  assert.equal(config.services.seed.build, undefined);
+  assert.equal(config.services.migrate.image, config.services.api.image);
+  assert.equal(config.services.seed.image, config.services.api.image);
   assert.equal(config.services.api.depends_on.migrate.condition, 'service_completed_successfully');
   assert.equal(config.services.web.depends_on.api.condition, 'service_healthy');
 });

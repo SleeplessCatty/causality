@@ -1,9 +1,3 @@
-x-api-image: &api-image
-  image: causality-api:local
-  build:
-    context: .
-    dockerfile: apps/api/Dockerfile
-
 x-api-environment: &api-environment
   NODE_ENV: production
   DATABASE_URL: postgresql://causality:causality@postgres:5432/causality
@@ -27,7 +21,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    <<: *api-image
+    image: causality-api:local
     environment: *api-environment
     command: ['node', 'dist/database/migrate.js']
     depends_on:
@@ -36,7 +30,10 @@ services:
     restart: 'no'
 
   api:
-    <<: *api-image
+    image: causality-api:local
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     environment: *api-environment
     depends_on:
       migrate:
@@ -73,7 +70,7 @@ services:
     restart: unless-stopped
 
   seed:
-    <<: *api-image
+    image: causality-api:local
     profiles: ['tools']
     environment: *api-environment
     command: ['node', 'dist/database/test-data/fixedSeed.js']

@@ -151,6 +151,7 @@ COPY --from=build --chown=node:node /workspace/node_modules ./node_modules
 COPY --from=build --chown=node:node /workspace/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build --chown=node:node /workspace/apps/api/package.json ./apps/api/package.json
 COPY --from=build --chown=node:node /workspace/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /workspace/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY --from=build --chown=node:node /workspace/packages/contracts/package.json ./packages/contracts/package.json
 COPY --from=build --chown=node:node /workspace/packages/contracts/dist ./packages/contracts/dist
 COPY --from=build --chown=node:node /workspace/database/migrations ./database/migrations
@@ -400,10 +401,16 @@ Expected: FAIL because only `postgres` exists and it still exposes port 5432.
 Implement these exact service contracts:
 
 ```yaml
+x-api-environment: &api-environment
+  NODE_ENV: production
+  DATABASE_URL: postgresql://causality:causality@postgres:5432/causality
+  CORS_ORIGIN: http://127.0.0.1:${CAUSALITY_WEB_PORT:-8080}
+  LOG_LEVEL: ${CAUSALITY_LOG_LEVEL:-info}
+
 services:
   postgres:
     image: postgres:18.4-alpine
-    environment: &postgres-environment
+    environment:
       POSTGRES_DB: causality
       POSTGRES_USER: causality
       POSTGRES_PASSWORD: causality
@@ -417,14 +424,8 @@ services:
     restart: unless-stopped
 
   migrate:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    environment: &api-environment
-      NODE_ENV: production
-      DATABASE_URL: postgresql://causality:causality@postgres:5432/causality
-      CORS_ORIGIN: http://127.0.0.1:${CAUSALITY_WEB_PORT:-8080}
-      LOG_LEVEL: ${CAUSALITY_LOG_LEVEL:-info}
+    image: causality-api:local
+    environment: *api-environment
     command: ['node', 'dist/database/migrate.js']
     depends_on:
       postgres:
@@ -432,6 +433,7 @@ services:
     restart: 'no'
 
   api:
+    image: causality-api:local
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -453,6 +455,7 @@ services:
     restart: unless-stopped
 
   web:
+    image: causality-web:local
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -469,9 +472,7 @@ services:
     restart: unless-stopped
 
   seed:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+    image: causality-api:local
     profiles: ['tools']
     environment: *api-environment
     command: ['node', 'dist/database/test-data/fixedSeed.js']
@@ -541,7 +542,7 @@ git commit -m "build: add production Compose topology"
 - Consumes: production `compose.yaml`, port override `CAUSALITY_WEB_PORT`, API verify entry point, and fixed seed task.
 - Produces: root command `pnpm test:production`; environment `PRODUCTION_BASE_URL`, `CAUSALITY_SMOKE_PROJECT`, and `CAUSALITY_SMOKE_PORT`; isolated Compose project and volume lifecycle.
 
-- [ ] **Step 1: Add the production Playwright config and smoke specification first**
+- [x] **Step 1: Add the production Playwright config and smoke specification first**
 
 Create `playwright.production.config.ts`:
 
@@ -550,6 +551,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/production',
+  testMatch: 'production-smoke.spec.ts',
+  outputDir: './test-results/production',
   timeout: 120_000,
   fullyParallel: false,
   workers: 1,
@@ -590,7 +593,7 @@ function verifyDatabase() {
     counts: {
       abstractEvents: number;
       causalRelations: number;
-      concreteCausalCases: number;
+      concreteCases: number;
     };
     valid: boolean;
   };
@@ -605,7 +608,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   await expect.poll(async () => (await request.get('/api/ready')).status()).toBe(200);
   expect(verifyDatabase()).toMatchObject({
     migrationApplied: true,
-    counts: { abstractEvents: 0, causalRelations: 0, concreteCausalCases: 0 },
+    counts: { abstractEvents: 0, causalRelations: 0, concreteCases: 0 },
     valid: true,
   });
 
@@ -626,7 +629,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   expect(afterFirstSeed.counts).toMatchObject({
     abstractEvents: 13,
     causalRelations: 15,
-    concreteCausalCases: 18,
+    concreteCases: 18,
   });
   compose(['run', '--rm', 'seed']);
   expect(verifyDatabase().counts).toEqual(afterFirstSeed.counts);
@@ -649,7 +652,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
 });
 ```
 
-- [ ] **Step 2: Add the missing root command and observe the expected failure**
+- [x] **Step 2: Add the missing root command and observe the expected failure**
 
 Add to root `package.json`:
 
@@ -669,7 +672,7 @@ pnpm test:production
 
 Expected: FAIL because `scripts/test-production-compose.sh` does not exist.
 
-- [ ] **Step 3: Implement the safety-scoped smoke orchestrator**
+- [x] **Step 3: Implement the safety-scoped smoke orchestrator**
 
 Create `scripts/test-production-compose.sh`:
 
@@ -705,7 +708,7 @@ Make it executable:
 chmod +x scripts/test-production-compose.sh
 ```
 
-- [ ] **Step 4: Run the production smoke test and fix only evidence-backed container issues**
+- [x] **Step 4: Run the production smoke test and fix only evidence-backed container issues**
 
 Run:
 
@@ -717,7 +720,7 @@ Expected: production images build; empty stack becomes healthy; SPA/API checks, 
 
 If the run fails, inspect only the isolated project before cleanup by temporarily commenting out the trap during local diagnosis, then restore the trap before committing. Do not run `docker system prune`, delete the default `causality` volume, or widen the cleanup target.
 
-- [ ] **Step 5: Re-run the Compose contract after smoke orchestration**
+- [x] **Step 5: Re-run the Compose contract after smoke orchestration**
 
 Run:
 
@@ -728,7 +731,7 @@ docker compose ps --all
 
 Expected: Compose contract PASS; no `causality-smoke-*` containers remain. The default project is not created or modified by the smoke test.
 
-- [ ] **Step 6: Commit the production smoke task**
+- [x] **Step 6: Commit the production smoke task**
 
 ```bash
 git add package.json playwright.production.config.ts scripts/test-production-compose.sh tests/production/production-smoke.spec.ts

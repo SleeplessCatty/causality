@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 const packageJson = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ) as { scripts: Record<string, string> };
+const dockerfile = readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 
 describe('API production entrypoints', () => {
   it('uses compiled JavaScript for every production task', () => {
@@ -23,5 +24,11 @@ describe('API production entrypoints', () => {
     ]) {
       expect(command).not.toContain('tsx');
     }
+  });
+
+  it('copies production dependencies for the shared contracts package', () => {
+    expect(dockerfile).toContain(
+      '/workspace/packages/contracts/node_modules ./packages/contracts/node_modules',
+    );
   });
 });
