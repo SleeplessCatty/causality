@@ -7,20 +7,6 @@ export type GraphQueryState = Pick<
   'centerEventId' | 'direction' | 'limit' | 'minConfidence' | 'minCaseCount'
 >;
 
-export type GraphFilterValues = Pick<GraphQueryState, 'minConfidence' | 'minCaseCount'>;
-
-export interface GraphFilterDraft {
-  minConfidence: string;
-  minCaseCount: string;
-}
-
-export type GraphFilterValidationResult =
-  | { success: true; values: GraphFilterValues }
-  | {
-      success: false;
-      errors: Partial<Record<keyof GraphFilterDraft, string>>;
-    };
-
 export type GraphQueryStatus =
   | { action: 'none'; message: string; nextLimit: null }
   | { action: 'expand'; message: string; nextLimit: 50 | 100 }
@@ -33,8 +19,12 @@ export const DEFAULT_GRAPH_QUERY_STATE = {
   minCaseCount: 0,
 } as const satisfies Omit<GraphQueryState, 'centerEventId'>;
 
+export const graphLimitOptions = [20, 50, 100] as const satisfies readonly GraphLimit[];
+export const graphConfidenceOptions = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
+export const graphCaseCountOptions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
 const graphDirections = new Set<CausalGraphQuery['direction']>(['upstream', 'downstream', 'both']);
-const graphLimits = new Set<GraphLimit>([20, 50, 100]);
+const graphLimits = new Set<number>(graphLimitOptions);
 const unsignedIntegerPattern = /^(0|[1-9]\d*)$/u;
 
 function parseInteger(value: string | null, minimum: number, maximum?: number): number | null {
@@ -44,6 +34,11 @@ function parseInteger(value: string | null, minimum: number, maximum?: number): 
   if (maximum !== undefined && parsed > maximum) return null;
   return parsed;
 }
+
+const normalizeConfidence = (value: number) =>
+  Math.floor(Math.min(100, Math.max(0, value)) / 10) * 10;
+
+const normalizeCaseCount = (value: number) => Math.min(10, Math.max(0, Math.floor(value)));
 
 export function toGraphSearchParams(state: GraphQueryState): URLSearchParams {
   if (!state.centerEventId) return new URLSearchParams();
@@ -69,10 +64,12 @@ export function parseGraphQueryState(search: URLSearchParams): {
   const limit = graphLimits.has(parsedLimit as GraphLimit)
     ? (parsedLimit as GraphLimit)
     : DEFAULT_GRAPH_QUERY_STATE.limit;
-  const minConfidence =
-    parseInteger(search.get('minConfidence'), 0, 100) ?? DEFAULT_GRAPH_QUERY_STATE.minConfidence;
-  const minCaseCount =
-    parseInteger(search.get('minCaseCount'), 0) ?? DEFAULT_GRAPH_QUERY_STATE.minCaseCount;
+  const minConfidence = normalizeConfidence(
+    parseInteger(search.get('minConfidence'), 0) ?? DEFAULT_GRAPH_QUERY_STATE.minConfidence,
+  );
+  const minCaseCount = normalizeCaseCount(
+    parseInteger(search.get('minCaseCount'), 0) ?? DEFAULT_GRAPH_QUERY_STATE.minCaseCount,
+  );
   const state = { centerEventId, direction, limit, minConfidence, minCaseCount };
   const canonical = toGraphSearchParams(state).toString();
 
@@ -86,23 +83,6 @@ export function nextGraphLimit(limit: GraphLimit): 50 | 100 | null {
   if (limit === 20) return 50;
   if (limit === 50) return 100;
   return null;
-}
-
-export function activeGraphFilterCount(values: GraphFilterValues): number {
-  return Number(values.minConfidence > 0) + Number(values.minCaseCount > 0);
-}
-
-export function validateGraphFilterDraft(draft: GraphFilterDraft): GraphFilterValidationResult {
-  const minConfidence = parseInteger(draft.minConfidence, 0, 100);
-  const minCaseCount = parseInteger(draft.minCaseCount, 0);
-  const errors: Partial<Record<keyof GraphFilterDraft, string>> = {};
-  if (minConfidence === null) errors.minConfidence = '请输入 0 到 100 的整数';
-  if (minCaseCount === null) errors.minCaseCount = '请输入大于等于 0 的整数';
-  if (Object.keys(errors).length > 0) return { success: false, errors };
-  return {
-    success: true,
-    values: { minConfidence: minConfidence!, minCaseCount: minCaseCount! },
-  };
 }
 
 export function graphQueryStatus(graph: CausalGraphResponse): GraphQueryStatus {

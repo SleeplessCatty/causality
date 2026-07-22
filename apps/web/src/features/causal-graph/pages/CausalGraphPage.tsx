@@ -8,13 +8,10 @@ import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphCanvas, type CausalGraphCanvasHandle } from '../components/CausalGraphCanvas';
 import { CausalGraphInspector } from '../components/CausalGraphInspector';
 import { CausalGraphToolbar } from '../components/CausalGraphToolbar';
-import { GraphFilterPopover } from '../components/GraphFilterPopover';
 import { GraphQueryStatus, type GraphQueryErrorKind } from '../components/GraphQueryStatus';
 import {
-  activeGraphFilterCount,
   parseGraphQueryState,
   toGraphSearchParams,
-  type GraphFilterValues,
   type GraphLimit,
   type GraphQueryState,
 } from '../graph/graphQueryState';
@@ -43,7 +40,6 @@ export function CausalGraphPage() {
   const [lastGraph, setLastGraph] = useState<CausalGraphResponse | null>(null);
   const [selection, setSelection] = useState<GraphElementSelection | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
   const [layoutState, setLayoutState] = useState<LayoutState>('idle');
 
   const setGraphQuery = useCallback(
@@ -114,7 +110,6 @@ export function CausalGraphPage() {
   const chooseEvent = useCallback(
     (event: EventCandidate) => {
       setSelectedCandidate(event);
-      setFilterOpen(false);
       setGraphQuery({
         ...requestedQuery,
         centerEventId: event.id,
@@ -128,7 +123,6 @@ export function CausalGraphPage() {
   const changeDirection = useCallback(
     (nextDirection: GraphDirection) => {
       if (!hasValidCenter || nextDirection === direction) return;
-      setFilterOpen(false);
       setGraphQuery({ ...requestedQuery, direction: nextDirection, limit: 20 });
     },
     [direction, hasValidCenter, requestedQuery, setGraphQuery],
@@ -139,7 +133,6 @@ export function CausalGraphPage() {
     setInspectorOpen(false);
     setSelectedCandidate(null);
     setLastGraph(null);
-    setFilterOpen(false);
     setSearchParams({});
   }, [setSearchParams]);
 
@@ -152,24 +145,20 @@ export function CausalGraphPage() {
     [lastGraph, requestedQuery, setGraphQuery],
   );
 
-  const applyFilters = useCallback(
-    (filters: GraphFilterValues) => {
-      setFilterOpen(false);
-      setGraphQuery({ ...requestedQuery, ...filters, limit: 20 });
+  const changeLimit = useCallback(
+    (nextLimit: GraphLimit) => {
+      setGraphQuery({ ...requestedQuery, limit: nextLimit });
     },
     [requestedQuery, setGraphQuery],
   );
 
-  const resetFilters = useCallback(() => {
-    setFilterOpen(false);
-    setGraphQuery({ ...requestedQuery, minConfidence: 0, minCaseCount: 0, limit: 20 });
-  }, [requestedQuery, setGraphQuery]);
+  const changeMinConfidence = useCallback(
+    (value: number) => setGraphQuery({ ...requestedQuery, minConfidence: value }),
+    [requestedQuery, setGraphQuery],
+  );
 
-  const expandGraph = useCallback(
-    (nextLimit: GraphLimit) => {
-      setFilterOpen(false);
-      setGraphQuery({ ...requestedQuery, limit: nextLimit });
-    },
+  const changeMinCaseCount = useCallback(
+    (value: number) => setGraphQuery({ ...requestedQuery, minCaseCount: value }),
     [requestedQuery, setGraphQuery],
   );
 
@@ -226,32 +215,28 @@ export function CausalGraphPage() {
       <CausalGraphToolbar
         selectedEvent={selectedEvent}
         direction={direction}
+        limit={limit}
+        minConfidence={minConfidence}
+        minCaseCount={minCaseCount}
         zoom={zoom}
         onEventSelect={chooseEvent}
         onDirectionChange={changeDirection}
+        onLimitChange={changeLimit}
+        onMinConfidenceChange={changeMinConfidence}
+        onMinCaseCountChange={changeMinCaseCount}
         onZoomIn={() => canvasRef.current?.zoomIn()}
         onZoomOut={() => canvasRef.current?.zoomOut()}
         onFit={() => canvasRef.current?.fit()}
-        filterCount={activeGraphFilterCount(requestedQuery)}
-        filterOpen={filterOpen}
-        onFilterToggle={() => setFilterOpen((current) => !current)}
-        filterPopover={
-          <GraphFilterPopover
-            open={filterOpen}
-            values={requestedQuery}
-            onApply={applyFilters}
-            onReset={resetFilters}
-            onClose={() => setFilterOpen(false)}
-          />
-        }
       />
       <GraphQueryStatus
         displayedGraph={lastGraph}
         requestedQuery={requestedQuery}
         isPending={isReplacing}
         errorKind={lastGraph ? errorKind : null}
-        onExpand={expandGraph}
-        onAdjustFilter={() => setFilterOpen(true)}
+        onExpand={changeLimit}
+        onAdjustFilter={() =>
+          document.querySelector<HTMLSelectElement>('select[aria-label="最低置信度"]')?.focus()
+        }
         onRetry={retryRequest}
       />
       <div

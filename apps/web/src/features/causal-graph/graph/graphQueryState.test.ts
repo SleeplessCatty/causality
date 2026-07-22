@@ -2,12 +2,13 @@ import type { CausalGraphResponse } from '@causality/contracts';
 import { describe, expect, it } from 'vitest';
 
 import {
-  activeGraphFilterCount,
+  graphCaseCountOptions,
+  graphConfidenceOptions,
+  graphLimitOptions,
   graphQueryStatus,
   nextGraphLimit,
   parseGraphQueryState,
   toGraphSearchParams,
-  validateGraphFilterDraft,
 } from './graphQueryState';
 
 const centerEventId = '11111111-1111-4111-8111-111111111111';
@@ -67,10 +68,21 @@ describe('graphQueryState', () => {
       centerEventId,
       direction: 'both',
       limit: 20,
-      minConfidence: 0,
+      minConfidence: 100,
       minCaseCount: 0,
     });
     expect(parsed.needsCanonicalization).toBe(true);
+  });
+
+  it('normalizes URL filters to the selectable discrete options', () => {
+    const parsed = parseGraphQueryState(
+      new URLSearchParams(`centerEventId=${centerEventId}&minConfidence=25&minCaseCount=99`),
+    );
+
+    expect(parsed.state).toMatchObject({ minConfidence: 20, minCaseCount: 10 });
+    expect(graphLimitOptions).toEqual([20, 50, 100]);
+    expect(graphConfidenceOptions).toEqual([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+    expect(graphCaseCountOptions).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   it('keeps an empty graph URL empty while exposing safe defaults', () => {
@@ -90,33 +102,6 @@ describe('graphQueryState', () => {
     expect(nextGraphLimit(20)).toBe(50);
     expect(nextGraphLimit(50)).toBe(100);
     expect(nextGraphLimit(100)).toBeNull();
-  });
-
-  it('counts only active non-default filters', () => {
-    expect(activeGraphFilterCount({ minConfidence: 0, minCaseCount: 0 })).toBe(0);
-    expect(activeGraphFilterCount({ minConfidence: 60, minCaseCount: 0 })).toBe(1);
-    expect(activeGraphFilterCount({ minConfidence: 60, minCaseCount: 2 })).toBe(2);
-  });
-
-  it('validates integer filter drafts without accepting blanks or coercing decimals', () => {
-    expect(validateGraphFilterDraft({ minConfidence: '60', minCaseCount: '2' })).toEqual({
-      success: true,
-      values: { minConfidence: 60, minCaseCount: 2 },
-    });
-    expect(validateGraphFilterDraft({ minConfidence: '', minCaseCount: '1.5' })).toEqual({
-      success: false,
-      errors: {
-        minConfidence: '请输入 0 到 100 的整数',
-        minCaseCount: '请输入大于等于 0 的整数',
-      },
-    });
-    expect(validateGraphFilterDraft({ minConfidence: '101', minCaseCount: '-1' })).toEqual({
-      success: false,
-      errors: {
-        minConfidence: '请输入 0 到 100 的整数',
-        minCaseCount: '请输入大于等于 0 的整数',
-      },
-    });
   });
 
   it('derives only the approved action for each stop state and tier', () => {

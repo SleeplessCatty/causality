@@ -1,76 +1,116 @@
 import type { CausalGraphQuery, EventCandidate } from '@causality/contracts';
-import type { ReactNode } from 'react';
 
+import {
+  graphCaseCountOptions,
+  graphConfidenceOptions,
+  graphLimitOptions,
+  type GraphLimit,
+} from '../graph/graphQueryState';
 import { GraphEventSelector } from './GraphEventSelector';
 
 interface CausalGraphToolbarProps {
   selectedEvent: EventCandidate | null;
   direction: CausalGraphQuery['direction'];
+  limit: GraphLimit;
+  minConfidence: number;
+  minCaseCount: number;
   zoom: number;
   onEventSelect: (event: EventCandidate) => void;
   onDirectionChange: (direction: CausalGraphQuery['direction']) => void;
+  onLimitChange: (limit: GraphLimit) => void;
+  onMinConfidenceChange: (value: number) => void;
+  onMinCaseCountChange: (value: number) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
-  filterCount: number;
-  filterOpen: boolean;
-  onFilterToggle: () => void;
-  filterPopover?: ReactNode;
 }
 
 const directions: Array<{
   value: CausalGraphQuery['direction'];
   label: string;
-  ariaLabel: string;
 }> = [
-  { value: 'upstream', label: '上游', ariaLabel: '只看上游' },
-  { value: 'downstream', label: '下游', ariaLabel: '只看下游' },
-  { value: 'both', label: '双向', ariaLabel: '查看上游和下游' },
+  { value: 'upstream', label: '上游' },
+  { value: 'downstream', label: '下游' },
+  { value: 'both', label: '双向' },
 ];
 
 export function CausalGraphToolbar({
   selectedEvent,
   direction,
+  limit,
+  minConfidence,
+  minCaseCount,
   zoom,
   onEventSelect,
   onDirectionChange,
+  onLimitChange,
+  onMinConfidenceChange,
+  onMinCaseCountChange,
   onZoomIn,
   onZoomOut,
   onFit,
-  filterCount,
-  filterOpen,
-  onFilterToggle,
-  filterPopover,
 }: CausalGraphToolbarProps) {
   return (
     <div className="causal-graph-toolbar" aria-label="因果图工具栏">
       <GraphEventSelector value={selectedEvent} onSelect={onEventSelect} />
-      <div className="graph-direction-control" role="radiogroup" aria-label="查询方向">
-        {directions.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-label={option.ariaLabel}
-            aria-checked={direction === option.value}
-            className={direction === option.value ? 'is-active' : undefined}
-            onClick={() => onDirectionChange(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      <div className="graph-filter-control">
-        <button
-          type="button"
-          aria-expanded={filterOpen}
-          aria-controls="graph-filter-popover"
-          onClick={onFilterToggle}
+      <label className="graph-toolbar-field">
+        <span>方向</span>
+        <select
+          aria-label="查询方向"
+          value={direction}
+          onChange={(event) =>
+            onDirectionChange(event.target.value as CausalGraphQuery['direction'])
+          }
         >
-          {filterCount > 0 ? `筛选 ${filterCount}` : '筛选'}
-        </button>
-        {filterPopover}
-      </div>
+          {directions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="graph-toolbar-field">
+        <span>节点</span>
+        <select
+          aria-label="节点上限"
+          value={limit}
+          onChange={(event) => onLimitChange(Number(event.target.value) as GraphLimit)}
+        >
+          {graphLimitOptions.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="graph-toolbar-field">
+        <span>置信度</span>
+        <select
+          aria-label="最低置信度"
+          value={minConfidence}
+          onChange={(event) => onMinConfidenceChange(Number(event.target.value))}
+        >
+          {graphConfidenceOptions.map((value) => (
+            <option key={value} value={value}>
+              {value}%
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="graph-toolbar-field">
+        <span>案例</span>
+        <select
+          aria-label="最少案例数"
+          value={minCaseCount}
+          onChange={(event) => onMinCaseCountChange(Number(event.target.value))}
+        >
+          {graphCaseCountOptions.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className="graph-viewport-controls" aria-label="画布缩放">
         <button type="button" aria-label="缩小因果图" disabled={zoom <= 0.25} onClick={onZoomOut}>
           −

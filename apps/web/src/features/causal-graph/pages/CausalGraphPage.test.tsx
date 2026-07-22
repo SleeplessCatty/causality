@@ -35,19 +35,25 @@ vi.mock('../components/CausalGraphToolbar', () => ({
   CausalGraphToolbar: ({
     selectedEvent,
     direction,
+    limit,
+    minConfidence,
+    minCaseCount,
     onEventSelect,
     onDirectionChange,
-    filterOpen,
-    onFilterToggle,
-    filterPopover,
+    onLimitChange,
+    onMinConfidenceChange,
+    onMinCaseCountChange,
   }: {
     selectedEvent: EventCandidate | null;
     direction: CausalGraphQuery['direction'];
+    limit: CausalGraphQuery['limit'];
+    minConfidence: number;
+    minCaseCount: number;
     onEventSelect: (event: EventCandidate) => void;
     onDirectionChange: (direction: CausalGraphQuery['direction']) => void;
-    filterOpen: boolean;
-    onFilterToggle: () => void;
-    filterPopover?: React.ReactNode;
+    onLimitChange: (limit: CausalGraphQuery['limit']) => void;
+    onMinConfidenceChange: (value: number) => void;
+    onMinCaseCountChange: (value: number) => void;
   }) => (
     <div>
       <span>
@@ -64,15 +70,18 @@ vi.mock('../components/CausalGraphToolbar', () => ({
       <button type="button" onClick={() => onDirectionChange('upstream')}>
         切换上游
       </button>
-      <button
-        type="button"
-        aria-expanded={filterOpen}
-        aria-controls="graph-filter-popover"
-        onClick={onFilterToggle}
-      >
-        筛选
+      <button type="button" onClick={() => onLimitChange(50)}>
+        设置 50 节点
       </button>
-      {filterPopover}
+      <button type="button" onClick={() => onMinConfidenceChange(70)}>
+        设置 70% 置信度
+      </button>
+      <button type="button" onClick={() => onMinCaseCountChange(3)}>
+        设置 3 个案例
+      </button>
+      <span>
+        当前查询：{limit} · {minConfidence}% · {minCaseCount}
+      </span>
     </div>
   ),
 }));
@@ -440,51 +449,29 @@ describe('CausalGraphPage', () => {
     );
   });
 
-  it('applies and resets filters explicitly at the 20-node tier', async () => {
+  it('applies discrete filters immediately while preserving the selected node tier', async () => {
     const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
     await screen.findAllByText('2 个节点 · 1 条关系');
-    fireEvent.click(screen.getByRole('button', { name: '筛选' }));
-    fireEvent.change(screen.getByRole('textbox', { name: '最低置信度' }), {
-      target: { value: '70' },
-    });
-    fireEvent.change(screen.getByRole('textbox', { name: '最少案例数' }), {
-      target: { value: '3' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '应用筛选' }));
+    fireEvent.click(screen.getByRole('button', { name: '设置 50 节点' }));
     await waitFor(() =>
       expect(router.state.location.search).toBe(
-        `?centerEventId=${centerEventId}&direction=both&limit=20&minConfidence=70&minCaseCount=3`,
+        `?centerEventId=${centerEventId}&direction=both&limit=50&minConfidence=0&minCaseCount=0`,
       ),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '筛选' }));
-    fireEvent.click(screen.getByRole('button', { name: '重置筛选' }));
+    fireEvent.click(screen.getByRole('button', { name: '设置 70% 置信度' }));
+    fireEvent.click(screen.getByRole('button', { name: '设置 3 个案例' }));
     await waitFor(() =>
       expect(router.state.location.search).toBe(
-        `?centerEventId=${centerEventId}&direction=both&limit=20&minConfidence=0&minCaseCount=0`,
+        `?centerEventId=${centerEventId}&direction=both&limit=50&minConfidence=70&minCaseCount=3`,
       ),
     );
   });
 
-  it('closes the filter popover when its toolbar trigger is clicked again', async () => {
-    renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findAllByText('2 个节点 · 1 条关系');
-    const trigger = screen.getByRole('button', { name: '筛选' });
-    fireEvent.click(trigger);
-    expect(screen.getByRole('region', { name: '筛选因果关系' })).toBeTruthy();
-
-    fireEvent.pointerDown(trigger);
-    fireEvent.click(trigger);
-    expect(screen.queryByRole('region', { name: '筛选因果关系' })).toBeNull();
-  });
-
-  it('expands to the next tier only from a limited committed graph', async () => {
-    vi.mocked(getCausalGraph).mockImplementation(async (query) =>
-      graph(query.direction, query.limit === 20 ? 'node_limit' : 'exhausted', query),
-    );
+  it('changes the node tier directly without waiting for a limited graph', async () => {
     const router = renderPage(`/graph?centerEventId=${centerEventId}&direction=both`);
-    await screen.findByRole('button', { name: '扩展至 50 节点' });
-    fireEvent.click(screen.getByRole('button', { name: '扩展至 50 节点' }));
+    await screen.findAllByText('2 个节点 · 1 条关系');
+    fireEvent.click(screen.getByRole('button', { name: '设置 50 节点' }));
     await waitFor(() => expect(router.state.location.search).toContain('limit=50'));
   });
 

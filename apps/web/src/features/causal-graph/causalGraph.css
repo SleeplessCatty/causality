@@ -42,8 +42,8 @@
   position: relative;
   z-index: 3;
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto auto auto;
-  gap: 14px;
+  grid-template-columns: minmax(240px, 1fr) repeat(4, auto) auto;
+  gap: 10px;
   align-items: end;
   padding: 14px 16px;
   border: 1px solid var(--border);
@@ -124,21 +124,46 @@
   font-size: 11px;
 }
 
-.graph-direction-control,
-.graph-viewport-controls,
-.graph-filter-control > button {
+.graph-toolbar-field {
+  display: grid;
+  gap: 6px;
+  color: #506158;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.graph-toolbar-field select {
+  height: 38px;
+  min-width: 76px;
+  padding: 0 25px 0 10px;
+  border: 1px solid #d4dcd6;
+  border-radius: 8px;
+  background: #f7f9f7;
+  color: #43544a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  outline: none;
+}
+
+.graph-toolbar-field select:focus {
+  border-color: #4f8b6e;
+  box-shadow: 0 0 0 3px rgb(58 126 91 / 13%);
+}
+
+.graph-viewport-controls {
   display: inline-flex;
   height: 38px;
   align-items: center;
+  align-self: end;
   border: 1px solid #d4dcd6;
   border-radius: 8px;
   background: #f7f9f7;
   overflow: hidden;
 }
 
-.graph-direction-control button,
-.graph-viewport-controls button,
-.graph-filter-control > button {
+.graph-viewport-controls button {
   height: 100%;
   padding: 0 12px;
   border: 0;
@@ -150,109 +175,6 @@
   font-weight: 650;
 }
 
-.graph-filter-control {
-  position: relative;
-}
-
-.graph-filter-control > button {
-  min-width: 72px;
-  padding: 0 13px;
-  border: 1px solid #d4dcd6;
-  background: #f7f9f7;
-}
-
-.graph-filter-control > button[aria-expanded='true'] {
-  border-color: #9dbdab;
-  background: #e7f2eb;
-  color: #1e6448;
-}
-
-.graph-filter-popover {
-  position: absolute;
-  z-index: 8;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 286px;
-  padding: 16px;
-  border: 1px solid #cfdad2;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 16px 40px rgb(29 58 42 / 16%);
-}
-
-.graph-filter-popover form {
-  display: grid;
-  gap: 13px;
-}
-
-.graph-filter-popover form > strong {
-  color: #294438;
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.graph-filter-popover label {
-  display: grid;
-  gap: 6px;
-  color: #58685f;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.graph-filter-popover input {
-  width: 100%;
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid #cfd8d1;
-  border-radius: 7px;
-  background: #fff;
-  color: #263c31;
-  outline: none;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.graph-filter-popover input:focus {
-  border-color: #4f8b6e;
-  box-shadow: 0 0 0 3px rgb(58 126 91 / 13%);
-}
-
-.graph-filter-popover input[aria-invalid='true'] {
-  border-color: #c77a72;
-}
-
-.graph-filter-popover__input {
-  position: relative;
-}
-
-.graph-filter-popover__input input {
-  padding-right: 30px;
-}
-
-.graph-filter-popover__input i {
-  position: absolute;
-  top: 10px;
-  right: 11px;
-  color: #75827a;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 650;
-}
-
-.graph-filter-popover label small {
-  color: var(--danger);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.graph-filter-popover__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 3px;
-}
-
-.graph-filter-popover__actions button,
 .graph-query-status button {
   min-height: 32px;
   padding: 0 11px;
@@ -265,14 +187,12 @@
   font-weight: 700;
 }
 
-.graph-filter-popover__actions button.is-primary,
 .graph-query-status button {
   border-color: #397a5a;
   background: #397a5a;
   color: #fff;
 }
 
-.graph-filter-popover__actions button:hover,
 .graph-query-status button:hover:not(:disabled) {
   border-color: #2e674b;
 }
@@ -329,11 +249,6 @@
 
 .graph-query-status__result > span.is-error {
   color: #a1534b;
-}
-
-.graph-direction-control button.is-active {
-  background: #dfeee6;
-  color: #1e6448;
 }
 
 .graph-viewport-controls button:disabled {
