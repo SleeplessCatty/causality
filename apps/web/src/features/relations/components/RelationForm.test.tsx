@@ -68,6 +68,25 @@ describe('RelationForm', () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
+  it('loads candidate pages until a later-page event is selectable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) => {
+        const url = String(input);
+        return url.includes('cursor=next-page')
+          ? jsonResponse({ items: [effect], nextCursor: null, hasMore: false })
+          : jsonResponse({ items: [cause], nextCursor: 'next-page', hasMore: true });
+      }),
+    );
+    renderForm();
+
+    const input = screen.getByRole('combobox', { name: '原因事件' });
+    fireEvent.change(input, { target: { value: '能源' } });
+    fireEvent.click(await screen.findByRole('option', { name: effect.name }));
+
+    expect((input as HTMLInputElement).value).toBe(effect.name);
+  });
+
   it('shows a reverse warning with a detail link and still submits', async () => {
     vi.stubGlobal(
       'fetch',
@@ -78,6 +97,8 @@ describe('RelationForm', () => {
         }
         return jsonResponse({
           items: url.includes(encodeURIComponent(effect.name)) ? [effect] : [cause],
+          nextCursor: null,
+          hasMore: false,
         });
       }),
     );
@@ -114,6 +135,8 @@ describe('RelationForm', () => {
         }
         return jsonResponse({
           items: url.includes(encodeURIComponent(effect.name)) ? [effect] : [cause],
+          nextCursor: null,
+          hasMore: false,
         });
       }),
     );

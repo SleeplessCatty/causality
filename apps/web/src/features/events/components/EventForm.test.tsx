@@ -37,7 +37,7 @@ describe('EventForm', () => {
   it('shows naming guidance and manages aliases and keywords with the keyboard', () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse({ items: [] })),
+      vi.fn(() => jsonResponse({ items: [], nextCursor: null, hasMore: false })),
     );
     renderForm();
 
@@ -64,7 +64,7 @@ describe('EventForm', () => {
   it('validates duplicate tags and required name before submitting', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse({ items: [] })),
+      vi.fn(() => jsonResponse({ items: [], nextCursor: null, hasMore: false })),
     );
     const onSubmit = renderForm();
     const aliasInput = screen.getByRole('textbox', { name: '添加别名' });
@@ -91,6 +91,8 @@ describe('EventForm', () => {
               name: '原油价格上涨',
             },
           ],
+          nextCursor: null,
+          hasMore: false,
         }),
       ),
     );

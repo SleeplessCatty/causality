@@ -1,8 +1,9 @@
 import type { CaseReference } from '@causality/contracts';
-import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 
-import { getCaseCandidates } from '../../cases/api/caseApi';
+import { getCaseCandidatePage } from '../../cases/api/caseApi';
+import { useExhaustiveCandidates } from '../../../shared/candidates/useExhaustiveCandidates';
+import { WindowedListbox } from '../../../shared/listbox/WindowedListbox';
 import type { RelationCaseSelectionValue } from './RelationCasesField';
 
 interface CaseSelectorRowProps {
@@ -28,17 +29,22 @@ export function CaseSelectorRow({
 }: CaseSelectorRowProps) {
   const [candidateQuery, setCandidateQuery] = useState(query.trim());
   const [isFocused, setIsFocused] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setCandidateQuery(query.trim()), 250);
     return () => window.clearTimeout(timeout);
   }, [query]);
 
-  const candidates = useQuery({
+  const candidates = useExhaustiveCandidates({
     queryKey: ['cases', 'candidates', candidateQuery],
-    queryFn: ({ signal }) => getCaseCandidates(candidateQuery, signal),
-    enabled: candidateQuery.length > 0 && candidateQuery.length <= 50 && !selection,
+    query: candidateQuery,
+    enabled: isFocused && candidateQuery.length > 0 && candidateQuery.length <= 50 && !selection,
+    loadPage: (search, cursor, signal) =>
+      getCaseCandidatePage(search, { limit: 100, ...(cursor ? { cursor } : {}) }, signal),
+    getId: (candidate: CaseReference) => candidate.id,
   });
+  useEffect(() => setActiveIndex(-1), [candidateQuery]);
   const normalizedQuery = query.trim();
   const lengthError = normalizedQuery.length > 50 ? '案例内容不能超过 50 字' : undefined;
   const visibleError = error ?? lengthError;
@@ -46,14 +52,14 @@ export function CaseSelectorRow({
     !selection &&
     normalizedQuery.length > 0 &&
     normalizedQuery.length <= 50 &&
-    candidates.isSuccess &&
-    !candidates.data.some((candidate) => candidate.content === normalizedQuery);
+    candidates.hasLoadedPage &&
+    !candidates.items.some((candidate) => candidate.content === normalizedQuery);
   const options = useMemo(
     () => [
-      ...(candidates.data ?? []).map((candidate) => ({ type: 'existing' as const, candidate })),
       ...(mayCreate ? [{ type: 'new' as const, content: normalizedQuery }] : []),
+      ...candidates.items.map((candidate) => ({ type: 'existing' as const, candidate })),
     ],
-    [candidates.data, mayCreate, normalizedQuery],
+    [candidates.items, mayCreate, normalizedQuery],
   );
   const showOptions = isFocused && !selection && options.length > 0;
 
@@ -61,20 +67,36 @@ export function CaseSelectorRow({
     onSelect({ type: 'existing', caseId: candidate.id, content: candidate.content });
   }
 
-  function chooseFirstOption(): void {
-    const first = options[0];
-    if (!first) return;
-    if (first.type === 'existing') chooseExisting(first.candidate);
-    else onSelect({ type: 'new', content: first.content });
+  function chooseOption(optionIndex: number): void {
+    const option = options[optionIndex];
+    if (!option) return;
+    if (option.type === 'existing') chooseExisting(option.candidate);
+    else onSelect({ type: 'new', content: option.content });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
-    if ((event.key === 'ArrowDown' || event.key === 'Enter') && options.length > 0) {
-      event.preventDefault();
-      if (event.key === 'Enter') chooseFirstOption();
-      else setIsFocused(true);
+    if (event.key === 'Escape') {
+      setIsFocused(false);
+      return;
     }
-    if (event.key === 'Escape') setIsFocused(false);
+    if (options.length === 0) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setIsFocused(true);
+      setActiveIndex((optionIndex) => (optionIndex >= options.length - 1 ? 0 : optionIndex + 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveIndex((optionIndex) => (optionIndex <= 0 ? options.length - 1 : optionIndex - 1));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setActiveIndex(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      setActiveIndex(options.length - 1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      chooseOption(activeIndex >= 0 ? activeIndex : 0);
+    }
   }
 
   return (
@@ -89,6 +111,9 @@ export function CaseSelectorRow({
           aria-autocomplete="list"
           aria-expanded={showOptions}
           aria-controls={`relation-case-${index}-options`}
+          aria-activedescendant={
+            activeIndex >= 0 ? `relation-case-${index}-option-${activeIndex}` : undefined
+          }
           aria-invalid={Boolean(visibleError)}
           value={query}
           disabled={disabled}
@@ -102,37 +127,60 @@ export function CaseSelectorRow({
           onKeyDown={handleKeyDown}
         />
         {showOptions ? (
-          <div
-            id={`relation-case-${index}-options`}
-            className="event-selector__options case-selector-row__options"
-            role="listbox"
-          >
-            {options.map((option) =>
-              option.type === 'existing' ? (
-                <button
-                  key={option.candidate.id}
-                  role="option"
-                  aria-selected="false"
-                  type="button"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => chooseExisting(option.candidate)}
-                >
-                  {option.candidate.content}
-                </button>
-              ) : (
-                <button
-                  key={`new:${option.content}`}
-                  role="option"
-                  aria-selected="false"
-                  type="button"
-                  className="case-selector-row__create-option"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onSelect({ type: 'new', content: option.content })}
-                >
-                  创建新案例：{option.content}
-                </button>
-              ),
-            )}
+          <div className="event-selector__options case-selector-row__options">
+            <WindowedListbox
+              id={`relation-case-${index}-options`}
+              itemCount={options.length}
+              itemHeight={38}
+              activeIndex={activeIndex}
+              className="case-selector-row__window is-above"
+              ariaLabel={`具体案例 ${index + 1} 候选项`}
+              renderOption={(optionIndex, style) => {
+                const option = options[optionIndex];
+                if (!option) return null;
+                return option.type === 'existing' ? (
+                  <button
+                    id={`relation-case-${index}-option-${optionIndex}`}
+                    role="option"
+                    aria-selected={activeIndex === optionIndex}
+                    type="button"
+                    style={style}
+                    onMouseEnter={() => setActiveIndex(optionIndex)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => chooseExisting(option.candidate)}
+                  >
+                    {option.candidate.content}
+                  </button>
+                ) : (
+                  <button
+                    id={`relation-case-${index}-option-${optionIndex}`}
+                    role="option"
+                    aria-selected={activeIndex === optionIndex}
+                    type="button"
+                    style={style}
+                    className="case-selector-row__create-option"
+                    onMouseEnter={() => setActiveIndex(optionIndex)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => onSelect({ type: 'new', content: option.content })}
+                  >
+                    创建新案例：{option.content}
+                  </button>
+                );
+              }}
+            />
+            {candidates.isFetchingNextPage ? (
+              <div className="candidate-list__status">正在加载全部候选项…</div>
+            ) : null}
+            {candidates.nextPageError ? (
+              <button
+                className="candidate-list__retry"
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => void candidates.retryNextPage()}
+              >
+                加载未完成，点击重试
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

@@ -1,8 +1,9 @@
 import type { EventCandidate } from '@causality/contracts';
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 
-import { getEventCandidates } from '../../events/api/eventApi';
+import { getEventCandidatePage } from '../../events/api/eventApi';
+import { useExhaustiveCandidates } from '../../../shared/candidates/useExhaustiveCandidates';
+import { WindowedListbox } from '../../../shared/listbox/WindowedListbox';
 
 interface EventSelectorProps {
   id: string;
@@ -24,23 +25,57 @@ export function EventSelector({
   const [input, setInput] = useState(value?.name ?? '');
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setQuery(open ? input.trim() : ''), 250);
     return () => window.clearTimeout(timeout);
   }, [input, open]);
 
-  const candidates = useQuery({
+  const candidates = useExhaustiveCandidates({
     queryKey: ['events', 'candidates', 'relation-selector', query],
-    queryFn: ({ signal }) => getEventCandidates(query, { limit: 8 }, signal),
-    enabled: query.length > 0,
+    query,
+    enabled: open && query.length > 0,
+    loadPage: (search, cursor, signal) =>
+      getEventCandidatePage(search, { limit: 100, ...(cursor ? { cursor } : {}) }, signal),
+    getId: (candidate: EventCandidate) => candidate.id,
   });
+
+  useEffect(() => setActiveIndex(-1), [query]);
 
   function select(candidate: EventCandidate): void {
     onChange(candidate);
     setInput(candidate.name);
     setOpen(false);
   }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === 'Escape') {
+      setOpen(false);
+      return;
+    }
+    if (!open || candidates.items.length === 0) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveIndex((index) => (index >= candidates.items.length - 1 ? 0 : index + 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveIndex((index) => (index <= 0 ? candidates.items.length - 1 : index - 1));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setActiveIndex(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      setActiveIndex(candidates.items.length - 1);
+    } else if (event.key === 'Enter' && activeIndex >= 0) {
+      event.preventDefault();
+      const candidate = candidates.items[activeIndex];
+      if (candidate) select(candidate);
+    }
+  }
+
+  const showOptions = open && candidates.items.length > 0;
 
   return (
     <div className="form-field event-selector">
@@ -53,8 +88,11 @@ export function EventSelector({
           role="combobox"
           aria-label={label}
           aria-autocomplete="list"
-          aria-expanded={open && Boolean(candidates.data?.length)}
+          aria-expanded={showOptions}
           aria-controls={`${id}-options`}
+          aria-activedescendant={
+            activeIndex >= 0 ? `${id}-option-${candidates.items[activeIndex]?.id}` : undefined
+          }
           aria-invalid={Boolean(error)}
           value={input}
           onChange={(event) => {
@@ -63,23 +101,50 @@ export function EventSelector({
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
           placeholder="输入名称或别名查找已有事件"
           autoFocus={autoFocus}
         />
-        {open && candidates.data && candidates.data.length > 0 ? (
-          <div className="event-selector__options" id={`${id}-options`} role="listbox">
-            {candidates.data.map((candidate) => (
+        {showOptions ? (
+          <div className="event-selector__options">
+            <WindowedListbox
+              id={`${id}-options`}
+              itemCount={candidates.items.length}
+              itemHeight={36}
+              activeIndex={activeIndex}
+              ariaLabel={`${label}候选项`}
+              renderOption={(index, style) => {
+                const candidate = candidates.items[index];
+                if (!candidate) return null;
+                return (
+                  <button
+                    id={`${id}-option-${candidate.id}`}
+                    type="button"
+                    role="option"
+                    style={style}
+                    aria-selected={activeIndex === index || value?.id === candidate.id}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => select(candidate)}
+                  >
+                    {candidate.name}
+                  </button>
+                );
+              }}
+            />
+            {candidates.isFetchingNextPage ? (
+              <div className="candidate-list__status">正在加载全部候选项…</div>
+            ) : null}
+            {candidates.nextPageError ? (
               <button
-                key={candidate.id}
+                className="candidate-list__retry"
                 type="button"
-                role="option"
-                aria-selected={value?.id === candidate.id}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => select(candidate)}
+                onClick={() => void candidates.retryNextPage()}
               >
-                {candidate.name}
+                加载未完成，点击重试
               </button>
-            ))}
+            ) : null}
           </div>
         ) : null}
       </div>

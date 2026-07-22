@@ -30,7 +30,7 @@ describe('RelationCasesField', () => {
   it('adds a row, searches after debounce, and selects an existing case', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       void input;
-      return response({ items: [existingCase] });
+      return response({ items: [existingCase], nextCursor: null, hasMore: false });
     });
     vi.stubGlobal('fetch', fetchMock);
     render(
@@ -52,10 +52,44 @@ describe('RelationCasesField', () => {
     );
   });
 
+  it('shows the new-case action first, loads later pages, and opens above the field', async () => {
+    const firstCase = { ...existingCase, content: '新的政策事件相关案例一' };
+    const secondCase = {
+      id: '22222222-2222-4222-8222-222222222222',
+      content: '新的政策事件相关案例二',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) =>
+        String(input).includes('cursor=next-page')
+          ? response({ items: [secondCase], nextCursor: null, hasMore: false })
+          : response({ items: [firstCase], nextCursor: 'next-page', hasMore: true }),
+      ),
+    );
+    render(
+      <AppProviders>
+        <Fixture />
+      </AppProviders>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '添加案例' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '具体案例 1' }), {
+      target: { value: '新的政策事件' },
+    });
+
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3));
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      '创建新案例：新的政策事件',
+      firstCase.content,
+      secondCase.content,
+    ]);
+    expect(screen.getByRole('listbox').className).toContain('is-above');
+  });
+
   it('requires explicit confirmation to create a new case and removes rows without deleting cases', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => response({ items: [] })),
+      vi.fn(() => response({ items: [], nextCursor: null, hasMore: false })),
     );
     render(
       <AppProviders>
@@ -83,7 +117,7 @@ describe('RelationCasesField', () => {
   it('supports keyboard selection and rejects a duplicate confirmed row', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => response({ items: [existingCase] })),
+      vi.fn(() => response({ items: [existingCase], nextCursor: null, hasMore: false })),
     );
     render(
       <AppProviders>
@@ -95,8 +129,11 @@ describe('RelationCasesField', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '添加案例' }));
     const input = screen.getByRole('combobox', { name: '具体案例 2' });
-    fireEvent.change(input, { target: { value: '关税' } });
+    fireEvent.change(input, { target: { value: existingCase.content } });
     await screen.findByRole('option', { name: existingCase.content });
+    expect(
+      screen.queryByRole('option', { name: `创建新案例：${existingCase.content}` }),
+    ).toBeNull();
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(await screen.findByText('同一关系不能重复选择案例')).toBeTruthy();

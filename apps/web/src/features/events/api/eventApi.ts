@@ -5,6 +5,7 @@ import {
   eventListResponseSchema,
   type ApiError,
   type EventCandidate,
+  type EventCandidateListResponse,
   type EventDetail,
   type EventFormInput,
   type EventListResponse,
@@ -67,11 +68,20 @@ export async function getEventCandidates(
   options: { limit?: number; excludeId?: string } = {},
   signal?: AbortSignal,
 ): Promise<EventCandidate[]> {
-  const parameters = new URLSearchParams({ q: query, limit: String(options.limit ?? 5) });
+  return (await getEventCandidatePage(query, options, signal)).items;
+}
+
+export async function getEventCandidatePage(
+  query: string,
+  options: { limit?: number; cursor?: string; excludeId?: string } = {},
+  signal?: AbortSignal,
+): Promise<EventCandidateListResponse> {
+  const parameters = new URLSearchParams({ q: query, limit: String(options.limit ?? 100) });
+  if (options.cursor) parameters.set('cursor', options.cursor);
   if (options.excludeId) parameters.set('excludeId', options.excludeId);
   return eventCandidateListResponseSchema.parse(
     await requestJson(`/api/events/candidates?${parameters}`, {}, signal),
-  ).items;
+  );
 }
 
 export async function getEvent(id: string, signal?: AbortSignal): Promise<EventDetail> {

@@ -4,6 +4,7 @@ import {
   caseDetailSchema,
   caseListResponseSchema,
   caseRelationListResponseSchema,
+  type CaseCandidateListResponse,
   type CaseDetail,
   type CaseFormInput,
   type CaseListResponse,
@@ -62,10 +63,19 @@ export async function getCaseCandidates(
   query: string,
   signal?: AbortSignal,
 ): Promise<CaseReference[]> {
-  const parameters = new URLSearchParams({ q: query, limit: '10' });
+  return (await getCaseCandidatePage(query, {}, signal)).items;
+}
+
+export async function getCaseCandidatePage(
+  query: string,
+  options: { limit?: number; cursor?: string } = {},
+  signal?: AbortSignal,
+): Promise<CaseCandidateListResponse> {
+  const parameters = new URLSearchParams({ q: query, limit: String(options.limit ?? 100) });
+  if (options.cursor) parameters.set('cursor', options.cursor);
   return caseCandidateListResponseSchema.parse(
     await requestJson(`/api/cases/candidates?${parameters}`, {}, signal),
-  ).items;
+  );
 }
 
 export async function getCase(id: string, signal?: AbortSignal): Promise<CaseDetail> {
