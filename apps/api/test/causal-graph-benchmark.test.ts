@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assertBenchmarkTarget,
+  benchmarkScenariosForCenter,
   percentile95,
   summarizeDurations,
 } from '../src/database/benchmark/causalGraphBenchmark.js';
@@ -33,5 +34,22 @@ describe('causal graph benchmark statistics', () => {
     expect(() => assertBenchmarkTarget({ p95Milliseconds: 2_001 }, 2_000)).toThrow(
       'Causal graph benchmark P95 2001ms exceeds 2000ms',
     );
+  });
+
+  it('covers bounded and filtered queries for the 10,000-degree hub', () => {
+    expect(benchmarkScenariosForCenter('hub')).toEqual([
+      {
+        name: 'both-limit-20',
+        query: { direction: 'both', limit: 20, minConfidence: 0, minCaseCount: 0 },
+      },
+      {
+        name: 'both-limit-100',
+        query: { direction: 'both', limit: 100, minConfidence: 0, minCaseCount: 0 },
+      },
+      {
+        name: 'combined',
+        query: { direction: 'both', limit: 100, minConfidence: 75, minCaseCount: 1 },
+      },
+    ]);
   });
 });

@@ -33,6 +33,14 @@ interface BenchmarkScenario {
   query: Omit<CausalGraphQuery, 'centerEventId'>;
 }
 
+type BenchmarkCenterName = 'low' | 'medium' | 'high' | 'hub';
+
+interface BenchmarkCenter {
+  name: BenchmarkCenterName;
+  eventId: string;
+  degree: number;
+}
+
 function roundMilliseconds(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -66,7 +74,23 @@ export function assertBenchmarkTarget(
   }
 }
 
-function scenarios(): BenchmarkScenario[] {
+export function benchmarkScenariosForCenter(center: BenchmarkCenterName): BenchmarkScenario[] {
+  if (center === 'hub') {
+    return [
+      {
+        name: 'both-limit-20',
+        query: { direction: 'both', limit: 20, minConfidence: 0, minCaseCount: 0 },
+      },
+      {
+        name: 'both-limit-100',
+        query: { direction: 'both', limit: 100, minConfidence: 0, minCaseCount: 0 },
+      },
+      {
+        name: 'combined',
+        query: { direction: 'both', limit: 100, minConfidence: 75, minCaseCount: 1 },
+      },
+    ];
+  }
   const base = { limit: 100 as const, minConfidence: 0, minCaseCount: 0 };
   return [
     { name: 'upstream', query: { ...base, direction: 'upstream' } },
@@ -87,9 +111,7 @@ function scenarios(): BenchmarkScenario[] {
   ];
 }
 
-async function selectCenters(
-  pool: Pool,
-): Promise<Array<{ name: 'low' | 'medium' | 'high'; eventId: string; degree: number }>> {
+async function selectCenters(pool: Pool, hub: BenchmarkCenter): Promise<BenchmarkCenter[]> {
   const result = await pool.query<DegreeRow>(
     `with endpoints as (
        select cause_event_id as event_id from causal_relations
@@ -98,8 +120,10 @@ async function selectCenters(
      )
      select event_id, count(*)::int as degree
      from endpoints
+     where event_id <> $1
      group by event_id
      order by degree asc, event_id asc`,
+    [hub.eventId],
   );
   if (result.rows.length === 0) throw new Error('Benchmark simulation created no connected events');
   const selections = [
@@ -107,11 +131,89 @@ async function selectCenters(
     { name: 'medium' as const, row: result.rows[Math.floor(result.rows.length / 2)]! },
     { name: 'high' as const, row: result.rows.at(-1)! },
   ];
-  return selections.map(({ name, row }) => ({
-    name,
-    eventId: row.event_id,
-    degree: Number(row.degree),
-  }));
+  return [
+    ...selections.map(({ name, row }) => ({
+      name,
+      eventId: row.event_id,
+      degree: Number(row.degree),
+    })),
+    hub,
+  ];
+}
+
+async function installBenchmarkHub(pool: Pool, degree: number): Promise<BenchmarkCenter> {
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const hubResult = await client.query<{ id: string }>(
+      `select id
+       from abstract_events
+       order by id asc
+       limit 1`,
+    );
+    const hubId = hubResult.rows[0]?.id;
+    if (!hubId) throw new Error('Benchmark simulation created no events for the hub');
+
+    await client.query(
+      `create temporary table benchmark_relations_to_replace (
+         id uuid primary key
+       ) on commit drop`,
+    );
+    await client.query(
+      `insert into benchmark_relations_to_replace (id)
+       select r.id
+       from causal_relations r
+       order by
+         case when r.cause_event_id = $1 or r.effect_event_id = $1 then 0 else 1 end,
+         r.id asc
+       limit $2`,
+      [hubId, degree],
+    );
+    await client.query(
+      `delete from causal_relation_cases
+       where causal_relation_id in (select id from benchmark_relations_to_replace)`,
+    );
+    const deleted = await client.query(
+      `delete from causal_relations
+       where id in (select id from benchmark_relations_to_replace)
+       returning id`,
+    );
+    if (deleted.rowCount !== degree) {
+      throw new Error(`Benchmark requires at least ${degree} replaceable relations`);
+    }
+
+    const inserted = await client.query(
+      `with neighbors as (
+         select id,
+                row_number() over (order by id asc) as neighbor_number
+         from abstract_events
+         where id <> $1
+         order by id asc
+         limit $2
+       )
+       insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       select gen_random_uuid(),
+              $1,
+              id,
+              (100 - ((neighbor_number - 1) % 101))::smallint
+       from neighbors
+       returning id`,
+      [hubId, degree],
+    );
+    if (inserted.rowCount !== degree) {
+      throw new Error(`Benchmark requires at least ${degree} distinct hub neighbors`);
+    }
+
+    await client.query('analyze causal_relations');
+    await client.query('analyze causal_relation_cases');
+    await client.query('commit');
+    return { name: 'hub', eventId: hubId, degree };
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function runBenchmark(): Promise<void> {
@@ -149,7 +251,8 @@ async function runBenchmark(): Promise<void> {
     );
     process.stdout.write(`Simulation completed in ${simulation.elapsedMilliseconds}ms.\n`);
 
-    const centers = await selectCenters(pool);
+    const hub = await installBenchmarkHub(pool, 10_000);
+    const centers = await selectCenters(pool, hub);
     const service = new CausalGraphService(new PostgresCausalGraphRepository(pool));
     const durations: number[] = [];
     const samples: Array<{
@@ -160,7 +263,7 @@ async function runBenchmark(): Promise<void> {
     }> = [];
 
     for (const center of centers) {
-      for (const scenario of scenarios()) {
+      for (const scenario of benchmarkScenariosForCenter(center.name)) {
         const query: CausalGraphQuery = {
           centerEventId: center.eventId,
           ...scenario.query,

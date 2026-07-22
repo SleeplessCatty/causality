@@ -1,4 +1,4 @@
-import type { CausalGraphResponse } from '@causality/contracts';
+import type { CausalGraphQuery, CausalGraphResponse } from '@causality/contracts';
 import { Pool } from 'pg';
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { runMigrations } from '../src/database/migrate.js';
 import { PostgresCausalGraphRepository } from '../src/features/causal-graph/causalGraphRepository.js';
+import { CausalGraphService } from '../src/features/causal-graph/causalGraphService.js';
 
 const eventIds = {
   a: 'a0000000-0000-4000-8000-000000000001',
@@ -255,6 +256,70 @@ describe.sequential('causal graph REST API', () => {
 
     expect(names).toEqual(['事件 A', '事件 A']);
     await pool!.query(`update abstract_events set name = '事件 A' where id = $1`, [eventIds.a]);
+  });
+
+  it('bounds a high-degree hub in PostgreSQL before loading events', async () => {
+    const hubId = 'd0000000-0000-4000-8000-000000000001';
+    const neighborIds = Array.from(
+      { length: 1_500 },
+      (_, index) => `d1000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    );
+    const hubRelationIds = neighborIds.map(
+      (_, index) => `e0000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    );
+    const reverseRelationId = 'c1000000-0000-4000-8000-000000000001';
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       select id, name
+       from unnest($1::uuid[], $2::text[]) as events(id, name)`,
+      [
+        [hubId, ...neighborIds],
+        ['枢纽事件', ...neighborIds.map((_, index) => `枢纽邻居 ${index + 1}`)],
+      ],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       select id, $1, effect_event_id, 100 - ((ordinality - 1) / 100)::int
+       from unnest($2::uuid[], $3::uuid[]) with ordinality
+         as relations(id, effect_event_id, ordinality)`,
+      [hubId, hubRelationIds, neighborIds],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $2, $3, 100)`,
+      [reverseRelationId, neighborIds[0], hubId],
+    );
+
+    const repository = new PostgresCausalGraphRepository(pool!);
+    const adjacentIds = await repository.withSnapshot((snapshot) =>
+      snapshot.findAdjacentEventIds(
+        [hubId],
+        [hubId],
+        'both',
+        { minConfidence: 0, minCaseCount: 0 },
+        20,
+      ),
+    );
+    const graph = await new CausalGraphService(repository).query({
+      centerEventId: hubId,
+      direction: 'both',
+      limit: 20,
+      minConfidence: 0,
+      minCaseCount: 0,
+    } satisfies CausalGraphQuery);
+
+    expect(adjacentIds).toHaveLength(20);
+    expect(adjacentIds).toEqual(neighborIds.slice(0, 20));
+    expect(graph.nodes.map((event) => event.id)).toEqual([hubId, ...neighborIds.slice(0, 20)]);
+    expect(graph.relations.map((relation) => relation.id)).toEqual([
+      reverseRelationId,
+      ...hubRelationIds.slice(0, 20),
+    ]);
+    expect(graph.meta).toMatchObject({
+      nodeCount: 21,
+      relationCount: 21,
+      stopReason: 'node_limit',
+    });
   });
 
   it('can use endpoint and case-link indexes for graph queries', async () => {

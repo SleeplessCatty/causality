@@ -51,6 +51,7 @@ function query(overrides: Partial<CausalGraphQuery> = {}): CausalGraphQuery {
 class MemorySnapshot implements CausalGraphSnapshot {
   readonly frontierCalls: string[][] = [];
   readonly filterCalls: CausalGraphFilters[] = [];
+  readonly limitCalls: number[] = [];
 
   constructor(
     private readonly events: CausalGraphNode[],
@@ -65,20 +66,50 @@ class MemorySnapshot implements CausalGraphSnapshot {
     return this.events.filter((event) => eventIds.includes(event.id)).reverse();
   }
 
-  async findAdjacentRelations(
+  async findAdjacentEventIds(
     eventIds: string[],
+    visitedIds: string[],
     direction: CausalGraphQuery['direction'],
     filters: CausalGraphFilters,
-  ): Promise<CausalGraphRelation[]> {
+    limit: number,
+  ): Promise<string[]> {
     this.frontierCalls.push([...eventIds]);
     this.filterCalls.push({ ...filters });
-    return this.filtered(filters)
-      .filter((edge) => {
-        if (direction === 'upstream') return eventIds.includes(edge.effectEventId);
-        if (direction === 'downstream') return eventIds.includes(edge.causeEventId);
-        return eventIds.includes(edge.causeEventId) || eventIds.includes(edge.effectEventId);
+    this.limitCalls.push(limit);
+    const frontier = new Set(eventIds);
+    const visited = new Set(visitedIds);
+    const candidates = this.filtered(filters)
+      .flatMap((edge) => {
+        const neighborIds: string[] = [];
+        if (
+          (direction === 'downstream' || direction === 'both') &&
+          frontier.has(edge.causeEventId)
+        ) {
+          neighborIds.push(edge.effectEventId);
+        }
+        if (
+          (direction === 'upstream' || direction === 'both') &&
+          frontier.has(edge.effectEventId)
+        ) {
+          neighborIds.push(edge.causeEventId);
+        }
+        return neighborIds.map((neighborId) => ({ edge, neighborId }));
       })
-      .reverse();
+      .filter(({ neighborId }) => !visited.has(neighborId))
+      .sort(
+        (left, right) =>
+          right.edge.confidence - left.edge.confidence ||
+          right.edge.caseCount - left.edge.caseCount ||
+          left.edge.id.localeCompare(right.edge.id) ||
+          left.neighborId.localeCompare(right.neighborId),
+      );
+    const uniqueIds: string[] = [];
+    for (const { neighborId } of candidates) {
+      if (uniqueIds.includes(neighborId)) continue;
+      uniqueIds.push(neighborId);
+      if (uniqueIds.length === limit) break;
+    }
+    return uniqueIds;
   }
 
   async findRelationsBetween(
@@ -176,6 +207,28 @@ describe('CausalGraphService', () => {
     expect(graph.nodes).toHaveLength(21);
     expect(graph.meta.stopReason).toBe('node_limit');
     expect(setup.snapshot.frontierCalls).toEqual([[centerId]]);
+  });
+
+  it('passes the remaining node budget to each layer and stops when it is consumed', async () => {
+    const firstLayer = ids.slice(1, 13);
+    const secondLayer = ids.slice(13, 25);
+    const edges = [
+      ...firstLayer.map((id, index) => relation(index, centerId, id, 100 - index, 0)),
+      ...secondLayer.map((id, index) =>
+        relation(20 + index, firstLayer[index]!, id, 80 - index, 0),
+      ),
+      relation(40, firstLayer[0]!, centerId, 100, 0),
+      relation(41, secondLayer[0]!, firstLayer[0]!, 99, 0),
+    ];
+    const setup = service([centerId, ...firstLayer, ...secondLayer].map(node), edges);
+
+    const graph = await setup.service.query(query({ direction: 'both', limit: 20 }));
+
+    expect(setup.snapshot.limitCalls).toEqual([20, 8]);
+    expect(setup.snapshot.frontierCalls).toEqual([[centerId], firstLayer]);
+    expect(graph.nodes).toHaveLength(21);
+    expect(new Set(graph.nodes.map((event) => event.id)).size).toBe(21);
+    expect(graph.meta.stopReason).toBe('node_limit');
   });
 
   it('returns all filtered relations between selected nodes regardless of traversal direction', async () => {

@@ -33,21 +33,6 @@ function sortRelations(relations: CausalGraphRelation[]): CausalGraphRelation[] 
   );
 }
 
-function adjacentIds(
-  relation: CausalGraphRelation,
-  frontier: Set<string>,
-  direction: CausalGraphQuery['direction'],
-): string[] {
-  const ids: string[] = [];
-  if ((direction === 'downstream' || direction === 'both') && frontier.has(relation.causeEventId)) {
-    ids.push(relation.effectEventId);
-  }
-  if ((direction === 'upstream' || direction === 'both') && frontier.has(relation.effectEventId)) {
-    ids.push(relation.causeEventId);
-  }
-  return ids;
-}
-
 function response(
   nodes: CausalGraphNode[],
   relations: CausalGraphRelation[],
@@ -140,27 +125,20 @@ export class CausalGraphService {
       let stopReason: CausalGraphStopReason = 'exhausted';
 
       while (frontier.length > 0 && nodes.length - 1 < query.limit) {
-        const candidates = sortRelations(
-          await snapshot.findAdjacentRelations(frontier, query.direction, filters),
+        const remaining = query.limit - (nodes.length - 1);
+        const nextIds = await snapshot.findAdjacentEventIds(
+          frontier,
+          [...visited],
+          query.direction,
+          filters,
+          remaining,
         );
-        const frontierSet = new Set(frontier);
-        const nextIds: string[] = [];
-
-        for (const relation of candidates) {
-          for (const neighborId of adjacentIds(relation, frontierSet, query.direction)) {
-            if (visited.has(neighborId)) continue;
-            visited.add(neighborId);
-            nextIds.push(neighborId);
-            if (nodes.length - 1 + nextIds.length === query.limit) {
-              stopReason = 'node_limit';
-              break;
-            }
-          }
-          if (stopReason === 'node_limit') break;
-        }
-
         nodes.push(...(await loadDiscoveredEvents(snapshot, nextIds)));
-        if (stopReason === 'node_limit') break;
+        for (const eventId of nextIds) visited.add(eventId);
+        if (nextIds.length === remaining) {
+          stopReason = 'node_limit';
+          break;
+        }
         frontier = nextIds;
       }
 

@@ -8,11 +8,13 @@ export interface CausalGraphFilters {
 export interface CausalGraphSnapshot {
   findEvent(id: string): Promise<CausalGraphNode | null>;
   findEvents(ids: string[]): Promise<CausalGraphNode[]>;
-  findAdjacentRelations(
-    eventIds: string[],
+  findAdjacentEventIds(
+    frontierIds: string[],
+    visitedIds: string[],
     direction: CausalGraphQuery['direction'],
     filters: CausalGraphFilters,
-  ): Promise<CausalGraphRelation[]>;
+    limit: number,
+  ): Promise<string[]>;
   findRelationsBetween(
     eventIds: string[],
     filters: CausalGraphFilters,
