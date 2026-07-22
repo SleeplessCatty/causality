@@ -189,58 +189,66 @@ describe.sequential('relation REST API', () => {
       referencing new table as inserted_rows
       for each statement execute function audit_relation_case_batch()
     `);
-    const cause = await createEvent('测试：案例关联原因');
-    const effect = await createEvent('测试：案例关联结果');
-    const newContents = Array.from({ length: 6 }, (_, index) => `2026年关系测试新案例${index + 1}`);
-    const createdResponse = await createRelation(cause.id, effect.id, {
-      confidence: 64,
-      caseSelections: [
-        { type: 'existing', caseId: existingCase.id },
-        ...newContents.map((content) => ({ type: 'new' as const, content })),
-      ],
-    });
-    const created = createdResponse.json<RelationDetail>();
-    expect(createdResponse.statusCode).toBe(201);
-    expect(created.caseCount).toBe(7);
-    expect(created.recentCases).toHaveLength(5);
-    expect(created.confidence).toBe(64);
-    const linkCounts = await pool!.query<{ content: string; count: number }>(
-      `select c.content, count(*)::int as count
-       from causal_relation_cases crc
-       join concrete_cases c on c.id = crc.concrete_case_id
-       where crc.causal_relation_id = $1
-       group by c.content
-       order by c.content`,
-      [created.id],
-    );
-    expect(linkCounts.rows).toHaveLength(7);
-    expect(linkCounts.rows.every((row) => row.count === 1)).toBe(true);
-    const batchAudit = await pool!.query<{ inserted_count: number }>(
-      `select inserted_count from relation_case_batch_audit`,
-    );
-    expect(batchAudit.rows).toEqual([{ inserted_count: 6 }]);
-    await pool!.query(`drop trigger audit_relation_case_batch_trigger on concrete_cases`);
-    await pool!.query(`drop function audit_relation_case_batch()`);
-    await pool!.query(`drop table relation_case_batch_audit`);
-
-    const replaced = await app!.inject({
-      method: 'PUT',
-      url: `/api/relations/${created.id}`,
-      payload: {
-        causeEventId: cause.id,
-        effectEventId: effect.id,
+    try {
+      const cause = await createEvent('测试：案例关联原因');
+      const effect = await createEvent('测试：案例关联结果');
+      const newContents = Array.from(
+        { length: 6 },
+        (_, index) => `2026年关系测试新案例${index + 1}`,
+      );
+      const createdResponse = await createRelation(cause.id, effect.id, {
         confidence: 64,
-        description: null,
-        caseSelections: [{ type: 'existing', caseId: existingCase.id }],
-      },
-    });
-    expect(replaced.statusCode).toBe(200);
-    expect(replaced.json<RelationDetail>()).toMatchObject({ caseCount: 1, confidence: 64 });
-    const independentCount = await pool!.query<{ count: string }>(
-      `select count(*) from concrete_cases where content = any($1::text[])`,
-      [newContents],
-    );
-    expect(independentCount.rows[0]?.count).toBe('6');
+        caseSelections: [
+          { type: 'existing', caseId: existingCase.id },
+          ...newContents.map((content) => ({ type: 'new' as const, content })),
+        ],
+      });
+      const created = createdResponse.json<RelationDetail>();
+      expect(createdResponse.statusCode).toBe(201);
+      expect(created.caseCount).toBe(7);
+      expect(created.recentCases).toHaveLength(5);
+      expect(created.confidence).toBe(64);
+      const linkCounts = await pool!.query<{ content: string; count: number }>(
+        `select c.content, count(*)::int as count
+         from causal_relation_cases crc
+         join concrete_cases c on c.id = crc.concrete_case_id
+         where crc.causal_relation_id = $1
+         group by c.content
+         order by c.content`,
+        [created.id],
+      );
+      expect(linkCounts.rows).toHaveLength(7);
+      expect(linkCounts.rows.every((row) => row.count === 1)).toBe(true);
+      const batchAudit = await pool!.query<{ inserted_count: number }>(
+        `select inserted_count from relation_case_batch_audit`,
+      );
+      expect(batchAudit.rows).toEqual([{ inserted_count: 6 }]);
+
+      const replaced = await app!.inject({
+        method: 'PUT',
+        url: `/api/relations/${created.id}`,
+        payload: {
+          causeEventId: cause.id,
+          effectEventId: effect.id,
+          confidence: 64,
+          description: null,
+          caseSelections: [{ type: 'existing', caseId: existingCase.id }],
+        },
+      });
+      expect(replaced.statusCode).toBe(200);
+      expect(replaced.json<RelationDetail>()).toMatchObject({ caseCount: 1, confidence: 64 });
+      const independentCount = await pool!.query<{ count: string }>(
+        `select count(*) from concrete_cases where content = any($1::text[])`,
+        [newContents],
+      );
+      expect(independentCount.rows[0]?.count).toBe('6');
+    } finally {
+      await pool!.query(
+        `drop trigger if exists audit_relation_case_batch_trigger on concrete_cases`,
+      );
+      await pool!.query(`drop function if exists audit_relation_case_batch()`);
+      await pool!.query(`drop table if exists relation_case_batch_audit`);
+    }
   });
 
   it('rolls back a relation and new cases when an existing selection is missing', async () => {
