@@ -1,10 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import type { Pool } from 'pg';
+import { describe, expect, it, vi } from 'vitest';
+
+const databaseMocks = vi.hoisted(() => ({
+  insert: vi.fn(),
+  transaction: vi.fn(),
+  values: vi.fn(),
+}));
+
+vi.mock('../src/database/client.js', () => ({
+  createDatabaseClient: vi.fn(() => ({ transaction: databaseMocks.transaction })),
+}));
+
+vi.mock('../src/database/test-data/simulatedData.js', async (importOriginal) => {
+  const actual = await importOriginal<{
+    buildSimulationPlan: typeof buildSimulationPlan;
+    createSimulationBatchId: typeof createSimulationBatchId;
+    parseSimulationArguments: typeof parseSimulationArguments;
+  }>();
+  return { ...actual, buildSimulationPlan: vi.fn(actual.buildSimulationPlan) };
+});
 
 import {
   buildSimulationPlan,
   createSimulationBatchId,
   parseSimulationArguments,
 } from '../src/database/test-data/simulatedData.js';
+import { runSimulation } from '../src/database/test-data/simulate.js';
 
 describe('simulation arguments', () => {
   it('uses the documented defaults', () => {
@@ -134,5 +155,33 @@ describe('simulation plan', () => {
 
     expect(first).toMatch(/^\d{8}t\d{6}-[a-f0-9]{8}$/);
     expect(second).not.toBe(first);
+  });
+});
+
+describe('simulation runner', () => {
+  it('counts case links from the insertion pass without iterating them again', async () => {
+    const options = { events: 2, relations: 1, cases: 2, seed: 42 };
+    const plan = buildSimulationPlan(options, 'runner-batch');
+    const caseLinks = vi.fn(function* () {
+      yield {
+        causalRelationId: plan.relations[0]!.id!,
+        concreteCaseId: '10000000-0000-4000-8000-000000000001',
+      };
+      yield {
+        causalRelationId: plan.relations[0]!.id!,
+        concreteCaseId: '10000000-0000-4000-8000-000000000002',
+      };
+    });
+    vi.mocked(buildSimulationPlan).mockReturnValueOnce({ ...plan, caseLinks });
+    databaseMocks.values.mockResolvedValue(undefined);
+    databaseMocks.insert.mockReturnValue({ values: databaseMocks.values });
+    databaseMocks.transaction.mockImplementation(async (operation) =>
+      operation({ insert: databaseMocks.insert }),
+    );
+
+    const result = await runSimulation({} as Pool, options, 'runner-batch');
+
+    expect(caseLinks).toHaveBeenCalledOnce();
+    expect(result.inserted.caseLinks).toBe(2);
   });
 });

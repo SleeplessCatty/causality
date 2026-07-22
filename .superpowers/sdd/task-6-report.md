@@ -108,3 +108,42 @@ pnpm --filter @causality/web why elkjs
 - 双轴自审：spec 轴无缺失、越界或错误；standards 轴无硬性违规。已消除连接配置 Data Clump 与 teardown 错误字符串耦合；固定数据库名在 allowlist 与套件调用点保持显式重复，便于逐文件审计且运行时边界仍严格校验。
 - 模拟内存：生产代码仅调用一次 `plan.caseLinks()`；测试最大值不 `Array.from`、不落库。
 - 风险：core-model 为保留“旧迁移 → 当前迁移”的测试语义，在其独立主库旁创建两个该文件专属固定子库；它们共享同一容器并随 global teardown 删除。Vite 图 chunk 仍有既有体积 warning，Task 6 不改变其内容或切分策略。
+
+## Review follow-up：生产路径与生命周期测试
+
+### Simulation production-path RED
+
+在 `simulation.test.ts` 增加经过真实 `runSimulation` 的测试。测试只 mock `createDatabaseClient` 的 transaction/insert chain，并用 spy plan 统计 `caseLinks()` 调用；没有数据库连接或写入。为证明测试能捕获原缺陷，临时恢复旧的 `Array.from(plan.caseLinks()).length` 返回路径后运行：
+
+```bash
+pnpm --filter @causality/api exec vitest run test/simulation.test.ts
+```
+
+关键输出：exit 1；20 tests passed / 1 failed；失败为 `expected "vi.fn()" to be called once, but got 2 times`。这直接证明新增测试覆盖 `runSimulation` 的二次迭代缺陷，而不只是生成器自身。
+
+### Simulation production-path GREEN
+
+恢复生产实现 `caseLinks: caseLinkCount`（首次插入循环内计数）后以同一命令运行：1 file / 21 tests passed。测试同时断言 `result.inserted.caseLinks === 2`。
+
+### PostgreSQL context lifecycle coverage
+
+在既有窄范围 module mocks 上增加：正常 close 的 app → pool 顺序、迁移失败关闭 database pool、app ready 失败按 app → pool 清理，以及原有 double pool close 幂等断言。未增加生产依赖注入或改动 helper 公共行为。
+
+最终 focused 命令：
+
+```bash
+pnpm --filter @causality/api exec vitest run test/simulation.test.ts test/postgres-test-context.test.ts
+```
+
+输出：2 files / 26 tests passed，exit 0。
+
+### Review follow-up 门禁
+
+```bash
+pnpm --filter @causality/api test
+pnpm format:check
+pnpm lint
+pnpm typecheck
+```
+
+最终输出：API 13 files / 86 tests passed；Prettier 全部匹配；ESLint exit 0；contracts/API/Web TypeScript 全部 exit 0。未运行 E2E，原因是本 follow-up 仅增加 API 单元测试，不改变 Web 或运行时行为。桌面视觉复核保留为 controller/user 的后续人工门禁，未以自动化替代。
