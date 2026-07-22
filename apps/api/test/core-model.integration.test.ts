@@ -4,12 +4,16 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { Pool } from 'pg';
-import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
+import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDatabaseClient } from '../src/database/client.js';
 import { runMigrations } from '../src/database/migrate.js';
+import {
+  closePostgresTestPool,
+  createPostgresTestPool,
+  startPostgresTestContext,
+} from './support/postgresTestContext.js';
 
 const eventOneId = '10000000-0000-4000-8000-000000000001';
 const eventTwoId = '10000000-0000-4000-8000-000000000002';
@@ -41,103 +45,92 @@ async function expectPgError(operation: Promise<unknown>, expectedCode: string):
 }
 
 describe.sequential('core PostgreSQL model', () => {
-  let container: StartedTestContainer | undefined;
+  let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
   let pool: Pool | undefined;
   let legacyMigrationsFolder: string | undefined;
 
   beforeAll(async () => {
-    container = await new GenericContainer('postgres:18.4-alpine')
-      .withEnvironment({
-        POSTGRES_DB: 'causality_test',
-        POSTGRES_USER: 'causality',
-        POSTGRES_PASSWORD: 'causality',
-      })
-      .withExposedPorts(5432)
-      .withHealthCheck({
-        test: ['CMD-SHELL', 'pg_isready -U causality -d causality_test'],
-        interval: 1_000,
-        timeout: 3_000,
-        retries: 30,
-      })
-      .withWaitStrategy(Wait.forHealthCheck())
-      .withStartupTimeout(120_000)
-      .start();
-
-    pool = new Pool({
-      connectionString: `postgresql://causality:causality@${container.getHost()}:${container.getMappedPort(5432)}/causality_test`,
-    });
+    context = await startPostgresTestContext('causality_core_model_test');
+    ({ pool } = context);
     legacyMigrationsFolder = await createLegacyMigrationsFolder();
   }, 120_000);
 
   afterAll(async () => {
-    await pool?.end();
-    await container?.stop();
+    await context?.close();
     if (legacyMigrationsFolder) await rm(legacyMigrationsFolder, { recursive: true });
   });
 
   it('losslessly migrates ordered keyword arrays and can be run again', async () => {
-    await migrate(createDatabaseClient(pool!), { migrationsFolder: legacyMigrationsFolder! });
-    await pool!.query(
-      `insert into abstract_events (id, name, keywords)
+    const migrationDatabase = 'causality_keyword_migration_test';
+    await pool!.query(`create database ${migrationDatabase}`);
+    const migrationPool = createPostgresTestPool(migrationDatabase);
+
+    try {
+      await migrate(createDatabaseClient(migrationPool), {
+        migrationsFolder: legacyMigrationsFolder!,
+      });
+      await migrationPool.query(
+        `insert into abstract_events (id, name, keywords)
        values ($1, 'Legacy keyword event', $2::text[])`,
-      [legacyEventId, ['First Tag', '第二词', ' spaced ']],
-    );
+        [legacyEventId, ['First Tag', '第二词', ' spaced ']],
+      );
 
-    await runMigrations(pool!);
-    await runMigrations(pool!);
+      await runMigrations(migrationPool);
+      await runMigrations(migrationPool);
 
-    const keywordTable = await pool!.query<{ name: string | null }>(
-      `select to_regclass('public.event_keywords')::text as name`,
-    );
-    expect(keywordTable.rows[0]?.name).toBe('event_keywords');
+      const keywordTable = await migrationPool.query<{ name: string | null }>(
+        `select to_regclass('public.event_keywords')::text as name`,
+      );
+      expect(keywordTable.rows[0]?.name).toBe('event_keywords');
 
-    const keywords = await pool!.query<{ keyword: string; position: number }>(
-      `select keyword, position
+      const keywords = await migrationPool.query<{ keyword: string; position: number }>(
+        `select keyword, position
        from event_keywords
        where event_id = $1
        order by position`,
-      [legacyEventId],
-    );
-    expect(keywords.rows).toEqual([
-      { keyword: 'First Tag', position: 1 },
-      { keyword: '第二词', position: 2 },
-      { keyword: ' spaced ', position: 3 },
-    ]);
+        [legacyEventId],
+      );
+      expect(keywords.rows).toEqual([
+        { keyword: 'First Tag', position: 1 },
+        { keyword: '第二词', position: 2 },
+        { keyword: ' spaced ', position: 3 },
+      ]);
 
-    const legacyColumn = await pool!.query<{ exists: boolean }>(
-      `select exists (
+      const legacyColumn = await migrationPool.query<{ exists: boolean }>(
+        `select exists (
          select 1
          from information_schema.columns
          where table_schema = 'public'
            and table_name = 'abstract_events'
            and column_name = 'keywords'
        ) as exists`,
-    );
-    expect(legacyColumn.rows[0]?.exists).toBe(false);
+      );
+      expect(legacyColumn.rows[0]?.exists).toBe(false);
 
-    const tables = await pool!.query<{ table_name: string }>(
-      `select table_name
+      const tables = await migrationPool.query<{ table_name: string }>(
+        `select table_name
        from information_schema.tables
        where table_schema = 'public'
        order by table_name`,
-    );
+      );
 
-    expect(tables.rows.map((row) => row.table_name)).toEqual([
-      'abstract_events',
-      'causal_relation_cases',
-      'causal_relations',
-      'concrete_cases',
-      'event_aliases',
-      'event_keywords',
-    ]);
+      expect(tables.rows.map((row) => row.table_name)).toEqual([
+        'abstract_events',
+        'causal_relation_cases',
+        'causal_relations',
+        'concrete_cases',
+        'event_aliases',
+        'event_keywords',
+      ]);
+    } finally {
+      await closePostgresTestPool(migrationPool);
+    }
   });
 
   it('rolls the whole migration back when legacy keywords cannot be copied', async () => {
     const rollbackDatabase = 'causality_keyword_rollback_test';
     await pool!.query(`create database ${rollbackDatabase}`);
-    const rollbackPool = new Pool({
-      connectionString: `postgresql://causality:causality@${container!.getHost()}:${container!.getMappedPort(5432)}/${rollbackDatabase}`,
-    });
+    const rollbackPool = createPostgresTestPool(rollbackDatabase);
 
     try {
       await migrate(createDatabaseClient(rollbackPool), {
@@ -170,7 +163,7 @@ describe.sequential('core PostgreSQL model', () => {
         keyword_table_exists: false,
       });
     } finally {
-      await rollbackPool.end();
+      await closePostgresTestPool(rollbackPool);
     }
   });
 

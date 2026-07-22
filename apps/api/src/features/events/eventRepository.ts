@@ -15,6 +15,7 @@ import {
   encodeEventCandidateCursor,
   type EventCandidateCursorState,
 } from './eventCursor.js';
+import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface EventRow {
   id: string;
@@ -42,14 +43,6 @@ export interface EventRepository {
   findById(id: string): Promise<EventDetail | null>;
   create(input: EventFormInput): Promise<EventDetail>;
   replace(id: string, input: EventFormInput): Promise<EventDetail | null>;
-}
-
-function normalizeQuery(query: string): string {
-  return query.trim().toLocaleLowerCase();
-}
-
-function escapeLike(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
 }
 
 function sortAliases(values: string[]): string[] {
@@ -116,7 +109,7 @@ export class PostgresEventRepository implements EventRepository {
   }
 
   async list(query: EventListQuery): Promise<EventListResponse> {
-    const normalizedQuery = normalizeQuery(query.q);
+    const normalizedQuery = normalizeSearchQuery(query.q);
     const cursor = query.cursor ? decodeEventCursor(query.cursor, normalizedQuery) : undefined;
     const rows = normalizedQuery
       ? await this.searchRows(normalizedQuery, query.limit + 1, cursor)
@@ -179,7 +172,7 @@ export class PostgresEventRepository implements EventRepository {
   ): Promise<EventRow[]> {
     const searchCursor =
       cursor?.kind === 'search' || cursor?.kind === 'candidate' ? cursor : undefined;
-    const escaped = escapeLike(query);
+    const escaped = escapeLikePattern(query);
     const parameters: unknown[] = [query, `${escaped}%`, `%${escaped}%`];
     const cursorCondition = searchCursor
       ? `where (r.rank, e.normalized_name, e.id) > ($4::int, $5::text, $6::uuid)`
@@ -227,7 +220,7 @@ export class PostgresEventRepository implements EventRepository {
   }
 
   async findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse> {
-    const normalizedQuery = normalizeQuery(query.q);
+    const normalizedQuery = normalizeSearchQuery(query.q);
     const cursor = query.cursor
       ? decodeEventCandidateCursor(query.cursor, normalizedQuery, query.excludeId)
       : undefined;

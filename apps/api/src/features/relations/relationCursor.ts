@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
+import { normalizeSearchQuery } from '../shared/sqlSearch.js';
+
 const relationCursorStateSchema = z
   .object({
     query: z.string().max(120),
@@ -32,10 +34,6 @@ export class InvalidRelationCursorError extends Error {
   }
 }
 
-function normalizeQuery(query: string): string {
-  return query.trim().toLocaleLowerCase();
-}
-
 function checksum(state: RelationCursorState): string {
   return createHash('sha256')
     .update(`causality:relation-cursor:v1:${JSON.stringify(state)}`)
@@ -43,7 +41,10 @@ function checksum(state: RelationCursorState): string {
 }
 
 export function encodeRelationCursor(input: RelationCursorState): string {
-  const state = relationCursorStateSchema.parse({ ...input, query: normalizeQuery(input.query) });
+  const state = relationCursorStateSchema.parse({
+    ...input,
+    query: normalizeSearchQuery(input.query),
+  });
   return Buffer.from(
     JSON.stringify({ version: 1, state, checksum: checksum(state) }),
     'utf8',
@@ -60,7 +61,7 @@ export function decodeRelationCursor(cursor: string, query: string): RelationCur
     if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
       throw new Error('checksum mismatch');
     }
-    if (envelope.state.query !== normalizeQuery(query)) throw new Error('query mismatch');
+    if (envelope.state.query !== normalizeSearchQuery(query)) throw new Error('query mismatch');
     return envelope.state;
   } catch {
     throw new InvalidRelationCursorError();

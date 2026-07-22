@@ -1,45 +1,24 @@
-import { Pool } from 'pg';
-import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
+import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { runMigrations } from '../src/database/migrate.js';
 import { runFixedSeed } from '../src/database/test-data/fixedSeed.js';
 import { runSimulation } from '../src/database/test-data/simulate.js';
 import { verifyDatabase } from '../src/database/verify.js';
+import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 const firstFixedEventId = '00000000-0000-4000-8000-000000000001';
 
 describe.sequential('database data tools', () => {
-  let container: StartedTestContainer | undefined;
+  let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
   let pool: Pool | undefined;
 
   beforeAll(async () => {
-    container = await new GenericContainer('postgres:18.4-alpine')
-      .withEnvironment({
-        POSTGRES_DB: 'causality_test',
-        POSTGRES_USER: 'causality',
-        POSTGRES_PASSWORD: 'causality',
-      })
-      .withExposedPorts(5432)
-      .withHealthCheck({
-        test: ['CMD-SHELL', 'pg_isready -U causality -d causality_test'],
-        interval: 1_000,
-        timeout: 3_000,
-        retries: 30,
-      })
-      .withWaitStrategy(Wait.forHealthCheck())
-      .withStartupTimeout(120_000)
-      .start();
-
-    pool = new Pool({
-      connectionString: `postgresql://causality:causality@${container.getHost()}:${container.getMappedPort(5432)}/causality_test`,
-    });
-    await runMigrations(pool);
+    context = await startPostgresTestContext('causality_database_tools_test');
+    ({ pool } = context);
   }, 120_000);
 
   afterAll(async () => {
-    await pool?.end();
-    await container?.stop();
+    await context?.close();
   });
 
   it('loads fixed data idempotently without overwriting user edits', async () => {

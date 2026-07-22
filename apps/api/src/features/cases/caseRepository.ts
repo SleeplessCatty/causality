@@ -21,6 +21,7 @@ import {
   encodeCaseListCursor,
   encodeCaseRelationCursor,
 } from './caseCursor.js';
+import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface CaseRow {
   id: string;
@@ -50,14 +51,6 @@ export interface CaseRepository {
   findByContent(content: string): Promise<CaseReference | null>;
 }
 
-function normalizeQuery(query: string): string {
-  return query.trim().toLocaleLowerCase();
-}
-
-function escapeLike(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
-}
-
 function reference(row: Pick<CaseRow, 'id' | 'content'>): CaseReference {
   return { id: row.id, content: row.content };
 }
@@ -85,11 +78,11 @@ export class PostgresCaseRepository implements CaseRepository {
   constructor(private readonly pool: Pool) {}
 
   async list(query: CaseListQuery): Promise<CaseListResponse> {
-    const normalized = normalizeQuery(query.q);
+    const normalized = normalizeSearchQuery(query.q);
     const cursor = query.cursor
       ? decodeCaseListCursor(query.cursor, normalized, query.relationId)
       : undefined;
-    const escaped = escapeLike(normalized);
+    const escaped = escapeLikePattern(normalized);
     const parameters: unknown[] = [
       normalized,
       `${escaped}%`,
@@ -151,9 +144,9 @@ export class PostgresCaseRepository implements CaseRepository {
   }
 
   async candidates(query: CaseCandidateQuery): Promise<CaseCandidateListResponse> {
-    const normalized = normalizeQuery(query.q);
+    const normalized = normalizeSearchQuery(query.q);
     const cursor = query.cursor ? decodeCaseCandidateCursor(query.cursor, normalized) : undefined;
-    const escaped = escapeLike(normalized);
+    const escaped = escapeLikePattern(normalized);
     const parameters: unknown[] = [normalized, `${escaped}%`, `%${escaped}%`];
     const cursorCondition = cursor
       ? `where ranked.rank > $4::int

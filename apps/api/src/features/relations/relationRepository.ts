@@ -12,6 +12,7 @@ import type {
 import type { Pool, PoolClient } from 'pg';
 
 import { decodeRelationCursor, encodeRelationCursor } from './relationCursor.js';
+import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface RelationRow {
   id: string;
@@ -47,14 +48,6 @@ export interface RelationRepository {
   findById(id: string): Promise<RelationDetail | null>;
   create(input: RelationFormInput): Promise<RelationDetail>;
   replace(id: string, input: RelationFormInput): Promise<RelationDetail | null>;
-}
-
-function normalizeQuery(query: string): string {
-  return query.trim().toLocaleLowerCase();
-}
-
-function escapeLike(value: string): string {
-  return value.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
 }
 
 function reference(row: RelationRow): RelationReference {
@@ -102,7 +95,7 @@ export class PostgresRelationRepository implements RelationRepository {
   constructor(private readonly pool: Pool) {}
 
   async list(query: RelationListQuery): Promise<RelationListResponse> {
-    const normalizedQuery = normalizeQuery(query.q);
+    const normalizedQuery = normalizeSearchQuery(query.q);
     const cursor = query.cursor ? decodeRelationCursor(query.cursor, normalizedQuery) : undefined;
     const rowsWithExtra = normalizedQuery
       ? await this.searchRows(normalizedQuery, query.limit + 1, cursor)
@@ -148,7 +141,7 @@ export class PostgresRelationRepository implements RelationRepository {
     limit: number,
     cursor?: ReturnType<typeof decodeRelationCursor>,
   ): Promise<RelationRow[]> {
-    const escaped = escapeLike(query);
+    const escaped = escapeLikePattern(query);
     const parameters: unknown[] = [query, `${escaped}%`, `%${escaped}%`];
     const cursorCondition = cursor
       ? `and (

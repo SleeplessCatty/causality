@@ -1,12 +1,11 @@
 import type { CausalGraphQuery, CausalGraphResponse } from '@causality/contracts';
-import { Pool } from 'pg';
-import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
+import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { buildApp } from '../src/app.js';
-import { runMigrations } from '../src/database/migrate.js';
+import type { buildApp } from '../src/app.js';
 import { PostgresCausalGraphRepository } from '../src/features/causal-graph/causalGraphRepository.js';
 import { CausalGraphService } from '../src/features/causal-graph/causalGraphService.js';
+import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 const eventIds = {
   a: 'a0000000-0000-4000-8000-000000000001',
@@ -34,31 +33,13 @@ function graphUrl(
 }
 
 describe.sequential('causal graph REST API', () => {
-  let container: StartedTestContainer | undefined;
+  let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
   let pool: Pool | undefined;
   let app: ReturnType<typeof buildApp> | undefined;
 
   beforeAll(async () => {
-    container = await new GenericContainer('postgres:18.4-alpine')
-      .withEnvironment({
-        POSTGRES_DB: 'causality_graph_test',
-        POSTGRES_USER: 'causality',
-        POSTGRES_PASSWORD: 'causality',
-      })
-      .withExposedPorts(5432)
-      .withHealthCheck({
-        test: ['CMD-SHELL', 'pg_isready -U causality -d causality_graph_test'],
-        interval: 1_000,
-        timeout: 3_000,
-        retries: 30,
-      })
-      .withWaitStrategy(Wait.forHealthCheck())
-      .withStartupTimeout(120_000)
-      .start();
-    pool = new Pool({
-      connectionString: `postgresql://causality:causality@${container.getHost()}:${container.getMappedPort(5432)}/causality_graph_test`,
-    });
-    await runMigrations(pool);
+    context = await startPostgresTestContext('causality_graph_test');
+    ({ pool, app } = context);
     await pool.query(
       `insert into abstract_events (id, name)
        values ($1, '事件 A'), ($2, '事件 B'), ($3, '事件 C'), ($4, '事件 D'), ($5, '孤立事件')`,
@@ -100,14 +81,10 @@ describe.sequential('causal graph REST API', () => {
        values ($1, $4), ($1, $5), ($2, $6), ($3, $7), ($3, $8), ($3, $9)`,
       [relationIds.ab, relationIds.ac, relationIds.cd, ...caseIds],
     );
-    app = buildApp({ logger: false, checkDatabase: async () => true, databasePool: pool });
-    await app.ready();
   }, 120_000);
 
   afterAll(async () => {
-    await app?.close();
-    await pool?.end();
-    await container?.stop();
+    await context?.close();
   });
 
   it('returns a stable downstream graph with complete internal relations', async () => {

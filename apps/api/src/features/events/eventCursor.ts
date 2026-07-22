@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
+import { normalizeSearchQuery } from '../shared/sqlSearch.js';
+
 const listCursorStateSchema = z
   .object({
     kind: z.literal('list'),
@@ -55,10 +57,6 @@ export class InvalidEventCursorError extends Error {
   }
 }
 
-function normalizeQuery(query: string): string {
-  return query.trim().toLocaleLowerCase();
-}
-
 function checksum(state: EventCursorState): string {
   return createHash('sha256')
     .update(`causality:event-cursor:v1:${JSON.stringify(state)}`)
@@ -68,7 +66,7 @@ function checksum(state: EventCursorState): string {
 export function encodeEventCursor(input: EventCursorState): string {
   const state = eventCursorStateSchema.parse({
     ...input,
-    query: normalizeQuery(input.query),
+    query: normalizeSearchQuery(input.query),
   });
   return Buffer.from(
     JSON.stringify({ version: 1, state, checksum: checksum(state) }),
@@ -95,7 +93,7 @@ function decodeVerifiedEventEnvelope(cursor: string): EventCursorState {
 
 export function decodeEventCursor(cursor: string, query: string): EventCursorState {
   const state = decodeVerifiedEventEnvelope(cursor);
-  const normalized = normalizeQuery(query);
+  const normalized = normalizeSearchQuery(query);
   if (
     state.query !== normalized ||
     (normalized === '' && state.kind !== 'list') ||
@@ -118,7 +116,7 @@ export function decodeEventCandidateCursor(
   const state = decodeVerifiedEventEnvelope(cursor);
   if (
     state.kind !== 'candidate' ||
-    state.query !== normalizeQuery(query) ||
+    state.query !== normalizeSearchQuery(query) ||
     state.excludeId !== (excludeId ?? null)
   ) {
     throw new InvalidEventCursorError();

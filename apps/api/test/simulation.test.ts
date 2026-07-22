@@ -113,6 +113,21 @@ describe('simulation plan', () => {
     expect(links).toHaveLength(28);
   });
 
+  it.each([
+    ['zero cases', { events: 2, relations: 1, cases: 0, seed: 42 }, 0],
+    ['the default 10,000 cases', parseSimulationArguments([]), 9_333],
+    [
+      'the maximum 1,000,000 cases',
+      { events: 2, relations: 2, cases: 1_000_000, seed: 42 },
+      933_333,
+    ],
+  ])('counts generated case links for %s without inserting them', (_label, input, expected) => {
+    let count = 0;
+    const links = buildSimulationPlan(input, 'count-batch').caseLinks();
+    while (!links.next().done) count += 1;
+    expect(count).toBe(expected);
+  });
+
   it('creates unique, filesystem-safe batch identifiers', () => {
     const first = createSimulationBatchId();
     const second = createSimulationBatchId();

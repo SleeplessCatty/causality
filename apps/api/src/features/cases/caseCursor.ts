@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
+import { normalizeSearchQuery } from '../shared/sqlSearch.js';
+
 const listStateSchema = z
   .object({
     query: z.string().max(100),
@@ -48,10 +50,6 @@ export class InvalidCaseCursorError extends Error {
   }
 }
 
-function normalizeQuery(query: string): string {
-  return query.trim().toLocaleLowerCase();
-}
-
 function checksum(kind: string, state: unknown): string {
   return createHash('sha256')
     .update(`causality:case-cursor:v1:${kind}:${JSON.stringify(state)}`)
@@ -80,7 +78,7 @@ function decode(cursor: string, kind: 'list' | 'relations' | 'candidates'): unkn
 }
 
 export function encodeCaseListCursor(input: CaseListCursorState): string {
-  const state = listStateSchema.parse({ ...input, query: normalizeQuery(input.query) });
+  const state = listStateSchema.parse({ ...input, query: normalizeSearchQuery(input.query) });
   return encode('list', state);
 }
 
@@ -92,7 +90,7 @@ export function decodeCaseListCursor(
   try {
     const state = listStateSchema.parse(decode(cursor, 'list'));
     if (
-      state.query !== normalizeQuery(query) ||
+      state.query !== normalizeSearchQuery(query) ||
       state.filterRelationId !== (relationId ?? null) ||
       (state.query === '' && state.rank !== null) ||
       (state.query !== '' && state.rank === null)
@@ -120,14 +118,14 @@ export function decodeCaseRelationCursor(cursor: string, caseId: string): CaseRe
 }
 
 export function encodeCaseCandidateCursor(input: CaseCandidateCursorState): string {
-  const state = candidateStateSchema.parse({ ...input, query: normalizeQuery(input.query) });
+  const state = candidateStateSchema.parse({ ...input, query: normalizeSearchQuery(input.query) });
   return encode('candidates', state);
 }
 
 export function decodeCaseCandidateCursor(cursor: string, query: string): CaseCandidateCursorState {
   try {
     const state = candidateStateSchema.parse(decode(cursor, 'candidates'));
-    if (state.query !== normalizeQuery(query)) throw new Error('query mismatch');
+    if (state.query !== normalizeSearchQuery(query)) throw new Error('query mismatch');
     return state;
   } catch {
     throw new InvalidCaseCursorError();

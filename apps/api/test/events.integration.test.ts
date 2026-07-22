@@ -3,52 +3,22 @@ import type {
   EventDetail,
   EventListResponse,
 } from '@causality/contracts';
-import { Pool } from 'pg';
-import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { buildApp } from '../src/app.js';
-import { runMigrations } from '../src/database/migrate.js';
+import type { buildApp } from '../src/app.js';
+import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 describe.sequential('event REST API', () => {
-  let container: StartedTestContainer | undefined;
-  let pool: Pool | undefined;
+  let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
   let app: ReturnType<typeof buildApp> | undefined;
 
   beforeAll(async () => {
-    container = await new GenericContainer('postgres:18.4-alpine')
-      .withEnvironment({
-        POSTGRES_DB: 'causality_events_test',
-        POSTGRES_USER: 'causality',
-        POSTGRES_PASSWORD: 'causality',
-      })
-      .withExposedPorts(5432)
-      .withHealthCheck({
-        test: ['CMD-SHELL', 'pg_isready -U causality -d causality_events_test'],
-        interval: 1_000,
-        timeout: 3_000,
-        retries: 30,
-      })
-      .withWaitStrategy(Wait.forHealthCheck())
-      .withStartupTimeout(120_000)
-      .start();
-
-    pool = new Pool({
-      connectionString: `postgresql://causality:causality@${container.getHost()}:${container.getMappedPort(5432)}/causality_events_test`,
-    });
-    await runMigrations(pool);
-    app = buildApp({
-      logger: false,
-      checkDatabase: async () => true,
-      databasePool: pool,
-    });
-    await app.ready();
+    context = await startPostgresTestContext('causality_events_test');
+    ({ app } = context);
   }, 120_000);
 
   afterAll(async () => {
-    await app?.close();
-    await pool?.end();
-    await container?.stop();
+    await context?.close();
   });
 
   async function createEvent(

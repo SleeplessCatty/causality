@@ -43,6 +43,7 @@ export async function runSimulation(
   const startedAt = performance.now();
   const plan = buildSimulationPlan(options, batchId);
   const database = createDatabaseClient(pool);
+  let caseLinkCount = 0;
 
   await database.transaction(async (transaction) => {
     for (let offset = 0; offset < plan.events.length; offset += insertBatchSize) {
@@ -80,6 +81,7 @@ export async function runSimulation(
 
     let linkBatch: Array<typeof causalRelationCases.$inferInsert> = [];
     for (const link of plan.caseLinks()) {
+      caseLinkCount += 1;
       linkBatch.push(link);
       if (linkBatch.length === insertBatchSize) {
         await transaction.insert(causalRelationCases).values(linkBatch);
@@ -96,7 +98,7 @@ export async function runSimulation(
       aliases: options.events,
       relations: options.relations,
       cases: options.cases,
-      caseLinks: Array.from(plan.caseLinks()).length,
+      caseLinks: caseLinkCount,
     },
     elapsedMilliseconds: Math.round(performance.now() - startedAt),
   };

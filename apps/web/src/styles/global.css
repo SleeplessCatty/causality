@@ -47,67 +47,6 @@ a {
   font: inherit;
 }
 
-.app-shell {
-  width: min(1180px, calc(100% - 96px));
-  margin: 0 auto;
-}
-
-.app-header {
-  height: 76px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid color-mix(in srgb, var(--border), transparent 10%);
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--ink);
-  font-size: 17px;
-  font-weight: 680;
-  letter-spacing: -0.01em;
-  text-decoration: none;
-}
-
-.brand-mark {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--ink);
-  color: white;
-  font-family: Georgia, serif;
-  font-size: 18px;
-}
-
-.environment-label {
-  padding: 5px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: color-mix(in srgb, white, transparent 25%);
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 520px;
-  gap: 88px;
-  align-items: center;
-  min-height: calc(100vh - 76px);
-  padding: 72px 0 104px;
-}
-
-.hero {
-  align-self: center;
-}
-
 .eyebrow {
   margin: 0 0 18px;
   color: var(--accent);
@@ -115,24 +54,6 @@ main {
   font-weight: 750;
   letter-spacing: 0.13em;
   text-transform: uppercase;
-}
-
-.hero h1 {
-  max-width: 520px;
-  margin: 0;
-  font-family: Georgia, 'Noto Serif SC', serif;
-  font-size: clamp(44px, 4.4vw, 66px);
-  font-weight: 520;
-  letter-spacing: -0.045em;
-  line-height: 1.08;
-}
-
-.hero > p:last-child {
-  max-width: 510px;
-  margin: 28px 0 0;
-  color: var(--muted);
-  font-size: 17px;
-  line-height: 1.8;
 }
 
 .status-card {
