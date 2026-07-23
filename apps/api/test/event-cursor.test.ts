@@ -2,39 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   decodeEventCandidateCursor,
-  decodeEventCursor,
   decodeEventRelationCursor,
   encodeEventCandidateCursor,
-  encodeEventCursor,
   encodeEventRelationCursor,
 } from '../src/features/events/eventCursor.js';
 
 const eventId = '11111111-1111-4111-8111-111111111111';
 
 describe('event cursor', () => {
-  it('round-trips a default-list cursor', () => {
-    const state = {
-      kind: 'list' as const,
-      query: '' as const,
-      updatedAt: '2026-07-21T03:00:00.000Z',
-      id: eventId,
-    };
-
-    expect(decodeEventCursor(encodeEventCursor(state), '')).toEqual(state);
-  });
-
-  it('round-trips a ranked-search cursor', () => {
-    const state = {
-      kind: 'search' as const,
-      query: '原油',
-      rank: 2,
-      normalizedName: '原油价格上涨',
-      id: eventId,
-    };
-
-    expect(decodeEventCursor(encodeEventCursor(state), '原油')).toEqual(state);
-  });
-
   it('round-trips event relations and binds them to the event', () => {
     const state = {
       eventId,
@@ -63,18 +38,9 @@ describe('event cursor', () => {
     expect(() => decodeEventRelationCursor(tampered, eventId)).toThrow('Invalid event cursor');
   });
 
-  it('rejects unsupported versions and query mismatches', () => {
+  it('rejects unsupported versions', () => {
     const unsupported = Buffer.from(JSON.stringify({ version: 2 }), 'utf8').toString('base64url');
     expect(() => decodeEventRelationCursor(unsupported, eventId)).toThrow('Invalid event cursor');
-
-    const cursor = encodeEventCursor({
-      kind: 'search',
-      query: '原油',
-      rank: 1,
-      normalizedName: '原油价格上涨',
-      id: eventId,
-    });
-    expect(() => decodeEventCursor(cursor, '油价')).toThrow('Invalid event cursor');
   });
 
   it('round-trips candidates and binds them to query and exclusion', () => {

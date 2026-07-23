@@ -6,6 +6,7 @@ playwright-report/
 test-results/
 .env
 .DS_Store
+.vscode/
 *.log
 *.tsbuildinfo
 .superpowers/

@@ -147,9 +147,18 @@ describe.sequential('case REST API', () => {
   });
 
   it('paginates candidate cases without duplicates and binds cursors to the query', async () => {
+    const createdIds: string[] = [];
     for (const index of [1, 2, 3, 4, 5]) {
-      await createCase(`CASEPAGE 候选案例 ${index}`);
+      const created = (await createCase(`CASEPAGE 候选案例 ${index}`)).json<CaseDetail>();
+      createdIds.push(created.id);
     }
+    await pool!.query(
+      `update concrete_cases
+       set updated_at = '2026-07-23T08:00:00.123456Z'::timestamptz
+       where id = any($1::uuid[])`,
+      [createdIds],
+    );
+    const expectedOrder = [...createdIds].sort((left, right) => right.localeCompare(left));
 
     const first = await app!.inject({
       method: 'GET',
@@ -161,12 +170,19 @@ describe.sequential('case REST API', () => {
       url: `/api/cases/candidates?q=CASEPAGE&limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
     });
     const secondPage = second.json<CaseCandidateListResponse>();
+    const third = await app!.inject({
+      method: 'GET',
+      url: `/api/cases/candidates?q=CASEPAGE&limit=2&cursor=${encodeURIComponent(secondPage.nextCursor!)}`,
+    });
+    const thirdPage = third.json<CaseCandidateListResponse>();
 
-    expect(first.statusCode).toBe(200);
+    expect([first.statusCode, second.statusCode, third.statusCode]).toEqual([200, 200, 200]);
     expect(firstPage).toMatchObject({ hasMore: true });
-    expect(secondPage.items.map((item) => item.id)).not.toEqual(
-      expect.arrayContaining(firstPage.items.map((item) => item.id)),
-    );
+    expect(secondPage).toMatchObject({ hasMore: true });
+    expect(thirdPage).toMatchObject({ hasMore: false, nextCursor: null });
+    expect(
+      [...firstPage.items, ...secondPage.items, ...thirdPage.items].map((item) => item.id),
+    ).toEqual(expectedOrder);
 
     const mismatch = await app!.inject({
       method: 'GET',
@@ -174,6 +190,58 @@ describe.sequential('case REST API', () => {
     });
     expect(mismatch.statusCode).toBe(400);
     expect(mismatch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('paginates a case relation list without losing equal microsecond timestamps', async () => {
+    const linkedCase = (await createCase('2026年案例详情高精度游标测试')).json<CaseDetail>();
+    const eventIds = [
+      '11000000-0000-4000-8000-000000000001',
+      '11000000-0000-4000-8000-000000000002',
+      '11000000-0000-4000-8000-000000000003',
+      '11000000-0000-4000-8000-000000000004',
+    ];
+    const relationIds = [
+      '21000000-0000-4000-8000-000000000001',
+      '21000000-0000-4000-8000-000000000002',
+      '21000000-0000-4000-8000-000000000003',
+    ];
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values ($1, '高精度原因'), ($2, '高精度结果一'), ($3, '高精度结果二'), ($4, '高精度结果三')`,
+      eventIds,
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $4, $5, 10), ($2, $4, $6, 20), ($3, $4, $7, 30)`,
+      [...relationIds, eventIds[0], eventIds[1], eventIds[2], eventIds[3]],
+    );
+    await pool!.query(
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id, linked_at)
+       select relation_id, $2, '2026-07-23T08:00:00.123456Z'::timestamptz
+       from unnest($1::uuid[]) as linked(relation_id)`,
+      [relationIds, linkedCase.id],
+    );
+
+    const expectedOrder = [...relationIds].sort((left, right) => right.localeCompare(left));
+    const first = await app!.inject({
+      method: 'GET',
+      url: `/api/cases/${linkedCase.id}/relations?limit=2`,
+    });
+    const firstPage = first.json<CaseRelationListResponse>();
+    const second = await app!.inject({
+      method: 'GET',
+      url: `/api/cases/${linkedCase.id}/relations?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+    const secondPage = second.json<CaseRelationListResponse>();
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect([...firstPage.items, ...secondPage.items].map((item) => item.id)).toEqual(expectedOrder);
+    expect(firstPage.items.map((item) => item.linkedAt)).toEqual([
+      '2026-07-23T08:00:00.123Z',
+      '2026-07-23T08:00:00.123Z',
+    ]);
+    expect(secondPage).toMatchObject({ hasMore: false, nextCursor: null });
   });
 
   it('returns stable client errors and publishes case paths', async () => {

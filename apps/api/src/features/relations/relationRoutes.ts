@@ -18,7 +18,6 @@ import {
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 
-import { InvalidRelationCursorError } from './relationCursor.js';
 import { InvalidCaseCursorError } from '../cases/caseCursor.js';
 import { PostgresCaseRepository } from '../cases/caseRepository.js';
 import { PostgresRelationRepository } from './relationRepository.js';
@@ -27,7 +26,7 @@ import { RelationService, RelationServiceError } from './relationService.js';
 const relationParamsSchema = z.object({ relationId: z.uuid() }).strict();
 
 function sendRelationError(error: unknown, reply: FastifyReply) {
-  if (error instanceof InvalidRelationCursorError || error instanceof InvalidCaseCursorError) {
+  if (error instanceof InvalidCaseCursorError) {
     return reply.status(400).send({ code: 'VALIDATION_ERROR', message: '分页游标不合法' });
   }
   if (error instanceof RelationServiceError) {

@@ -3,25 +3,6 @@ import { z } from 'zod';
 
 import { normalizeSearchQuery } from '../shared/sqlSearch.js';
 
-const listCursorStateSchema = z
-  .object({
-    kind: z.literal('list'),
-    query: z.literal(''),
-    updatedAt: z.iso.datetime({ offset: true }),
-    id: z.uuid(),
-  })
-  .strict();
-
-const searchCursorStateSchema = z
-  .object({
-    kind: z.literal('search'),
-    query: z.string().min(1).max(80),
-    rank: z.number().int().min(1).max(6),
-    normalizedName: z.string().min(1).max(50),
-    id: z.uuid(),
-  })
-  .strict();
-
 const candidateCursorStateSchema = z
   .object({
     kind: z.literal('candidate'),
@@ -43,8 +24,6 @@ const relationCursorStateSchema = z
   .strict();
 
 const eventCursorStateSchema = z.discriminatedUnion('kind', [
-  listCursorStateSchema,
-  searchCursorStateSchema,
   candidateCursorStateSchema,
   relationCursorStateSchema,
 ]);
@@ -74,11 +53,8 @@ function checksum(state: EventCursorState): string {
     .digest('base64url');
 }
 
-export function encodeEventCursor(input: EventCursorState): string {
-  const state = eventCursorStateSchema.parse({
-    ...input,
-    ...('query' in input ? { query: normalizeSearchQuery(input.query) } : {}),
-  });
+function encodeEventCursor(input: EventCursorState): string {
+  const state = eventCursorStateSchema.parse(input);
   return Buffer.from(
     JSON.stringify({ version: 1, state, checksum: checksum(state) }),
     'utf8',
@@ -102,22 +78,12 @@ function decodeVerifiedEventEnvelope(cursor: string): EventCursorState {
   }
 }
 
-export function decodeEventCursor(cursor: string, query: string): EventCursorState {
-  const state = decodeVerifiedEventEnvelope(cursor);
-  const normalized = normalizeSearchQuery(query);
-  if (
-    !('query' in state) ||
-    state.query !== normalized ||
-    (normalized === '' && state.kind !== 'list') ||
-    (normalized !== '' && state.kind !== 'search')
-  ) {
-    throw new InvalidEventCursorError();
-  }
-  return state;
-}
-
 export function encodeEventCandidateCursor(input: Omit<EventCandidateCursorState, 'kind'>): string {
-  return encodeEventCursor({ kind: 'candidate', ...input });
+  return encodeEventCursor({
+    kind: 'candidate',
+    ...input,
+    query: normalizeSearchQuery(input.query),
+  });
 }
 
 export function decodeEventCandidateCursor(

@@ -49,7 +49,7 @@ describe('event route pages', () => {
   });
 
   it('creates an event and navigates to its detail route', async () => {
-    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+    const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
       if (init?.method === 'POST') return jsonResponse(eventDetail, 201);
       return jsonResponse({ items: [] });
     });

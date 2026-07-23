@@ -87,9 +87,12 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   }
   await expect(zoomOutput).toHaveText('10%');
   await expect(zoomOut).toBeDisabled();
-  expect(await zoomOutput.evaluate((element) => getComputedStyle(element).borderRightWidth)).toBe(
-    '1px',
-  );
+  const dividerWidths = await page
+    .locator('.graph-viewport-controls > :not(:first-child)')
+    .evaluateAll((elements) =>
+      elements.map((element) => getComputedStyle(element).borderLeftWidth),
+    );
+  expect(dividerWidths).toEqual(['1px', '1px', '1px']);
   await page.getByRole('button', { name: '适应画布' }).click();
 
   const canvasBox = await canvas.boundingBox();

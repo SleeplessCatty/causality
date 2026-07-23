@@ -3,6 +3,8 @@
     "target": "ES2023",
     "lib": ["ES2023"],
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,

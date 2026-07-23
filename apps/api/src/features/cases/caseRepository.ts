@@ -35,6 +35,11 @@ interface CaseRow {
   rank?: number;
 }
 
+interface CaseCandidateRow extends CaseRow {
+  cursor_at: string;
+  rank: number;
+}
+
 interface CaseRelationRow {
   id: string;
   cause_event_id: string;
@@ -42,10 +47,12 @@ interface CaseRelationRow {
   effect_event_id: string;
   effect_event_name: string;
   linked_at: Date;
+  cursor_at: string;
 }
 
 interface RelationCaseRow extends CaseRow {
   linked_at: Date;
+  cursor_at: string;
 }
 
 export interface CaseRepository {
@@ -153,12 +160,16 @@ export class PostgresCaseRepository implements CaseRepository {
       : '';
     if (cursor) parameters.push(cursor.rank, cursor.updatedAt, cursor.id);
     parameters.push(query.limit + 1);
-    const result = await this.pool.query<CaseRow>(
+    const result = await this.pool.query<CaseCandidateRow>(
       `with ranked as (
          select c.id,
                 c.content,
                 c.created_at,
                 c.updated_at,
+                to_char(
+                  c.updated_at at time zone 'UTC',
+                  'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+                ) as cursor_at,
                 0::int as relation_count,
                 case
                   when lower(c.content) = $1 then 1
@@ -184,8 +195,8 @@ export class PostgresCaseRepository implements CaseRepository {
         hasMore && last
           ? encodeCaseCandidateCursor({
               query: normalized,
-              rank: last.rank!,
-              updatedAt: last.updated_at.toISOString(),
+              rank: last.rank,
+              updatedAt: last.cursor_at,
               id: last.id,
             })
           : null,
@@ -198,19 +209,21 @@ export class PostgresCaseRepository implements CaseRepository {
   ): Promise<RelationCaseListResponse> {
     const cursor = query.cursor ? decodeRelationCaseCursor(query.cursor, relationId) : undefined;
     const parameters: unknown[] = [relationId];
-    const cursorCondition = cursor
-      ? `and (date_trunc('milliseconds', crc.linked_at), c.id) < ($2::timestamptz, $3::uuid)`
-      : '';
+    const cursorCondition = cursor ? `and (crc.linked_at, c.id) < ($2::timestamptz, $3::uuid)` : '';
     if (cursor) parameters.push(cursor.linkedAt, cursor.caseId);
     parameters.push(query.limit + 1);
     const result = await this.pool.query<RelationCaseRow>(
       `${caseSelect},
-              date_trunc('milliseconds', crc.linked_at) as linked_at
+              crc.linked_at,
+              to_char(
+                crc.linked_at at time zone 'UTC',
+                'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+              ) as cursor_at
        from causal_relation_cases crc
        join concrete_cases c on c.id = crc.concrete_case_id
        where crc.causal_relation_id = $1
        ${cursorCondition}
-       order by date_trunc('milliseconds', crc.linked_at) desc, c.id desc
+       order by crc.linked_at desc, c.id desc
        limit $${parameters.length}`,
       parameters,
     );
@@ -224,7 +237,7 @@ export class PostgresCaseRepository implements CaseRepository {
         hasMore && last
           ? encodeRelationCaseCursor({
               relationId,
-              linkedAt: last.linked_at.toISOString(),
+              linkedAt: last.cursor_at,
               caseId: last.id,
             })
           : null,
@@ -251,7 +264,11 @@ export class PostgresCaseRepository implements CaseRepository {
               cause.name as cause_event_name,
               r.effect_event_id,
               effect.name as effect_event_name,
-              crc.linked_at
+              crc.linked_at,
+              to_char(
+                crc.linked_at at time zone 'UTC',
+                'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+              ) as cursor_at
        from causal_relation_cases crc
        join causal_relations r on r.id = crc.causal_relation_id
        join abstract_events cause on cause.id = r.cause_event_id
@@ -278,7 +295,7 @@ export class PostgresCaseRepository implements CaseRepository {
         hasMore && last
           ? encodeCaseRelationCursor({
               caseId: id,
-              linkedAt: last.linked_at.toISOString(),
+              linkedAt: last.cursor_at,
               relationId: last.id,
             })
           : null,
