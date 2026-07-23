@@ -872,7 +872,7 @@ git commit -m "docs: prepare v0.1.0 GitHub release documentation"
 
 ## 5. 执行记录
 
-当前状态：正式 README 和自动化发布候选验证已完成，等待用户桌面端人工复核。未创建 Git tag、未推送远程、未创建 GitHub Release。
+当前状态：第一期发布候选的正式 README、完整自动化门禁和用户桌面端人工复核均已完成。未创建 Git tag、未推送远程、未创建 GitHub Release。
 
 2026-07-23 发布候选验证记录：
 
@@ -888,4 +888,4 @@ git commit -m "docs: prepare v0.1.0 GitHub release documentation"
 - 生产构建通过，因果图继续作为独立懒加载资源；保留超过 500kB 的非阻断提示，并在 README Roadmap 记录 Web Worker、资源体积和布局性能优化；
 - `git diff --check` 通过；提交前工作区仅包含 `README.md` 和本执行记录两项计划内修改。
 
-桌面端人工复核尚未执行。用户明确确认前，本计划不标记完成，也不创建标签或进行任何远程发布动作。
+2026-07-23，用户确认桌面端人工复核通过，本实施计划完成。Git 标签和远程发布仍需作为独立操作明确执行。
