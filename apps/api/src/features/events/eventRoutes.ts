@@ -1,8 +1,10 @@
 import {
   apiErrorSchema,
+  deleteResultSchema,
   eventCandidateListResponseSchema,
   eventCandidateQuerySchema,
   eventDetailSchema,
+  eventDeletionImpactSchema,
   eventFormInputSchema,
   eventListQuerySchema,
   eventListResponseSchema,
@@ -83,6 +85,29 @@ export function registerEventRoutes(app: FastifyInstance, pool: Pool): void {
     async (request, reply) => {
       try {
         return await service.findCandidates(request.query);
+      } catch (error) {
+        return sendEventError(error, reply);
+      }
+    },
+  );
+
+  routes.get(
+    '/api/events/:eventId/deletion-impact',
+    {
+      schema: {
+        tags: ['events'],
+        params: eventParamsSchema,
+        response: {
+          200: eventDeletionImpactSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await service.deletionImpact(request.params.eventId);
       } catch (error) {
         return sendEventError(error, reply);
       }
@@ -179,6 +204,30 @@ export function registerEventRoutes(app: FastifyInstance, pool: Pool): void {
     async (request, reply) => {
       try {
         return await service.replace(request.params.eventId, request.body);
+      } catch (error) {
+        return sendEventError(error, reply);
+      }
+    },
+  );
+
+  routes.delete(
+    '/api/events/:eventId',
+    {
+      schema: {
+        tags: ['events'],
+        params: eventParamsSchema,
+        response: {
+          200: deleteResultSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await service.delete(request.params.eventId);
       } catch (error) {
         return sendEventError(error, reply);
       }

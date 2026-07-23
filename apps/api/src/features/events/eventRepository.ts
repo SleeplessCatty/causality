@@ -1,6 +1,7 @@
 import type {
   EventCandidateListResponse,
   EventCandidateQuery,
+  EventDeletionImpact,
   EventDetail,
   EventFormInput,
   EventListQuery,
@@ -91,6 +92,8 @@ export interface EventRepository {
   listRelations(id: string, query: EventRelationListQuery): Promise<EventRelationListResponse>;
   create(input: EventFormInput): Promise<EventDetail>;
   replace(id: string, input: EventFormInput): Promise<EventDetail | null>;
+  deletionImpact(id: string): Promise<EventDeletionImpact | null>;
+  delete(id: string): Promise<boolean>;
 }
 
 function sortAliases(values: string[]): string[] {
@@ -166,12 +169,12 @@ export class PostgresEventRepository implements EventRepository {
   async list(query: EventListQuery): Promise<EventListResponse> {
     const normalizedQuery = normalizeSearchQuery(query.q);
     const totalItems = normalizedQuery
-      ? await this.countSearchRows(normalizedQuery)
-      : await this.countListRows();
+      ? await this.countSearchRows(normalizedQuery, query.orphan)
+      : await this.countListRows(query.orphan);
     const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
     const rows = normalizedQuery
-      ? await this.searchRows(normalizedQuery, query.limit, undefined, offset)
-      : await this.listRows(query.limit, offset);
+      ? await this.searchRows(normalizedQuery, query.limit, undefined, offset, query.orphan)
+      : await this.listRows(query.limit, offset, query.orphan);
     const eventIds = rows.map((row) => row.id);
     const [aliasMap, keywordMap] = await Promise.all([
       this.loadAliases(eventIds),
@@ -184,30 +187,49 @@ export class PostgresEventRepository implements EventRepository {
     return { items, page, pageSize: query.limit, totalItems, totalPages };
   }
 
-  private async countListRows(): Promise<number> {
+  private async countListRows(orphan: boolean): Promise<number> {
     const result = await this.pool.query<CountRow>(
-      `select count(*)::int as total from abstract_events`,
+      `select count(*)::int as total
+       from abstract_events e
+       where ($1::boolean = false or not exists (
+         select 1
+         from causal_relations r
+         where r.cause_event_id = e.id or r.effect_event_id = e.id
+       ))`,
+      [orphan],
     );
     return result.rows[0]!.total;
   }
 
-  private async listRows(limit: number, offset: number): Promise<EventRow[]> {
+  private async listRows(limit: number, offset: number, orphan: boolean): Promise<EventRow[]> {
     const result = await this.pool.query<EventRow>(
       `select id, name, description, created_at, updated_at
-       from abstract_events
+       from abstract_events e
+       where ($1::boolean = false or not exists (
+         select 1
+         from causal_relations r
+         where r.cause_event_id = e.id or r.effect_event_id = e.id
+       ))
        order by updated_at desc, id desc
-       limit $1 offset $2`,
-      [limit, offset],
+       limit $2 offset $3`,
+      [orphan, limit, offset],
     );
     return result.rows;
   }
 
-  private async countSearchRows(query: string): Promise<number> {
+  private async countSearchRows(query: string, orphan: boolean): Promise<number> {
     const escaped = escapeLikePattern(query);
     const result = await this.pool.query<CountRow>(
       `${eventSearchCte}
-       select count(*)::int as total from ranked`,
-      [query, `${escaped}%`, `%${escaped}%`],
+       select count(*)::int as total
+       from ranked
+       join abstract_events e on e.id = ranked.id
+       where ($4::boolean = false or not exists (
+         select 1
+         from causal_relations r
+         where r.cause_event_id = e.id or r.effect_event_id = e.id
+       ))`,
+      [query, `${escaped}%`, `%${escaped}%`, orphan],
     );
     return result.rows[0]!.total;
   }
@@ -217,16 +239,23 @@ export class PostgresEventRepository implements EventRepository {
     limit: number,
     cursor?: EventCandidateCursorState,
     offset = 0,
+    orphan = false,
   ): Promise<EventRow[]> {
     const searchCursor = cursor;
     const escaped = escapeLikePattern(query);
     const parameters: unknown[] = [query, `${escaped}%`, `%${escaped}%`];
-    const cursorCondition = searchCursor
-      ? `where (r.rank, e.normalized_name, e.id) > ($4::int, $5::text, $6::uuid)`
-      : '';
+    const conditions: string[] = [];
     if (searchCursor) {
+      conditions.push(`(r.rank, e.normalized_name, e.id) > ($4::int, $5::text, $6::uuid)`);
       parameters.push(searchCursor.rank, searchCursor.normalizedName, searchCursor.id);
     }
+    parameters.push(orphan);
+    conditions.push(`($${parameters.length}::boolean = false or not exists (
+      select 1
+      from causal_relations filter_relation
+      where filter_relation.cause_event_id = e.id
+         or filter_relation.effect_event_id = e.id
+    ))`);
     parameters.push(limit, offset);
 
     const result = await this.pool.query<EventRow>(
@@ -235,7 +264,7 @@ export class PostgresEventRepository implements EventRepository {
               e.normalized_name, r.rank
        from ranked r
        join abstract_events e on e.id = r.id
-       ${cursorCondition}
+       where ${conditions.join(' and ')}
        order by r.rank, e.normalized_name, e.id
        limit $${parameters.length - 1} offset $${parameters.length}`,
       parameters,
@@ -299,6 +328,68 @@ export class PostgresEventRepository implements EventRepository {
       [id],
     );
     return result.rows[0]!.exists;
+  }
+
+  async deletionImpact(id: string): Promise<EventDeletionImpact | null> {
+    const result = await this.pool.query<{ id: string; has_relations: boolean }>(
+      `select e.id,
+              exists (
+                select 1
+                from causal_relations r
+                where r.cause_event_id = e.id or r.effect_event_id = e.id
+              ) as has_relations
+       from abstract_events e
+       where e.id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          canDelete: !row.has_relations,
+          hasRelations: row.has_relations,
+        }
+      : null;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const target = await client.query<{ id: string }>(
+        `select id from abstract_events where id = $1 for update`,
+        [id],
+      );
+      if (!target.rows[0]) {
+        await client.query('rollback');
+        return false;
+      }
+      const impact = await client.query<{ has_relations: boolean }>(
+        `select exists (
+           select 1
+           from causal_relations
+           where cause_event_id = $1 or effect_event_id = $1
+         ) as has_relations`,
+        [id],
+      );
+      if (impact.rows[0]!.has_relations) {
+        throw Object.assign(new Error('Event is referenced by a relation'), {
+          code: 'EVENT_DELETE_BLOCKED',
+        });
+      }
+      await client.query(`delete from abstract_events where id = $1`, [id]);
+      await client.query('commit');
+      return true;
+    } catch (error) {
+      await client.query('rollback');
+      if ((error as { code?: string }).code === '23503') {
+        throw Object.assign(new Error('Event is referenced by a relation'), {
+          code: 'EVENT_DELETE_BLOCKED',
+        });
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async listRelations(

@@ -32,6 +32,8 @@ function repository(overrides: Partial<EventRepository> = {}): EventRepository {
     listRelations: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
     create: vi.fn().mockResolvedValue(detail),
     replace: vi.fn().mockResolvedValue(detail),
+    deletionImpact: vi.fn().mockResolvedValue({ canDelete: true, hasRelations: false }),
+    delete: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
 }
@@ -89,5 +91,35 @@ describe('EventService', () => {
     );
 
     await expect(service.create(input)).rejects.toBe(databaseError);
+  });
+
+  it('returns deletion impact and stable missing-target errors', async () => {
+    const missing = new EventService(
+      repository({
+        deletionImpact: vi.fn().mockResolvedValue(null),
+        delete: vi.fn().mockResolvedValue(false),
+      }),
+    );
+    await expect(new EventService(repository()).deletionImpact(detail.id)).resolves.toEqual({
+      canDelete: true,
+      hasRelations: false,
+    });
+    await expect(missing.deletionImpact(detail.id)).rejects.toMatchObject({
+      code: 'EVENT_NOT_FOUND',
+    });
+    await expect(missing.delete(detail.id)).rejects.toMatchObject({ code: 'EVENT_NOT_FOUND' });
+  });
+
+  it('maps a concurrently linked event deletion to the blocked error', async () => {
+    const service = new EventService(
+      repository({
+        delete: vi.fn().mockRejectedValue({ code: 'EVENT_DELETE_BLOCKED' }),
+      }),
+    );
+
+    await expect(service.delete(detail.id)).rejects.toMatchObject({
+      code: 'EVENT_DELETE_BLOCKED',
+      message: '这个原子事件存在关联因果关系，必须先删除相关因果关系',
+    });
   });
 });

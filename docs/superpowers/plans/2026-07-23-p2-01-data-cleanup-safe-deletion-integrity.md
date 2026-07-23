@@ -418,7 +418,7 @@ delete(id: string): Promise<boolean>;
 - Event deletion may throw `EVENT_DELETE_BLOCKED`.
 - The existing `list()` methods honor `orphan` and relation `eventId`.
 
-- [ ] **Step 1: Add failing service tests**
+- [x] **Step 1: Add failing service tests**
 
 Test exact cases:
 
@@ -435,7 +435,7 @@ await expect(service.deletionImpact(UNLINKED_EVENT_ID)).resolves.toEqual({
 
 Add equivalent relation and case impact/delete tests, asserting their services do not request deletion of related main records.
 
-- [ ] **Step 2: Run service tests and verify failure**
+- [x] **Step 2: Run service tests and verify failure**
 
 Run:
 
@@ -445,7 +445,7 @@ pnpm --filter @causality/api test -- event-service.test.ts relation-service.test
 
 Expected: FAIL because deletion methods and error codes are absent.
 
-- [ ] **Step 3: Add repository deletion transactions**
+- [x] **Step 3: Add repository deletion transactions**
 
 Event:
 
@@ -484,7 +484,7 @@ commit;
 
 Always roll back on error and release the client.
 
-- [ ] **Step 4: Implement deletion-impact queries**
+- [x] **Step 4: Implement deletion-impact queries**
 
 Return booleans only:
 
@@ -500,7 +500,7 @@ where e.id = $1;
 
 Relation impact returns `hasEvents: true` and an `exists` check for cases. Case impact returns an `exists` check for relations.
 
-- [ ] **Step 5: Implement hidden filters in all count and row queries**
+- [x] **Step 5: Implement hidden filters in all count and row queries**
 
 For events:
 
@@ -533,7 +533,7 @@ and ($orphan = false or not exists (
 
 Apply the same predicates to total counts, normal lists, and searched lists.
 
-- [ ] **Step 6: Add routes and stable errors**
+- [x] **Step 6: Add routes and stable errors**
 
 Register the six impact/delete routes. Return:
 
@@ -546,7 +546,7 @@ Register the six impact/delete routes. Return:
 
 Extend the shared API error enum with `EVENT_DELETE_BLOCKED`.
 
-- [ ] **Step 7: Add integration tests**
+- [x] **Step 7: Add integration tests**
 
 Assert:
 
@@ -566,7 +566,7 @@ against a deterministic fixture. Add a migration index only when the plan proves
 existing index is insufficient; record the expected index name in the test instead
 of accepting any sequential scan silently.
 
-- [ ] **Step 8: Run focused and integration tests**
+- [x] **Step 8: Run focused and integration tests**
 
 Run:
 
@@ -578,7 +578,7 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 9: Commit locally**
+- [x] **Step 9: Commit locally**
 
 ```bash
 git add \
@@ -601,6 +601,17 @@ git commit -m "feat: add safe permanent deletion and orphan filters"
 ```
 
 Do not push.
+
+**Execution result (2026-07-23):**
+
+- Service RED: 4 expected failures for absent deletion operations.
+- Integration RED: 10 expected failures for absent routes and hidden filters.
+- GREEN: 86 API unit tests and 67 integration tests passed; typecheck, lint, format, and
+  diff checks passed.
+- Event deletion is transactionally blocked after concurrent relation creation; relation and case
+  deletion remove only association rows and the requested main record.
+- Existing directional and relation-case indexes satisfy `orphan` and `eventId` query plans, so no
+  speculative index was added.
 
 ---
 

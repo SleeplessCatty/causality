@@ -36,6 +36,12 @@ function repository(overrides: Partial<RelationRepository> = {}): RelationReposi
     findById: vi.fn().mockResolvedValue(detail),
     create: vi.fn().mockResolvedValue(detail),
     replace: vi.fn().mockResolvedValue(detail),
+    deletionImpact: vi.fn().mockResolvedValue({
+      canDelete: true,
+      hasEvents: true,
+      hasCases: false,
+    }),
+    delete: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
 }
@@ -90,5 +96,23 @@ describe('RelationService', () => {
       code: 'CASE_CONTENT_CONFLICT',
       existingId,
     });
+  });
+
+  it('returns deletion impact and deletes only an existing relation target', async () => {
+    await expect(new RelationService(repository()).deletionImpact(detail.id)).resolves.toEqual({
+      canDelete: true,
+      hasEvents: true,
+      hasCases: false,
+    });
+    const missing = new RelationService(
+      repository({
+        deletionImpact: vi.fn().mockResolvedValue(null),
+        delete: vi.fn().mockResolvedValue(false),
+      }),
+    );
+    await expect(missing.deletionImpact(detail.id)).rejects.toMatchObject({
+      code: 'RELATION_NOT_FOUND',
+    });
+    await expect(missing.delete(detail.id)).rejects.toMatchObject({ code: 'RELATION_NOT_FOUND' });
   });
 });

@@ -1,5 +1,7 @@
 import type {
+  DeleteResult,
   RelationDetail,
+  RelationDeletionImpact,
   RelationFormInput,
   RelationListQuery,
   RelationListResponse,
@@ -107,5 +109,18 @@ export class RelationService {
       if (error instanceof RelationServiceError) throw error;
       return mapWriteError(error);
     }
+  }
+
+  async deletionImpact(id: string): Promise<RelationDeletionImpact> {
+    const impact = await this.repository.deletionImpact(id);
+    if (!impact) throw new RelationServiceError('RELATION_NOT_FOUND', '因果关系不存在');
+    return impact;
+  }
+
+  async delete(id: string): Promise<DeleteResult> {
+    if (!(await this.repository.delete(id))) {
+      throw new RelationServiceError('RELATION_NOT_FOUND', '因果关系不存在');
+    }
+    return { deleted: true };
   }
 }

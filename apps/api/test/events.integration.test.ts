@@ -374,6 +374,147 @@ describe.sequential('event REST API', () => {
     expect(mismatch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
+  it('deletes only unlinked events and preserves the saved data-check state', async () => {
+    const created = (
+      await createEvent('测试：可安全删除原子事件', {
+        aliases: ['测试：待删除别名'],
+        keywords: ['待删除关键词'],
+      })
+    ).json<EventDetail>();
+    await pool!.query(
+      `update data_check_state
+       set status = 'succeeded',
+           last_snapshot_id = 'a1000000-0000-4000-8000-000000000001',
+           last_success_at = '2026-07-23T09:00:00Z',
+           orphan_event_count = 9`,
+    );
+    const stateBefore = await pool!.query<{ state: string }>(
+      `select row_to_json(data_check_state)::text as state from data_check_state`,
+    );
+
+    const impact = await app!.inject({
+      method: 'GET',
+      url: `/api/events/${created.id}/deletion-impact`,
+    });
+    expect(impact.statusCode).toBe(200);
+    expect(impact.json()).toEqual({ canDelete: true, hasRelations: false });
+
+    const removed = await app!.inject({ method: 'DELETE', url: `/api/events/${created.id}` });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toEqual({ deleted: true });
+    expect(
+      (await app!.inject({ method: 'GET', url: `/api/events/${created.id}` })).statusCode,
+    ).toBe(404);
+    const children = await pool!.query<{ aliases: string; keywords: string }>(
+      `select
+         (select count(*) from event_aliases where event_id = $1) as aliases,
+         (select count(*) from event_keywords where event_id = $1) as keywords`,
+      [created.id],
+    );
+    expect(children.rows[0]).toEqual({ aliases: '0', keywords: '0' });
+    const stateAfter = await pool!.query<{ state: string }>(
+      `select row_to_json(data_check_state)::text as state from data_check_state`,
+    );
+    expect(stateAfter.rows[0]?.state).toBe(stateBefore.rows[0]?.state);
+  });
+
+  it('blocks event deletion when a relation exists, including one added after impact', async () => {
+    const cause = (await createEvent('测试：删除竞态原因')).json<EventDetail>();
+    const effect = (await createEvent('测试：删除竞态结果')).json<EventDetail>();
+
+    const beforeLink = await app!.inject({
+      method: 'GET',
+      url: `/api/events/${cause.id}/deletion-impact`,
+    });
+    expect(beforeLink.json()).toEqual({ canDelete: true, hasRelations: false });
+
+    await app!.inject({
+      method: 'POST',
+      url: '/api/relations',
+      payload: {
+        causeEventId: cause.id,
+        effectEventId: effect.id,
+        confidence: 50,
+        description: null,
+        caseSelections: [],
+      },
+    });
+
+    const afterLink = await app!.inject({
+      method: 'GET',
+      url: `/api/events/${cause.id}/deletion-impact`,
+    });
+    expect(afterLink.json()).toEqual({ canDelete: false, hasRelations: true });
+    expect(Object.keys(afterLink.json())).toEqual(['canDelete', 'hasRelations']);
+
+    const blocked = await app!.inject({ method: 'DELETE', url: `/api/events/${cause.id}` });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json()).toEqual({
+      code: 'EVENT_DELETE_BLOCKED',
+      message: '这个原子事件存在关联因果关系，必须先删除相关因果关系',
+    });
+    expect((await app!.inject({ method: 'GET', url: `/api/events/${cause.id}` })).statusCode).toBe(
+      200,
+    );
+  });
+
+  it('returns only orphan events within search, totals, and page clamping', async () => {
+    const orphanIds: string[] = [];
+    for (let index = 1; index <= 31; index += 1) {
+      orphanIds.push(
+        (
+          await createEvent(`EVENT_ORPHAN_TOKEN ${String(index).padStart(2, '0')}`)
+        ).json<EventDetail>().id,
+      );
+    }
+    const linkedEffect = (await createEvent('测试：孤立筛选关联结果')).json<EventDetail>();
+    await app!.inject({
+      method: 'POST',
+      url: '/api/relations',
+      payload: {
+        causeEventId: orphanIds[0],
+        effectEventId: linkedEffect.id,
+        confidence: 50,
+        description: null,
+        caseSelections: [],
+      },
+    });
+
+    const first = (
+      await app!.inject({
+        method: 'GET',
+        url: '/api/events?orphan=true&q=EVENT_ORPHAN_TOKEN&page=1&limit=20',
+      })
+    ).json<EventListResponse>();
+    const clamped = (
+      await app!.inject({
+        method: 'GET',
+        url: '/api/events?orphan=true&q=EVENT_ORPHAN_TOKEN&page=999&limit=20',
+      })
+    ).json<EventListResponse>();
+
+    expect(first).toMatchObject({ page: 1, pageSize: 20, totalItems: 30, totalPages: 2 });
+    expect(first.items).toHaveLength(20);
+    expect(first.items.some((item) => item.id === orphanIds[0])).toBe(false);
+    expect(clamped).toMatchObject({ page: 2, pageSize: 20, totalItems: 30, totalPages: 2 });
+    expect(clamped.items).toHaveLength(10);
+  });
+
+  it('returns not found from both event deletion endpoints', async () => {
+    const missingId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    expect(
+      (
+        await app!.inject({
+          method: 'GET',
+          url: `/api/events/${missingId}/deletion-impact`,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await app!.inject({ method: 'DELETE', url: `/api/events/${missingId}` })).statusCode,
+    ).toBe(404);
+  });
+
   it('publishes event paths in OpenAPI', async () => {
     const response = await app!.inject({ method: 'GET', url: '/api/openapi.json' });
     const paths = response.json<{ paths: Record<string, unknown> }>().paths;
@@ -382,5 +523,6 @@ describe.sequential('event REST API', () => {
     expect(paths).toHaveProperty('/api/events/candidates');
     expect(paths).toHaveProperty('/api/events/{eventId}');
     expect(paths).toHaveProperty('/api/events/{eventId}/relations');
+    expect(paths).toHaveProperty('/api/events/{eventId}/deletion-impact');
   });
 });

@@ -1,6 +1,8 @@
 import type {
+  DeleteResult,
   EventCandidateListResponse,
   EventCandidateQuery,
+  EventDeletionImpact,
   EventDetail,
   EventFormInput,
   EventListQuery,
@@ -12,7 +14,7 @@ import type {
 import type { EventRepository } from './eventRepository.js';
 
 export type EventServiceErrorCode =
-  'EVENT_NOT_FOUND' | 'EVENT_NAME_CONFLICT' | 'EVENT_ALIAS_CONFLICT';
+  'EVENT_NOT_FOUND' | 'EVENT_NAME_CONFLICT' | 'EVENT_ALIAS_CONFLICT' | 'EVENT_DELETE_BLOCKED';
 
 export class EventServiceError extends Error {
   constructor(
@@ -90,6 +92,30 @@ export class EventService {
     } catch (error) {
       if (error instanceof EventServiceError) throw error;
       return mapWriteError(error);
+    }
+  }
+
+  async deletionImpact(id: string): Promise<EventDeletionImpact> {
+    const impact = await this.repository.deletionImpact(id);
+    if (!impact) throw new EventServiceError('EVENT_NOT_FOUND', '事件不存在');
+    return impact;
+  }
+
+  async delete(id: string): Promise<DeleteResult> {
+    try {
+      if (!(await this.repository.delete(id))) {
+        throw new EventServiceError('EVENT_NOT_FOUND', '事件不存在');
+      }
+      return { deleted: true };
+    } catch (error) {
+      if (error instanceof EventServiceError) throw error;
+      if ((error as { code?: string }).code === 'EVENT_DELETE_BLOCKED') {
+        throw new EventServiceError(
+          'EVENT_DELETE_BLOCKED',
+          '这个原子事件存在关联因果关系，必须先删除相关因果关系',
+        );
+      }
+      throw error;
     }
   }
 }

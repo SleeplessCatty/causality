@@ -1,4 +1,5 @@
 import type {
+  CaseDeletionImpact,
   CaseCandidateListResponse,
   CaseCandidateQuery,
   CaseDetail,
@@ -7,6 +8,7 @@ import type {
   CaseListResponse,
   CaseRelationListQuery,
   CaseRelationListResponse,
+  DeleteResult,
 } from '@causality/contracts';
 
 import type { CaseRepository } from './caseRepository.js';
@@ -80,5 +82,18 @@ export class CaseService {
       throw new CaseServiceError('CASE_CONTENT_CONFLICT', '案例内容已存在', existing?.id);
     }
     throw error;
+  }
+
+  async deletionImpact(id: string): Promise<CaseDeletionImpact> {
+    const impact = await this.repository.deletionImpact(id);
+    if (!impact) throw new CaseServiceError('CASE_NOT_FOUND', '案例不存在');
+    return impact;
+  }
+
+  async delete(id: string): Promise<DeleteResult> {
+    if (!(await this.repository.delete(id))) {
+      throw new CaseServiceError('CASE_NOT_FOUND', '案例不存在');
+    }
+    return { deleted: true };
   }
 }

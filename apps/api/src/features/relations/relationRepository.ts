@@ -1,4 +1,5 @@
 import type {
+  RelationDeletionImpact,
   RelationDetail,
   RelationFormInput,
   RelationListQuery,
@@ -53,6 +54,8 @@ export interface RelationRepository {
   findById(id: string): Promise<RelationDetail | null>;
   create(input: RelationFormInput): Promise<RelationDetail>;
   replace(id: string, input: RelationFormInput): Promise<RelationDetail | null>;
+  deletionImpact(id: string): Promise<RelationDeletionImpact | null>;
+  delete(id: string): Promise<boolean>;
 }
 
 function reference(row: RelationRow): RelationReference {
@@ -144,12 +147,12 @@ export class PostgresRelationRepository implements RelationRepository {
   async list(query: RelationListQuery): Promise<RelationListResponse> {
     const normalizedQuery = normalizeSearchQuery(query.q);
     const totalItems = normalizedQuery
-      ? await this.countSearchRows(normalizedQuery)
-      : await this.countListRows();
+      ? await this.countSearchRows(normalizedQuery, query.orphan, query.eventId)
+      : await this.countListRows(query.orphan, query.eventId);
     const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
     const rows = normalizedQuery
-      ? await this.searchRows(normalizedQuery, query.limit, offset)
-      : await this.listRows(query.limit, offset);
+      ? await this.searchRows(normalizedQuery, query.limit, offset, query.orphan, query.eventId)
+      : await this.listRows(query.limit, offset, query.orphan, query.eventId);
     return {
       items: rows.map(summary),
       page,
@@ -159,46 +162,87 @@ export class PostgresRelationRepository implements RelationRepository {
     };
   }
 
-  private async countListRows(): Promise<number> {
+  private async countListRows(orphan: boolean, eventId?: string): Promise<number> {
     const result = await this.pool.query<CountRow>(
-      `select count(*)::int as total from causal_relations`,
+      `select count(*)::int as total
+       from causal_relations r
+       where ($1::boolean = false or not exists (
+         select 1
+         from causal_relation_cases crc
+         where crc.causal_relation_id = r.id
+       ))
+         and ($2::uuid is null or r.cause_event_id = $2 or r.effect_event_id = $2)`,
+      [orphan, eventId ?? null],
     );
     return result.rows[0]!.total;
   }
 
-  private async listRows(limit: number, offset: number): Promise<RelationRow[]> {
+  private async listRows(
+    limit: number,
+    offset: number,
+    orphan: boolean,
+    eventId?: string,
+  ): Promise<RelationRow[]> {
     const result = await this.pool.query<RelationRow>(
       `${selectRelation}
+       where ($1::boolean = false or not exists (
+         select 1
+         from causal_relation_cases filter_case
+         where filter_case.causal_relation_id = r.id
+       ))
+         and ($2::uuid is null or r.cause_event_id = $2 or r.effect_event_id = $2)
        order by r.updated_at desc, r.id desc
-       limit $1 offset $2`,
-      [limit, offset],
+       limit $3 offset $4`,
+      [orphan, eventId ?? null, limit, offset],
     );
     return result.rows;
   }
 
-  private async countSearchRows(query: string): Promise<number> {
+  private async countSearchRows(query: string, orphan: boolean, eventId?: string): Promise<number> {
     const escaped = escapeLikePattern(query);
     const result = await this.pool.query<CountRow>(
       `${rankedRelationsCte}
        select count(*)::int as total
        from ranked
-       where ranked.rank <= 6`,
-      [query, `${escaped}%`, `%${escaped}%`],
+       where ranked.rank <= 6
+         and ($4::boolean = false or ranked.case_count = 0)
+         and ($5::uuid is null
+           or ranked.cause_event_id = $5
+           or ranked.effect_event_id = $5)`,
+      [query, `${escaped}%`, `%${escaped}%`, orphan, eventId ?? null],
     );
     return result.rows[0]!.total;
   }
 
-  private async searchRows(query: string, limit: number, offset: number): Promise<RelationRow[]> {
+  private async searchRows(
+    query: string,
+    limit: number,
+    offset: number,
+    orphan: boolean,
+    eventId?: string,
+  ): Promise<RelationRow[]> {
     const escaped = escapeLikePattern(query);
-    const parameters: unknown[] = [query, `${escaped}%`, `%${escaped}%`, limit, offset];
+    const parameters: unknown[] = [
+      query,
+      `${escaped}%`,
+      `%${escaped}%`,
+      orphan,
+      eventId ?? null,
+      limit,
+      offset,
+    ];
 
     const result = await this.pool.query<RelationRow>(
       `${rankedRelationsCte}
        select *
        from ranked
        where ranked.rank <= 6
+         and ($4::boolean = false or ranked.case_count = 0)
+         and ($5::uuid is null
+           or ranked.cause_event_id = $5
+           or ranked.effect_event_id = $5)
        order by ranked.rank, ranked.updated_at desc, ranked.id desc
-       limit $4 offset $5`,
+       limit $6 offset $7`,
       parameters,
     );
     return result.rows;
@@ -248,6 +292,52 @@ export class PostgresRelationRepository implements RelationRepository {
       [id],
     );
     return detail(result.rows[0], cases.rows);
+  }
+
+  async deletionImpact(id: string): Promise<RelationDeletionImpact | null> {
+    const result = await this.pool.query<{ id: string; has_cases: boolean }>(
+      `select r.id,
+              exists (
+                select 1
+                from causal_relation_cases crc
+                where crc.causal_relation_id = r.id
+              ) as has_cases
+       from causal_relations r
+       where r.id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          canDelete: true,
+          hasEvents: true,
+          hasCases: row.has_cases,
+        }
+      : null;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const target = await client.query<{ id: string }>(
+        `select id from causal_relations where id = $1 for update`,
+        [id],
+      );
+      if (!target.rows[0]) {
+        await client.query('rollback');
+        return false;
+      }
+      await client.query(`delete from causal_relation_cases where causal_relation_id = $1`, [id]);
+      await client.query(`delete from causal_relations where id = $1`, [id]);
+      await client.query('commit');
+      return true;
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async create(input: RelationFormInput): Promise<RelationDetail> {

@@ -469,10 +469,178 @@ describe.sequential('relation REST API', () => {
     expect(locatedPage.items.some((item) => item.id === targetId)).toBe(true);
   });
 
+  it('filters incoming and outgoing relations by event, orphan state, and search together', async () => {
+    const upstream = await createEvent('RELATION_FILTER_TOKEN 上游');
+    const center = await createEvent('RELATION_FILTER_TOKEN 中心');
+    const downstream = await createEvent('RELATION_FILTER_TOKEN 下游');
+    const unrelatedCause = await createEvent('测试：关系筛选无关原因');
+    const unrelatedEffect = await createEvent('测试：关系筛选无关结果');
+    const linkedCase = (
+      await app!.inject({
+        method: 'POST',
+        url: '/api/cases',
+        payload: { content: '2026年关系孤立筛选已关联案例' },
+      })
+    ).json<CaseDetail>();
+    const incoming = (await createRelation(upstream.id, center.id)).json<RelationDetail>();
+    const outgoing = (
+      await createRelation(center.id, downstream.id, {
+        caseSelections: [{ type: 'existing', caseId: linkedCase.id }],
+      })
+    ).json<RelationDetail>();
+    await createRelation(unrelatedCause.id, unrelatedEffect.id);
+
+    const byEvent = (
+      await app!.inject({
+        method: 'GET',
+        url: `/api/relations?eventId=${center.id}`,
+      })
+    ).json<RelationListResponse>();
+    const composed = (
+      await app!.inject({
+        method: 'GET',
+        url: `/api/relations?eventId=${center.id}&orphan=true&q=RELATION_FILTER_TOKEN`,
+      })
+    ).json<RelationListResponse>();
+
+    expect(byEvent.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining([incoming.id, outgoing.id]),
+    );
+    expect(byEvent.totalItems).toBe(2);
+    expect(composed).toMatchObject({ page: 1, totalItems: 1, totalPages: 1 });
+    expect(composed.items.map((item) => item.id)).toEqual([incoming.id]);
+  });
+
+  it('deletes a relation and its case links while preserving events, cases, and check state', async () => {
+    const cause = await createEvent('测试：删除关系保留原因');
+    const effect = await createEvent('测试：删除关系保留结果');
+    const linkedCase = (
+      await app!.inject({
+        method: 'POST',
+        url: '/api/cases',
+        payload: { content: '2026年删除关系仍保留的案例' },
+      })
+    ).json<CaseDetail>();
+    const relation = (
+      await createRelation(cause.id, effect.id, {
+        caseSelections: [{ type: 'existing', caseId: linkedCase.id }],
+      })
+    ).json<RelationDetail>();
+    const stateBefore = await pool!.query<{ state: string }>(
+      `select row_to_json(data_check_state)::text as state from data_check_state`,
+    );
+
+    const impact = await app!.inject({
+      method: 'GET',
+      url: `/api/relations/${relation.id}/deletion-impact`,
+    });
+    expect(impact.statusCode).toBe(200);
+    expect(impact.json()).toEqual({ canDelete: true, hasEvents: true, hasCases: true });
+
+    const removed = await app!.inject({
+      method: 'DELETE',
+      url: `/api/relations/${relation.id}`,
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toEqual({ deleted: true });
+    expect(
+      (await app!.inject({ method: 'GET', url: `/api/relations/${relation.id}` })).statusCode,
+    ).toBe(404);
+    expect((await app!.inject({ method: 'GET', url: `/api/events/${cause.id}` })).statusCode).toBe(
+      200,
+    );
+    expect((await app!.inject({ method: 'GET', url: `/api/events/${effect.id}` })).statusCode).toBe(
+      200,
+    );
+    expect(
+      (await app!.inject({ method: 'GET', url: `/api/cases/${linkedCase.id}` })).statusCode,
+    ).toBe(200);
+    const links = await pool!.query<{ count: string }>(
+      `select count(*) from causal_relation_cases where causal_relation_id = $1`,
+      [relation.id],
+    );
+    expect(links.rows[0]?.count).toBe('0');
+    const stateAfter = await pool!.query<{ state: string }>(
+      `select row_to_json(data_check_state)::text as state from data_check_state`,
+    );
+    expect(stateAfter.rows[0]?.state).toBe(stateBefore.rows[0]?.state);
+  });
+
+  it('uses existing association indexes for orphan and event filters', async () => {
+    const client = await pool!.connect();
+    try {
+      await client.query('begin');
+      await client.query('set local enable_seqscan = off');
+      const eventPlan = await client.query<{ 'QUERY PLAN': string }>(
+        `explain (analyze, buffers)
+         select e.id
+         from abstract_events e
+         where not exists (
+           select 1
+           from causal_relations r
+           where r.cause_event_id = e.id or r.effect_event_id = e.id
+         )`,
+      );
+      const relationPlan = await client.query<{ 'QUERY PLAN': string }>(
+        `explain (analyze, buffers)
+         select r.id
+         from causal_relations r
+         where (r.cause_event_id = $1 or r.effect_event_id = $1)
+           and not exists (
+             select 1
+             from causal_relation_cases crc
+             where crc.causal_relation_id = r.id
+           )`,
+        ['10000000-0000-4000-8000-000000000001'],
+      );
+      const casePlan = await client.query<{ 'QUERY PLAN': string }>(
+        `explain (analyze, buffers)
+         select c.id
+         from concrete_cases c
+         where not exists (
+           select 1
+           from causal_relation_cases crc
+           where crc.concrete_case_id = c.id
+         )`,
+      );
+      const caseLookupPlan = await client.query<{ 'QUERY PLAN': string }>(
+        `explain (analyze, buffers)
+         select concrete_case_id
+         from causal_relation_cases
+         where concrete_case_id = $1`,
+        ['30000000-0000-4000-8000-000000000001'],
+      );
+      const eventText = eventPlan.rows.map((row) => row['QUERY PLAN']).join('\n');
+      const relationText = relationPlan.rows.map((row) => row['QUERY PLAN']).join('\n');
+      const caseText = casePlan.rows.map((row) => row['QUERY PLAN']).join('\n');
+      const caseLookupText = caseLookupPlan.rows.map((row) => row['QUERY PLAN']).join('\n');
+
+      expect(eventText).toContain('causal_relations_cause_created_at_id_idx');
+      expect(eventText).toContain('causal_relations_effect_created_at_id_idx');
+      expect(relationText).toContain('causal_relation_cases_relation_linked_idx');
+      expect(caseText).not.toContain('Seq Scan on causal_relation_cases');
+      expect(caseLookupText).toContain('causal_relation_cases_case_linked_idx');
+      await client.query('rollback');
+    } finally {
+      client.release();
+    }
+  });
+
   it('returns not found and publishes relation paths in OpenAPI', async () => {
     const missingId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
     expect(
       (await app!.inject({ method: 'GET', url: `/api/relations/${missingId}` })).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app!.inject({
+          method: 'GET',
+          url: `/api/relations/${missingId}/deletion-impact`,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (await app!.inject({ method: 'DELETE', url: `/api/relations/${missingId}` })).statusCode,
     ).toBe(404);
     const paths = (await app!.inject({ method: 'GET', url: '/api/openapi.json' })).json<{
       paths: Record<string, unknown>;
@@ -480,5 +648,6 @@ describe.sequential('relation REST API', () => {
     expect(paths).toHaveProperty('/api/relations');
     expect(paths).toHaveProperty('/api/relations/pair-check');
     expect(paths).toHaveProperty('/api/relations/{relationId}');
+    expect(paths).toHaveProperty('/api/relations/{relationId}/deletion-impact');
   });
 });

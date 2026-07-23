@@ -1,5 +1,6 @@
 import {
   apiErrorSchema,
+  caseDeletionImpactSchema,
   caseCandidateListResponseSchema,
   caseCandidateQuerySchema,
   caseDetailSchema,
@@ -8,6 +9,7 @@ import {
   caseListResponseSchema,
   caseRelationListQuerySchema,
   caseRelationListResponseSchema,
+  deleteResultSchema,
 } from '@causality/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Pool } from 'pg';
@@ -72,6 +74,29 @@ export function registerCaseRoutes(app: FastifyInstance, pool: Pool): void {
     async (request, reply) => {
       try {
         return await service.candidates(request.query);
+      } catch (error) {
+        return sendCaseError(error, reply);
+      }
+    },
+  );
+
+  routes.get(
+    '/api/cases/:caseId/deletion-impact',
+    {
+      schema: {
+        tags: ['cases'],
+        params: caseParamsSchema,
+        response: {
+          200: caseDeletionImpactSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await service.deletionImpact(request.params.caseId);
       } catch (error) {
         return sendCaseError(error, reply);
       }
@@ -167,6 +192,29 @@ export function registerCaseRoutes(app: FastifyInstance, pool: Pool): void {
     async (request, reply) => {
       try {
         return await service.replace(request.params.caseId, request.body);
+      } catch (error) {
+        return sendCaseError(error, reply);
+      }
+    },
+  );
+
+  routes.delete(
+    '/api/cases/:caseId',
+    {
+      schema: {
+        tags: ['cases'],
+        params: caseParamsSchema,
+        response: {
+          200: deleteResultSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await service.delete(request.params.caseId);
       } catch (error) {
         return sendCaseError(error, reply);
       }

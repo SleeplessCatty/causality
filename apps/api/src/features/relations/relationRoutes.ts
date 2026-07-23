@@ -1,6 +1,8 @@
 import {
   apiErrorSchema,
+  deleteResultSchema,
   relationDetailSchema,
+  relationDeletionImpactSchema,
   relationCaseListQuerySchema,
   relationCaseListResponseSchema,
   relationFormInputSchema,
@@ -86,6 +88,29 @@ export function registerRelationRoutes(app: FastifyInstance, pool: Pool): void {
       },
     },
     async (request) => service.checkPair(request.query),
+  );
+
+  routes.get(
+    '/api/relations/:relationId/deletion-impact',
+    {
+      schema: {
+        tags: ['relations'],
+        params: relationParamsSchema,
+        response: {
+          200: relationDeletionImpactSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await service.deletionImpact(request.params.relationId);
+      } catch (error) {
+        return sendRelationError(error, reply);
+      }
+    },
   );
 
   routes.get(
@@ -179,6 +204,29 @@ export function registerRelationRoutes(app: FastifyInstance, pool: Pool): void {
     async (request, reply) => {
       try {
         return await service.replace(request.params.relationId, request.body);
+      } catch (error) {
+        return sendRelationError(error, reply);
+      }
+    },
+  );
+
+  routes.delete(
+    '/api/relations/:relationId',
+    {
+      schema: {
+        tags: ['relations'],
+        params: relationParamsSchema,
+        response: {
+          200: deleteResultSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await service.delete(request.params.relationId);
       } catch (error) {
         return sendRelationError(error, reply);
       }

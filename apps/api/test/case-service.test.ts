@@ -23,6 +23,8 @@ function repository(overrides: Partial<CaseRepository> = {}): CaseRepository {
     create: vi.fn().mockResolvedValue(detail),
     replace: vi.fn().mockResolvedValue(detail),
     findByContent: vi.fn().mockResolvedValue(null),
+    deletionImpact: vi.fn().mockResolvedValue({ canDelete: true, hasRelations: false }),
+    delete: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
 }
@@ -59,5 +61,22 @@ describe('CaseService', () => {
     const failure = new Error('connection interrupted');
     const service = new CaseService(repository({ create: vi.fn().mockRejectedValue(failure) }));
     await expect(service.create({ content: detail.content })).rejects.toBe(failure);
+  });
+
+  it('returns deletion impact and deletes only an existing case target', async () => {
+    await expect(new CaseService(repository()).deletionImpact(detail.id)).resolves.toEqual({
+      canDelete: true,
+      hasRelations: false,
+    });
+    const missing = new CaseService(
+      repository({
+        deletionImpact: vi.fn().mockResolvedValue(null),
+        delete: vi.fn().mockResolvedValue(false),
+      }),
+    );
+    await expect(missing.deletionImpact(detail.id)).rejects.toMatchObject({
+      code: 'CASE_NOT_FOUND',
+    });
+    await expect(missing.delete(detail.id)).rejects.toMatchObject({ code: 'CASE_NOT_FOUND' });
   });
 });

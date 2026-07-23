@@ -253,9 +253,108 @@ describe.sequential('case REST API', () => {
     expect(secondPage).toMatchObject({ hasMore: false, nextCursor: null });
   });
 
+  it('filters orphan cases inside search totals and pagination', async () => {
+    const orphanOne = (await createCase('CASE_ORPHAN_TOKEN 独立案例一')).json<CaseDetail>();
+    const orphanTwo = (await createCase('CASE_ORPHAN_TOKEN 独立案例二')).json<CaseDetail>();
+    const linked = (await createCase('CASE_ORPHAN_TOKEN 已关联案例')).json<CaseDetail>();
+    const causeId = '14000000-0000-4000-8000-000000000001';
+    const effectId = '14000000-0000-4000-8000-000000000002';
+    const relationId = '24000000-0000-4000-8000-000000000001';
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values ($1, '案例孤立筛选原因'), ($2, '案例孤立筛选结果')`,
+      [causeId, effectId],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $2, $3, 50)`,
+      [relationId, causeId, effectId],
+    );
+    await pool!.query(
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+       values ($1, $2)`,
+      [relationId, linked.id],
+    );
+
+    const response = (
+      await app!.inject({
+        method: 'GET',
+        url: '/api/cases?orphan=true&q=CASE_ORPHAN_TOKEN&page=99&limit=1',
+      })
+    ).json<CaseListResponse>();
+    expect(response).toMatchObject({ page: 2, pageSize: 1, totalItems: 2, totalPages: 2 });
+    expect([orphanOne.id, orphanTwo.id]).toContain(response.items[0]?.id);
+    expect(response.items[0]?.id).not.toBe(linked.id);
+  });
+
+  it('deletes a case and its links while preserving relations and check state', async () => {
+    const linkedCase = (await createCase('2026年删除案例仍保留关系')).json<CaseDetail>();
+    const causeId = '15000000-0000-4000-8000-000000000001';
+    const effectId = '15000000-0000-4000-8000-000000000002';
+    const relationId = '25000000-0000-4000-8000-000000000001';
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values ($1, '删除案例保留原因'), ($2, '删除案例保留结果')`,
+      [causeId, effectId],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $2, $3, 50)`,
+      [relationId, causeId, effectId],
+    );
+    await pool!.query(
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+       values ($1, $2)`,
+      [relationId, linkedCase.id],
+    );
+    const stateBefore = await pool!.query<{ state: string }>(
+      `select row_to_json(data_check_state)::text as state from data_check_state`,
+    );
+
+    const impact = await app!.inject({
+      method: 'GET',
+      url: `/api/cases/${linkedCase.id}/deletion-impact`,
+    });
+    expect(impact.statusCode).toBe(200);
+    expect(impact.json()).toEqual({ canDelete: true, hasRelations: true });
+
+    const removed = await app!.inject({
+      method: 'DELETE',
+      url: `/api/cases/${linkedCase.id}`,
+    });
+    expect(removed.statusCode).toBe(200);
+    expect(removed.json()).toEqual({ deleted: true });
+    expect(
+      (await app!.inject({ method: 'GET', url: `/api/cases/${linkedCase.id}` })).statusCode,
+    ).toBe(404);
+    expect(
+      (await app!.inject({ method: 'GET', url: `/api/relations/${relationId}` })).statusCode,
+    ).toBe(200);
+    const links = await pool!.query<{ count: string }>(
+      `select count(*) from causal_relation_cases where concrete_case_id = $1`,
+      [linkedCase.id],
+    );
+    expect(links.rows[0]?.count).toBe('0');
+    const stateAfter = await pool!.query<{ state: string }>(
+      `select row_to_json(data_check_state)::text as state from data_check_state`,
+    );
+    expect(stateAfter.rows[0]?.state).toBe(stateBefore.rows[0]?.state);
+  });
+
   it('returns stable client errors and publishes case paths', async () => {
     const missing = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
     expect((await app!.inject({ method: 'GET', url: `/api/cases/${missing}` })).statusCode).toBe(
+      404,
+    );
+    expect(
+      (
+        await app!.inject({
+          method: 'GET',
+          url: `/api/cases/${missing}/deletion-impact`,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await app!.inject({ method: 'DELETE', url: `/api/cases/${missing}` })).statusCode).toBe(
       404,
     );
     const openapi = await app!.inject({ method: 'GET', url: '/api/openapi.json' });
@@ -264,5 +363,6 @@ describe.sequential('case REST API', () => {
     expect(paths).toHaveProperty('/api/cases/candidates');
     expect(paths).toHaveProperty('/api/cases/{caseId}');
     expect(paths).toHaveProperty('/api/cases/{caseId}/relations');
+    expect(paths).toHaveProperty('/api/cases/{caseId}/deletion-impact');
   });
 });

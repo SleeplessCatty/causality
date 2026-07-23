@@ -1,4 +1,5 @@
 import type {
+  CaseDeletionImpact,
   CaseCandidateListResponse,
   CaseCandidateQuery,
   CaseDetail,
@@ -72,6 +73,8 @@ export interface CaseRepository {
   create(input: CaseFormInput): Promise<CaseDetail>;
   replace(id: string, input: CaseFormInput): Promise<CaseDetail | null>;
   findByContent(content: string): Promise<CaseReference | null>;
+  deletionImpact(id: string): Promise<CaseDeletionImpact | null>;
+  delete(id: string): Promise<boolean>;
 }
 
 function reference(row: Pick<CaseRow, 'id' | 'content'>): CaseReference {
@@ -113,6 +116,10 @@ const rankedCasesCte = `${caseSelect},
            and ($4::uuid is null or exists (
              select 1 from causal_relation_cases f
              where f.concrete_case_id = c.id and f.causal_relation_id = $4
+           ))
+           and ($5::boolean = false or not exists (
+             select 1 from causal_relation_cases orphan_link
+             where orphan_link.concrete_case_id = c.id
            ))`;
 
 export class PostgresCaseRepository implements CaseRepository {
@@ -126,6 +133,7 @@ export class PostgresCaseRepository implements CaseRepository {
       `${escaped}%`,
       `%${escaped}%`,
       query.relationId ?? null,
+      query.orphan,
     ];
     const countResult = await this.pool.query<CountRow>(
       `with ranked as (
@@ -145,7 +153,7 @@ export class PostgresCaseRepository implements CaseRepository {
        select * from ranked
        where ($1 = '' or ranked.rank is not null)
        order by ${normalized ? 'ranked.rank,' : ''} ranked.updated_at desc, ranked.id desc
-       limit $5 offset $6`,
+       limit $6 offset $7`,
       parameters,
     );
     return {
@@ -265,6 +273,51 @@ export class PostgresCaseRepository implements CaseRepository {
       [id],
     );
     return result.rows[0] ? detail(result.rows[0]) : null;
+  }
+
+  async deletionImpact(id: string): Promise<CaseDeletionImpact | null> {
+    const result = await this.pool.query<{ id: string; has_relations: boolean }>(
+      `select c.id,
+              exists (
+                select 1
+                from causal_relation_cases crc
+                where crc.concrete_case_id = c.id
+              ) as has_relations
+       from concrete_cases c
+       where c.id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          canDelete: true,
+          hasRelations: row.has_relations,
+        }
+      : null;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const target = await client.query<{ id: string }>(
+        `select id from concrete_cases where id = $1 for update`,
+        [id],
+      );
+      if (!target.rows[0]) {
+        await client.query('rollback');
+        return false;
+      }
+      await client.query(`delete from causal_relation_cases where concrete_case_id = $1`, [id]);
+      await client.query(`delete from concrete_cases where id = $1`, [id]);
+      await client.query('commit');
+      return true;
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async listRelations(id: string, query: CaseRelationListQuery): Promise<CaseRelationListResponse> {
