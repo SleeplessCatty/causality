@@ -168,9 +168,8 @@ pnpm build
 
 ## Roadmap
 
+- 语义搜索与 pgvector 增强；
 - CSV/JSON 批量导入与人工审核；
-- 传统搜索性能、排序和可观测性增强；
-- 可选语义搜索与 pgvector 评估；
 - Cytoscape/ELK Web Worker、图页面资源体积和布局性能优化；
 - 多段因果路径和历史案例分析；
 - 备份恢复、监控、安全响应头和按需认证。
