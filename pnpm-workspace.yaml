@@ -5,7 +5,9 @@ packages:
 allowBuilds:
   cpu-features: false
   esbuild: true
+  onnxruntime-node: true
   protobufjs: false
+  sharp: false
   ssh2: false
 
 minimumReleaseAgeExclude:

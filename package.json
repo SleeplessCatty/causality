@@ -12,6 +12,7 @@
     "dev": "pnpm --filter @causality/contracts build && pnpm --parallel --filter @causality/api --filter @causality/web dev",
     "dev:web": "pnpm --filter @causality/contracts build && pnpm --filter @causality/web dev",
     "dev:api": "pnpm --filter @causality/contracts build && pnpm --filter @causality/api dev",
+    "dev:semantic-worker": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && pnpm --filter @causality/semantic-worker dev",
     "db:generate": "pnpm --filter @causality/api db:generate",
     "db:migrate": "pnpm --filter @causality/api db:migrate",
     "db:seed": "pnpm --filter @causality/api db:seed",
