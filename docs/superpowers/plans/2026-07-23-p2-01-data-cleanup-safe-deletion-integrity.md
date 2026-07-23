@@ -1412,11 +1412,11 @@ git commit -m "feat: complete P2-01 data cleanup and integrity"
 
 Do not push.
 
-- [ ] **Step 8: Deliver desktop manual acceptance**
+- [x] **Step 8: Deliver desktop manual acceptance**
 
 Provide the exact checklist from design section 18 and keep the route map status at “等待人工复核”.
 
-- [ ] **Step 9: Record user acceptance**
+- [x] **Step 9: Record user acceptance**
 
 Only after the user explicitly confirms:
 
@@ -1431,6 +1431,11 @@ git commit -m "docs: complete P2-01 acceptance"
 ```
 
 Then ask whether to enter P2-02. Do not push GitHub.
+
+Result (2026-07-23): the user confirmed that desktop manual acceptance passed.
+The P2-01 design and overall roadmap are marked complete. The implementation,
+review, release-candidate gate, and acceptance commits remain local; nothing was
+pushed to GitHub.
 
 ---
 
