@@ -217,12 +217,15 @@
   height: 100%;
   padding: 0 12px;
   border: 0;
-  border-right: 1px solid #d9e0da;
   background: transparent;
   color: #536159;
   cursor: pointer;
   font-size: 12px;
   font-weight: 650;
+}
+
+.graph-viewport-controls > :not(:first-child) {
+  border-left: 1px solid #d9e0da;
 }
 
 .graph-status-overlay {
@@ -267,16 +270,15 @@
 }
 
 .graph-viewport-controls output {
+  display: inline-flex;
   width: 58px;
-  border-right: 1px solid #d9e0da;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
   color: #43544a;
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   text-align: center;
-}
-
-.graph-viewport-controls .graph-fit-button {
-  border-right: 0;
 }
 
 .causal-graph-canvas {
