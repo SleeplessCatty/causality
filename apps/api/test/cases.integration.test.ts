@@ -126,7 +126,7 @@ describe.sequential('case REST API', () => {
     expect(filtered.json<CaseListResponse>().items).toHaveLength(1);
     expect(filtered.json<CaseListResponse>()).toMatchObject({
       page: 1,
-      pageSize: 30,
+      pageSize: 50,
       totalItems: 1,
       totalPages: 1,
     });

@@ -42,11 +42,16 @@ export function ListPagination({
 }: ListPaginationProps) {
   const [jumpValue, setJumpValue] = useState('');
 
+  function navigate(target: number): void {
+    onPageChange(target);
+    document.querySelector<HTMLElement>('.product-main')?.scrollTo({ top: 0, behavior: 'auto' });
+  }
+
   function jump(): void {
     if (!/^\d+$/.test(jumpValue)) return;
     const target = Number(jumpValue);
     if (!Number.isSafeInteger(target) || target < 1 || target > totalPages) return;
-    onPageChange(target);
+    navigate(target);
   }
 
   function handleJumpKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
@@ -62,7 +67,7 @@ export function ListPagination({
         <button
           className="button button--secondary"
           type="button"
-          onClick={() => onPageChange(page - 1)}
+          onClick={() => navigate(page - 1)}
           disabled={disabled || page <= 1}
         >
           上一页
@@ -79,7 +84,7 @@ export function ListPagination({
               aria-label={`第 ${item} 页`}
               aria-current={item === page ? 'page' : undefined}
               disabled={disabled}
-              onClick={() => onPageChange(item)}
+              onClick={() => navigate(item)}
               key={item}
             >
               {item}
@@ -89,7 +94,7 @@ export function ListPagination({
         <button
           className="button button--secondary"
           type="button"
-          onClick={() => onPageChange(page + 1)}
+          onClick={() => navigate(page + 1)}
           disabled={disabled || page >= totalPages}
         >
           下一页

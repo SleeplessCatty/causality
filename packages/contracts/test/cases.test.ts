@@ -36,11 +36,11 @@ describe('concrete case contracts', () => {
       page: 1,
       limit: 30,
     });
-    expect(caseListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 30 });
+    expect(caseListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50 });
     expect(caseListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
-      limit: 30,
+      limit: 50,
     });
     for (const page of ['0', '-1', '1.5', '100001']) {
       expect(caseListQuerySchema.safeParse({ page }).success).toBe(false);
@@ -55,6 +55,7 @@ describe('concrete case contracts', () => {
       limit: 100,
       cursor: 'cursor-value',
     });
+    expect(caseRelationListQuerySchema.parse({})).toEqual({ limit: 20 });
     expect(caseRelationListQuerySchema.parse({ limit: '30' })).toEqual({ limit: 30 });
     expect(caseCandidateQuerySchema.safeParse({ q: '案例', limit: '101' }).success).toBe(false);
     expect(caseListQuerySchema.safeParse({ q: '查'.repeat(100) }).success).toBe(true);

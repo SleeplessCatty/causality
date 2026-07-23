@@ -16,8 +16,8 @@ const firstPage = {
     },
   ],
   page: 1,
-  pageSize: 30,
-  totalItems: 61,
+  pageSize: 50,
+  totalItems: 101,
   totalPages: 3,
 };
 
@@ -107,14 +107,14 @@ describe('EventListPage', () => {
       return jsonResponse({
         ...firstPage,
         page: hasQuery ? 1 : 3,
-        totalItems: hasQuery ? 1 : 61,
+        totalItems: hasQuery ? 1 : 101,
         totalPages: hasQuery ? 1 : 3,
       });
     });
     vi.stubGlobal('fetch', fetchMock);
     const router = renderList('/events?page=3');
     await screen.findByRole('link', { name: '原油价格上涨' });
-    expect(screen.getByText('共 61 条 · 第 3/3 页')).toBeTruthy();
+    expect(screen.getByText('共 101 条 · 第 3/3 页')).toBeTruthy();
 
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索事件' }), {
       target: { value: '  油价  ' },
@@ -144,8 +144,8 @@ describe('EventListPage', () => {
               },
             ],
             page,
-            pageSize: 30,
-            totalItems: 61,
+            pageSize: 50,
+            totalItems: 101,
             totalPages: 3,
           })
         : jsonResponse(firstPage);
@@ -153,7 +153,7 @@ describe('EventListPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     const router = renderList('/events?page=2');
 
-    expect(await screen.findByText('共 61 条 · 第 2/3 页')).toBeTruthy();
+    expect(await screen.findByText('共 101 条 · 第 2/3 页')).toBeTruthy();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('page=2'))).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: '上一页' }));
     expect(await screen.findByRole('link', { name: '原油价格上涨' })).toBeTruthy();
@@ -171,7 +171,7 @@ describe('EventListPage', () => {
     await waitFor(() => expect(router.state.location.search).toBe('?page=1'));
     await router.navigate(-1);
     await waitFor(() => expect(router.state.location.search).toBe('?page=3'));
-    expect(await screen.findByText('共 61 条 · 第 3/3 页')).toBeTruthy();
+    expect(await screen.findByText('共 101 条 · 第 3/3 页')).toBeTruthy();
   });
 
   it('shows empty and retryable failure states', async () => {
@@ -179,7 +179,7 @@ describe('EventListPage', () => {
       .fn()
       .mockImplementationOnce(() => jsonResponse({ code: 'INTERNAL_ERROR', message: '失败' }, 500))
       .mockImplementationOnce(() =>
-        jsonResponse({ items: [], page: 1, pageSize: 30, totalItems: 0, totalPages: 1 }),
+        jsonResponse({ items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 }),
       );
     vi.stubGlobal('fetch', fetchMock);
     renderList();

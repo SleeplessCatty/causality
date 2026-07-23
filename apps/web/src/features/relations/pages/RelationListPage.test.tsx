@@ -59,7 +59,7 @@ describe('RelationListPage', () => {
   it('keeps disabled pagination visible with the empty state', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse({ items: [], page: 1, pageSize: 30, totalItems: 0, totalPages: 1 })),
+      vi.fn(() => jsonResponse({ items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 })),
     );
     renderList();
 
@@ -78,7 +78,7 @@ describe('RelationListPage', () => {
           : jsonResponse({
               items: [relation],
               page: 1,
-              pageSize: 30,
+              pageSize: 50,
               totalItems: 1,
               totalPages: 1,
             }),
@@ -138,16 +138,16 @@ describe('RelationListPage', () => {
           return jsonResponse({
             items: [nextRelation],
             page: 2,
-            pageSize: 30,
-            totalItems: 31,
+            pageSize: 50,
+            totalItems: 51,
             totalPages: 2,
           });
         }
         return jsonResponse({
           items: [relation],
           page: 1,
-          pageSize: 30,
-          totalItems: 31,
+          pageSize: 50,
+          totalItems: 51,
           totalPages: 2,
         });
       }),
@@ -156,7 +156,7 @@ describe('RelationListPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '展开' }));
     await screen.findByText('燃油成本传导');
-    expect(screen.getByText('共 31 条 · 第 1/2 页')).toBeTruthy();
+    expect(screen.getByText('共 51 条 · 第 1/2 页')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
     await screen.findByText('原油供应下降');
     expect(router.state.location.search).not.toContain('expanded=');
@@ -188,7 +188,7 @@ describe('RelationListPage', () => {
           : jsonResponse({
               items: [],
               page: 1,
-              pageSize: 30,
+              pageSize: 50,
               totalItems: 0,
               totalPages: 1,
             }),
@@ -209,15 +209,15 @@ describe('RelationListPage', () => {
       return jsonResponse({
         items: [relation],
         page,
-        pageSize: 30,
-        totalItems: 31,
+        pageSize: 50,
+        totalItems: 51,
         totalPages: 2,
       });
     });
     vi.stubGlobal('fetch', fetchMock);
     const router = renderList('/relations?page=2');
     await screen.findByText('原油价格上涨');
-    expect(screen.getByText('共 31 条 · 第 2/2 页')).toBeTruthy();
+    expect(screen.getByText('共 51 条 · 第 2/2 页')).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: '搜索因果关系' }), {
       target: { value: '  油价  ' },
     });

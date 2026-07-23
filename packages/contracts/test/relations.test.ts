@@ -141,11 +141,11 @@ describe('relation contracts', () => {
       page: 1,
       limit: 30,
     });
-    expect(relationListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 30 });
+    expect(relationListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50 });
     expect(relationListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
-      limit: 30,
+      limit: 50,
     });
     for (const page of ['0', '-1', '1.5', '100001']) {
       expect(relationListQuerySchema.safeParse({ page }).success).toBe(false);
@@ -158,8 +158,8 @@ describe('relation contracts', () => {
     ).toEqual({ causeEventId, effectEventId, excludeId: relationId });
   });
 
-  it('keeps relation-detail cases cursor-based with a 100-item default', () => {
-    expect(relationCaseListQuerySchema.parse({})).toEqual({ limit: 100 });
+  it('keeps relation-detail cases cursor-based with a 20-item default', () => {
+    expect(relationCaseListQuerySchema.parse({})).toEqual({ limit: 20 });
     expect(relationCaseListQuerySchema.parse({ limit: '30', cursor: 'next-page' })).toEqual({
       limit: 30,
       cursor: 'next-page',

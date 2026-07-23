@@ -43,7 +43,7 @@ export function RelationListPage() {
 
   const relations = useQuery({
     queryKey: ['relations', 'list', query, page],
-    queryFn: ({ signal }) => getRelations({ q: query, page, limit: 30 }, signal),
+    queryFn: ({ signal }) => getRelations({ q: query, page, limit: 50 }, signal),
     placeholderData: (previous) => previous,
   });
   const expanded = useQuery({

@@ -28,7 +28,7 @@ export const caseCandidateQuerySchema = z
 
 export const caseRelationListQuerySchema = z
   .object({
-    limit: z.coerce.number().int().min(1).max(100).default(30),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().min(1).max(2_000).optional(),
   })
   .strict();

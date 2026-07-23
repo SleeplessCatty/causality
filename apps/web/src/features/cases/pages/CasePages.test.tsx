@@ -62,19 +62,19 @@ describe('case pages', () => {
       updatedAt: detail.updatedAt,
     };
     const fetchMock = vi.fn(() =>
-      response({ items: [summary], page: 1, pageSize: 30, totalItems: 31, totalPages: 2 }),
+      response({ items: [summary], page: 1, pageSize: 50, totalItems: 51, totalPages: 2 }),
     );
     vi.stubGlobal('fetch', fetchMock);
     renderRoute('/cases', <CaseListPage />);
     expect(await screen.findByText(detail.content)).toBeTruthy();
     expect(screen.getAllByText('1').length).toBeGreaterThan(0);
-    expect(screen.getByText('共 31 条 · 第 1/2 页')).toBeTruthy();
+    expect(screen.getByText('共 51 条 · 第 1/2 页')).toBeTruthy();
   });
 
   it('keeps disabled pagination visible with the empty state', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => response({ items: [], page: 1, pageSize: 30, totalItems: 0, totalPages: 1 })),
+      vi.fn(() => response({ items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 })),
     );
     renderRoute('/cases', <CaseListPage />);
 
@@ -92,8 +92,8 @@ describe('case pages', () => {
       return response({
         items: [listSummary(page)],
         page,
-        pageSize: 30,
-        totalItems: 61,
+        pageSize: 50,
+        totalItems: 101,
         totalPages: 3,
       });
     });
@@ -175,7 +175,7 @@ describe('case pages', () => {
     expect(relationLink.querySelectorAll('.overflow-text--single-line')).toHaveLength(2);
   });
 
-  it('loads the next relation page and deduplicates relation ids', async () => {
+  it('loads every remaining relation page in one action and deduplicates relation ids', async () => {
     const firstRelation = {
       id: '22222222-2222-4222-8222-222222222222',
       causeEvent: { id: '33333333-3333-4333-8333-333333333333', name: '第一页原因' },
@@ -188,19 +188,28 @@ describe('case pages', () => {
       effectEvent: { id: '77777777-7777-4777-8777-777777777777', name: '第二页结果' },
       linkedAt: '2026-07-20T03:00:00.000Z',
     };
+    const thirdRelation = {
+      id: '88888888-8888-4888-8888-888888888888',
+      causeEvent: { id: '99999999-9999-4999-8999-999999999999', name: '第三页原因' },
+      effectEvent: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: '第三页结果' },
+      linkedAt: '2026-07-19T03:00:00.000Z',
+    };
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
-      if (url.includes('/relations?') && url.includes('cursor=next-page')) {
+      if (url.includes('/relations?') && url.includes('cursor=third-page')) {
+        return response({ items: [thirdRelation], nextCursor: null, hasMore: false });
+      }
+      if (url.includes('/relations?') && url.includes('cursor=second-page')) {
         return response({
           items: [firstRelation, secondRelation],
-          nextCursor: null,
-          hasMore: false,
+          nextCursor: 'third-page',
+          hasMore: true,
         });
       }
       if (url.includes('/relations?')) {
-        return response({ items: [firstRelation], nextCursor: 'next-page', hasMore: true });
+        return response({ items: [firstRelation], nextCursor: 'second-page', hasMore: true });
       }
-      return response({ ...detail, relationCount: 2 });
+      return response({ ...detail, relationCount: 3 });
     });
     vi.stubGlobal('fetch', fetchMock);
     renderRoute('/cases/:caseId', <CaseDetailPage />);
@@ -210,9 +219,13 @@ describe('case pages', () => {
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
 
     expect(await screen.findByRole('link', { name: /第二页原因.*第二页结果/ })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: /第三页原因.*第三页结果/ })).toBeTruthy();
     expect(screen.getAllByRole('link', { name: /第一页原因.*第一页结果/ })).toHaveLength(1);
     expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain(
-      `/api/cases/${detail.id}/relations?limit=30&cursor=next-page`,
+      `/api/cases/${detail.id}/relations?limit=20&cursor=second-page`,
+    );
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain(
+      `/api/cases/${detail.id}/relations?limit=20&cursor=third-page`,
     );
   });
 

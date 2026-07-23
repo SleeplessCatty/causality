@@ -21,7 +21,7 @@ export async function getCases(
   if (query.q) parameters.set('q', query.q);
   if (query.relationId) parameters.set('relationId', query.relationId);
   parameters.set('page', String(query.page));
-  parameters.set('limit', String(query.limit ?? 30));
+  parameters.set('limit', String(query.limit ?? 50));
   return caseListResponseSchema.parse(await requestJson(`/api/cases?${parameters}`, {}, signal));
 }
 
@@ -53,7 +53,7 @@ export async function getCaseRelations(
   query: { cursor?: string; limit?: number } = {},
   signal?: AbortSignal,
 ): Promise<CaseRelationListResponse> {
-  const parameters = new URLSearchParams({ limit: String(query.limit ?? 30) });
+  const parameters = new URLSearchParams({ limit: String(query.limit ?? 20) });
   if (query.cursor) parameters.set('cursor', query.cursor);
   return caseRelationListResponseSchema.parse(
     await requestJson(`/api/cases/${id}/relations?${parameters}`, {}, signal),

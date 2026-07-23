@@ -13,9 +13,9 @@
 - 本轮只做第一期正式发布整改，不加入 AI、语义搜索、自动推理、用户系统、删除功能或移动端适配。
 - 保持现有数据库业务含义、REST 路径和桌面端视觉风格；允许三个主列表 API 将游标响应改为页码响应，并保留单次关系表单最多关联 `1,000` 条具体案例的输入限制。
 - 候选搜索仍不限制匹配结果总数，不显示匹配原因、分页批次或完整匹配数量。
-- 原子事件、因果关系和具体案例三个主列表固定默认每页 `30` 条，支持页码、任意页跳转、当前页、总页数和总条目数；候选搜索、案例详情关系和关系详情案例继续使用游标“加载更多”。
+- 原子事件、因果关系和具体案例三个主列表固定默认每页 `50` 条，支持页码、任意页跳转、当前页、总页数和总条目数；翻页或跳转后主内容区回到顶部。候选搜索、案例详情关系和关系详情案例继续使用游标“加载更多”。
 - 局部图响应仍最多包含 `100` 个非中心节点和 `1,000` 条关系；节点预算必须同时约束数据库遍历工作量。
-- 案例详情每批显示 `30` 条关联关系，关系详情每批显示 `100` 条关联案例；两者都由用户显式点击“加载更多”，不自动读取全部分页。
+- 案例详情和关系详情首批均显示 `20` 条关联内容；用户点击一次“加载更多”后自动读取全部剩余游标页，中途失败时保留已加载内容并允许重试。
 - 所有数据库结构变化使用新增迁移完成；禁止修改已执行迁移、静默截断用户数据或要求重建数据库。
 - README 面向首次访问 GitHub 仓库的使用者，不再记录 P1、UX 编号、开发过程、历史测试数量或人工复核状态。
 - 每个任务均先写失败测试，再做最小实现；任务完成后运行其局部测试和全局静态检查。
@@ -86,7 +86,7 @@ useInfiniteQuery({
   queryKey: ['cases', 'relations', caseId],
   initialPageParam: undefined as string | undefined,
   queryFn: ({ pageParam, signal }) =>
-    getCaseRelations(caseId, { limit: 30, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
+    getCaseRelations(caseId, { limit: 20, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
   getNextPageParam: (page) => (page.hasMore ? (page.nextCursor ?? undefined) : undefined),
   enabled: Boolean(caseId),
   retry: false,
@@ -484,7 +484,7 @@ export async function requestJson(
 
 - [ ] **Step 3: 关系详情改成显式加载案例**
 
-保留 `useInfiniteQuery`，删除自动调用 `fetchNextPage` 的 Effect。首批固定 100 条，存在下一页时显示“加载更多”；下一页失败保留已有列表并允许重试。不得一次渲染未请求的案例。
+保留 `useInfiniteQuery`，删除自动调用 `fetchNextPage` 的 Effect。首批固定 20 条，存在下一页时显示“加载更多”；点击后读取全部剩余游标页，下一页失败时保留已有列表并允许重试。不得一次渲染未请求的案例。
 
 - [ ] **Step 4: 移除图页重复中心事件请求**
 
@@ -666,7 +666,7 @@ git commit -m "refactor: remove duplicated infrastructure and dead resources"
   `GET /api/relations/:relationId/cases`；查询为
   `{ limit: number /* default 100 */, cursor?: string }`，响应继续为
   `{ items: CaseSummary[], nextCursor: string | null, hasMore: boolean }`，且游标绑定
-  `relationId`。关系详情改用此接口并保留每批 100 条的显式“加载更多”；关系编辑页则在渲染表单前自动遍历并合并全部游标页。
+  `relationId`。关系详情改用此接口，首批 20 条，点击“加载更多”后自动遍历并合并全部剩余游标页；关系编辑页则在渲染表单前自动遍历并合并全部游标页。
 - Produces:
 
 ```ts
@@ -681,7 +681,7 @@ export interface ListPaginationProps {
 
 - [ ] **Step 1: 先写主列表页码契约失败测试**
 
-三个主列表 Query 测试固定验证：默认 `page=1`、默认 `limit=30`、拒绝 `page=0`、负数、小数和大于 `100_000` 的页码；主列表 Response 必须包含 `page/pageSize/totalItems/totalPages`，且不再接受 `nextCursor/hasMore`。候选和详情分页测试继续验证原游标结构。
+三个主列表 Query 测试固定验证：默认 `page=1`、默认 `limit=50`、拒绝 `page=0`、负数、小数和大于 `100_000` 的页码；主列表 Response 必须包含 `page/pageSize/totalItems/totalPages`，且不再接受 `nextCursor/hasMore`。候选和详情分页测试继续验证原游标结构。
 
 - [ ] **Step 2: 运行 Contracts 测试并确认旧契约失败**
 
@@ -711,7 +711,7 @@ const offset = (page - 1) * query.limit;
 
 - [ ] **Step 6: 将三个列表页改为 URL 页码状态**
 
-三个列表从 `page` 查询参数读取当前页，缺失或非法时使用 `1`。搜索词或案例 `relationId` 筛选发生变化时删除 `page` 并回到第 `1` 页；翻页和跳转写入 URL，因此刷新、浏览器前进/后退能恢复页面。关系列表切换页码时继续清除 `expanded`。Query Key 必须包含 `page`，API 请求发送 `page` 和固定 `limit=30`，删除三个页面的 `cursorStack`。
+三个列表从 `page` 查询参数读取当前页，缺失或非法时使用 `1`。搜索词或案例 `relationId` 筛选发生变化时删除 `page` 并回到第 `1` 页；翻页和跳转写入 URL，并将主内容滚动区回到顶部，因此刷新、浏览器前进/后退能恢复页面。关系列表切换页码时继续清除 `expanded`。Query Key 必须包含 `page`，API 请求发送 `page` 和固定 `limit=50`，删除三个页面的 `cursorStack`。
 
 当后端因总数变化把页码钳制到最后一页时，页面使用 `replace` 把响应中的有效页同步回 URL，不产生历史记录循环。加载新页时保留现有表格直到新数据返回，分页控件在请求中禁用，避免重复跳转。
 

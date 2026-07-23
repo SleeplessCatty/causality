@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
+import { fetchAllRemainingPages } from '../../../shared/pagination/fetchAllRemainingPages';
 import { getCase, getCaseRelations } from '../api/caseApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -21,7 +22,7 @@ export function CaseDetailPage() {
     queryKey: ['cases', 'relations', caseId],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam, signal }) =>
-      getCaseRelations(caseId, { limit: 30, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
+      getCaseRelations(caseId, { limit: 20, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
     getNextPageParam: (page) => (page.hasMore ? (page.nextCursor ?? undefined) : undefined),
     enabled: Boolean(caseId),
     retry: false,
@@ -128,7 +129,7 @@ export function CaseDetailPage() {
               type="button"
               className="text-button"
               disabled={relations.isFetchingNextPage}
-              onClick={() => void relations.fetchNextPage()}
+              onClick={() => void fetchAllRemainingPages(relations.fetchNextPage)}
             >
               {relations.isFetchingNextPage ? '加载中…' : '重试加载其余关联关系'}
             </button>
@@ -143,7 +144,7 @@ export function CaseDetailPage() {
               type="button"
               className="text-button"
               disabled={relations.isFetchingNextPage}
-              onClick={() => void relations.fetchNextPage()}
+              onClick={() => void fetchAllRemainingPages(relations.fetchNextPage)}
             >
               {relations.isFetchingNextPage ? '加载中…' : '加载更多'}
             </button>

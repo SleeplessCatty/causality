@@ -96,11 +96,11 @@ describe('event contracts', () => {
       page: 1,
       limit: 30,
     });
-    expect(eventListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 30 });
+    expect(eventListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50 });
     expect(eventListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
-      limit: 30,
+      limit: 50,
     });
     for (const page of ['0', '-1', '1.5', '100001']) {
       expect(eventListQuerySchema.safeParse({ page }).success).toBe(false);

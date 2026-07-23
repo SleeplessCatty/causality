@@ -12,14 +12,14 @@ async function createEvent(request: APIRequestContext, name: string) {
   return response.json() as Promise<{ id: string; name: string }>;
 }
 
-test('relation list shows totals and numbered pages for 31 recognizable records', async ({
+test('relation list shows totals and numbered pages for 51 recognizable records', async ({
   page,
   request,
 }) => {
   const token = `RELPAGE${Date.now()}`;
   const cause = await createEvent(request, `${token}-共同原因`);
   const effectNames = Array.from(
-    { length: 31 },
+    { length: 51 },
     (_, index) => `${token}-结果-${String(index + 1).padStart(2, '0')}`,
   );
   const effects: Array<{ id: string; name: string }> = [];
@@ -40,13 +40,13 @@ test('relation list shows totals and numbered pages for 31 recognizable records'
   }
 
   await page.goto(`/relations?q=${token}`);
-  await expect(page.getByText('共 31 条 · 第 1/2 页')).toBeVisible();
-  await expect(page.locator('.relation-table tbody tr')).toHaveCount(30);
+  await expect(page.getByText('共 51 条 · 第 1/2 页')).toBeVisible();
+  await expect(page.locator('.relation-table tbody tr')).toHaveCount(50);
   const firstPageEffects = await page
     .locator('.relation-table tbody tr td:nth-child(3)')
     .allTextContents();
   await page.getByRole('button', { name: '下一页' }).click();
-  await expect(page.getByText('共 31 条 · 第 2/2 页')).toBeVisible();
+  await expect(page.getByText('共 51 条 · 第 2/2 页')).toBeVisible();
   await expect(page.locator('.relation-table tbody tr')).toHaveCount(1);
   const secondPageEffects = await page
     .locator('.relation-table tbody tr td:nth-child(3)')
@@ -124,6 +124,36 @@ test('user can create a reverse relation, inspect it inline, edit it, and find i
   await expect(page.getByRole('heading', { name: effectName })).toBeVisible();
 
   expect(browserErrors).toEqual([]);
+});
+
+test('relation detail loads every case beyond the first 20 with one action', async ({
+  page,
+  request,
+}) => {
+  const suffix = `${Date.now()}`.slice(-8);
+  const cause = await createEvent(request, `E2E 全部案例原因 ${suffix}`);
+  const effect = await createEvent(request, `E2E 全部案例结果 ${suffix}`);
+  const contents = Array.from(
+    { length: 41 },
+    (_, index) => `E2E ${suffix} 详情案例 ${String(index + 1).padStart(2, '0')}`,
+  );
+  const response = await request.post(`${apiBase}/relations`, {
+    data: {
+      causeEventId: cause.id,
+      effectEventId: effect.id,
+      confidence: 50,
+      description: null,
+      caseSelections: contents.map((content) => ({ type: 'new', content })),
+    },
+  });
+  expect(response.status()).toBe(201);
+  const relation = (await response.json()) as { id: string };
+
+  await page.goto(`/relations/${relation.id}`);
+  const caseItems = page.locator('.relation-detail-case-list > li');
+  await expect(caseItems).toHaveCount(20);
+  await page.getByRole('button', { name: '加载更多' }).click();
+  await expect(caseItems).toHaveCount(41);
 });
 
 test('relation pages fit the supported desktop viewports', async ({ page }, testInfo) => {

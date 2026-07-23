@@ -18,25 +18,25 @@ async function createCase(request: APIRequestContext, content: string) {
   return response.json() as Promise<{ id: string; content: string }>;
 }
 
-test('case list shows totals and numbered pages for 31 recognizable records', async ({
+test('case list shows totals and numbered pages for 51 recognizable records', async ({
   page,
   request,
 }) => {
   const token = `CASEPAGE${Date.now()}`;
   await runInBatches(
-    Array.from({ length: 31 }, (_, index) => `${token}-${String(index + 1).padStart(2, '0')}`),
+    Array.from({ length: 51 }, (_, index) => `${token}-${String(index + 1).padStart(2, '0')}`),
     E2E_WRITE_BATCH_SIZE,
     (content) => createCase(request, content),
   );
 
   await page.goto(`/cases?q=${token}`);
-  await expect(page.getByText('共 31 条 · 第 1/2 页')).toBeVisible();
-  await expect(page.locator('.case-table tbody tr')).toHaveCount(30);
+  await expect(page.getByText('共 51 条 · 第 1/2 页')).toBeVisible();
+  await expect(page.locator('.case-table tbody tr')).toHaveCount(50);
   const firstPageContents = await page
     .locator('.case-table tbody tr td:first-child')
     .allTextContents();
   await page.getByRole('button', { name: '下一页' }).click();
-  await expect(page.getByText('共 31 条 · 第 2/2 页')).toBeVisible();
+  await expect(page.getByText('共 51 条 · 第 2/2 页')).toBeVisible();
   await expect(page.locator('.case-table tbody tr')).toHaveCount(1);
   const secondPageContents = await page
     .locator('.case-table tbody tr td:first-child')
@@ -168,12 +168,16 @@ test('relation detail shows only five recent cases and links to the complete fil
   await expect(page.locator('.case-table tbody tr')).toHaveCount(6);
 });
 
-test('case detail loads all relations beyond the first 30', async ({ page, request }) => {
+test('case detail loads all relations beyond the first 20 with one action', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
   const suffix = `${Date.now()}`.slice(-8);
   const linkedCase = await createCase(request, `E2E ${suffix} 关系分页案例`);
   const cause = await createEvent(request, `E2E ${suffix} 分页原因`);
 
-  for (let index = 1; index <= 31; index += 1) {
+  for (let index = 1; index <= 41; index += 1) {
     const effect = await createEvent(request, `E2E ${suffix} 分页结果 ${index}`);
     const response = await request.post(`${apiBase}/relations`, {
       data: {
@@ -189,9 +193,9 @@ test('case detail loads all relations beyond the first 30', async ({ page, reque
 
   await page.goto(`/cases/${linkedCase.id}`);
   const relationItems = page.locator('.case-relation-list > li');
-  await expect(relationItems).toHaveCount(30);
+  await expect(relationItems).toHaveCount(20);
   await page.getByRole('button', { name: '加载更多' }).click();
-  await expect(relationItems).toHaveCount(31);
+  await expect(relationItems).toHaveCount(41);
 });
 
 test('case pages fit the supported desktop viewports', async ({ page }, testInfo) => {

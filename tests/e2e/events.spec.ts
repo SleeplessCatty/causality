@@ -11,7 +11,7 @@ async function createEvent(request: APIRequestContext, name: string) {
   expect(response.status()).toBe(201);
 }
 
-test('event list paginates 211 records and jumps directly from page 1 to page 8', async ({
+test('event list paginates 211 records and jumps directly from page 1 to page 5', async ({
   page,
   request,
 }) => {
@@ -31,21 +31,30 @@ test('event list paginates 211 records and jumps directly from page 1 to page 8'
   });
 
   await page.goto(`/events?q=${token}`);
-  await expect(page.getByText('共 211 条 · 第 1/8 页')).toBeVisible();
-  await expect(page.locator('.event-table tbody tr')).toHaveCount(30);
+  await expect(page.getByText('共 211 条 · 第 1/5 页')).toBeVisible();
+  await expect(page.locator('.event-table tbody tr')).toHaveCount(50);
+  await page.locator('.product-main').evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect
+    .poll(() => page.locator('.product-main').evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
   await page.getByRole('button', { name: '下一页' }).click();
-  await expect(page.getByText('共 211 条 · 第 2/8 页')).toBeVisible();
-  await expect(page.locator('.event-table tbody tr')).toHaveCount(30);
+  await expect(page.getByText('共 211 条 · 第 2/5 页')).toBeVisible();
+  await expect(page.locator('.event-table tbody tr')).toHaveCount(50);
+  await expect
+    .poll(() => page.locator('.product-main').evaluate((element) => element.scrollTop))
+    .toBe(0);
   await page.getByRole('button', { name: '上一页' }).click();
-  await expect(page.getByText('共 211 条 · 第 1/8 页')).toBeVisible();
+  await expect(page.getByText('共 211 条 · 第 1/5 页')).toBeVisible();
 
   requestedPages.length = 0;
-  await page.getByRole('spinbutton', { name: '跳转页码' }).fill('8');
+  await page.getByRole('spinbutton', { name: '跳转页码' }).fill('5');
   await page.getByRole('button', { name: '跳转' }).click();
-  await expect(page.getByText('共 211 条 · 第 8/8 页')).toBeVisible();
-  await expect(page.locator('.event-table tbody tr')).toHaveCount(1);
+  await expect(page.getByText('共 211 条 · 第 5/5 页')).toBeVisible();
+  await expect(page.locator('.event-table tbody tr')).toHaveCount(11);
   await expect(page.getByRole('link', { name: `${token}-211` })).toBeVisible();
-  expect(requestedPages).toEqual([8]);
+  expect(requestedPages).toEqual([5]);
 });
 
 test('user can search, create, inspect, edit, and find an atomic event', async ({ page }) => {

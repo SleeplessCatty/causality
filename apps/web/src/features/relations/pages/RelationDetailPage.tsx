@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { Link, useLocation, useParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
+import { fetchAllRemainingPages } from '../../../shared/pagination/fetchAllRemainingPages';
 import { getRelation, getRelationCases } from '../api/relationApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -23,7 +24,7 @@ export function RelationDetailPage() {
     queryFn: ({ pageParam, signal }) =>
       getRelationCases(
         relationId,
-        { limit: 100, ...(pageParam ? { cursor: pageParam } : {}) },
+        { limit: 20, ...(pageParam ? { cursor: pageParam } : {}) },
         signal,
       ),
     initialPageParam: undefined as string | undefined,
@@ -171,7 +172,7 @@ export function RelationDetailPage() {
               <button
                 type="button"
                 className="text-button"
-                onClick={() => void linkedCases.fetchNextPage()}
+                onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
               >
                 加载更多
               </button>
@@ -182,7 +183,7 @@ export function RelationDetailPage() {
                 <button
                   type="button"
                   className="text-button"
-                  onClick={() => void linkedCases.fetchNextPage()}
+                  onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
                 >
                   重试加载其余案例
                 </button>

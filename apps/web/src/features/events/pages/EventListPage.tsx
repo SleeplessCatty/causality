@@ -54,7 +54,7 @@ export function EventListPage() {
 
   const events = useQuery({
     queryKey: ['events', 'list', query, page],
-    queryFn: ({ signal }) => getEvents({ q: query, page, limit: 30 }, signal),
+    queryFn: ({ signal }) => getEvents({ q: query, page, limit: 50 }, signal),
     placeholderData: (previous) => previous,
   });
 

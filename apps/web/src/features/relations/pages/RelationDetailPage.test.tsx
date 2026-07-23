@@ -29,6 +29,12 @@ const caseTwo = {
   relationCount: 1,
   updatedAt: '2026-07-21T04:00:00.000Z',
 };
+const caseThree = {
+  id: '66666666-6666-4666-8666-666666666666',
+  content: '案例三',
+  relationCount: 1,
+  updatedAt: '2026-07-21T05:00:00.000Z',
+};
 
 function response(body: unknown, status = 200) {
   return Promise.resolve({
@@ -63,15 +69,19 @@ function renderDetail() {
 describe('RelationDetailPage', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('loads only the first 100 linked cases until the user asks for more', async () => {
+  it('loads 20 linked cases initially and every remaining page in one action', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: string | URL | Request) => {
         const url = String(input);
         if (url.startsWith(`/api/relations/${detail.id}/cases?`)) {
-          return url.includes('cursor=next-page')
-            ? response({ items: [caseTwo], nextCursor: null, hasMore: false })
-            : response({ items: [caseOne], nextCursor: 'next-page', hasMore: true });
+          if (url.includes('cursor=third-page')) {
+            return response({ items: [caseThree], nextCursor: null, hasMore: false });
+          }
+          if (url.includes('cursor=second-page')) {
+            return response({ items: [caseTwo], nextCursor: 'third-page', hasMore: true });
+          }
+          return response({ items: [caseOne], nextCursor: 'second-page', hasMore: true });
         }
         return response(detail);
       }),
@@ -105,9 +115,10 @@ describe('RelationDetailPage', () => {
             String(input).startsWith(`/api/relations/${detail.id}/cases?`),
           )?.[0],
       ),
-    ).toContain('limit=100');
+    ).toContain('limit=20');
     fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
     expect(await screen.findByRole('link', { name: '案例二' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: '案例三' })).toBeTruthy();
     expect(screen.getByText('燃油成本传导')).toBeTruthy();
     expect(screen.getByText('82%')).toBeTruthy();
   });

@@ -45,7 +45,7 @@ export function CaseListPage() {
         {
           q: query,
           page,
-          limit: 30,
+          limit: 50,
           ...(relationId ? { relationId } : {}),
         },
         signal,
