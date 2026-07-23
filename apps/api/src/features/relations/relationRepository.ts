@@ -159,6 +159,7 @@ export class PostgresRelationRepository implements RelationRepository {
       pageSize: query.limit,
       totalItems,
       totalPages,
+      semanticIndexUpdating: false,
     };
   }
 

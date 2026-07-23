@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 
 import { parseEnv } from '../config/env.js';
 
@@ -24,14 +24,23 @@ interface IntegrityCounts {
   invalidKeywordLengths: number;
 }
 
+interface SemanticIntegrity {
+  extensionInstalled: boolean;
+  requiredTablesPresent: boolean;
+  invalidModelCodes: number;
+  invalidVectorDimensions: number;
+  inactiveModelVectors: number;
+}
+
 export interface DatabaseVerificationReport {
   migrationApplied: boolean;
   counts: DatabaseCounts;
   integrity: IntegrityCounts;
+  semantic: SemanticIntegrity;
   valid: boolean;
 }
 
-export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationReport> {
+export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseVerificationReport> {
   const migration = await pool.query<{ applied: boolean }>(
     `select exists (
        select 1
@@ -103,9 +112,54 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
           where r.id is null or c.id is null)
        )::int as invalid_foreign_keys`,
   );
+  const semanticFoundation = await pool.query<{
+    extension_installed: boolean;
+    required_tables_present: boolean;
+  }>(
+    `select
+       exists (
+         select 1
+         from pg_extension
+         where extname = 'vector'
+       ) as extension_installed,
+       to_regclass('public.semantic_model_settings') is not null
+         and to_regclass('public.semantic_index_state') is not null
+         and to_regclass('public.semantic_embeddings') is not null
+         and to_regclass('public.semantic_jobs') is not null
+         as required_tables_present`,
+  );
+  const foundationRow = semanticFoundation.rows[0]!;
+  const semanticCounts =
+    foundationRow.extension_installed && foundationRow.required_tables_present
+      ? await pool.query<{
+          inactive_model_vectors: number;
+          invalid_model_codes: number;
+          invalid_vector_dimensions: number;
+        }>(
+          `select
+       (select count(*)::int
+        from semantic_embeddings
+        where model_code not in ('multilingual-e5-small', 'bge-m3')) as invalid_model_codes,
+       (select count(*)::int
+        from semantic_embeddings
+        where (model_code = 'multilingual-e5-small' and vector_dims(embedding) <> 384)
+           or (model_code = 'bge-m3' and vector_dims(embedding) <> 1024))
+         as invalid_vector_dimensions,
+       (select count(*)::int
+        from semantic_embeddings embedding
+        cross join semantic_index_state state
+        where state.singleton_key = true
+          and (
+            state.active_model_code is null
+            or embedding.model_code <> state.active_model_code
+          ))
+         as inactive_model_vectors`,
+        )
+      : undefined;
 
   const countRow = counts.rows[0]!;
   const integrityRow = integrity.rows[0]!;
+  const semanticCountRow = semanticCounts?.rows[0];
   const report: DatabaseVerificationReport = {
     migrationApplied: migration.rows[0]?.applied ?? false,
     counts: {
@@ -124,11 +178,24 @@ export async function verifyDatabase(pool: Pool): Promise<DatabaseVerificationRe
       duplicateNormalizedKeywords: integrityRow.duplicate_normalized_keywords,
       invalidKeywordLengths: integrityRow.invalid_keyword_lengths,
     },
+    semantic: {
+      extensionInstalled: foundationRow.extension_installed,
+      requiredTablesPresent: foundationRow.required_tables_present,
+      invalidModelCodes: semanticCountRow?.invalid_model_codes ?? 0,
+      invalidVectorDimensions: semanticCountRow?.invalid_vector_dimensions ?? 0,
+      inactiveModelVectors: semanticCountRow?.inactive_model_vectors ?? 0,
+    },
     valid: false,
   };
 
   report.valid =
-    report.migrationApplied && Object.values(report.integrity).every((value) => value === 0);
+    report.migrationApplied &&
+    Object.values(report.integrity).every((value) => value === 0) &&
+    report.semantic.extensionInstalled &&
+    report.semantic.requiredTablesPresent &&
+    report.semantic.invalidModelCodes === 0 &&
+    report.semantic.invalidVectorDimensions === 0 &&
+    report.semantic.inactiveModelVectors === 0;
 
   return report;
 }

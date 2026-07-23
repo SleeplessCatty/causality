@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { closePostgresTestPool, startPostgresTestContext } from './support/postgresTestContext.js';
+import { isDatabaseReady } from '../src/database/readiness.js';
 
 describe('PostgreSQL readiness', () => {
   let app: FastifyInstance | undefined;
@@ -16,6 +17,28 @@ describe('PostgreSQL readiness', () => {
 
   afterAll(async () => {
     await context?.close();
+  });
+
+  it('requires semantic storage but not an active or downloaded model', async () => {
+    const state = await pool!.query<{
+      active_model_code: string | null;
+      status: string;
+    }>(
+      `select active_model_code, status
+       from semantic_index_state`,
+    );
+    expect(state.rows).toEqual([{ active_model_code: null, status: 'empty' }]);
+    await expect(isDatabaseReady(pool!)).resolves.toBe(true);
+
+    const client = await pool!.connect();
+    try {
+      await client.query('begin');
+      await client.query('drop table semantic_jobs');
+      await expect(isDatabaseReady(client)).resolves.toBe(false);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
   });
 
   it('changes from ready to unavailable after the pool is closed', async () => {

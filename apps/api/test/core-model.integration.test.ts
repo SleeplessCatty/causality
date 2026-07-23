@@ -145,6 +145,10 @@ describe.sequential('core PostgreSQL model', () => {
         'data_check_state',
         'event_aliases',
         'event_keywords',
+        'semantic_embeddings',
+        'semantic_index_state',
+        'semantic_jobs',
+        'semantic_model_settings',
       ]);
 
       const state = await migrationPool.query(
@@ -620,6 +624,229 @@ describe.sequential('core PostgreSQL model', () => {
       );
       await client.query('rollback');
     } finally {
+      client.release();
+    }
+  });
+
+  it('installs semantic storage, pinned defaults, and dimension-specific HNSW indexes', async () => {
+    const extensions = await pool!.query<{ extname: string }>(
+      `select extname
+       from pg_extension`,
+    );
+    expect(extensions.rows.map((row) => row.extname)).toContain('vector');
+
+    const tables = await pool!.query<{ table_name: string }>(
+      `select table_name
+       from information_schema.tables
+       where table_schema = 'public'`,
+    );
+    expect(tables.rows.map((row) => row.table_name)).toEqual(
+      expect.arrayContaining([
+        'semantic_model_settings',
+        'semantic_index_state',
+        'semantic_embeddings',
+        'semantic_jobs',
+      ]),
+    );
+
+    const models = await pool!.query<{ model_code: string; threshold: number }>(
+      `select model_code, threshold
+       from semantic_model_settings
+       order by model_code`,
+    );
+    expect(models.rows).toEqual([
+      expect.objectContaining({ model_code: 'bge-m3', threshold: 55 }),
+      expect.objectContaining({ model_code: 'multilingual-e5-small', threshold: 70 }),
+    ]);
+
+    const indexState = await pool!.query<{
+      active_model_code: string | null;
+      singleton_key: boolean;
+      state_version: number;
+      status: string;
+    }>(
+      `select singleton_key, active_model_code, status, state_version
+       from semantic_index_state`,
+    );
+    expect(indexState.rows).toEqual([
+      expect.objectContaining({
+        singleton_key: true,
+        active_model_code: null,
+        status: 'empty',
+        state_version: 0,
+      }),
+    ]);
+
+    const vectorIndexes = await pool!.query<{ indexname: string }>(
+      `select indexname
+       from pg_indexes
+       where schemaname = 'public'
+         and indexname like 'semantic_embeddings_%_hnsw_idx'
+       order by indexname`,
+    );
+    expect(vectorIndexes.rows.map((row) => row.indexname)).toEqual([
+      'semantic_embeddings_case_bge_hnsw_idx',
+      'semantic_embeddings_case_e5_hnsw_idx',
+      'semantic_embeddings_event_bge_hnsw_idx',
+      'semantic_embeddings_event_e5_hnsw_idx',
+      'semantic_embeddings_relation_bge_hnsw_idx',
+      'semantic_embeddings_relation_e5_hnsw_idx',
+    ]);
+  });
+
+  it('enforces consistent semantic download and job lifecycle timestamps', async () => {
+    await expectPgError(
+      pool!.query(
+        `update semantic_model_settings
+         set downloaded_at = clock_timestamp()
+         where model_code = 'multilingual-e5-small'`,
+      ),
+      '23514',
+    );
+    await expectPgError(
+      pool!.query(
+        `insert into semantic_jobs (
+           job_type,
+           model_code,
+           status,
+           state_version,
+           lease_owner,
+           lease_expires_at
+         )
+         values (
+           'download',
+           'multilingual-e5-small',
+           'running',
+           0,
+           'test-worker',
+           clock_timestamp() + interval '1 minute'
+         )`,
+      ),
+      '23514',
+    );
+  });
+
+  it('transactionally invalidates and deduplicates incremental semantic jobs', async () => {
+    const causeId = '10000000-0000-4000-8000-000000000070';
+    const effectId = '10000000-0000-4000-8000-000000000071';
+    const linkedRelationId = '20000000-0000-4000-8000-000000000070';
+
+    await pool!.query(
+      `update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 1`,
+    );
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values ($1, '政策收紧'), ($2, '融资成本上升')`,
+      [causeId, effectId],
+    );
+
+    const insertedEventJobs = await pool!.query<{ entity_id: string }>(
+      `select entity_id
+       from semantic_jobs
+       where job_type = 'incremental'
+         and entity_type = 'event'
+         and entity_id = $1
+         and status = 'queued'`,
+      [causeId],
+    );
+    expect(insertedEventJobs.rows).toHaveLength(1);
+
+    await pool!.query(
+      `insert into causal_relations
+         (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $2, $3, 60)`,
+      [linkedRelationId, causeId, effectId],
+    );
+    await pool!.query(`delete from semantic_jobs where job_type = 'incremental'`);
+
+    await pool!.query(`update abstract_events set name = '货币政策收紧' where id = $1`, [causeId]);
+    await pool!.query(`update abstract_events set name = '货币政策进一步收紧' where id = $1`, [
+      causeId,
+    ]);
+
+    const refreshedJobs = await pool!.query<{ entity_id: string; entity_type: string }>(
+      `select entity_type, entity_id
+       from semantic_jobs
+       where job_type = 'incremental'
+         and status = 'queued'
+         and (
+           (entity_type = 'event' and entity_id = $1)
+           or (entity_type = 'relation' and entity_id = $2)
+         )
+       order by entity_type`,
+      [causeId, linkedRelationId],
+    );
+    expect(refreshedJobs.rows).toEqual([
+      { entity_type: 'event', entity_id: causeId },
+      { entity_type: 'relation', entity_id: linkedRelationId },
+    ]);
+
+    await pool!.query(`delete from semantic_jobs where job_type = 'incremental'`);
+    await pool!.query(
+      `insert into event_aliases (event_id, alias)
+       values ($1, '紧缩政策')`,
+      [causeId],
+    );
+    await pool!.query(
+      `insert into event_keywords (event_id, keyword, position)
+       values ($1, '货币紧缩', 1)`,
+      [causeId],
+    );
+    const metadataJobs = await pool!.query<{ count: number }>(
+      `select count(*)::int as count
+       from semantic_jobs
+       where job_type = 'incremental'
+         and entity_type = 'event'
+         and entity_id = $1
+         and status = 'queued'`,
+      [causeId],
+    );
+    expect(metadataJobs.rows[0]?.count).toBe(1);
+  });
+
+  it('removes an entity vector and its queued job inside the deleting transaction', async () => {
+    const orphanEventId = '10000000-0000-4000-8000-000000000072';
+    await pool!.query(`insert into abstract_events (id, name) values ($1, '待删除语义事件')`, [
+      orphanEventId,
+    ]);
+    await pool!.query(
+      `insert into semantic_embeddings
+         (entity_type, entity_id, model_code, source_hash, embedding)
+       values (
+         'event',
+         $1,
+         'multilingual-e5-small',
+         repeat('a', 64),
+         array_fill(0.1, array[384])::vector
+       )`,
+      [orphanEventId],
+    );
+
+    const client = await pool!.connect();
+    try {
+      await client.query('begin');
+      await client.query(`delete from abstract_events where id = $1`, [orphanEventId]);
+
+      const transactionState = await client.query<{ jobs: number; vectors: number }>(
+        `select
+           (select count(*)::int
+            from semantic_jobs
+            where job_type = 'incremental'
+              and entity_type = 'event'
+              and entity_id = $1
+              and status = 'queued') as jobs,
+           (select count(*)::int
+            from semantic_embeddings
+            where entity_type = 'event'
+              and entity_id = $1) as vectors`,
+        [orphanEventId],
+      );
+      expect(transactionState.rows[0]).toEqual({ jobs: 0, vectors: 0 });
+    } finally {
+      await client.query('rollback');
       client.release();
     }
   });

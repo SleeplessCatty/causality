@@ -96,7 +96,30 @@ describe.sequential('database data tools', () => {
       duplicateNormalizedKeywords: 0,
       invalidKeywordLengths: 0,
     });
+    expect(report.semantic).toEqual({
+      extensionInstalled: true,
+      requiredTablesPresent: true,
+      invalidModelCodes: 0,
+      invalidVectorDimensions: 0,
+      inactiveModelVectors: 0,
+    });
     expect(report.valid).toBe(true);
+  });
+
+  it('reports missing semantic storage instead of throwing a generic verification failure', async () => {
+    const client = await pool!.connect();
+    try {
+      await client.query('begin');
+      await client.query('drop table semantic_embeddings');
+
+      const report = await verifyDatabase(client);
+
+      expect(report.semantic.requiredTablesPresent).toBe(false);
+      expect(report.valid).toBe(false);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
   });
 
   it('inserts a configured simulation batch without breaking integrity', async () => {

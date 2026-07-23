@@ -14,7 +14,7 @@ const postgresUser = 'causality';
 const postgresPassword = 'causality';
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
-  const container = await new GenericContainer('postgres:18.4-alpine')
+  const container = await new GenericContainer('pgvector/pgvector:0.8.2-pg18')
     .withEnvironment({
       POSTGRES_DB: 'postgres',
       POSTGRES_USER: postgresUser,

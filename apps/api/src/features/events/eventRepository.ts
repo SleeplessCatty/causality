@@ -190,7 +190,14 @@ export class PostgresEventRepository implements EventRepository {
       createSummary(row, aliasMap.get(row.id) ?? [], keywordMap.get(row.id) ?? []),
     );
 
-    return { items, page, pageSize: query.limit, totalItems, totalPages };
+    return {
+      items,
+      page,
+      pageSize: query.limit,
+      totalItems,
+      totalPages,
+      semanticIndexUpdating: false,
+    };
   }
 
   private async countListRows(orphan: boolean): Promise<number> {

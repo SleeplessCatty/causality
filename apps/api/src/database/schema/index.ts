@@ -6,3 +6,7 @@ export { dataCheckIssues } from './dataCheckIssues.js';
 export { dataCheckState } from './dataCheckState.js';
 export { eventAliases } from './eventAliases.js';
 export { eventKeywords } from './eventKeywords.js';
+export { semanticEmbeddings, semanticVector } from './semanticEmbeddings.js';
+export { semanticIndexState } from './semanticIndexState.js';
+export { semanticJobs } from './semanticJobs.js';
+export { semanticModelSettings } from './semanticModelSettings.js';
