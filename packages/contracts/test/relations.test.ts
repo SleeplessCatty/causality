@@ -149,18 +149,21 @@ describe('relation contracts', () => {
       limit: 30,
       orphan: true,
       eventId: causeEventId,
+      searchMode: 'standard',
     });
     expect(relationListQuerySchema.parse({})).toEqual({
       q: '',
       page: 1,
       limit: 50,
       orphan: false,
+      searchMode: 'standard',
     });
     expect(relationListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
       limit: 50,
       orphan: false,
+      searchMode: 'standard',
     });
     expect(relationListQuerySchema.parse({ orphan: 'false' }).orphan).toBe(false);
     for (const page of ['0', '-1', '1.5', '100001']) {

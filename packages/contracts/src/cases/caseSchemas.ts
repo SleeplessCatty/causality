@@ -8,6 +8,7 @@ import {
   pageListMetadataSchema,
   pageListQuerySchema,
 } from '../pagination/pageSchemas.js';
+import { searchModeSchema } from '../semantic/semanticSchemas.js';
 
 const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
 
@@ -20,6 +21,7 @@ export const caseListQuerySchema = z
     q: z.string().trim().max(100).default(''),
     relationId: z.uuid().optional(),
     orphan: booleanQuerySchema,
+    searchMode: searchModeSchema,
     ...pageListQuerySchema.shape,
   })
   .strict();
@@ -59,6 +61,7 @@ export const caseListResponseSchema = z
   .object({
     items: z.array(caseSummarySchema),
     ...pageListMetadataSchema.shape,
+    semanticIndexUpdating: z.boolean().default(false),
   })
   .strict();
 

@@ -8,6 +8,7 @@ import {
   pageListMetadataSchema,
   pageListQuerySchema,
 } from '../pagination/pageSchemas.js';
+import { searchModeSchema } from '../semantic/semanticSchemas.js';
 
 const timestampSchema = z.iso.datetime({ offset: true });
 const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
@@ -63,6 +64,7 @@ export const relationListQuerySchema = z
     q: z.string().trim().max(120).default(''),
     orphan: booleanQuerySchema,
     eventId: z.uuid().optional(),
+    searchMode: searchModeSchema,
     ...pageListQuerySchema.shape,
   })
   .strict();
@@ -111,6 +113,7 @@ export const relationListResponseSchema = z
   .object({
     items: z.array(relationSummarySchema),
     ...pageListMetadataSchema.shape,
+    semanticIndexUpdating: z.boolean().default(false),
   })
   .strict();
 

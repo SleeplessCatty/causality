@@ -98,13 +98,21 @@ describe('event contracts', () => {
       page: 1,
       limit: 30,
       orphan: false,
+      searchMode: 'standard',
     });
-    expect(eventListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50, orphan: false });
+    expect(eventListQuerySchema.parse({})).toEqual({
+      q: '',
+      page: 1,
+      limit: 50,
+      orphan: false,
+      searchMode: 'standard',
+    });
     expect(eventListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
       limit: 50,
       orphan: false,
+      searchMode: 'standard',
     });
     expect(eventListQuerySchema.parse({ orphan: 'true' }).orphan).toBe(true);
     expect(eventListQuerySchema.parse({ orphan: 'false' }).orphan).toBe(false);

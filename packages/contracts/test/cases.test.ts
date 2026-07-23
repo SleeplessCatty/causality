@@ -43,13 +43,21 @@ describe('concrete case contracts', () => {
       page: 1,
       limit: 30,
       orphan: true,
+      searchMode: 'standard',
     });
-    expect(caseListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50, orphan: false });
+    expect(caseListQuerySchema.parse({})).toEqual({
+      q: '',
+      page: 1,
+      limit: 50,
+      orphan: false,
+      searchMode: 'standard',
+    });
     expect(caseListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
       limit: 50,
       orphan: false,
+      searchMode: 'standard',
     });
     expect(caseListQuerySchema.parse({ orphan: 'false' }).orphan).toBe(false);
     for (const page of ['0', '-1', '1.5', '100001']) {

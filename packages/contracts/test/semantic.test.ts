@@ -1,0 +1,146 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  apiErrorSchema,
+  caseListQuerySchema,
+  eventListQuerySchema,
+  eventListResponseSchema,
+  relationListQuerySchema,
+  semanticSettingsResponseSchema,
+  semanticThresholdInputSchema,
+  semanticUseModelResponseSchema,
+} from '../src/index.js';
+
+const timestamp = '2026-07-23T15:00:00.000Z';
+const taskId = '11111111-1111-4111-8111-111111111111';
+
+const modelFixtures = [
+  {
+    code: 'multilingual-e5-small',
+    label: '轻量快速',
+    description: '适合普通 CPU 的快速中英文语义查询',
+    languageLabel: '中文、英文及中英混排',
+    dimensions: 384,
+    expectedDownloadBytes: 135_392_857,
+    threshold: 70,
+    downloadStatus: 'not_downloaded',
+    downloadedAt: null,
+    isActive: false,
+    error: null,
+  },
+  {
+    code: 'bge-m3',
+    label: '质量优先',
+    description: '适合更高质量的中英文语义查询',
+    languageLabel: '中文、英文及中英混排',
+    dimensions: 1024,
+    expectedDownloadBytes: 585_565_019,
+    threshold: 55,
+    downloadStatus: 'downloaded',
+    downloadedAt: timestamp,
+    isActive: false,
+    error: null,
+  },
+] as const;
+
+describe('semantic search contracts', () => {
+  it('adds a strict enhanced search mode to all main list queries', () => {
+    expect(eventListQuerySchema.parse({ q: ' 利率 ', searchMode: 'enhanced' })).toMatchObject({
+      q: '利率',
+      searchMode: 'enhanced',
+    });
+    expect(relationListQuerySchema.parse({}).searchMode).toBe('standard');
+    expect(caseListQuerySchema.parse({ searchMode: 'standard' }).searchMode).toBe('standard');
+    expect(caseListQuerySchema.safeParse({ searchMode: 'other' }).success).toBe(false);
+  });
+
+  it('adds non-visual semantic update metadata to list responses', () => {
+    expect(
+      eventListResponseSchema.parse({
+        items: [],
+        page: 1,
+        pageSize: 50,
+        totalItems: 0,
+        totalPages: 1,
+      }).semanticIndexUpdating,
+    ).toBe(false);
+    expect(
+      eventListResponseSchema.parse({
+        items: [],
+        page: 1,
+        pageSize: 50,
+        totalItems: 0,
+        totalPages: 1,
+        semanticIndexUpdating: true,
+      }).semanticIndexUpdating,
+    ).toBe(true);
+  });
+
+  it('accepts strict per-model threshold updates', () => {
+    expect(semanticThresholdInputSchema.parse({ threshold: 65 })).toEqual({ threshold: 65 });
+    expect(semanticThresholdInputSchema.safeParse({ threshold: 65.5 }).success).toBe(false);
+    expect(semanticThresholdInputSchema.safeParse({ threshold: 101 }).success).toBe(false);
+    expect(semanticThresholdInputSchema.safeParse({ threshold: 65, extra: true }).success).toBe(
+      false,
+    );
+  });
+
+  it('accepts complete settings without an active model', () => {
+    expect(
+      semanticSettingsResponseSchema.parse({
+        activeModelCode: null,
+        index: {
+          status: 'empty',
+          processedItems: 0,
+          totalItems: 0,
+          pendingItems: 0,
+          updatedAt: null,
+          error: null,
+        },
+        models: modelFixtures,
+        activeTask: null,
+      }),
+    ).toMatchObject({
+      activeModelCode: null,
+      index: { status: 'empty' },
+      models: [{ code: 'multilingual-e5-small' }, { code: 'bge-m3' }],
+      activeTask: null,
+    });
+  });
+
+  it('accepts model-use jobs and rejects extra progress fields', () => {
+    expect(
+      semanticUseModelResponseSchema.parse({
+        accepted: true,
+        taskId,
+        activeModelCode: 'multilingual-e5-small',
+      }),
+    ).toEqual({
+      accepted: true,
+      taskId,
+      activeModelCode: 'multilingual-e5-small',
+    });
+    expect(() =>
+      semanticUseModelResponseSchema.parse({
+        accepted: true,
+        taskId,
+        activeModelCode: 'multilingual-e5-small',
+        matchReason: 'not public',
+      }),
+    ).toThrow();
+  });
+
+  it('accepts stable semantic API error codes', () => {
+    for (const code of [
+      'SEMANTIC_QUERY_EMPTY',
+      'SEMANTIC_MODEL_UNAVAILABLE',
+      'SEMANTIC_MODEL_DOWNLOADING',
+      'SEMANTIC_INDEX_BUILDING',
+      'SEMANTIC_INDEX_FAILED',
+      'SEMANTIC_WORKER_UNAVAILABLE',
+      'SEMANTIC_SWITCH_CONFLICT',
+    ] as const) {
+      expect(apiErrorSchema.parse({ code, message: '增强查询暂不可用' }).code).toBe(code);
+    }
+  });
+});

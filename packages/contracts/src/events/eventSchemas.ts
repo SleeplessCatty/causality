@@ -6,6 +6,7 @@ import {
   pageListMetadataSchema,
   pageListQuerySchema,
 } from '../pagination/pageSchemas.js';
+import { searchModeSchema } from '../semantic/semanticSchemas.js';
 
 export const eventNameSchema = z.string().trim().min(1).max(50);
 export const eventAliasSchema = z.string().trim().min(1).max(80);
@@ -55,6 +56,7 @@ export const eventListQuerySchema = z
   .object({
     q: z.string().trim().max(80).default(''),
     orphan: booleanQuerySchema,
+    searchMode: searchModeSchema,
     ...pageListQuerySchema.shape,
   })
   .strict();
@@ -116,6 +118,7 @@ export const eventListResponseSchema = z
   .object({
     items: z.array(eventSummarySchema),
     ...pageListMetadataSchema.shape,
+    semanticIndexUpdating: z.boolean().default(false),
   })
   .strict();
 
@@ -151,6 +154,13 @@ export const apiErrorCodeSchema = z.enum([
   'DATA_CHECK_ISSUE_NOT_FOUND',
   'DATA_CHECK_ISSUE_STALE',
   'DATA_CHECK_AUTO_HANDLE_UNSAFE',
+  'SEMANTIC_QUERY_EMPTY',
+  'SEMANTIC_MODEL_UNAVAILABLE',
+  'SEMANTIC_MODEL_DOWNLOADING',
+  'SEMANTIC_INDEX_BUILDING',
+  'SEMANTIC_INDEX_FAILED',
+  'SEMANTIC_WORKER_UNAVAILABLE',
+  'SEMANTIC_SWITCH_CONFLICT',
   'INTERNAL_ERROR',
 ]);
 
