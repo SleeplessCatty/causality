@@ -37,6 +37,35 @@ export {
 } from './causal-graph/causalGraphSchemas.js';
 
 export {
+  dataCheckActionModeSchema,
+  dataCheckFailureSchema,
+  dataCheckHandlingRequestSchema,
+  dataCheckIssueListQuerySchema,
+  dataCheckIssueListResponseSchema,
+  dataCheckIssueSchema,
+  dataCheckIssueStatusSchema,
+  dataCheckLatestResponseSchema,
+  dataCheckRunStatusSchema,
+  dataCheckSeveritySchema,
+  dataCheckSnapshotSummarySchema,
+  dataCheckTargetTypeSchema,
+  dataCheckTaskSchema,
+  type DataCheckActionMode,
+  type DataCheckFailure,
+  type DataCheckHandlingRequest,
+  type DataCheckIssue,
+  type DataCheckIssueListQuery,
+  type DataCheckIssueListResponse,
+  type DataCheckIssueStatus,
+  type DataCheckLatestResponse,
+  type DataCheckRunStatus,
+  type DataCheckSeverity,
+  type DataCheckSnapshotSummary,
+  type DataCheckTargetType,
+  type DataCheckTask,
+} from './data-checks/dataCheckSchemas.js';
+
+export {
   healthResponseSchema,
   notReadyResponseSchema,
   readyResponseSchema,
@@ -44,6 +73,18 @@ export {
   type HealthResponse,
   type ReadinessResponse,
 } from './health.js';
+
+export {
+  caseDeletionImpactSchema,
+  deleteResultSchema,
+  eventDeletionImpactSchema,
+  relationDeletionImpactSchema,
+  type CaseDeletionImpact,
+  type DeleteResult,
+  type EventDeletionImpact,
+  type RelationDeletionImpact,
+} from './maintenance/deletionSchemas.js';
+
 export {
   apiErrorCodeSchema,
   apiErrorSchema,
@@ -73,6 +114,7 @@ export {
 } from './events/eventSchemas.js';
 
 export {
+  booleanQuerySchema,
   DETAIL_ASSOCIATION_PAGE_SIZE,
   MAIN_LIST_PAGE_SIZE,
   pageListMetadataSchema,

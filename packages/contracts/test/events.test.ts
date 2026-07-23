@@ -97,16 +97,21 @@ describe('event contracts', () => {
       q: '原油',
       page: 1,
       limit: 30,
+      orphan: false,
     });
-    expect(eventListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50 });
+    expect(eventListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50, orphan: false });
     expect(eventListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
       limit: 50,
+      orphan: false,
     });
+    expect(eventListQuerySchema.parse({ orphan: 'true' }).orphan).toBe(true);
+    expect(eventListQuerySchema.parse({ orphan: 'false' }).orphan).toBe(false);
     for (const page of ['0', '-1', '1.5', '100001']) {
       expect(eventListQuerySchema.safeParse({ page }).success).toBe(false);
     }
+    expect(eventListQuerySchema.safeParse({ orphan: 'yes' }).success).toBe(false);
   });
 
   it('keeps candidate queries cursor-based and rejects invalid bounds', () => {

@@ -3,6 +3,10 @@ import { z } from 'zod';
 export const MAIN_LIST_PAGE_SIZE = 50;
 export const DETAIL_ASSOCIATION_PAGE_SIZE = 20;
 
+export const booleanQuerySchema = z
+  .union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')])
+  .default(false);
+
 export const pageListQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100_000).default(1),

@@ -36,6 +36,7 @@
 - Modify `packages/contracts/src/events/eventSchemas.ts` — `orphan` list query.
 - Modify `packages/contracts/src/relations/relationSchemas.ts` — `orphan` and `eventId` list query.
 - Modify `packages/contracts/src/cases/caseSchemas.ts` — `orphan` list query.
+- Modify `packages/contracts/src/pagination/pageSchemas.ts` — shared explicit boolean query parser.
 - Modify `packages/contracts/src/index.ts` — public exports.
 - Create `packages/contracts/test/maintenance.test.ts`.
 - Create `packages/contracts/test/data-checks.test.ts`.
@@ -158,12 +159,10 @@ interface DataCheckLatestResponse {
 
 interface DataCheckIssueListResponse {
   items: DataCheckIssue[];
-  pagination: {
-    page: number;
-    pageSize: 50;
-    totalItems: number;
-    totalPages: number;
-  };
+  page: number;
+  pageSize: 50;
+  totalItems: number;
+  totalPages: number;
 }
 ```
 
@@ -171,7 +170,7 @@ interface DataCheckIssueListResponse {
 - Add stable API codes `EVENT_DELETE_BLOCKED`, `DATA_CHECK_ISSUE_NOT_FOUND`,
   `DATA_CHECK_ISSUE_STALE`, and `DATA_CHECK_AUTO_HANDLE_UNSAFE`.
 
-- [ ] **Step 1: Write failing contract tests**
+- [x] **Step 1: Write failing contract tests**
 
 Add exact expectations:
 
@@ -195,7 +194,7 @@ expect(relationListQuerySchema.parse({ eventId: EVENT_ID }).eventId).toBe(EVENT_
 expect(caseListQuerySchema.parse({ orphan: 'false' }).orphan).toBe(false);
 ```
 
-- [ ] **Step 2: Run contract tests and verify failure**
+- [x] **Step 2: Run contract tests and verify failure**
 
 Run:
 
@@ -205,7 +204,7 @@ pnpm --filter @causality/contracts test -- maintenance.test.ts data-checks.test.
 
 Expected: FAIL because the maintenance and data-check schemas do not exist.
 
-- [ ] **Step 3: Implement deletion and data-check schemas**
+- [x] **Step 3: Implement deletion and data-check schemas**
 
 Use strict Zod objects and the existing ISO timestamp convention. Define:
 
@@ -244,7 +243,7 @@ unknown issue without retaining old snapshots.
 The issue-list service, rather than the query contract, fixes the page size at 50 and
 returns that value in response pagination metadata.
 
-- [ ] **Step 4: Add hidden list query fields and exports**
+- [x] **Step 4: Add hidden list query fields and exports**
 
 Do not use `z.coerce.boolean()`, because JavaScript treats the string `"false"` as
 truthy. Reuse this explicit query-string parser in all three list contracts:
@@ -262,7 +261,7 @@ Add optional UUID `eventId` only to relation queries. Extend the shared API erro
 enum with the four maintenance codes listed above. Export every schema and inferred
 type from `packages/contracts/src/index.ts`.
 
-- [ ] **Step 5: Write failing migration assertions**
+- [x] **Step 5: Write failing migration assertions**
 
 Extend `core-model.integration.test.ts` to assert:
 
@@ -279,7 +278,7 @@ expect(stateRow).toMatchObject({
 
 Also assert that migrating an existing database preserves all current event, relation, case, alias, keyword, and relation-case counts.
 
-- [ ] **Step 6: Add Drizzle schema**
+- [x] **Step 6: Add Drizzle schema**
 
 Use one boolean primary key with a check requiring `singleton_key = true`:
 
@@ -312,7 +311,7 @@ Define `data_check_issues` with UUID primary key, snapshot UUID, severity/type/a
 
 Add checks for enum-like values and non-negative counts.
 
-- [ ] **Step 7: Generate and inspect migration**
+- [x] **Step 7: Generate and inspect migration**
 
 Run:
 
@@ -336,7 +335,7 @@ on conflict (singleton_key) do nothing;
 Inspect the SQL. It must create only the two maintenance tables, indexes, checks, and
 the singleton seed row. It must not alter or delete existing business data.
 
-- [ ] **Step 8: Run focused tests**
+- [x] **Step 8: Run focused tests**
 
 Run:
 
@@ -348,7 +347,7 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 9: Commit locally**
+- [x] **Step 9: Commit locally**
 
 ```bash
 git add \
@@ -374,6 +373,15 @@ git commit -m "feat: add P2 data maintenance contracts and schema"
 ```
 
 Do not push.
+
+**Execution result (2026-07-23):**
+
+- Contract RED: 11 expected failures for missing schemas and query fields.
+- Migration RED: 2 expected failures for missing maintenance tables and singleton state.
+- GREEN: 41 contract tests and 58 integration tests passed; repository typecheck and lint passed.
+- Migration `0007_data_cleanup_integrity` preserves existing business counts and seeds exactly one
+  `never_run` state row.
+- Existing flat page metadata was retained for consistency with all current list contracts.
 
 ---
 

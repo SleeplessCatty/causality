@@ -40,6 +40,23 @@ async function createLegacyMigrationsFolder(): Promise<string> {
   return folder;
 }
 
+async function createPreMaintenanceMigrationsFolder(): Promise<string> {
+  const folder = await mkdtemp(join(tmpdir(), 'causality-pre-maintenance-migrations-'));
+  await mkdir(join(folder, 'meta'));
+  const journal = JSON.parse(
+    await readFile(join(migrationsFolder, 'meta/_journal.json'), 'utf8'),
+  ) as { entries: Array<{ idx: number; tag: string }> };
+
+  for (let index = 0; index <= 6; index += 1) {
+    const migration = journal.entries[index]!;
+    await cp(join(migrationsFolder, `${migration.tag}.sql`), join(folder, `${migration.tag}.sql`));
+  }
+
+  journal.entries = journal.entries.filter((entry) => entry.idx <= 6);
+  await writeFile(join(folder, 'meta/_journal.json'), `${JSON.stringify(journal, null, 2)}\n`);
+  return folder;
+}
+
 async function expectPgError(operation: Promise<unknown>, expectedCode: string): Promise<void> {
   await expect(operation).rejects.toMatchObject({ code: expectedCode });
 }
@@ -48,16 +65,21 @@ describe.sequential('core PostgreSQL model', () => {
   let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
   let pool: Pool | undefined;
   let legacyMigrationsFolder: string | undefined;
+  let preMaintenanceMigrationsFolder: string | undefined;
 
   beforeAll(async () => {
     context = await startPostgresTestContext('causality_core_model_test');
     ({ pool } = context);
     legacyMigrationsFolder = await createLegacyMigrationsFolder();
+    preMaintenanceMigrationsFolder = await createPreMaintenanceMigrationsFolder();
   }, 120_000);
 
   afterAll(async () => {
     await context?.close();
     if (legacyMigrationsFolder) await rm(legacyMigrationsFolder, { recursive: true });
+    if (preMaintenanceMigrationsFolder) {
+      await rm(preMaintenanceMigrationsFolder, { recursive: true });
+    }
   });
 
   it('losslessly migrates ordered keyword arrays and can be run again', async () => {
@@ -119,9 +141,115 @@ describe.sequential('core PostgreSQL model', () => {
         'causal_relation_cases',
         'causal_relations',
         'concrete_cases',
+        'data_check_issues',
+        'data_check_state',
         'event_aliases',
         'event_keywords',
       ]);
+
+      const state = await migrationPool.query(
+        `select singleton_key, status, last_snapshot_id
+         from data_check_state`,
+      );
+      expect(state.rows).toEqual([
+        {
+          singleton_key: true,
+          status: 'never_run',
+          last_snapshot_id: null,
+        },
+      ]);
+    } finally {
+      await closePostgresTestPool(migrationPool);
+    }
+  });
+
+  it('adds maintenance state without changing existing business records', async () => {
+    const migrationDatabase = 'causality_data_maintenance_migration_test';
+    await pool!.query(`create database ${migrationDatabase}`);
+    const migrationPool = createPostgresTestPool(migrationDatabase);
+
+    try {
+      await migrate(createDatabaseClient(migrationPool), {
+        migrationsFolder: preMaintenanceMigrationsFolder!,
+      });
+      await migrationPool.query(
+        `insert into abstract_events (id, name)
+         values
+           ('91000000-0000-4000-8000-000000000001', 'Maintenance cause'),
+           ('91000000-0000-4000-8000-000000000002', 'Maintenance effect');
+         insert into event_aliases (event_id, alias)
+         values ('91000000-0000-4000-8000-000000000001', 'Maintenance alias');
+         insert into event_keywords (event_id, keyword, position)
+         values ('91000000-0000-4000-8000-000000000001', 'Maintenance keyword', 1);
+         insert into causal_relations
+           (id, cause_event_id, effect_event_id, confidence)
+         values (
+           '92000000-0000-4000-8000-000000000001',
+           '91000000-0000-4000-8000-000000000001',
+           '91000000-0000-4000-8000-000000000002',
+           50
+         );
+         insert into concrete_cases (id, content)
+         values ('93000000-0000-4000-8000-000000000001', 'Maintenance concrete case');
+         insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+         values (
+           '92000000-0000-4000-8000-000000000001',
+           '93000000-0000-4000-8000-000000000001'
+         )`,
+      );
+
+      const before = await migrationPool.query<{
+        events: string;
+        aliases: string;
+        keywords: string;
+        relations: string;
+        cases: string;
+        relation_cases: string;
+      }>(
+        `select
+           (select count(*) from abstract_events) as events,
+           (select count(*) from event_aliases) as aliases,
+           (select count(*) from event_keywords) as keywords,
+           (select count(*) from causal_relations) as relations,
+           (select count(*) from concrete_cases) as cases,
+           (select count(*) from causal_relation_cases) as relation_cases`,
+      );
+
+      await runMigrations(migrationPool);
+
+      const after = await migrationPool.query<{
+        events: string;
+        aliases: string;
+        keywords: string;
+        relations: string;
+        cases: string;
+        relation_cases: string;
+      }>(
+        `select
+           (select count(*) from abstract_events) as events,
+           (select count(*) from event_aliases) as aliases,
+           (select count(*) from event_keywords) as keywords,
+           (select count(*) from causal_relations) as relations,
+           (select count(*) from concrete_cases) as cases,
+           (select count(*) from causal_relation_cases) as relation_cases`,
+      );
+      expect(after.rows[0]).toEqual(before.rows[0]);
+
+      const state = await migrationPool.query(
+        `select singleton_key, status, last_snapshot_id
+         from data_check_state`,
+      );
+      expect(state.rows).toEqual([
+        {
+          singleton_key: true,
+          status: 'never_run',
+          last_snapshot_id: null,
+        },
+      ]);
+      const issues = await migrationPool.query<{ count: string }>(
+        `select count(*) from data_check_issues`,
+      );
+      expect(issues.rows[0]?.count).toBe('0');
     } finally {
       await closePostgresTestPool(migrationPool);
     }

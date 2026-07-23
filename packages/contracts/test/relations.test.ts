@@ -136,20 +136,37 @@ describe('relation contracts', () => {
   });
 
   it('normalizes page-based list queries and rejects invalid page bounds', () => {
-    expect(relationListQuerySchema.parse({ q: '  流动性  ', limit: '30' })).toEqual({
+    expect(
+      relationListQuerySchema.parse({
+        q: '  流动性  ',
+        limit: '30',
+        orphan: 'true',
+        eventId: causeEventId,
+      }),
+    ).toEqual({
       q: '流动性',
       page: 1,
       limit: 30,
+      orphan: true,
+      eventId: causeEventId,
     });
-    expect(relationListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50 });
+    expect(relationListQuerySchema.parse({})).toEqual({
+      q: '',
+      page: 1,
+      limit: 50,
+      orphan: false,
+    });
     expect(relationListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
       limit: 50,
+      orphan: false,
     });
+    expect(relationListQuerySchema.parse({ orphan: 'false' }).orphan).toBe(false);
     for (const page of ['0', '-1', '1.5', '100001']) {
       expect(relationListQuerySchema.safeParse({ page }).success).toBe(false);
     }
+    expect(relationListQuerySchema.safeParse({ eventId: 'invalid' }).success).toBe(false);
   });
 
   it('normalizes pair-check queries', () => {

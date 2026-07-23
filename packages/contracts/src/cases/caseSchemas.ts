@@ -3,6 +3,7 @@ import { z } from 'zod';
 const timestampSchema = z.iso.datetime({ offset: true });
 import { eventNameSchema } from '../events/eventSchemas.js';
 import {
+  booleanQuerySchema,
   DETAIL_ASSOCIATION_PAGE_SIZE,
   pageListMetadataSchema,
   pageListQuerySchema,
@@ -18,6 +19,7 @@ export const caseListQuerySchema = z
   .object({
     q: z.string().trim().max(100).default(''),
     relationId: z.uuid().optional(),
+    orphan: booleanQuerySchema,
     ...pageListQuerySchema.shape,
   })
   .strict();

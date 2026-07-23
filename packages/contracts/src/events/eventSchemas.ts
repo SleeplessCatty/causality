@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  booleanQuerySchema,
   DETAIL_ASSOCIATION_PAGE_SIZE,
   pageListMetadataSchema,
   pageListQuerySchema,
@@ -53,6 +54,7 @@ export const eventFormInputSchema = z
 export const eventListQuerySchema = z
   .object({
     q: z.string().trim().max(80).default(''),
+    orphan: booleanQuerySchema,
     ...pageListQuerySchema.shape,
   })
   .strict();
@@ -138,6 +140,7 @@ export const apiErrorCodeSchema = z.enum([
   'EVENT_NOT_FOUND',
   'EVENT_NAME_CONFLICT',
   'EVENT_ALIAS_CONFLICT',
+  'EVENT_DELETE_BLOCKED',
   'RELATION_NOT_FOUND',
   'RELATION_EVENT_NOT_FOUND',
   'RELATION_SELF_LOOP',
@@ -145,6 +148,9 @@ export const apiErrorCodeSchema = z.enum([
   'CASE_NOT_FOUND',
   'CASE_CONTENT_CONFLICT',
   'CASE_SELECTION_DUPLICATE',
+  'DATA_CHECK_ISSUE_NOT_FOUND',
+  'DATA_CHECK_ISSUE_STALE',
+  'DATA_CHECK_AUTO_HANDLE_UNSAFE',
   'INTERNAL_ERROR',
 ]);
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { caseContentSchema, caseReferenceSchema, caseSummarySchema } from '../cases/caseSchemas.js';
 import { eventNameSchema } from '../events/eventSchemas.js';
 import {
+  booleanQuerySchema,
   DETAIL_ASSOCIATION_PAGE_SIZE,
   pageListMetadataSchema,
   pageListQuerySchema,
@@ -60,6 +61,8 @@ export const relationFormInputSchema = z
 export const relationListQuerySchema = z
   .object({
     q: z.string().trim().max(120).default(''),
+    orphan: booleanQuerySchema,
+    eventId: z.uuid().optional(),
     ...pageListQuerySchema.shape,
   })
   .strict();

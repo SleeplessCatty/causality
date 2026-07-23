@@ -30,18 +30,28 @@ describe('concrete case contracts', () => {
   });
 
   it('normalizes page-based list queries and rejects invalid page bounds', () => {
-    expect(caseListQuerySchema.parse({ q: '  关税  ', relationId, limit: '30' })).toEqual({
+    expect(
+      caseListQuerySchema.parse({
+        q: '  关税  ',
+        relationId,
+        limit: '30',
+        orphan: 'true',
+      }),
+    ).toEqual({
       q: '关税',
       relationId,
       page: 1,
       limit: 30,
+      orphan: true,
     });
-    expect(caseListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50 });
+    expect(caseListQuerySchema.parse({})).toEqual({ q: '', page: 1, limit: 50, orphan: false });
     expect(caseListQuerySchema.parse({ page: '100000' })).toEqual({
       q: '',
       page: 100_000,
       limit: 50,
+      orphan: false,
     });
+    expect(caseListQuerySchema.parse({ orphan: 'false' }).orphan).toBe(false);
     for (const page of ['0', '-1', '1.5', '100001']) {
       expect(caseListQuerySchema.safeParse({ page }).success).toBe(false);
     }
