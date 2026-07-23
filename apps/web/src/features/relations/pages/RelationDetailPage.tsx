@@ -153,25 +153,31 @@ export function RelationDetailPage() {
                 {cases.map((item) => (
                   <li key={item.id}>
                     <OverflowText content={item.content} lines={2}>
-                      <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                      <Link className="case-relation-list__case" to={`/cases/${item.id}`}>
+                        {item.content}
+                      </Link>
                     </OverflowText>
+                    <time dateTime={item.linkedAt}>
+                      关联于 {dateFormatter.format(new Date(item.linkedAt))}
+                    </time>
                   </li>
                 ))}
               </ul>
             ) : null}
-            {linkedCases.isFetchingNextPage ? (
-              <div className="case-relations__state">正在加载其余案例…</div>
-            ) : null}
-            {linkedCases.hasNextPage &&
-            !linkedCases.isFetchingNextPage &&
-            !linkedCases.isFetchNextPageError ? (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
+            {linkedCases.hasNextPage && !linkedCases.isFetchNextPageError ? (
+              <div
+                className="case-relations__state case-relations__state--inline"
+                style={{ justifyContent: 'flex-end' }}
               >
-                加载更多
-              </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={linkedCases.isFetchingNextPage}
+                  onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
+                >
+                  {linkedCases.isFetchingNextPage ? '加载中…' : '加载更多'}
+                </button>
+              </div>
             ) : null}
             {linkedCases.isFetchNextPageError ? (
               <div className="case-relations__state case-relations__state--inline" role="alert">
@@ -179,9 +185,10 @@ export function RelationDetailPage() {
                 <button
                   type="button"
                   className="text-button"
+                  disabled={linkedCases.isFetchingNextPage}
                   onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
                 >
-                  重试加载其余案例
+                  {linkedCases.isFetchingNextPage ? '加载中…' : '重试加载其余案例'}
                 </button>
               </div>
             ) : null}

@@ -241,12 +241,29 @@ describe.sequential('relation REST API', () => {
     const otherEffect = await createEvent('测试：详情案例游标其他结果');
     const other = (await createRelation(otherCause.id, otherEffect.id)).json<RelationDetail>();
 
+    const linkedCases = await pool!.query<{ id: string; content: string }>(
+      `select c.id, c.content
+       from concrete_cases c
+       join causal_relation_cases crc on crc.concrete_case_id = c.id
+       where crc.causal_relation_id = $1`,
+      [created.id],
+    );
+    for (const [index, content] of contents.entries()) {
+      const linkedCase = linkedCases.rows.find((item) => item.content === content)!;
+      await pool!.query(
+        `update causal_relation_cases
+         set linked_at = $3::timestamptz
+         where causal_relation_id = $1 and concrete_case_id = $2`,
+        [created.id, linkedCase.id, `2026-07-${23 - index}T08:00:00.000Z`],
+      );
+    }
+
     const first = await app!.inject({
       method: 'GET',
       url: `/api/relations/${created.id}/cases?limit=2`,
     });
     const firstPage = first.json<{
-      items: Array<{ id: string; content: string }>;
+      items: Array<{ id: string; content: string; linkedAt: string }>;
       nextCursor: string | null;
       hasMore: boolean;
     }>();
@@ -261,10 +278,23 @@ describe.sequential('relation REST API', () => {
 
     expect(first.statusCode).toBe(200);
     expect(firstPage.items).toHaveLength(2);
+    expect(firstPage.items.map((item) => item.content)).toEqual(contents.slice(0, 2));
+    expect(firstPage.items.map((item) => item.linkedAt)).toEqual([
+      '2026-07-23T08:00:00.000Z',
+      '2026-07-22T08:00:00.000Z',
+    ]);
     expect(firstPage.hasMore).toBe(true);
     expect(firstPage.nextCursor).toEqual(expect.any(String));
     expect(second.statusCode).toBe(200);
-    expect(second.json<{ items: unknown[]; hasMore: boolean }>().items).toHaveLength(1);
+    expect(
+      second.json<{ items: Array<{ content: string; linkedAt: string }>; hasMore: boolean }>()
+        .items,
+    ).toEqual([
+      expect.objectContaining({
+        content: contents[2],
+        linkedAt: '2026-07-21T08:00:00.000Z',
+      }),
+    ]);
     expect(second.json<{ items: unknown[]; hasMore: boolean }>().hasMore).toBe(false);
     expect(mismatch.statusCode).toBe(400);
     expect(mismatch.json()).toMatchObject({ code: 'VALIDATION_ERROR' });

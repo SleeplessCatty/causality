@@ -2,29 +2,26 @@ import { describe, expect, it } from 'vitest';
 
 import {
   decodeCaseCandidateCursor,
-  decodeCaseListCursor,
   decodeCaseRelationCursor,
+  decodeRelationCaseCursor,
   encodeCaseCandidateCursor,
-  encodeCaseListCursor,
   encodeCaseRelationCursor,
+  encodeRelationCaseCursor,
 } from '../src/features/cases/caseCursor.js';
 
 const caseId = '11111111-1111-4111-8111-111111111111';
 const relationId = '22222222-2222-4222-8222-222222222222';
 
 describe('case cursors', () => {
-  it('round-trips list state bound to search and relation filters', () => {
+  it('round-trips relation-case state and binds it to the relation', () => {
     const state = {
-      query: '关税',
-      filterRelationId: relationId,
-      rank: 2,
-      updatedAt: '2026-07-21T03:00:00.000Z',
-      id: caseId,
+      relationId,
+      linkedAt: '2026-07-21T03:00:00.000Z',
+      caseId,
     };
-    const cursor = encodeCaseListCursor(state);
-    expect(decodeCaseListCursor(cursor, ' 关税 ', relationId)).toEqual(state);
-    expect(() => decodeCaseListCursor(cursor, '油价', relationId)).toThrow('Invalid case cursor');
-    expect(() => decodeCaseListCursor(cursor, '关税', undefined)).toThrow('Invalid case cursor');
+    const cursor = encodeRelationCaseCursor(state);
+    expect(decodeRelationCaseCursor(cursor, relationId)).toEqual(state);
+    expect(() => decodeRelationCaseCursor(cursor, caseId)).toThrow('Invalid case cursor');
   });
 
   it('round-trips case-relation state and rejects tampering', () => {
@@ -43,9 +40,9 @@ describe('case cursors', () => {
   });
 
   it('rejects malformed and unsupported cursor envelopes', () => {
-    expect(() => decodeCaseListCursor('invalid', '', undefined)).toThrow('Invalid case cursor');
+    expect(() => decodeRelationCaseCursor('invalid', relationId)).toThrow('Invalid case cursor');
     const unsupported = Buffer.from(JSON.stringify({ version: 2 }), 'utf8').toString('base64url');
-    expect(() => decodeCaseListCursor(unsupported, '', undefined)).toThrow('Invalid case cursor');
+    expect(() => decodeRelationCaseCursor(unsupported, relationId)).toThrow('Invalid case cursor');
   });
 
   it('round-trips candidate state and binds it to the query', () => {

@@ -119,7 +119,7 @@ export const relationPairCheckResponseSchema = z
 
 export const relationCaseListResponseSchema = z
   .object({
-    items: z.array(caseSummarySchema),
+    items: z.array(caseSummarySchema.extend({ linkedAt: timestampSchema }).strict()),
     nextCursor: z.string().nullable(),
     hasMore: z.boolean(),
   })

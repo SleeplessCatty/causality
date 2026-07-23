@@ -17,11 +17,11 @@ import type { Pool } from 'pg';
 
 import {
   decodeCaseCandidateCursor,
-  decodeCaseListCursor,
   decodeCaseRelationCursor,
+  decodeRelationCaseCursor,
   encodeCaseCandidateCursor,
-  encodeCaseListCursor,
   encodeCaseRelationCursor,
+  encodeRelationCaseCursor,
 } from './caseCursor.js';
 import { resolvePageWindow, type CountRow } from '../shared/pagePagination.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
@@ -41,6 +41,10 @@ interface CaseRelationRow {
   cause_event_name: string;
   effect_event_id: string;
   effect_event_name: string;
+  linked_at: Date;
+}
+
+interface RelationCaseRow extends CaseRow {
   linked_at: Date;
 }
 
@@ -192,22 +196,19 @@ export class PostgresCaseRepository implements CaseRepository {
     relationId: string,
     query: RelationCaseListQuery,
   ): Promise<RelationCaseListResponse> {
-    const cursor = query.cursor ? decodeCaseListCursor(query.cursor, '', relationId) : undefined;
+    const cursor = query.cursor ? decodeRelationCaseCursor(query.cursor, relationId) : undefined;
     const parameters: unknown[] = [relationId];
-    const cursorCondition = cursor
-      ? `and (date_trunc('milliseconds', c.updated_at), c.id) < ($2::timestamptz, $3::uuid)`
-      : '';
-    if (cursor) parameters.push(cursor.updatedAt, cursor.id);
+    const cursorCondition = cursor ? `and (crc.linked_at, c.id) < ($2::timestamptz, $3::uuid)` : '';
+    if (cursor) parameters.push(cursor.linkedAt, cursor.caseId);
     parameters.push(query.limit + 1);
-    const result = await this.pool.query<CaseRow>(
-      `${caseSelect}
-       from concrete_cases c
-       where exists (
-         select 1 from causal_relation_cases crc
-         where crc.concrete_case_id = c.id and crc.causal_relation_id = $1
-       )
+    const result = await this.pool.query<RelationCaseRow>(
+      `${caseSelect},
+              crc.linked_at
+       from causal_relation_cases crc
+       join concrete_cases c on c.id = crc.concrete_case_id
+       where crc.causal_relation_id = $1
        ${cursorCondition}
-       order by date_trunc('milliseconds', c.updated_at) desc, c.id desc
+       order by crc.linked_at desc, c.id desc
        limit $${parameters.length}`,
       parameters,
     );
@@ -215,16 +216,14 @@ export class PostgresCaseRepository implements CaseRepository {
     const rows = result.rows.slice(0, query.limit);
     const last = rows.at(-1);
     return {
-      items: rows.map(summary),
+      items: rows.map((row) => ({ ...summary(row), linkedAt: row.linked_at.toISOString() })),
       hasMore,
       nextCursor:
         hasMore && last
-          ? encodeCaseListCursor({
-              query: '',
-              filterRelationId: relationId,
-              rank: null,
-              updatedAt: last.updated_at.toISOString(),
-              id: last.id,
+          ? encodeRelationCaseCursor({
+              relationId,
+              linkedAt: last.linked_at.toISOString(),
+              caseId: last.id,
             })
           : null,
     };

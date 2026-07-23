@@ -172,12 +172,27 @@ describe('relation contracts', () => {
             content: '2025年4月美国宣布新一轮关税措施',
             relationCount: 1,
             updatedAt: '2026-07-21T00:00:00.000Z',
+            linkedAt: '2026-07-20T08:30:00.000Z',
           },
         ],
         nextCursor: 'next-page',
         hasMore: true,
       }),
     ).toMatchObject({ nextCursor: 'next-page', hasMore: true });
+    expect(() =>
+      relationCaseListResponseSchema.parse({
+        items: [
+          {
+            id: '44444444-4444-4444-8444-444444444444',
+            content: '缺少关联时间的案例',
+            relationCount: 1,
+            updatedAt: '2026-07-21T00:00:00.000Z',
+          },
+        ],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    ).toThrow();
   });
 
   it('accepts strict list, detail, and pair-check responses with real case data', () => {

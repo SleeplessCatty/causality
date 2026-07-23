@@ -152,6 +152,8 @@ test('relation detail loads every case beyond the first 20 with one action', asy
   await page.goto(`/relations/${relation.id}`);
   const caseItems = page.locator('.relation-detail-case-list > li');
   await expect(caseItems).toHaveCount(20);
+  await expect(page.locator('.relation-detail-case-list time')).toHaveCount(20);
+  await expect(page.locator('.relation-detail-case-list time').first()).toContainText('关联于');
   await page.getByRole('button', { name: '加载更多' }).click();
   await expect(caseItems).toHaveCount(41);
 });

@@ -22,18 +22,21 @@ const caseOne = {
   content: '案例一',
   relationCount: 1,
   updatedAt: '2026-07-21T03:00:00.000Z',
+  linkedAt: '2026-07-21T02:00:00.000Z',
 };
 const caseTwo = {
   id: '55555555-5555-4555-8555-555555555555',
   content: '案例二',
   relationCount: 1,
   updatedAt: '2026-07-21T04:00:00.000Z',
+  linkedAt: '2026-07-20T02:00:00.000Z',
 };
 const caseThree = {
   id: '66666666-6666-4666-8666-666666666666',
   content: '案例三',
   relationCount: 1,
   updatedAt: '2026-07-21T05:00:00.000Z',
+  linkedAt: '2026-07-19T02:00:00.000Z',
 };
 
 function response(body: unknown, status = 200) {
@@ -98,8 +101,14 @@ describe('RelationDetailPage', () => {
     expect((await screen.findByRole('link', { name: '案例一' })).className).toContain(
       'overflow-text--multi-line',
     );
+    const linkedAt = screen.getByText(/^关联于/);
+    expect(linkedAt.tagName).toBe('TIME');
+    expect(linkedAt.getAttribute('datetime')).toBe(caseOne.linkedAt);
+    expect(linkedAt.parentElement).toBe(screen.getByRole('link', { name: '案例一' }).parentElement);
     expect(screen.queryByRole('link', { name: '案例二' })).toBeNull();
-    expect(screen.getByRole('button', { name: '加载更多' })).toBeTruthy();
+    const loadMore = screen.getByRole('button', { name: '加载更多' });
+    expect(loadMore.parentElement?.className).toContain('case-relations__state--inline');
+    expect(loadMore.parentElement?.style.justifyContent).toBe('flex-end');
     expect(
       vi
         .mocked(fetch)

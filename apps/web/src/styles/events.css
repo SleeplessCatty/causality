@@ -1417,19 +1417,17 @@ body {
   flex: 1 1 0;
 }
 
-.relation-detail-case-list li {
-  display: block;
-}
-
-.relation-detail-case-list a {
-  display: block;
-  color: #27483a;
-  font-weight: 620;
+.case-relation-list__case {
+  min-width: 0;
+  flex: 1;
+  color: #173f30;
+  font-size: 14px;
+  font-weight: 650;
   text-decoration: none;
 }
 
-.relation-detail-case-list a:hover {
-  color: #176348;
+.case-relation-list__case:hover {
+  color: #08734d;
   text-decoration: underline;
   text-underline-offset: 3px;
 }

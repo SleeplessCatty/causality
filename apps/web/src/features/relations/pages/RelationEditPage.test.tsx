@@ -11,12 +11,14 @@ const linkedCase = {
   content: '2025年4月美国宣布新一轮关税措施',
   relationCount: 1,
   updatedAt: '2026-07-21T03:00:00.000Z',
+  linkedAt: '2026-07-21T02:00:00.000Z',
 };
 const secondLinkedCase = {
   id: '55555555-5555-4555-8555-555555555555',
   content: '2025年5月进口成本继续上升',
   relationCount: 1,
   updatedAt: '2026-07-22T03:00:00.000Z',
+  linkedAt: '2026-07-20T02:00:00.000Z',
 };
 const detail = {
   id: relationId,
