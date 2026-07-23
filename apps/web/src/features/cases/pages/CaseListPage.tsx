@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
+import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getCases } from '../api/caseApi';
@@ -45,7 +46,6 @@ export function CaseListPage() {
         {
           q: query,
           page,
-          limit: 50,
           ...(relationId ? { relationId } : {}),
         },
         signal,
@@ -184,6 +184,7 @@ export function CaseListPage() {
           totalItems={cases.data.totalItems}
           disabled={cases.isFetching}
           onPageChange={changePage}
+          onNavigate={scrollMainContentToTop}
         />
       ) : null}
     </section>

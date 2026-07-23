@@ -1,4 +1,6 @@
 import {
+  DETAIL_ASSOCIATION_PAGE_SIZE,
+  MAIN_LIST_PAGE_SIZE,
   relationDetailSchema,
   relationCaseListResponseSchema,
   relationListResponseSchema,
@@ -20,7 +22,7 @@ export async function getRelations(
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
   parameters.set('page', String(query.page));
-  parameters.set('limit', String(query.limit ?? 50));
+  parameters.set('limit', String(query.limit ?? MAIN_LIST_PAGE_SIZE));
   return relationListResponseSchema.parse(
     await requestJson(`/api/relations?${parameters}`, {}, signal),
   );
@@ -35,7 +37,9 @@ export async function getRelationCases(
   options: { limit?: number; cursor?: string } = {},
   signal?: AbortSignal,
 ): Promise<RelationCaseListResponse> {
-  const parameters = new URLSearchParams({ limit: String(options.limit ?? 20) });
+  const parameters = new URLSearchParams({
+    limit: String(options.limit ?? DETAIL_ASSOCIATION_PAGE_SIZE),
+  });
   if (options.cursor) parameters.set('cursor', options.cursor);
   return relationCaseListResponseSchema.parse(
     await requestJson(`/api/relations/${relationId}/cases?${parameters}`, {}, signal),

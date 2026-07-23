@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
+import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getEvents } from '../api/eventApi';
@@ -54,7 +55,7 @@ export function EventListPage() {
 
   const events = useQuery({
     queryKey: ['events', 'list', query, page],
-    queryFn: ({ signal }) => getEvents({ q: query, page, limit: 50 }, signal),
+    queryFn: ({ signal }) => getEvents({ q: query, page }, signal),
     placeholderData: (previous) => previous,
   });
 
@@ -178,6 +179,7 @@ export function EventListPage() {
           totalItems={events.data.totalItems}
           disabled={events.isFetching}
           onPageChange={changePage}
+          onNavigate={scrollMainContentToTop}
         />
       ) : null}
     </section>

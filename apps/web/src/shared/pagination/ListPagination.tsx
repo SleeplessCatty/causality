@@ -6,6 +6,7 @@ export interface ListPaginationProps {
   totalItems: number;
   disabled?: boolean;
   onPageChange(page: number): void;
+  onNavigate?(): void;
 }
 
 type PageItem = number | 'ellipsis';
@@ -39,12 +40,13 @@ export function ListPagination({
   totalItems,
   disabled = false,
   onPageChange,
+  onNavigate,
 }: ListPaginationProps) {
   const [jumpValue, setJumpValue] = useState('');
 
   function navigate(target: number): void {
     onPageChange(target);
-    document.querySelector<HTMLElement>('.product-main')?.scrollTo({ top: 0, behavior: 'auto' });
+    onNavigate?.();
   }
 
   function jump(): void {

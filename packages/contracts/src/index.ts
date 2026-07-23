@@ -68,6 +68,8 @@ export {
 } from './events/eventSchemas.js';
 
 export {
+  DETAIL_ASSOCIATION_PAGE_SIZE,
+  MAIN_LIST_PAGE_SIZE,
   pageListMetadataSchema,
   pageListQuerySchema,
   type PageListMetadata,

@@ -1,4 +1,6 @@
 import {
+  DETAIL_ASSOCIATION_PAGE_SIZE,
+  MAIN_LIST_PAGE_SIZE,
   caseCandidateListResponseSchema,
   caseDetailSchema,
   caseListResponseSchema,
@@ -21,7 +23,7 @@ export async function getCases(
   if (query.q) parameters.set('q', query.q);
   if (query.relationId) parameters.set('relationId', query.relationId);
   parameters.set('page', String(query.page));
-  parameters.set('limit', String(query.limit ?? 50));
+  parameters.set('limit', String(query.limit ?? MAIN_LIST_PAGE_SIZE));
   return caseListResponseSchema.parse(await requestJson(`/api/cases?${parameters}`, {}, signal));
 }
 
@@ -53,7 +55,9 @@ export async function getCaseRelations(
   query: { cursor?: string; limit?: number } = {},
   signal?: AbortSignal,
 ): Promise<CaseRelationListResponse> {
-  const parameters = new URLSearchParams({ limit: String(query.limit ?? 20) });
+  const parameters = new URLSearchParams({
+    limit: String(query.limit ?? DETAIL_ASSOCIATION_PAGE_SIZE),
+  });
   if (query.cursor) parameters.set('cursor', query.cursor);
   return caseRelationListResponseSchema.parse(
     await requestJson(`/api/cases/${id}/relations?${parameters}`, {}, signal),

@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 import { caseContentSchema, caseReferenceSchema, caseSummarySchema } from '../cases/caseSchemas.js';
 import { eventNameSchema } from '../events/eventSchemas.js';
-import { pageListMetadataSchema, pageListQuerySchema } from '../pagination/pageSchemas.js';
+import {
+  DETAIL_ASSOCIATION_PAGE_SIZE,
+  pageListMetadataSchema,
+  pageListQuerySchema,
+} from '../pagination/pageSchemas.js';
 
 const timestampSchema = z.iso.datetime({ offset: true });
 const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
@@ -70,7 +74,7 @@ export const relationPairCheckQuerySchema = z
 
 export const relationCaseListQuerySchema = z
   .object({
-    limit: z.coerce.number().int().min(1).max(100).default(20),
+    limit: z.coerce.number().int().min(1).max(100).default(DETAIL_ASSOCIATION_PAGE_SIZE),
     cursor: z.string().min(1).max(2_000).optional(),
   })
   .strict();

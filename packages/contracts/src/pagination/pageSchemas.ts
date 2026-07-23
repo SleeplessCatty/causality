@@ -1,9 +1,12 @@
 import { z } from 'zod';
 
+export const MAIN_LIST_PAGE_SIZE = 50;
+export const DETAIL_ASSOCIATION_PAGE_SIZE = 20;
+
 export const pageListQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100_000).default(1),
-    limit: z.coerce.number().int().min(1).max(100).default(50),
+    limit: z.coerce.number().int().min(1).max(100).default(MAIN_LIST_PAGE_SIZE),
   })
   .strict();
 

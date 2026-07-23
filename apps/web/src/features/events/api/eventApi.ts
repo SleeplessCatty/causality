@@ -1,4 +1,5 @@
 import {
+  MAIN_LIST_PAGE_SIZE,
   eventCandidateListResponseSchema,
   eventDetailSchema,
   eventListResponseSchema,
@@ -18,7 +19,7 @@ export async function getEvents(
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
   parameters.set('page', String(query.page));
-  parameters.set('limit', String(query.limit ?? 50));
+  parameters.set('limit', String(query.limit ?? MAIN_LIST_PAGE_SIZE));
 
   return eventListResponseSchema.parse(await requestJson(`/api/events?${parameters}`, {}, signal));
 }

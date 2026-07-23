@@ -22,11 +22,7 @@ export function RelationDetailPage() {
   const linkedCases = useInfiniteQuery({
     queryKey: ['cases', 'relation-associations', relationId],
     queryFn: ({ pageParam, signal }) =>
-      getRelationCases(
-        relationId,
-        { limit: 20, ...(pageParam ? { cursor: pageParam } : {}) },
-        signal,
-      ),
+      getRelationCases(relationId, pageParam ? { cursor: pageParam } : {}, signal),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => (page.hasMore ? (page.nextCursor ?? undefined) : undefined),
     enabled: relation.isSuccess && relation.data.caseCount > 0,

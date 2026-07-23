@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Fragment, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
+import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getRelation, getRelations } from '../api/relationApi';
@@ -43,7 +44,7 @@ export function RelationListPage() {
 
   const relations = useQuery({
     queryKey: ['relations', 'list', query, page],
-    queryFn: ({ signal }) => getRelations({ q: query, page, limit: 50 }, signal),
+    queryFn: ({ signal }) => getRelations({ q: query, page }, signal),
     placeholderData: (previous) => previous,
   });
   const expanded = useQuery({
@@ -273,6 +274,7 @@ export function RelationListPage() {
           totalItems={relations.data.totalItems}
           disabled={relations.isFetching}
           onPageChange={changePage}
+          onNavigate={scrollMainContentToTop}
         />
       ) : null}
     </section>

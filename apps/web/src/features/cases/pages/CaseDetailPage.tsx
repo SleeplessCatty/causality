@@ -22,7 +22,7 @@ export function CaseDetailPage() {
     queryKey: ['cases', 'relations', caseId],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam, signal }) =>
-      getCaseRelations(caseId, { limit: 20, ...(pageParam ? { cursor: pageParam } : {}) }, signal),
+      getCaseRelations(caseId, pageParam ? { cursor: pageParam } : {}, signal),
     getNextPageParam: (page) => (page.hasMore ? (page.nextCursor ?? undefined) : undefined),
     enabled: Boolean(caseId),
     retry: false,

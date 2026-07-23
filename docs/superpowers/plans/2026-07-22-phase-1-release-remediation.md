@@ -664,7 +664,7 @@ git commit -m "refactor: remove duplicated infrastructure and dead resources"
 - 主列表不再返回 `nextCursor` 和 `hasMore`。候选接口、案例详情关系接口和关系详情案例接口的游标契约保持不变。
 - 为避免关系详情复用已改为页码契约的案例主列表，新增内部接口
   `GET /api/relations/:relationId/cases`；查询为
-  `{ limit: number /* default 100 */, cursor?: string }`，响应继续为
+  `{ limit: number /* default 20 */, cursor?: string }`，响应继续为
   `{ items: CaseSummary[], nextCursor: string | null, hasMore: boolean }`，且游标绑定
   `relationId`。关系详情改用此接口，首批 20 条，点击“加载更多”后自动遍历并合并全部剩余游标页；关系编辑页则在渲染表单前自动遍历并合并全部游标页。
 - Produces:

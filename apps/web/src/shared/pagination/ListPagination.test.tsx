@@ -62,16 +62,17 @@ describe('ListPagination', () => {
     expect(onPageChange).toHaveBeenCalledTimes(4);
   });
 
-  it('returns the main content area to the top after every valid navigation', () => {
-    const main = document.createElement('main');
-    main.className = 'product-main';
-    const scrollTo = vi.fn();
-    Object.defineProperty(main, 'scrollTo', { configurable: true, value: scrollTo });
-    document.body.append(main);
+  it('notifies the host after every valid navigation', () => {
+    const onNavigate = vi.fn();
 
     render(
-      <ListPagination page={2} totalPages={4} totalItems={200} onPageChange={() => undefined} />,
-      { container: main },
+      <ListPagination
+        page={2}
+        totalPages={4}
+        totalItems={200}
+        onPageChange={() => undefined}
+        onNavigate={onNavigate}
+      />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
@@ -81,8 +82,7 @@ describe('ListPagination', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: '跳转' }));
 
-    expect(scrollTo).toHaveBeenCalledTimes(3);
-    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'auto' });
+    expect(onNavigate).toHaveBeenCalledTimes(3);
   });
 
   it('disables every control while a page request is in flight', () => {
