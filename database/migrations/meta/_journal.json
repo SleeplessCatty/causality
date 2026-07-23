@@ -43,6 +43,13 @@
       "when": 1784737543768,
       "tag": "0005_event_keywords",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784776399145,
+      "tag": "0006_core_model",
+      "breakpoints": true
     }
   ]
 }

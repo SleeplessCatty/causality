@@ -160,6 +160,10 @@ describe.sequential('event REST API', () => {
   it('returns not found for missing detail and update targets', async () => {
     const missingId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
     const detail = await app!.inject({ method: 'GET', url: `/api/events/${missingId}` });
+    const relations = await app!.inject({
+      method: 'GET',
+      url: `/api/events/${missingId}/relations`,
+    });
     const update = await app!.inject({
       method: 'PUT',
       url: `/api/events/${missingId}`,
@@ -167,6 +171,7 @@ describe.sequential('event REST API', () => {
     });
 
     expect(detail.statusCode).toBe(404);
+    expect(relations.statusCode).toBe(404);
     expect(update.statusCode).toBe(404);
     expect(detail.json()).toMatchObject({ code: 'EVENT_NOT_FOUND' });
   });

@@ -328,8 +328,8 @@ describe.sequential('causal graph REST API', () => {
         cases: cases.rows.map((row) => row['QUERY PLAN']).join('\n'),
       };
 
-      expect(plans.downstream).toContain('causal_relations_cause_event_id_idx');
-      expect(plans.upstream).toContain('causal_relations_effect_event_id_idx');
+      expect(plans.downstream).toContain('causal_relations_cause_created_at_id_idx');
+      expect(plans.upstream).toContain('causal_relations_effect_created_at_id_idx');
       expect(plans.cases).toContain('causal_relation_cases_relation_linked_idx');
       await client.query('rollback');
     } finally {

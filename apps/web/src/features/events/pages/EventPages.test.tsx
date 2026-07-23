@@ -144,6 +144,30 @@ describe('event route pages', () => {
     expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
   });
 
+  it('retries the initial relation request without refreshing the event detail', async () => {
+    let relationAttempts = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      if (!String(input).includes('/relations?')) {
+        return jsonResponse({ ...eventDetail, relationCount: 1 });
+      }
+      relationAttempts += 1;
+      return relationAttempts === 1
+        ? jsonResponse({ code: 'INTERNAL_ERROR', message: '暂时无法访问' }, 500)
+        : jsonResponse({ items: [], nextCursor: null, hasMore: false });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/events/:eventId', <EventDetailPage />);
+
+    expect(await screen.findByText('无法读取关联关系')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
+
+    expect(await screen.findByText('当前原子事件尚未关联因果关系')).toBeTruthy();
+    expect(relationAttempts).toBe(2);
+    expect(
+      fetchMock.mock.calls.filter(([input]) => !String(input).includes('/relations?')),
+    ).toHaveLength(1);
+  });
+
   it('loads and replaces an event before returning to the list', async () => {
     const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) =>
       init?.method === 'PUT'

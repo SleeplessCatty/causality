@@ -444,8 +444,8 @@ describe.sequential('core PostgreSQL model', () => {
         'event_keywords_event_id_idx',
         'abstract_events_normalized_name_trgm_idx',
         'abstract_events_updated_at_id_idx',
-        'causal_relations_cause_event_id_idx',
-        'causal_relations_effect_event_id_idx',
+        'causal_relations_cause_created_at_id_idx',
+        'causal_relations_effect_created_at_id_idx',
         'causal_relations_description_trgm_idx',
         'causal_relations_updated_at_id_idx',
         'concrete_cases_content_trgm_idx',
@@ -461,5 +461,38 @@ describe.sequential('core PostgreSQL model', () => {
        ) as installed`,
     );
     expect(extension.rows[0]?.installed).toBe(true);
+
+    const client = await pool!.connect();
+    try {
+      await client.query('begin');
+      await client.query('set local enable_seqscan = off');
+      const causePlan = await client.query<{ 'QUERY PLAN': string }>(
+        `explain
+         select id
+         from causal_relations
+         where cause_event_id = $1
+         order by created_at desc, id desc
+         limit 21`,
+        [eventOneId],
+      );
+      const effectPlan = await client.query<{ 'QUERY PLAN': string }>(
+        `explain
+         select id
+         from causal_relations
+         where effect_event_id = $1
+         order by created_at desc, id desc
+         limit 21`,
+        [eventTwoId],
+      );
+      expect(causePlan.rows.map((row) => row['QUERY PLAN']).join('\n')).toContain(
+        'causal_relations_cause_created_at_id_idx',
+      );
+      expect(effectPlan.rows.map((row) => row['QUERY PLAN']).join('\n')).toContain(
+        'causal_relations_effect_created_at_id_idx',
+      );
+      await client.query('rollback');
+    } finally {
+      client.release();
+    }
   });
 });

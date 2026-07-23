@@ -68,7 +68,9 @@ export class EventService {
     id: string,
     query: EventRelationListQuery,
   ): Promise<EventRelationListResponse> {
-    await this.findById(id);
+    if (!(await this.repository.existsById(id))) {
+      throw new EventServiceError('EVENT_NOT_FOUND', '事件不存在');
+    }
     return this.repository.listRelations(id, query);
   }
 

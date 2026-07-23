@@ -50,6 +50,7 @@ interface EventRelationRow {
   effect_event_id: string;
   effect_event_name: string;
   linked_at: Date;
+  cursor_at: string;
 }
 
 const eventSearchCte = `with matches as (
@@ -81,6 +82,7 @@ export interface EventRepository {
   list(query: EventListQuery): Promise<EventListResponse>;
   findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse>;
   findById(id: string): Promise<EventDetail | null>;
+  existsById(id: string): Promise<boolean>;
   listRelations(id: string, query: EventRelationListQuery): Promise<EventRelationListResponse>;
   create(input: EventFormInput): Promise<EventDetail>;
   replace(id: string, input: EventFormInput): Promise<EventDetail | null>;
@@ -281,31 +283,55 @@ export class PostgresEventRepository implements EventRepository {
     return createDetail(row, aliases.get(id) ?? [], keywords.get(id) ?? []);
   }
 
+  async existsById(id: string): Promise<boolean> {
+    const result = await this.pool.query<{ exists: boolean }>(
+      `select exists(select 1 from abstract_events where id = $1)`,
+      [id],
+    );
+    return result.rows[0]!.exists;
+  }
+
   async listRelations(
     id: string,
     query: EventRelationListQuery,
   ): Promise<EventRelationListResponse> {
     const cursor = query.cursor ? decodeEventRelationCursor(query.cursor, id) : undefined;
     const parameters: unknown[] = [id];
-    const cursorCondition = cursor
-      ? `and (date_trunc('milliseconds', r.created_at), r.id) < ($2::timestamptz, $3::uuid)`
-      : '';
+    const cursorCondition = cursor ? `and (r.created_at, r.id) < ($2::timestamptz, $3::uuid)` : '';
     if (cursor) parameters.push(cursor.linkedAt, cursor.relationId);
     parameters.push(query.limit + 1);
+    const branchLimit = `$${parameters.length}`;
     const result = await this.pool.query<EventRelationRow>(
-      `select r.id,
-              r.cause_event_id,
+      `with selected as (
+         (select r.id, r.cause_event_id, r.effect_event_id, r.created_at
+          from causal_relations r
+          where r.cause_event_id = $1
+          ${cursorCondition}
+          order by r.created_at desc, r.id desc
+          limit ${branchLimit})
+         union all
+         (select r.id, r.cause_event_id, r.effect_event_id, r.created_at
+          from causal_relations r
+          where r.effect_event_id = $1
+          ${cursorCondition}
+          order by r.created_at desc, r.id desc
+          limit ${branchLimit})
+       )
+       select selected.id,
+              selected.cause_event_id,
               cause.name as cause_event_name,
-              r.effect_event_id,
+              selected.effect_event_id,
               effect.name as effect_event_name,
-              date_trunc('milliseconds', r.created_at) as linked_at
-       from causal_relations r
-       join abstract_events cause on cause.id = r.cause_event_id
-       join abstract_events effect on effect.id = r.effect_event_id
-       where (r.cause_event_id = $1 or r.effect_event_id = $1)
-       ${cursorCondition}
-       order by date_trunc('milliseconds', r.created_at) desc, r.id desc
-       limit $${parameters.length}`,
+              selected.created_at as linked_at,
+              to_char(
+                selected.created_at at time zone 'UTC',
+                'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+              ) as cursor_at
+       from selected
+       join abstract_events cause on cause.id = selected.cause_event_id
+       join abstract_events effect on effect.id = selected.effect_event_id
+       order by selected.created_at desc, selected.id desc
+       limit ${branchLimit}`,
       parameters,
     );
     const hasMore = result.rows.length > query.limit;
@@ -324,7 +350,7 @@ export class PostgresEventRepository implements EventRepository {
         hasMore && last
           ? encodeEventRelationCursor({
               eventId: id,
-              linkedAt: last.linked_at.toISOString(),
+              linkedAt: last.cursor_at,
               relationId: last.id,
             })
           : null,

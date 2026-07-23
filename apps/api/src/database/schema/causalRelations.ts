@@ -29,8 +29,16 @@ export const causalRelations = pgTable(
   },
   (table) => [
     uniqueIndex('causal_relations_direction_uidx').on(table.causeEventId, table.effectEventId),
-    index('causal_relations_cause_event_id_idx').on(table.causeEventId),
-    index('causal_relations_effect_event_id_idx').on(table.effectEventId),
+    index('causal_relations_cause_created_at_id_idx').on(
+      table.causeEventId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
+    index('causal_relations_effect_created_at_id_idx').on(
+      table.effectEventId,
+      table.createdAt.desc(),
+      table.id.desc(),
+    ),
     index('causal_relations_updated_at_id_idx').on(table.updatedAt.desc(), table.id.desc()),
     index('causal_relations_description_trgm_idx').using(
       'gin',

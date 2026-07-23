@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router';
 
 import { fetchAllRemainingPages } from '../../../shared/pagination/fetchAllRemainingPages';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
+import { RelationAssociationSection } from '../../relations/components/RelationAssociationSection';
 import { getEvent, getEventRelations } from '../api/eventApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -38,7 +39,7 @@ export function EventDetailPage() {
     queryFn: ({ pageParam, signal }) =>
       getEventRelations(eventId, pageParam ? { cursor: pageParam } : {}, signal),
     getNextPageParam: (page) => (page.hasMore ? (page.nextCursor ?? undefined) : undefined),
-    enabled: Boolean(eventId),
+    enabled: Boolean(eventId) && event.isSuccess && event.data.relationCount > 0,
     retry: false,
   });
   const relationItems = Array.from(
@@ -121,69 +122,19 @@ export function EventDetailPage() {
         </div>
       </dl>
 
-      <section className="case-relations" aria-labelledby="event-relations-title">
-        <div className="section-heading">
-          <h2 id="event-relations-title">关联的因果关系</h2>
-          <span>{event.data.relationCount} 条</span>
-        </div>
-        {relations.isPending ? <div className="case-relations__state">加载关联关系…</div> : null}
-        {relations.isError && !relations.data ? (
-          <div className="case-relations__state" role="alert">
-            无法读取关联关系
-          </div>
-        ) : null}
-        {relations.isSuccess && relationItems.length === 0 ? (
-          <div className="case-relations__state">当前原子事件尚未关联因果关系</div>
-        ) : null}
-        {relationItems.length > 0 ? (
-          <ul className="case-relation-list">
-            {relationItems.map((relation) => (
-              <li key={relation.id}>
-                <Link className="case-relation-list__relation" to={`/relations/${relation.id}`}>
-                  <OverflowText content={relation.causeEvent.name}>
-                    <span>{relation.causeEvent.name}</span>
-                  </OverflowText>
-                  <strong aria-hidden="true">→</strong>
-                  <OverflowText content={relation.effectEvent.name}>
-                    <span>{relation.effectEvent.name}</span>
-                  </OverflowText>
-                </Link>
-                <time dateTime={relation.linkedAt}>
-                  关联于 {dateFormatter.format(new Date(relation.linkedAt))}
-                </time>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {relations.isFetchNextPageError ? (
-          <div className="case-relations__state case-relations__state--inline" role="alert">
-            <span>其余关联关系加载失败，已显示成功加载的内容。</span>
-            <button
-              type="button"
-              className="text-button"
-              disabled={relations.isFetchingNextPage}
-              onClick={() => void fetchAllRemainingPages(relations.fetchNextPage)}
-            >
-              {relations.isFetchingNextPage ? '加载中…' : '重试加载其余关联关系'}
-            </button>
-          </div>
-        ) : null}
-        {relations.hasNextPage && !relations.isFetchNextPageError ? (
-          <div
-            className="case-relations__state case-relations__state--inline"
-            style={{ justifyContent: 'flex-end' }}
-          >
-            <button
-              type="button"
-              className="text-button"
-              disabled={relations.isFetchingNextPage}
-              onClick={() => void fetchAllRemainingPages(relations.fetchNextPage)}
-            >
-              {relations.isFetchingNextPage ? '加载中…' : '加载更多'}
-            </button>
-          </div>
-        ) : null}
-      </section>
+      <RelationAssociationSection
+        titleId="event-relations-title"
+        totalCount={event.data.relationCount}
+        items={relationItems}
+        emptyMessage="当前原子事件尚未关联因果关系"
+        isPending={event.data.relationCount > 0 && relations.isPending}
+        isInitialError={relations.isError && !relations.data}
+        isFetchNextPageError={relations.isFetchNextPageError}
+        isFetchingNextPage={relations.isFetchingNextPage}
+        hasNextPage={relations.hasNextPage}
+        onRetryInitial={() => void relations.refetch()}
+        onLoadRemaining={() => void fetchAllRemainingPages(relations.fetchNextPage)}
+      />
     </section>
   );
 }

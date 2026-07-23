@@ -27,6 +27,7 @@ function repository(overrides: Partial<EventRepository> = {}): EventRepository {
     list: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
     findCandidates: vi.fn().mockResolvedValue([]),
     findById: vi.fn().mockResolvedValue(detail),
+    existsById: vi.fn().mockResolvedValue(true),
     listRelations: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
     create: vi.fn().mockResolvedValue(detail),
     replace: vi.fn().mockResolvedValue(detail),
@@ -39,11 +40,16 @@ describe('EventService', () => {
     const service = new EventService(
       repository({
         findById: vi.fn().mockResolvedValue(null),
+        existsById: vi.fn().mockResolvedValue(false),
         replace: vi.fn().mockResolvedValue(null),
       }),
     );
 
     await expect(service.findById(detail.id)).rejects.toMatchObject({
+      code: 'EVENT_NOT_FOUND',
+      message: '事件不存在',
+    });
+    await expect(service.listRelations(detail.id, { limit: 20 })).rejects.toMatchObject({
       code: 'EVENT_NOT_FOUND',
       message: '事件不存在',
     });
