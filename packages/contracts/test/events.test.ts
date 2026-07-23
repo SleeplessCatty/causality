@@ -9,6 +9,8 @@ import {
   eventFormInputSchema,
   eventListQuerySchema,
   eventListResponseSchema,
+  eventRelationListQuerySchema,
+  eventRelationListResponseSchema,
 } from '../src/index.js';
 
 const eventId = '11111111-1111-4111-8111-111111111111';
@@ -133,6 +135,27 @@ describe('event contracts', () => {
     expect(eventCandidateQuerySchema.safeParse({ q: '查'.repeat(81) }).success).toBe(false);
   });
 
+  it('keeps event relations cursor-based with a 20-item default', () => {
+    expect(eventRelationListQuerySchema.parse({})).toEqual({ limit: 20 });
+    expect(
+      eventRelationListResponseSchema.parse({
+        items: [
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            causeEvent: { id: eventId, name: '原油价格上涨' },
+            effectEvent: {
+              id: '33333333-3333-4333-8333-333333333333',
+              name: '运输成本上升',
+            },
+            linkedAt: timestamp,
+          },
+        ],
+        nextCursor: 'next-page',
+        hasMore: true,
+      }),
+    ).toMatchObject({ hasMore: true, nextCursor: 'next-page' });
+  });
+
   it('accepts documented detail, list, and API error responses', () => {
     const detail = {
       id: eventId,
@@ -140,6 +163,7 @@ describe('event contracts', () => {
       description: null,
       aliases: ['油价上涨'],
       keywords: ['原油'],
+      relationCount: 2,
       createdAt: timestamp,
       updatedAt: timestamp,
     };

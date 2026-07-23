@@ -10,6 +10,7 @@ const detail: EventDetail = {
   description: null,
   aliases: ['油价上涨'],
   keywords: ['原油'],
+  relationCount: 0,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
 };
@@ -26,6 +27,7 @@ function repository(overrides: Partial<EventRepository> = {}): EventRepository {
     list: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
     findCandidates: vi.fn().mockResolvedValue([]),
     findById: vi.fn().mockResolvedValue(detail),
+    listRelations: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
     create: vi.fn().mockResolvedValue(detail),
     replace: vi.fn().mockResolvedValue(detail),
     ...overrides,

@@ -6,6 +6,8 @@ import {
   eventFormInputSchema,
   eventListQuerySchema,
   eventListResponseSchema,
+  eventRelationListQuerySchema,
+  eventRelationListResponseSchema,
 } from '@causality/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Pool } from 'pg';
@@ -81,6 +83,30 @@ export function registerEventRoutes(app: FastifyInstance, pool: Pool): void {
     async (request, reply) => {
       try {
         return await service.findCandidates(request.query);
+      } catch (error) {
+        return sendEventError(error, reply);
+      }
+    },
+  );
+
+  routes.get(
+    '/api/events/:eventId/relations',
+    {
+      schema: {
+        tags: ['events'],
+        params: eventParamsSchema,
+        querystring: eventRelationListQuerySchema,
+        response: {
+          200: eventRelationListResponseSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await service.listRelations(request.params.eventId, request.query);
       } catch (error) {
         return sendEventError(error, reply);
       }

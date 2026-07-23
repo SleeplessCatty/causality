@@ -33,10 +33,20 @@ const candidateCursorStateSchema = z
   })
   .strict();
 
+const relationCursorStateSchema = z
+  .object({
+    kind: z.literal('relations'),
+    eventId: z.uuid(),
+    linkedAt: z.iso.datetime({ offset: true }),
+    relationId: z.uuid(),
+  })
+  .strict();
+
 const eventCursorStateSchema = z.discriminatedUnion('kind', [
   listCursorStateSchema,
   searchCursorStateSchema,
   candidateCursorStateSchema,
+  relationCursorStateSchema,
 ]);
 
 const eventCursorEnvelopeSchema = z
@@ -49,6 +59,7 @@ const eventCursorEnvelopeSchema = z
 
 export type EventCursorState = z.infer<typeof eventCursorStateSchema>;
 export type EventCandidateCursorState = z.infer<typeof candidateCursorStateSchema>;
+export type EventRelationCursorState = z.infer<typeof relationCursorStateSchema>;
 
 export class InvalidEventCursorError extends Error {
   constructor() {
@@ -66,7 +77,7 @@ function checksum(state: EventCursorState): string {
 export function encodeEventCursor(input: EventCursorState): string {
   const state = eventCursorStateSchema.parse({
     ...input,
-    query: normalizeSearchQuery(input.query),
+    ...('query' in input ? { query: normalizeSearchQuery(input.query) } : {}),
   });
   return Buffer.from(
     JSON.stringify({ version: 1, state, checksum: checksum(state) }),
@@ -95,6 +106,7 @@ export function decodeEventCursor(cursor: string, query: string): EventCursorSta
   const state = decodeVerifiedEventEnvelope(cursor);
   const normalized = normalizeSearchQuery(query);
   if (
+    !('query' in state) ||
     state.query !== normalized ||
     (normalized === '' && state.kind !== 'list') ||
     (normalized !== '' && state.kind !== 'search')
@@ -119,6 +131,21 @@ export function decodeEventCandidateCursor(
     state.query !== normalizeSearchQuery(query) ||
     state.excludeId !== (excludeId ?? null)
   ) {
+    throw new InvalidEventCursorError();
+  }
+  return state;
+}
+
+export function encodeEventRelationCursor(input: Omit<EventRelationCursorState, 'kind'>): string {
+  return encodeEventCursor({ kind: 'relations', ...input });
+}
+
+export function decodeEventRelationCursor(
+  cursor: string,
+  eventId: string,
+): EventRelationCursorState {
+  const state = decodeVerifiedEventEnvelope(cursor);
+  if (state.kind !== 'relations' || state.eventId !== eventId) {
     throw new InvalidEventCursorError();
   }
   return state;

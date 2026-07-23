@@ -1,13 +1,16 @@
 import {
+  DETAIL_ASSOCIATION_PAGE_SIZE,
   MAIN_LIST_PAGE_SIZE,
   eventCandidateListResponseSchema,
   eventDetailSchema,
   eventListResponseSchema,
+  eventRelationListResponseSchema,
   type EventCandidate,
   type EventCandidateListResponse,
   type EventDetail,
   type EventFormInput,
   type EventListResponse,
+  type EventRelationListResponse,
 } from '@causality/contracts';
 
 import { requestJson } from '../../../shared/api/httpClient';
@@ -47,6 +50,20 @@ export async function getEventCandidatePage(
 
 export async function getEvent(id: string, signal?: AbortSignal): Promise<EventDetail> {
   return eventDetailSchema.parse(await requestJson(`/api/events/${id}`, {}, signal));
+}
+
+export async function getEventRelations(
+  id: string,
+  options: { limit?: number; cursor?: string } = {},
+  signal?: AbortSignal,
+): Promise<EventRelationListResponse> {
+  const parameters = new URLSearchParams({
+    limit: String(options.limit ?? DETAIL_ASSOCIATION_PAGE_SIZE),
+  });
+  if (options.cursor) parameters.set('cursor', options.cursor);
+  return eventRelationListResponseSchema.parse(
+    await requestJson(`/api/events/${id}/relations?${parameters}`, {}, signal),
+  );
 }
 
 export async function createEvent(input: EventFormInput): Promise<EventDetail> {

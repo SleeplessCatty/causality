@@ -5,13 +5,18 @@ import type {
   EventFormInput,
   EventListQuery,
   EventListResponse,
+  EventRelationListQuery,
+  EventRelationListResponse,
+  EventRelationSummary,
   EventSummary,
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
 import {
   decodeEventCandidateCursor,
+  decodeEventRelationCursor,
   encodeEventCandidateCursor,
+  encodeEventRelationCursor,
   type EventCandidateCursorState,
 } from './eventCursor.js';
 import { resolvePageWindow, type CountRow } from '../shared/pagePagination.js';
@@ -25,6 +30,7 @@ interface EventRow {
   updated_at: Date;
   normalized_name?: string;
   rank?: number;
+  relation_count?: number;
 }
 
 interface AliasRow {
@@ -35,6 +41,15 @@ interface AliasRow {
 interface KeywordRow {
   event_id: string;
   keyword: string;
+}
+
+interface EventRelationRow {
+  id: string;
+  cause_event_id: string;
+  cause_event_name: string;
+  effect_event_id: string;
+  effect_event_name: string;
+  linked_at: Date;
 }
 
 const eventSearchCte = `with matches as (
@@ -66,6 +81,7 @@ export interface EventRepository {
   list(query: EventListQuery): Promise<EventListResponse>;
   findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse>;
   findById(id: string): Promise<EventDetail | null>;
+  listRelations(id: string, query: EventRelationListQuery): Promise<EventRelationListResponse>;
   create(input: EventFormInput): Promise<EventDetail>;
   replace(id: string, input: EventFormInput): Promise<EventDetail | null>;
 }
@@ -84,10 +100,16 @@ function createSummary(row: EventRow, aliases: string[], keywords: string[]): Ev
   };
 }
 
-function createDetail(row: EventRow, aliases: string[], keywords: string[]): EventDetail {
+function createDetail(
+  row: EventRow,
+  aliases: string[],
+  keywords: string[],
+  relationCount = Number(row.relation_count ?? 0),
+): EventDetail {
   return {
     ...createSummary(row, aliases, keywords),
     description: row.description,
+    relationCount,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -242,9 +264,12 @@ export class PostgresEventRepository implements EventRepository {
 
   async findById(id: string): Promise<EventDetail | null> {
     const result = await this.pool.query<EventRow>(
-      `select id, name, description, created_at, updated_at
-       from abstract_events
-       where id = $1`,
+      `select e.id, e.name, e.description, e.created_at, e.updated_at,
+              (select count(*)::int
+               from causal_relations r
+               where r.cause_event_id = e.id or r.effect_event_id = e.id) as relation_count
+       from abstract_events e
+       where e.id = $1`,
       [id],
     );
     const row = result.rows[0];
@@ -254,6 +279,56 @@ export class PostgresEventRepository implements EventRepository {
       this.loadKeywords([id]),
     ]);
     return createDetail(row, aliases.get(id) ?? [], keywords.get(id) ?? []);
+  }
+
+  async listRelations(
+    id: string,
+    query: EventRelationListQuery,
+  ): Promise<EventRelationListResponse> {
+    const cursor = query.cursor ? decodeEventRelationCursor(query.cursor, id) : undefined;
+    const parameters: unknown[] = [id];
+    const cursorCondition = cursor
+      ? `and (date_trunc('milliseconds', r.created_at), r.id) < ($2::timestamptz, $3::uuid)`
+      : '';
+    if (cursor) parameters.push(cursor.linkedAt, cursor.relationId);
+    parameters.push(query.limit + 1);
+    const result = await this.pool.query<EventRelationRow>(
+      `select r.id,
+              r.cause_event_id,
+              cause.name as cause_event_name,
+              r.effect_event_id,
+              effect.name as effect_event_name,
+              date_trunc('milliseconds', r.created_at) as linked_at
+       from causal_relations r
+       join abstract_events cause on cause.id = r.cause_event_id
+       join abstract_events effect on effect.id = r.effect_event_id
+       where (r.cause_event_id = $1 or r.effect_event_id = $1)
+       ${cursorCondition}
+       order by date_trunc('milliseconds', r.created_at) desc, r.id desc
+       limit $${parameters.length}`,
+      parameters,
+    );
+    const hasMore = result.rows.length > query.limit;
+    const rows = result.rows.slice(0, query.limit);
+    const items: EventRelationSummary[] = rows.map((row) => ({
+      id: row.id,
+      causeEvent: { id: row.cause_event_id, name: row.cause_event_name },
+      effectEvent: { id: row.effect_event_id, name: row.effect_event_name },
+      linkedAt: row.linked_at.toISOString(),
+    }));
+    const last = rows.at(-1);
+    return {
+      items,
+      hasMore,
+      nextCursor:
+        hasMore && last
+          ? encodeEventRelationCursor({
+              eventId: id,
+              linkedAt: last.linked_at.toISOString(),
+              relationId: last.id,
+            })
+          : null,
+    };
   }
 
   async create(input: EventFormInput): Promise<EventDetail> {
@@ -300,8 +375,14 @@ export class PostgresEventRepository implements EventRepository {
       await client.query('delete from event_aliases where event_id = $1', [id]);
       await this.insertAliases(client, id, input.aliases);
       await this.replaceKeywords(client, id, input.keywords);
+      const relationCount = await client.query<CountRow>(
+        `select count(*)::int as total
+         from causal_relations
+         where cause_event_id = $1 or effect_event_id = $1`,
+        [id],
+      );
       await client.query('commit');
-      return createDetail(row, input.aliases, input.keywords);
+      return createDetail(row, input.aliases, input.keywords, relationCount.rows[0]!.total);
     } catch (error) {
       await client.query('rollback');
       throw error;

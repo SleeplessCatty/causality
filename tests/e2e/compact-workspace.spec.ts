@@ -80,7 +80,7 @@ test('compact shell and full-canvas graph preserve workspace geometry', async ({
   });
   expect(expandedCenterDelta).toBeLessThanOrEqual(1);
 
-  await page.getByRole('link', { name: '事件', exact: true }).click();
+  await page.getByRole('link', { name: '原子事件', exact: true }).click();
   await expect(shell).toHaveAttribute('data-sidebar-state', 'expanded');
   await expect(toolbar).toHaveCount(0);
   await page.getByRole('searchbox', { name: '搜索事件' }).fill(tooltipName);

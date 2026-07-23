@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router';
 
+import { fetchAllRemainingPages } from '../../../shared/pagination/fetchAllRemainingPages';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
-import { getEvent } from '../api/eventApi';
+import { getEvent, getEventRelations } from '../api/eventApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   dateStyle: 'long',
@@ -31,6 +32,23 @@ export function EventDetailPage() {
     queryFn: ({ signal }) => getEvent(eventId, signal),
     enabled: Boolean(eventId),
   });
+  const relations = useInfiniteQuery({
+    queryKey: ['events', 'relations', eventId],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) =>
+      getEventRelations(eventId, pageParam ? { cursor: pageParam } : {}, signal),
+    getNextPageParam: (page) => (page.hasMore ? (page.nextCursor ?? undefined) : undefined),
+    enabled: Boolean(eventId),
+    retry: false,
+  });
+  const relationItems = Array.from(
+    new Map(
+      (relations.data?.pages.flatMap((page) => page.items) ?? []).map((relation) => [
+        relation.id,
+        relation,
+      ]),
+    ).values(),
+  );
 
   if (event.isPending) return <div className="page-state">加载事件详情…</div>;
   if (event.isError) {
@@ -102,6 +120,70 @@ export function EventDetailPage() {
           <dd>{dateFormatter.format(new Date(event.data.updatedAt))}</dd>
         </div>
       </dl>
+
+      <section className="case-relations" aria-labelledby="event-relations-title">
+        <div className="section-heading">
+          <h2 id="event-relations-title">关联的因果关系</h2>
+          <span>{event.data.relationCount} 条</span>
+        </div>
+        {relations.isPending ? <div className="case-relations__state">加载关联关系…</div> : null}
+        {relations.isError && !relations.data ? (
+          <div className="case-relations__state" role="alert">
+            无法读取关联关系
+          </div>
+        ) : null}
+        {relations.isSuccess && relationItems.length === 0 ? (
+          <div className="case-relations__state">当前原子事件尚未关联因果关系</div>
+        ) : null}
+        {relationItems.length > 0 ? (
+          <ul className="case-relation-list">
+            {relationItems.map((relation) => (
+              <li key={relation.id}>
+                <Link className="case-relation-list__relation" to={`/relations/${relation.id}`}>
+                  <OverflowText content={relation.causeEvent.name}>
+                    <span>{relation.causeEvent.name}</span>
+                  </OverflowText>
+                  <strong aria-hidden="true">→</strong>
+                  <OverflowText content={relation.effectEvent.name}>
+                    <span>{relation.effectEvent.name}</span>
+                  </OverflowText>
+                </Link>
+                <time dateTime={relation.linkedAt}>
+                  关联于 {dateFormatter.format(new Date(relation.linkedAt))}
+                </time>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {relations.isFetchNextPageError ? (
+          <div className="case-relations__state case-relations__state--inline" role="alert">
+            <span>其余关联关系加载失败，已显示成功加载的内容。</span>
+            <button
+              type="button"
+              className="text-button"
+              disabled={relations.isFetchingNextPage}
+              onClick={() => void fetchAllRemainingPages(relations.fetchNextPage)}
+            >
+              {relations.isFetchingNextPage ? '加载中…' : '重试加载其余关联关系'}
+            </button>
+          </div>
+        ) : null}
+        {relations.hasNextPage && !relations.isFetchNextPageError ? (
+          <div
+            className="case-relations__state case-relations__state--inline"
+            style={{ justifyContent: 'flex-end' }}
+          >
+            <button
+              type="button"
+              className="text-button"
+              disabled={relations.isFetchingNextPage}
+              onClick={() => void fetchAllRemainingPages(relations.fetchNextPage)}
+            >
+              {relations.isFetchingNextPage ? '加载中…' : '加载更多'}
+            </button>
+          </div>
+        ) : null}
+      </section>
     </section>
   );
 }

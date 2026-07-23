@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { pageListMetadataSchema, pageListQuerySchema } from '../pagination/pageSchemas.js';
+import {
+  DETAIL_ASSOCIATION_PAGE_SIZE,
+  pageListMetadataSchema,
+  pageListQuerySchema,
+} from '../pagination/pageSchemas.js';
 
 export const eventNameSchema = z.string().trim().min(1).max(50);
 export const eventAliasSchema = z.string().trim().min(1).max(80);
@@ -69,6 +73,22 @@ export const eventCandidateSchema = z
   })
   .strict();
 
+export const eventRelationListQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(DETAIL_ASSOCIATION_PAGE_SIZE),
+    cursor: z.string().min(1).max(2_000).optional(),
+  })
+  .strict();
+
+const eventRelationSummarySchema = z
+  .object({
+    id: z.uuid(),
+    causeEvent: eventCandidateSchema,
+    effectEvent: eventCandidateSchema,
+    linkedAt: timestampSchema,
+  })
+  .strict();
+
 export const eventSummarySchema = z
   .object({
     id: z.uuid(),
@@ -83,6 +103,7 @@ export const eventDetailSchema = eventSummarySchema
   .omit({ updatedAt: true })
   .extend({
     description: z.string().max(2_000).nullable(),
+    relationCount: z.number().int().nonnegative(),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
   })
@@ -98,6 +119,14 @@ export const eventListResponseSchema = z
 export const eventCandidateListResponseSchema = z
   .object({
     items: z.array(eventCandidateSchema),
+    nextCursor: z.string().nullable(),
+    hasMore: z.boolean(),
+  })
+  .strict();
+
+export const eventRelationListResponseSchema = z
+  .object({
+    items: z.array(eventRelationSummarySchema),
     nextCursor: z.string().nullable(),
     hasMore: z.boolean(),
   })
@@ -131,6 +160,9 @@ export type EventFormInput = z.infer<typeof eventFormInputSchema>;
 export type EventListQuery = z.infer<typeof eventListQuerySchema>;
 export type EventCandidateQuery = z.infer<typeof eventCandidateQuerySchema>;
 export type EventCandidate = z.infer<typeof eventCandidateSchema>;
+export type EventRelationListQuery = z.infer<typeof eventRelationListQuerySchema>;
+export type EventRelationSummary = z.infer<typeof eventRelationSummarySchema>;
+export type EventRelationListResponse = z.infer<typeof eventRelationListResponseSchema>;
 export type EventSummary = z.infer<typeof eventSummarySchema>;
 export type EventDetail = z.infer<typeof eventDetailSchema>;
 export type EventListResponse = z.infer<typeof eventListResponseSchema>;

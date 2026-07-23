@@ -20,6 +20,7 @@ const eventDetail = {
   description: '国际原油价格持续上涨',
   aliases: ['油价上涨'],
   keywords: ['能源', '成本'],
+  relationCount: 0,
   createdAt: '2026-07-20T00:00:00.000Z',
   updatedAt: '2026-07-20T00:00:00.000Z',
 };

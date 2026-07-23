@@ -5,6 +5,8 @@ import type {
   EventFormInput,
   EventListQuery,
   EventListResponse,
+  EventRelationListQuery,
+  EventRelationListResponse,
 } from '@causality/contracts';
 
 import type { EventRepository } from './eventRepository.js';
@@ -60,6 +62,14 @@ export class EventService {
     const event = await this.repository.findById(id);
     if (!event) throw new EventServiceError('EVENT_NOT_FOUND', '事件不存在');
     return event;
+  }
+
+  async listRelations(
+    id: string,
+    query: EventRelationListQuery,
+  ): Promise<EventRelationListResponse> {
+    await this.findById(id);
+    return this.repository.listRelations(id, query);
   }
 
   async create(input: EventFormInput): Promise<EventDetail> {

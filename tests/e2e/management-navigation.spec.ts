@@ -37,6 +37,10 @@ test('management pages expose concise expansion, editing, and detail navigation'
 
   await page.goto(`/events/${eventId}`);
   await expect(page.getByRole('heading', { name: '央行提高政策利率' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '关联的因果关系' })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: /央行提高政策利率.*市场流动性收紧/ }),
+  ).toHaveAttribute('href', `/relations/${relationId}`);
   const eventHeading = await readDetailHeading();
 
   await page.goto('/relations');

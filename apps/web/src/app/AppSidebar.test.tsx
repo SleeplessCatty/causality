@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AppSidebar } from './AppSidebar';
 
-const navigationLabels = ['事件', '因果关系', '具体案例', '因果图', '系统状态'];
+const navigationLabels = ['原子事件', '因果关系', '具体案例', '因果图', '系统状态'];
 
 function renderSidebar(collapsed = false, forced = false, onToggle = vi.fn()) {
   render(

@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   decodeEventCandidateCursor,
   decodeEventCursor,
+  decodeEventRelationCursor,
   encodeEventCandidateCursor,
   encodeEventCursor,
+  encodeEventRelationCursor,
 } from '../src/features/events/eventCursor.js';
 
 const eventId = '11111111-1111-4111-8111-111111111111';
@@ -33,25 +35,37 @@ describe('event cursor', () => {
     expect(decodeEventCursor(encodeEventCursor(state), '原油')).toEqual(state);
   });
 
-  it('rejects malformed and tampered cursors', () => {
-    expect(() => decodeEventCursor('not-base64!', '')).toThrow('Invalid event cursor');
+  it('round-trips event relations and binds them to the event', () => {
+    const state = {
+      eventId,
+      linkedAt: '2026-07-21T03:00:00.000Z',
+      relationId: '22222222-2222-4222-8222-222222222222',
+    };
+    const cursor = encodeEventRelationCursor(state);
+    expect(decodeEventRelationCursor(cursor, eventId)).toMatchObject(state);
+    expect(() => decodeEventRelationCursor(cursor, state.relationId)).toThrow(
+      'Invalid event cursor',
+    );
+  });
 
-    const valid = encodeEventCursor({
-      kind: 'list',
-      query: '',
-      updatedAt: '2026-07-21T03:00:00.000Z',
-      id: eventId,
+  it('rejects malformed and tampered cursors', () => {
+    expect(() => decodeEventRelationCursor('not-base64!', eventId)).toThrow('Invalid event cursor');
+
+    const valid = encodeEventRelationCursor({
+      eventId,
+      linkedAt: '2026-07-21T03:00:00.000Z',
+      relationId: '22222222-2222-4222-8222-222222222222',
     });
     const position = Math.floor(valid.length / 2);
     const replacement = valid[position] === 'a' ? 'b' : 'a';
     const tampered = `${valid.slice(0, position)}${replacement}${valid.slice(position + 1)}`;
 
-    expect(() => decodeEventCursor(tampered, '')).toThrow('Invalid event cursor');
+    expect(() => decodeEventRelationCursor(tampered, eventId)).toThrow('Invalid event cursor');
   });
 
   it('rejects unsupported versions and query mismatches', () => {
     const unsupported = Buffer.from(JSON.stringify({ version: 2 }), 'utf8').toString('base64url');
-    expect(() => decodeEventCursor(unsupported, '')).toThrow('Invalid event cursor');
+    expect(() => decodeEventRelationCursor(unsupported, eventId)).toThrow('Invalid event cursor');
 
     const cursor = encodeEventCursor({
       kind: 'search',

@@ -54,6 +54,8 @@ export {
   eventFormInputSchema,
   eventListQuerySchema,
   eventListResponseSchema,
+  eventRelationListQuerySchema,
+  eventRelationListResponseSchema,
   eventSummarySchema,
   type ApiError,
   type ApiErrorCode,
@@ -64,6 +66,9 @@ export {
   type EventFormInput,
   type EventListQuery,
   type EventListResponse,
+  type EventRelationListQuery,
+  type EventRelationListResponse,
+  type EventRelationSummary,
   type EventSummary,
 } from './events/eventSchemas.js';
 

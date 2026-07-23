@@ -2,7 +2,9 @@ import type {
   EventCandidateListResponse,
   EventDetail,
   EventListResponse,
+  EventRelationListResponse,
 } from '@causality/contracts';
+import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { buildApp } from '../src/app.js';
@@ -11,10 +13,11 @@ import { startPostgresTestContext } from './support/postgresTestContext.js';
 describe.sequential('event REST API', () => {
   let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
   let app: ReturnType<typeof buildApp> | undefined;
+  let pool: Pool | undefined;
 
   beforeAll(async () => {
     context = await startPostgresTestContext('causality_events_test');
-    ({ app } = context);
+    ({ app, pool } = context);
   }, 120_000);
 
   afterAll(async () => {
@@ -168,6 +171,85 @@ describe.sequential('event REST API', () => {
     expect(detail.json()).toMatchObject({ code: 'EVENT_NOT_FOUND' });
   });
 
+  it('lists both upstream and downstream relations with stable linked-time cursors', async () => {
+    const upstream = (await createEvent('测试：事件关系上游')).json<EventDetail>();
+    const center = (await createEvent('测试：事件关系中心')).json<EventDetail>();
+    const downstream = (await createEvent('测试：事件关系下游')).json<EventDetail>();
+    const upstreamRelation = await app!.inject({
+      method: 'POST',
+      url: '/api/relations',
+      payload: {
+        causeEventId: upstream.id,
+        effectEventId: center.id,
+        confidence: 50,
+        description: null,
+        caseSelections: [],
+      },
+    });
+    const downstreamRelation = await app!.inject({
+      method: 'POST',
+      url: '/api/relations',
+      payload: {
+        causeEventId: center.id,
+        effectEventId: downstream.id,
+        confidence: 50,
+        description: null,
+        caseSelections: [],
+      },
+    });
+    expect(upstreamRelation.statusCode).toBe(201);
+    expect(downstreamRelation.statusCode).toBe(201);
+    const relationIds = [
+      upstreamRelation.json<{ id: string }>().id,
+      downstreamRelation.json<{ id: string }>().id,
+    ];
+    await pool!.query(
+      `update causal_relations
+       set created_at = '2026-07-23T08:00:00.123456Z'::timestamptz
+       where id = any($1::uuid[])`,
+      [relationIds],
+    );
+
+    const detail = await app!.inject({ method: 'GET', url: `/api/events/${center.id}` });
+    expect(detail.json<EventDetail>().relationCount).toBe(2);
+    const first = await app!.inject({
+      method: 'GET',
+      url: `/api/events/${center.id}/relations?limit=1`,
+    });
+    const firstPage = first.json<EventRelationListResponse>();
+    const second = await app!.inject({
+      method: 'GET',
+      url: `/api/events/${center.id}/relations?limit=1&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+    const secondPage = second.json<EventRelationListResponse>();
+    const items = [...firstPage.items, ...secondPage.items];
+
+    expect(first.statusCode).toBe(200);
+    expect(firstPage).toMatchObject({ hasMore: true });
+    expect(second.statusCode).toBe(200);
+    expect(secondPage).toMatchObject({ hasMore: false, nextCursor: null });
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => item.linkedAt === '2026-07-23T08:00:00.123Z')).toBe(true);
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          causeEvent: expect.objectContaining({ id: upstream.id }),
+          effectEvent: expect.objectContaining({ id: center.id }),
+        }),
+        expect.objectContaining({
+          causeEvent: expect.objectContaining({ id: center.id }),
+          effectEvent: expect.objectContaining({ id: downstream.id }),
+        }),
+      ]),
+    );
+
+    const mismatch = await app!.inject({
+      method: 'GET',
+      url: `/api/events/${downstream.id}/relations?limit=1&cursor=${encodeURIComponent(firstPage.nextCursor!)}`,
+    });
+    expect(mismatch.statusCode).toBe(400);
+  });
+
   it('returns numbered pages, matching totals, and clamps an out-of-range page', async () => {
     for (let index = 1; index <= 31; index += 1) {
       await createEvent(`EVENT_PAGE_TOKEN 事件 ${String(index).padStart(2, '0')}`);
@@ -285,5 +367,6 @@ describe.sequential('event REST API', () => {
     expect(paths).toHaveProperty('/api/events');
     expect(paths).toHaveProperty('/api/events/candidates');
     expect(paths).toHaveProperty('/api/events/{eventId}');
+    expect(paths).toHaveProperty('/api/events/{eventId}/relations');
   });
 });

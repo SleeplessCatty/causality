@@ -13,6 +13,7 @@ const eventDetail = {
   description: '国际原油价格持续上行',
   aliases: ['油价上涨'],
   keywords: ['原油', '能源价格'],
+  relationCount: 2,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
 };
@@ -65,10 +66,12 @@ describe('event route pages', () => {
   });
 
   it('shows full event detail and its edit link', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => jsonResponse(eventDetail)),
+    const fetchMock = vi.fn((input: string | URL | Request) =>
+      String(input).includes('/relations?')
+        ? jsonResponse({ items: [], nextCursor: null, hasMore: false })
+        : jsonResponse({ ...eventDetail, relationCount: 0 }),
     );
+    vi.stubGlobal('fetch', fetchMock);
     renderRoute('/events/:eventId', <EventDetailPage />);
 
     const title = await screen.findByRole('heading', { name: eventDetail.name });
@@ -80,6 +83,65 @@ describe('event route pages', () => {
     const editLink = screen.getByRole('link', { name: '编辑事件' });
     expect(editLink.getAttribute('href')).toBe(`/events/${eventDetail.id}/edit`);
     expect(editLink.parentElement).toBe(heading);
+    expect(screen.getByRole('heading', { name: '关联的因果关系' })).toBeTruthy();
+    expect(await screen.findByText('当前原子事件尚未关联因果关系')).toBeTruthy();
+  });
+
+  it('shows the complete direction of upstream and downstream relations and loads all remaining', async () => {
+    const upstreamId = '22222222-2222-4222-8222-222222222222';
+    const downstreamId = '33333333-3333-4333-8333-333333333333';
+    const upstreamRelationId = '44444444-4444-4444-8444-444444444444';
+    const downstreamRelationId = '55555555-5555-4555-8555-555555555555';
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (!url.includes('/relations?')) return jsonResponse(eventDetail);
+      if (url.includes('cursor=next-page')) {
+        return jsonResponse({
+          items: [
+            {
+              id: downstreamRelationId,
+              causeEvent: { id: eventDetail.id, name: eventDetail.name },
+              effectEvent: { id: downstreamId, name: '航空公司成本上升' },
+              linkedAt: '2026-07-22T04:30:00.000Z',
+            },
+          ],
+          nextCursor: null,
+          hasMore: false,
+        });
+      }
+      return jsonResponse({
+        items: [
+          {
+            id: upstreamRelationId,
+            causeEvent: { id: upstreamId, name: '全球原油供应收缩' },
+            effectEvent: { id: eventDetail.id, name: eventDetail.name },
+            linkedAt: '2026-07-23T04:30:00.000Z',
+          },
+        ],
+        nextCursor: 'next-page',
+        hasMore: true,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/events/:eventId', <EventDetailPage />);
+
+    await screen.findByRole('heading', { name: eventDetail.name });
+    const upstreamLink = (await screen.findByText('全球原油供应收缩')).closest('a')!;
+    expect(upstreamLink.getAttribute('href')).toBe(`/relations/${upstreamRelationId}`);
+    expect(upstreamLink.textContent).toBe(`全球原油供应收缩→${eventDetail.name}`);
+    expect(screen.queryByText('航空公司成本上升')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '加载更多' }));
+
+    const downstreamLink = (await screen.findByText('航空公司成本上升')).closest('a')!;
+    expect(downstreamLink.getAttribute('href')).toBe(`/relations/${downstreamRelationId}`);
+    expect(downstreamLink.textContent).toBe(`${eventDetail.name}→航空公司成本上升`);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes(`/api/events/${eventDetail.id}/relations?limit=20&cursor=next-page`),
+      ),
+    ).toBe(true);
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
   });
 
   it('loads and replaces an event before returning to the list', async () => {

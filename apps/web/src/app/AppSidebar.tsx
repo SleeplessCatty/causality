@@ -22,7 +22,7 @@ const iconProps = {
 const navigationItems: NavigationItem[] = [
   {
     to: '/events',
-    label: '事件',
+    label: '原子事件',
     icon: (
       <svg {...iconProps}>
         <path d="M7.5 3.75h9a2 2 0 0 1 2 2v12.5a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2V5.75a2 2 0 0 1 2-2Z" />
@@ -82,7 +82,7 @@ export function AppSidebar({ collapsed, forced, onToggle }: AppSidebarProps) {
 
   return (
     <aside className="app-sidebar" aria-label="应用导航">
-      <NavLink className="app-sidebar__brand" to="/events" aria-label="Causality 事件首页">
+      <NavLink className="app-sidebar__brand" to="/events" aria-label="Causality 原子事件首页">
         <span className="app-sidebar__brand-mark" aria-hidden="true">
           C
         </span>
