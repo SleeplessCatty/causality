@@ -27,7 +27,6 @@ export function SystemStatus() {
     queryKey: ['system', 'readiness'],
     queryFn: ({ signal }) => getReadiness(signal),
   });
-
   const apiStatus: StatusValueProps = health.isPending
     ? { label: '检查中', tone: 'neutral' }
     : health.isSuccess

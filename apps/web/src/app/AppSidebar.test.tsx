@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AppSidebar } from './AppSidebar';
 
-const navigationLabels = ['原子事件', '因果关系', '具体案例', '因果图', '系统状态'];
+const navigationLabels = ['原子事件', '因果关系', '具体案例', '因果图', '数据维护', '系统状态'];
 
 function renderSidebar(collapsed = false, forced = false, onToggle = vi.fn()) {
   render(
@@ -22,6 +22,10 @@ describe('AppSidebar', () => {
     for (const label of navigationLabels) {
       expect(screen.getByRole('link', { name: label })).toBeTruthy();
     }
+    const links = screen.getAllByRole('link');
+    expect(links.indexOf(screen.getByRole('link', { name: '数据维护' }))).toBeLessThan(
+      links.indexOf(screen.getByRole('link', { name: '系统状态' })),
+    );
     expect(screen.getByRole('link', { name: '因果图' }).getAttribute('aria-current')).toBe('page');
   });
 

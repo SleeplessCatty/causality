@@ -82,13 +82,15 @@
 - Modify `apps/api/package.json` and root `package.json` with `data-check:benchmark`.
 - Modify `apps/api/test/support/postgresTestContext.ts` to allow the isolated data-check database.
 
-### System status UI and end-to-end verification
+### Data maintenance, system status UI, and end-to-end verification
 
-- Modify `apps/web/src/features/system-status/systemStatusApi.ts`.
-- Create `apps/web/src/features/system-status/DataCheckPanel.tsx`.
-- Create `apps/web/src/features/system-status/DataCheckIssueTable.tsx`.
-- Modify `apps/web/src/features/system-status/SystemStatus.tsx`.
-- Modify `apps/web/src/features/system-status/SystemStatus.test.tsx`.
+- Keep runtime status APIs and UI in `apps/web/src/features/system-status/`.
+- Create `apps/web/src/features/data-maintenance/DataMaintenance.tsx`.
+- Create `apps/web/src/features/data-maintenance/dataMaintenanceApi.ts`.
+- Create `apps/web/src/features/data-maintenance/DataCheckPanel.tsx`.
+- Create `apps/web/src/features/data-maintenance/DataCheckIssueTable.tsx`.
+- Create `apps/web/src/features/data-maintenance/DataMaintenance.test.tsx`.
+- Modify navigation and routing to expose `/maintenance` before `/system`.
 - Modify `apps/web/src/styles/global.css`.
 - Create `tests/e2e/data-maintenance.spec.ts`.
 - Modify `tests/e2e/foundation.spec.ts`.
@@ -1083,29 +1085,39 @@ Do not push.
 
 ---
 
-### Task 5: System status, orphan cards, and issue handling UI
+### Task 5: Data maintenance, system status restoration, and issue handling UI
 
 **Files:**
 
 - Modify: `apps/web/src/features/system-status/systemStatusApi.ts`
-- Create: `apps/web/src/features/system-status/DataCheckPanel.tsx`
-- Create: `apps/web/src/features/system-status/DataCheckIssueTable.tsx`
 - Modify: `apps/web/src/features/system-status/SystemStatus.tsx`
 - Modify: `apps/web/src/features/system-status/SystemStatus.test.tsx`
+- Create: `apps/web/src/features/data-maintenance/DataMaintenance.tsx`
+- Create: `apps/web/src/features/data-maintenance/dataMaintenanceApi.ts`
+- Create: `apps/web/src/features/data-maintenance/DataCheckPanel.tsx`
+- Create: `apps/web/src/features/data-maintenance/DataCheckIssueTable.tsx`
+- Create: `apps/web/src/features/data-maintenance/DataMaintenance.test.tsx`
+- Create: `apps/web/src/shared/controls/AppSelect.tsx`
+- Create: `apps/web/src/shared/controls/AppSelect.test.tsx`
+- Modify: `apps/web/src/app/AppSidebar.tsx`
+- Modify: `apps/web/src/app/AppSidebar.test.tsx`
+- Modify: `apps/web/src/app/router.tsx`
 - Modify: `apps/web/src/styles/global.css`
 
 **Interfaces:**
 
+- `/maintenance` is the standalone data-maintenance route and precedes `/system` in navigation.
+- `/system` retains only API/PostgreSQL status and the original “重新检查” action.
 - `DataCheckPanel` consumes `DataCheckLatestResponse`.
 - `DataCheckIssueTable` owns issue page/filter URL-independent UI state and calls auto/manual handle mutations.
 - Running state polls `GET /api/data-checks/latest`; succeeded/failed/never-run states do not poll.
 
-- [ ] **Step 1: Write failing status-page tests**
+- [x] **Step 1: Write failing status-page tests**
 
 Cover:
 
 ```ts
-expect(screen.getByRole('button', { name: '检查系统与数据' })).toBeEnabled();
+expect(screen.getByRole('button', { name: '检查数据' })).toBeEnabled();
 expect(screen.getByText('尚未执行数据检查')).toBeTruthy();
 expect(screen.getAllByRole('columnheader').map((node) => node.textContent)).toEqual([
   '问题描述',
@@ -1116,7 +1128,7 @@ expect(screen.getAllByRole('columnheader').map((node) => node.textContent)).toEq
 
 Also test running/polling, old snapshot plus failure, three card links, 50-row pagination, filters, auto/manual mutations, handled display, and no stale-result warning.
 
-- [ ] **Step 2: Run focused tests and verify failure**
+- [x] **Step 2: Run focused tests and verify failure**
 
 Run:
 
@@ -1126,7 +1138,7 @@ pnpm --filter @causality/web test -- SystemStatus.test.tsx
 
 Expected: FAIL because the data-check UI does not exist.
 
-- [ ] **Step 3: Implement API adapter**
+- [x] **Step 3: Implement API adapter**
 
 Add functions:
 
@@ -1141,19 +1153,18 @@ manualHandleDataCheckIssue(id, snapshotId)
 Both handling adapters also send the issue's `snapshotId` in the request body. Parse
 every response with Task 1 contracts.
 
-- [ ] **Step 4: Implement the unified check button**
+- [x] **Step 4: Implement the data-maintenance check button**
 
 On click:
 
-1. refetch health;
-2. refetch readiness;
-3. only when readiness is `ready`, call `startDataCheck`;
-4. attach to returned running task;
-5. poll latest state at a short fixed interval while running.
+1. refetch readiness;
+2. only when readiness is `ready`, call `startDataCheck`;
+3. attach to returned running task;
+4. poll latest state at a short fixed interval while running.
 
 Do not start a data check on initial page entry.
 
-- [ ] **Step 5: Implement snapshot and failure presentation**
+- [x] **Step 5: Implement snapshot and failure presentation**
 
 Render:
 
@@ -1166,7 +1177,7 @@ error/warning/open/handled totals
 
 If no successful snapshot exists, show the approved empty state even if the latest attempt failed.
 
-- [ ] **Step 6: Implement the three-column issue table**
+- [x] **Step 6: Implement the three-column issue table**
 
 Only render:
 
@@ -1184,9 +1195,11 @@ The action cell renders exactly one of:
 已处理
 ```
 
-Filters remain above the table and do not create additional columns.
+Filters remain above the table and do not create additional columns. Severity, issue type,
+and handling status use the shared application-styled select instead of native browser
+select controls.
 
-- [ ] **Step 7: Implement mutation updates**
+- [x] **Step 7: Implement mutation updates**
 
 After auto/manual success:
 
@@ -1197,11 +1210,11 @@ void queryClient.invalidateQueries({ queryKey: ['data-checks', 'latest'] });
 
 Do not invalidate event/relation/case lists or start a new check automatically.
 
-- [ ] **Step 8: Add compact styles**
+- [x] **Step 8: Add compact styles**
 
 Reuse existing card, table, button, focus, error, pagination, and desktop spacing tokens. The status page must remain usable at 1280×720 without a new page shell or mobile layout.
 
-- [ ] **Step 9: Run Web tests**
+- [x] **Step 9: Run Web tests**
 
 Run:
 
@@ -1212,28 +1225,53 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 10: Manual checkpoint**
+**Execution result (2026-07-23):**
+
+- The Web suite passed with 39 files and 189 tests after splitting data maintenance from
+  system status.
+- Workspace lint, formatting, typecheck, and diff checks passed.
+- Browser verification at `/maintenance` covered the saved result, success metrics, all
+  three orphan links, issue actions, navigation placement, and the three-column table.
+- Browser navigation to `/system` verified that only API, PostgreSQL, and the restored
+  “重新检查” action remain.
+- The three issue filters use the shared application-styled select, including keyboard
+  navigation, single-menu behavior, and a scrollable issue-type menu.
+- The causal-graph toolbar now reuses the same shared select behavior while retaining its
+  existing control dimensions; selected options use weight 750 and unselected options use
+  weight 400 consistently across both pages.
+- The real check completed with 0 errors and 525 warnings; browser console errors and
+  warnings were empty.
+- The Task 5 desktop manual checkpoint was approved by the user on 2026-07-23.
+
+- [x] **Step 10: Manual checkpoint**
 
 Ask the user to verify:
 
-- unified button and running state;
+- data-maintenance navigation, check button, and running state;
 - leaving and returning while a task runs;
 - success snapshot, old snapshot plus failure, and first-run empty state;
 - three orphan card links;
 - three-column issue table, filters, pagination, and all three action labels;
 - no stale-result indicator.
+- restored system-status page with only API, PostgreSQL, and “重新检查”.
 
 Do not continue until the user confirms.
 
-- [ ] **Step 11: Commit locally**
+- [x] **Step 11: Commit locally**
 
 ```bash
 git add \
   apps/web/src/features/system-status/systemStatusApi.ts \
-  apps/web/src/features/system-status/DataCheckPanel.tsx \
-  apps/web/src/features/system-status/DataCheckIssueTable.tsx \
   apps/web/src/features/system-status/SystemStatus.tsx \
   apps/web/src/features/system-status/SystemStatus.test.tsx \
+  apps/web/src/features/data-maintenance/DataMaintenance.tsx \
+  apps/web/src/features/data-maintenance/dataMaintenanceApi.ts \
+  apps/web/src/features/data-maintenance/DataCheckPanel.tsx \
+  apps/web/src/features/data-maintenance/DataCheckIssueTable.tsx \
+  apps/web/src/features/data-maintenance/DataMaintenance.test.tsx \
+  apps/web/src/app/AppSidebar.tsx \
+  apps/web/src/app/AppSidebar.test.tsx \
+  apps/web/src/app/router.tsx \
   apps/web/src/styles/global.css
 git commit -m "feat: add data maintenance system status"
 ```
@@ -1274,8 +1312,8 @@ Use API-created unique records and assert:
 
 Assert:
 
-- `/system` does not auto-start a data check;
-- “检查系统与数据” starts one task;
+- `/maintenance` does not auto-start a data check;
+- “检查数据” starts one task;
 - navigation away and back recovers state;
 - snapshot persists after page reload;
 - orphan cards navigate to `orphan=true`;
@@ -1300,7 +1338,8 @@ In the isolated production Compose project:
 Add concise user-facing documentation:
 
 - permanent deletion and its constraints;
-- manual “检查系统与数据” behavior;
+- standalone data-maintenance page and manual “检查数据” behavior;
+- restored runtime-only system-status page;
 - orphan statistics;
 - latest-snapshot persistence;
 - no soft delete, recovery, history, or automatic schedule.

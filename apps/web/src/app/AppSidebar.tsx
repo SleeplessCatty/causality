@@ -66,6 +66,17 @@ const navigationItems: NavigationItem[] = [
     ),
   },
   {
+    to: '/maintenance',
+    label: '数据维护',
+    icon: (
+      <svg {...iconProps}>
+        <path d="M5 5.5h14v13H5z" />
+        <path d="M8 9h8M8 12h5M8 15h7" />
+        <path d="M9 3.5h6v3H9z" />
+      </svg>
+    ),
+  },
+  {
     to: '/system',
     label: '系统状态',
     icon: (

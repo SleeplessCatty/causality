@@ -6,6 +6,7 @@ import { EventCreatePage } from '../features/events/pages/EventCreatePage';
 import { EventDetailPage } from '../features/events/pages/EventDetailPage';
 import { EventEditPage } from '../features/events/pages/EventEditPage';
 import { SystemStatus } from '../features/system-status/SystemStatus';
+import { DataMaintenance } from '../features/data-maintenance/DataMaintenance';
 import { RelationListPage } from '../features/relations/pages/RelationListPage';
 import { RelationCreatePage } from '../features/relations/pages/RelationCreatePage';
 import { RelationEditPage } from '../features/relations/pages/RelationEditPage';
@@ -45,6 +46,7 @@ export const router = createBrowserRouter([
           return { Component: module.CausalGraphPage };
         },
       },
+      { path: 'maintenance', element: <DataMaintenance /> },
       { path: 'system', element: <SystemStatus /> },
       { path: '*', element: <Navigate to="/events" replace /> },
     ],

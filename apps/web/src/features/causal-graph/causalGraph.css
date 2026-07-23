@@ -128,79 +128,50 @@
   font-weight: 700;
 }
 
-.graph-compact-select {
-  position: relative;
+.graph-compact-select.app-select {
+  display: inline-flex;
+  min-width: 0;
+  gap: 4px;
 }
 
-.graph-compact-select__trigger {
+.graph-compact-select .app-select__label {
+  color: #506158;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.graph-compact-select .app-select__trigger {
   display: inline-flex;
   height: 36px;
   min-width: 66px;
+  width: auto;
   align-items: center;
   justify-content: space-between;
   gap: 7px;
   padding: 0 8px;
-  border: 1px solid #d4dcd6;
-  border-radius: 8px;
-  background: #f7f9f7;
-  color: #43544a;
-  cursor: pointer;
   font: inherit;
   font-size: 12px;
   font-weight: 650;
-  outline: none;
 }
 
-.graph-compact-select__trigger svg {
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentcolor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.5;
-}
-
-.graph-compact-select__trigger:focus-visible,
-.graph-compact-select__trigger[aria-expanded='true'] {
-  border-color: #4f8b6e;
-  box-shadow: 0 0 0 3px rgb(58 126 91 / 13%);
-}
-
-.graph-compact-select__menu {
-  position: absolute;
+.graph-compact-select .app-select__menu {
   z-index: 20;
   top: calc(100% + 6px);
-  right: 0;
   min-width: 100%;
-  padding: 4px;
-  border: 1px solid #d5ded7;
-  border-radius: 8px;
-  background: white;
-  box-shadow: 0 12px 30px rgb(28 52 39 / 16%);
-  outline: none;
 }
 
-.graph-compact-select__menu button {
+.graph-compact-select .app-select__menu button {
   display: block;
   width: 100%;
+  min-height: 0;
   min-width: 64px;
   padding: 7px 9px;
-  border: 0;
   border-radius: 5px;
-  background: transparent;
-  color: #354b40;
-  cursor: pointer;
-  font: inherit;
   font-size: 11px;
-  text-align: left;
-  white-space: nowrap;
 }
 
-.graph-compact-select__menu button.is-active,
-.graph-compact-select__menu button[aria-selected='true'] {
-  background: var(--accent-soft);
-  color: #1e5b42;
+.graph-compact-select .app-select__menu button[aria-selected='false'] {
+  font-weight: 400;
 }
 
 .graph-viewport-controls {

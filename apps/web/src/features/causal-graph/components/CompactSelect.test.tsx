@@ -12,7 +12,7 @@ const directionOptions = [
 describe('CompactSelect', () => {
   it('renders the approved order and selects the highlighted typed value', () => {
     const onChange = vi.fn();
-    render(
+    const { container } = render(
       <CompactSelect
         label="方向"
         ariaLabel="查询方向"
@@ -23,6 +23,8 @@ describe('CompactSelect', () => {
     );
 
     const trigger = screen.getByRole('button', { name: '查询方向' });
+    expect(container.querySelector('.graph-compact-select.app-select')).toBeTruthy();
+    expect(trigger.classList.contains('app-select__trigger')).toBe(true);
     expect(trigger.textContent).toContain('双向');
     fireEvent.click(trigger);
     expect(screen.getAllByRole('option').map((item) => item.textContent)).toEqual([

@@ -1,16 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AppProviders } from '../../app/AppProviders';
 import { SystemStatus } from './SystemStatus';
-
-function renderStatus() {
-  return render(
-    <AppProviders>
-      <SystemStatus />
-    </AppProviders>,
-  );
-}
 
 function jsonResponse(body: unknown, status = 200) {
   return Promise.resolve({
@@ -20,73 +13,65 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response);
 }
 
+function renderStatus() {
+  return render(
+    <MemoryRouter>
+      <AppProviders>
+        <SystemStatus />
+      </AppProviders>
+    </MemoryRouter>,
+  );
+}
+
 describe('SystemStatus', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('shows checking while requests are pending', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => new Promise(() => undefined)),
-    );
-
-    renderStatus();
-
-    expect(screen.getAllByText('检查中')).toHaveLength(2);
-  });
-
-  it('shows normal API and ready PostgreSQL states', async () => {
+  it('only shows runtime health and restores the original retry action', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
-      return url.endsWith('/api/health')
-        ? jsonResponse({ status: 'ok', service: 'causality-api' })
-        : jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/health')) {
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      }
+      if (url.endsWith('/api/ready')) {
+        return jsonResponse({ status: 'ready', database: 'available' });
+      }
+      throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
 
     renderStatus();
 
     expect(await screen.findByText('正常')).toBeTruthy();
-    expect(await screen.findByText('就绪')).toBeTruthy();
+    expect(screen.getByText('就绪')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新检查' })).toBeTruthy();
+    expect(screen.queryByText('数据检查')).toBeNull();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/data-checks'))).toBe(
+      false,
+    );
   });
 
-  it('shows connection failure when the API cannot be reached', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-
-    renderStatus();
-
-    expect(await screen.findByText('无法连接')).toBeTruthy();
-  });
-
-  it('shows unavailable when PostgreSQL readiness returns 503', async () => {
+  it('refetches both runtime statuses without starting data maintenance', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
-      return url.endsWith('/api/health')
-        ? jsonResponse({ status: 'ok', service: 'causality-api' })
-        : jsonResponse({ status: 'not_ready', database: 'unavailable' }, 503);
+      if (url.endsWith('/api/health')) {
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      }
+      if (url.endsWith('/api/ready')) {
+        return jsonResponse({ status: 'ready', database: 'available' });
+      }
+      throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
-
     renderStatus();
-
-    expect(await screen.findByText('数据库不可用')).toBeTruthy();
-  });
-
-  it('requests both statuses again when retry is clicked', async () => {
-    const fetchMock = vi.fn((input: string | URL | Request) => {
-      const url = String(input);
-      return url.endsWith('/api/health')
-        ? jsonResponse({ status: 'ok', service: 'causality-api' })
-        : jsonResponse({ status: 'ready', database: 'available' });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    renderStatus();
-    expect(await screen.findByText('就绪')).toBeTruthy();
+    await screen.findByText('正常');
 
     fireEvent.click(screen.getByRole('button', { name: '重新检查' }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/data-checks'))).toBe(
+      false,
+    );
   });
 });

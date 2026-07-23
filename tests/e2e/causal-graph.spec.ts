@@ -43,6 +43,17 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   const directionButton = page.getByRole('button', { name: '查询方向' });
   await directionButton.click();
   await expect(page.getByRole('option')).toHaveText(['双向', '下游', '上游']);
+  const directionOptionWeights = await page.getByRole('option').evaluateAll((options) =>
+    options.map((option) => ({
+      selected: option.getAttribute('aria-selected'),
+      fontWeight: getComputedStyle(option).fontWeight,
+    })),
+  );
+  expect(directionOptionWeights).toEqual([
+    { selected: 'true', fontWeight: '750' },
+    { selected: 'false', fontWeight: '400' },
+    { selected: 'false', fontWeight: '400' },
+  ]);
   await page.keyboard.press('Escape');
   await expect(page.locator('.causal-graph-toolbar select')).toHaveCount(0);
   for (const [direction, label] of [
