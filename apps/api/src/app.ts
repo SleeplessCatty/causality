@@ -15,6 +15,7 @@ import { registerRelationRoutes } from './features/relations/relationRoutes.js';
 import { registerCaseRoutes } from './features/cases/caseRoutes.js';
 import { registerCausalGraphRoutes } from './features/causal-graph/causalGraphRoutes.js';
 import { registerDataCheckRoutes } from './features/data-checks/dataCheckRoutes.js';
+import { registerSemanticRoutes } from './features/semantic/semanticRoutes.js';
 
 interface BuildAppOptions {
   logger?: FastifyServerOptions['logger'];
@@ -52,6 +53,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       registerCaseRoutes(app, options.databasePool);
       registerCausalGraphRoutes(app, options.databasePool);
       registerDataCheckRoutes(app, options.databasePool);
+      registerSemanticRoutes(app, options.databasePool);
     }
 
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());

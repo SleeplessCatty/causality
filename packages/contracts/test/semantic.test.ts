@@ -7,6 +7,7 @@ import {
   eventListResponseSchema,
   relationListQuerySchema,
   semanticSettingsResponseSchema,
+  semanticModelParamsSchema,
   semanticThresholdInputSchema,
   semanticUseModelResponseSchema,
 } from '../src/index.js';
@@ -83,6 +84,19 @@ describe('semantic search contracts', () => {
     expect(semanticThresholdInputSchema.safeParse({ threshold: 65, extra: true }).success).toBe(
       false,
     );
+  });
+
+  it('accepts only pinned model codes in route parameters', () => {
+    expect(semanticModelParamsSchema.parse({ modelCode: 'multilingual-e5-small' })).toEqual({
+      modelCode: 'multilingual-e5-small',
+    });
+    expect(semanticModelParamsSchema.safeParse({ modelCode: 'unknown-model' }).success).toBe(false);
+    expect(
+      semanticModelParamsSchema.safeParse({
+        modelCode: 'bge-m3',
+        repository: 'arbitrary/model',
+      }).success,
+    ).toBe(false);
   });
 
   it('accepts complete settings without an active model', () => {

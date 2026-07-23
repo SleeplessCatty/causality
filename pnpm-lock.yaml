@@ -32,6 +32,9 @@ importers:
       '@causality/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@causality/semantic-core':
+        specifier: workspace:*
+        version: link:../../packages/semantic-core
       '@fastify/cors':
         specifier: 11.3.0
         version: 11.3.0

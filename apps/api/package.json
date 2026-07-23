@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@causality/contracts": "workspace:*",
+    "@causality/semantic-core": "workspace:*",
     "@fastify/cors": "11.3.0",
     "@fastify/swagger": "9.8.1",
     "dotenv": "17.4.2",

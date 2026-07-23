@@ -4,6 +4,11 @@ const timestampSchema = z.iso.datetime({ offset: true });
 
 export const searchModeSchema = z.enum(['standard', 'enhanced']).default('standard');
 export const semanticModelCodeSchema = z.enum(['multilingual-e5-small', 'bge-m3']);
+export const semanticModelParamsSchema = z
+  .object({
+    modelCode: semanticModelCodeSchema,
+  })
+  .strict();
 export const semanticEntityTypeSchema = z.enum(['event', 'relation', 'case']);
 export const semanticTaskTypeSchema = z.enum(['download', 'full_index', 'incremental']);
 export const semanticTaskStatusSchema = z.enum(['queued', 'running', 'succeeded', 'failed']);
@@ -94,6 +99,7 @@ export const semanticUseModelResponseSchema = z
 
 export type SearchMode = z.infer<typeof searchModeSchema>;
 export type SemanticModelCode = z.infer<typeof semanticModelCodeSchema>;
+export type SemanticModelParams = z.infer<typeof semanticModelParamsSchema>;
 export type SemanticEntityType = z.infer<typeof semanticEntityTypeSchema>;
 export type SemanticTaskType = z.infer<typeof semanticTaskTypeSchema>;
 export type SemanticTaskStatus = z.infer<typeof semanticTaskStatusSchema>;
