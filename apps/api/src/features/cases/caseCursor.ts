@@ -3,19 +3,11 @@ import { z } from 'zod';
 
 import { normalizeSearchQuery } from '../shared/sqlSearch.js';
 
-const relationStateSchema = z
+const associationStateSchema = z
   .object({
     caseId: z.uuid(),
     linkedAt: z.iso.datetime({ offset: true }),
     relationId: z.uuid(),
-  })
-  .strict();
-
-const relationCaseStateSchema = z
-  .object({
-    relationId: z.uuid(),
-    linkedAt: z.iso.datetime({ offset: true }),
-    caseId: z.uuid(),
   })
   .strict();
 
@@ -37,8 +29,7 @@ const envelopeSchema = z
   })
   .strict();
 
-export type CaseRelationCursorState = z.infer<typeof relationStateSchema>;
-export type RelationCaseCursorState = z.infer<typeof relationCaseStateSchema>;
+export type AssociationCursorState = z.infer<typeof associationStateSchema>;
 export type CaseCandidateCursorState = z.infer<typeof candidateStateSchema>;
 
 export class InvalidCaseCursorError extends Error {
@@ -75,31 +66,34 @@ function decode(cursor: string, kind: 'relations' | 'relation-cases' | 'candidat
   return envelope.state;
 }
 
-export function encodeCaseRelationCursor(input: CaseRelationCursorState): string {
-  return encode('relations', relationStateSchema.parse(input));
+export function encodeCaseRelationCursor(input: AssociationCursorState): string {
+  return encode('relations', associationStateSchema.parse(input));
 }
 
-export function decodeCaseRelationCursor(cursor: string, caseId: string): CaseRelationCursorState {
-  try {
-    const state = relationStateSchema.parse(decode(cursor, 'relations'));
-    if (state.caseId !== caseId) throw new Error('case mismatch');
-    return state;
-  } catch {
-    throw new InvalidCaseCursorError();
-  }
+export function decodeCaseRelationCursor(cursor: string, caseId: string): AssociationCursorState {
+  return decodeAssociationCursor(cursor, 'relations', 'caseId', caseId);
 }
 
-export function encodeRelationCaseCursor(input: RelationCaseCursorState): string {
-  return encode('relation-cases', relationCaseStateSchema.parse(input));
+export function encodeRelationCaseCursor(input: AssociationCursorState): string {
+  return encode('relation-cases', associationStateSchema.parse(input));
 }
 
 export function decodeRelationCaseCursor(
   cursor: string,
   relationId: string,
-): RelationCaseCursorState {
+): AssociationCursorState {
+  return decodeAssociationCursor(cursor, 'relation-cases', 'relationId', relationId);
+}
+
+function decodeAssociationCursor(
+  cursor: string,
+  kind: 'relations' | 'relation-cases',
+  bindingField: 'caseId' | 'relationId',
+  bindingId: string,
+): AssociationCursorState {
   try {
-    const state = relationCaseStateSchema.parse(decode(cursor, 'relation-cases'));
-    if (state.relationId !== relationId) throw new Error('relation mismatch');
+    const state = associationStateSchema.parse(decode(cursor, kind));
+    if (state[bindingField] !== bindingId) throw new Error('association mismatch');
     return state;
   } catch {
     throw new InvalidCaseCursorError();

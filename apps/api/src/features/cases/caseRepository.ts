@@ -198,17 +198,19 @@ export class PostgresCaseRepository implements CaseRepository {
   ): Promise<RelationCaseListResponse> {
     const cursor = query.cursor ? decodeRelationCaseCursor(query.cursor, relationId) : undefined;
     const parameters: unknown[] = [relationId];
-    const cursorCondition = cursor ? `and (crc.linked_at, c.id) < ($2::timestamptz, $3::uuid)` : '';
+    const cursorCondition = cursor
+      ? `and (date_trunc('milliseconds', crc.linked_at), c.id) < ($2::timestamptz, $3::uuid)`
+      : '';
     if (cursor) parameters.push(cursor.linkedAt, cursor.caseId);
     parameters.push(query.limit + 1);
     const result = await this.pool.query<RelationCaseRow>(
       `${caseSelect},
-              crc.linked_at
+              date_trunc('milliseconds', crc.linked_at) as linked_at
        from causal_relation_cases crc
        join concrete_cases c on c.id = crc.concrete_case_id
        where crc.causal_relation_id = $1
        ${cursorCondition}
-       order by crc.linked_at desc, c.id desc
+       order by date_trunc('milliseconds', crc.linked_at) desc, c.id desc
        limit $${parameters.length}`,
       parameters,
     );

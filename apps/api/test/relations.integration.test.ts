@@ -248,15 +248,17 @@ describe.sequential('relation REST API', () => {
        where crc.causal_relation_id = $1`,
       [created.id],
     );
-    for (const [index, content] of contents.entries()) {
-      const linkedCase = linkedCases.rows.find((item) => item.content === content)!;
+    for (const linkedCase of linkedCases.rows) {
       await pool!.query(
         `update causal_relation_cases
          set linked_at = $3::timestamptz
          where causal_relation_id = $1 and concrete_case_id = $2`,
-        [created.id, linkedCase.id, `2026-07-${23 - index}T08:00:00.000Z`],
+        [created.id, linkedCase.id, '2026-07-23T08:00:00.123456Z'],
       );
     }
+    const expectedOrder = [...linkedCases.rows].sort((left, right) =>
+      right.id.localeCompare(left.id),
+    );
 
     const first = await app!.inject({
       method: 'GET',
@@ -278,10 +280,12 @@ describe.sequential('relation REST API', () => {
 
     expect(first.statusCode).toBe(200);
     expect(firstPage.items).toHaveLength(2);
-    expect(firstPage.items.map((item) => item.content)).toEqual(contents.slice(0, 2));
+    expect(firstPage.items.map((item) => item.content)).toEqual(
+      expectedOrder.slice(0, 2).map((item) => item.content),
+    );
     expect(firstPage.items.map((item) => item.linkedAt)).toEqual([
-      '2026-07-23T08:00:00.000Z',
-      '2026-07-22T08:00:00.000Z',
+      '2026-07-23T08:00:00.123Z',
+      '2026-07-23T08:00:00.123Z',
     ]);
     expect(firstPage.hasMore).toBe(true);
     expect(firstPage.nextCursor).toEqual(expect.any(String));
@@ -291,8 +295,8 @@ describe.sequential('relation REST API', () => {
         .items,
     ).toEqual([
       expect.objectContaining({
-        content: contents[2],
-        linkedAt: '2026-07-21T08:00:00.000Z',
+        content: expectedOrder[2]!.content,
+        linkedAt: '2026-07-23T08:00:00.123Z',
       }),
     ]);
     expect(second.json<{ items: unknown[]; hasMore: boolean }>().hasMore).toBe(false);
