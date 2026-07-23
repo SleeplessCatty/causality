@@ -90,6 +90,15 @@ describe.sequential('case REST API', () => {
     expect(clamped).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
     expect(clamped.items).toHaveLength(1);
 
+    const targetId = secondPage.items[0]!.id;
+    const target = (
+      await app!.inject({ method: 'GET', url: `/api/cases/${targetId}` })
+    ).json<CaseDetail>();
+    const locatedPage = (
+      await app!.inject({ method: 'GET', url: `/api/cases?page=${target.listPage}` })
+    ).json<CaseListResponse>();
+    expect(locatedPage.items.some((item) => item.id === targetId)).toBe(true);
+
     const candidates = await app!.inject({
       method: 'GET',
       url: '/api/cases/candidates?q=CASE_PAGE_TOKEN&limit=10',

@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useSearchParams } from 'react-router';
 
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
+import { createListReturnState } from '../../../shared/navigation/listReturn';
+import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getEvents } from '../api/eventApi';
@@ -28,6 +30,7 @@ function MetadataCell({ values }: { values: string[] }) {
 }
 
 export function EventListPage() {
+  const location = useLocation();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
   const page = readListPage(searchParameters.get('page'));
@@ -58,6 +61,7 @@ export function EventListPage() {
     queryFn: ({ signal }) => getEvents({ q: query, page }, signal),
     placeholderData: (previous) => previous,
   });
+  useListRecordFocus(events.data?.items.map((event) => event.id) ?? []);
 
   useEffect(() => {
     if (!events.data || events.isPlaceholderData || events.data.page === page) return;
@@ -86,7 +90,11 @@ export function EventListPage() {
           <h1 id="event-list-title">原子事件</h1>
           <p>管理因果网络中可复用的原子事件</p>
         </div>
-        <Link className="button button--primary" to="/events/new">
+        <Link
+          className="button button--primary"
+          to="/events/new"
+          state={createListReturnState(location)}
+        >
           创建事件
         </Link>
       </div>
@@ -123,7 +131,11 @@ export function EventListPage() {
         <div className="table-state table-state--empty">
           <strong>{query ? '没有找到事件' : '还没有原子事件'}</strong>
           <span>{query ? '尝试更换搜索词。' : '创建第一个事件，开始构建因果知识。'}</span>
-          <Link className="button button--secondary" to="/events/new">
+          <Link
+            className="button button--secondary"
+            to="/events/new"
+            state={createListReturnState(location)}
+          >
             创建事件
           </Link>
         </div>
@@ -144,10 +156,15 @@ export function EventListPage() {
             </thead>
             <tbody>
               {events.data.items.map((event) => (
-                <tr key={event.id}>
+                <tr key={event.id} id={listRecordDomId(event.id)}>
                   <td>
                     <OverflowText content={event.name}>
-                      <Link to={`/events/${event.id}`}>{event.name}</Link>
+                      <Link
+                        to={`/events/${event.id}`}
+                        state={createListReturnState(location, event.id)}
+                      >
+                        {event.name}
+                      </Link>
                     </OverflowText>
                   </td>
                   <td>
@@ -162,7 +179,11 @@ export function EventListPage() {
                     </time>
                   </td>
                   <td className="event-row-actions">
-                    <Link className="text-button" to={`/events/${event.id}/edit`}>
+                    <Link
+                      className="text-button"
+                      to={`/events/${event.id}/edit`}
+                      state={createListReturnState(location, event.id)}
+                    >
                       编辑
                     </Link>
                   </td>

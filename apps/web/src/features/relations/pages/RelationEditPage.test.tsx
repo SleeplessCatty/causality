@@ -26,6 +26,7 @@ const detail = {
   effectEvent: { id: '33333333-3333-4333-8333-333333333333', name: '进口成本上升' },
   confidence: 70,
   caseCount: 2,
+  listPage: 3,
   description: null,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
@@ -43,8 +44,9 @@ describe('RelationEditPage', () => {
     const requestedCaseUrls: string[] = [];
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: string | URL | Request) => {
+      vi.fn((input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
+        if (init?.method === 'PUT') return response({ ...detail, listPage: 1 });
         if (url.includes('/pair-check')) {
           return response({ sameDirection: null, reverseDirection: null });
         }
@@ -63,7 +65,17 @@ describe('RelationEditPage', () => {
         { path: '/relations/:relationId', element: <div>关系详情目标</div> },
         { path: '/relations', element: <div>关系列表</div> },
       ],
-      { initialEntries: [`/relations/${relationId}/edit`] },
+      {
+        initialEntries: [
+          {
+            pathname: `/relations/${relationId}/edit`,
+            state: {
+              listReturnPath: '/relations?q=%E5%85%B3%E7%A8%8E&page=2',
+              listFocusId: relationId,
+            },
+          },
+        ],
+      },
     );
 
     render(
@@ -80,12 +92,19 @@ describe('RelationEditPage', () => {
     expect(requestedCaseUrls[1]).toContain('cursor=second-page');
     expect(screen.getAllByText('已有案例')).toHaveLength(2);
     expect(screen.getByRole('link', { name: '返回关系列表' }).getAttribute('href')).toBe(
-      '/relations',
+      '/relations?q=%E5%85%B3%E7%A8%8E&page=2',
     );
-    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe('/relations');
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe(
+      '/relations?q=%E5%85%B3%E7%A8%8E&page=2',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
     await screen.findByText('关系列表');
     await waitFor(() => expect(router.state.location.pathname).toBe('/relations'));
+    expect(router.state.location.search).toBe('');
+    expect(router.state.location.state).toMatchObject({
+      notice: '修改已保存',
+      listFocusId: relationId,
+    });
   });
 });

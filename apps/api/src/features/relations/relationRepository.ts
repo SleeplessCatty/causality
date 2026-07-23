@@ -11,7 +11,11 @@ import type {
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
-import { resolvePageWindow, type CountRow } from '../shared/pagePagination.js';
+import {
+  resolveDefaultListPage,
+  resolvePageWindow,
+  type CountRow,
+} from '../shared/pagePagination.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface RelationRow {
@@ -26,6 +30,7 @@ interface RelationRow {
   updated_at: Date;
   case_count: number;
   rank?: number;
+  preceding_count?: number;
 }
 
 export class RelationCaseNotFoundError extends Error {
@@ -71,6 +76,7 @@ function detail(row: RelationRow, recentCases: CaseReference[]): RelationDetail 
   return {
     ...summary(row),
     description: row.description,
+    listPage: resolveDefaultListPage(Number(row.preceding_count ?? 0)),
     createdAt: row.created_at.toISOString(),
     recentCases,
   };
@@ -222,7 +228,15 @@ export class PostgresRelationRepository implements RelationRepository {
   }
 
   async findById(id: string): Promise<RelationDetail | null> {
-    const result = await this.pool.query<RelationRow>(`${selectRelation} where r.id = $1`, [id]);
+    const result = await this.pool.query<RelationRow>(
+      `select selected.*,
+              (select count(*)::int
+               from causal_relations preceding
+               where (preceding.updated_at, preceding.id) > (selected.updated_at, selected.id)
+              ) as preceding_count
+       from (${selectRelation} where r.id = $1) selected`,
+      [id],
+    );
     if (!result.rows[0]) return null;
     const cases = await this.pool.query<{ id: string; content: string }>(
       `select c.id, c.content

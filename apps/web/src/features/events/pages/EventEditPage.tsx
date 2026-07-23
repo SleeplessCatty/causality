@@ -1,12 +1,18 @@
 import type { EventFormInput } from '@causality/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
+import {
+  buildListPath,
+  listFocusState,
+  resolveListReturnPath,
+} from '../../../shared/navigation/listReturn';
 import { getEvent, replaceEvent } from '../api/eventApi';
 import { EventForm } from '../components/EventForm';
 
 export function EventEditPage() {
   const { eventId = '' } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const event = useQuery({
@@ -14,13 +20,15 @@ export function EventEditPage() {
     queryFn: ({ signal }) => getEvent(eventId, signal),
     enabled: Boolean(eventId),
   });
+  const listReturnTo = resolveListReturnPath(location.state, '/events', event.data?.listPage ?? 1);
+  const focusState = listFocusState(eventId);
 
   if (event.isPending) return <div className="page-state">加载事件…</div>;
   if (event.isError) {
     return (
       <div className="page-state page-state--error" role="alert">
         <strong>无法读取事件</strong>
-        <Link className="button button--secondary" to="/events">
+        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
           返回事件列表
         </Link>
       </div>
@@ -34,12 +42,14 @@ export function EventEditPage() {
       queryClient.invalidateQueries({ queryKey: ['events', 'list'] }),
       queryClient.invalidateQueries({ queryKey: ['events', 'candidates'] }),
     ]);
-    navigate('/events', { state: { notice: '修改已保存' } });
+    navigate(buildListPath('/events', updated.listPage), {
+      state: { notice: '修改已保存', listFocusId: updated.id },
+    });
   }
 
   return (
     <section className="event-editor-page" aria-labelledby="edit-event-title">
-      <Link className="back-link" to="/events">
+      <Link className="back-link" to={listReturnTo} state={focusState}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
@@ -56,7 +66,8 @@ export function EventEditPage() {
         }}
         excludeId={eventId}
         onSubmit={submit}
-        cancelTo="/events"
+        cancelTo={listReturnTo}
+        cancelState={focusState}
       />
     </section>
   );

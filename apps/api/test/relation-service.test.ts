@@ -14,6 +14,7 @@ const detail: RelationDetail = {
   effectEvent: { id: '33333333-3333-4333-8333-333333333333', name: '航空公司成本上升' },
   confidence: 80,
   caseCount: 0,
+  listPage: 1,
   description: null,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',

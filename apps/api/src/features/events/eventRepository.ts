@@ -19,7 +19,11 @@ import {
   encodeEventRelationCursor,
   type EventCandidateCursorState,
 } from './eventCursor.js';
-import { resolvePageWindow, type CountRow } from '../shared/pagePagination.js';
+import {
+  resolveDefaultListPage,
+  resolvePageWindow,
+  type CountRow,
+} from '../shared/pagePagination.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface EventRow {
@@ -31,6 +35,7 @@ interface EventRow {
   normalized_name?: string;
   rank?: number;
   relation_count?: number;
+  preceding_count?: number;
 }
 
 interface AliasRow {
@@ -112,6 +117,7 @@ function createDetail(
     ...createSummary(row, aliases, keywords),
     description: row.description,
     relationCount,
+    listPage: resolveDefaultListPage(Number(row.preceding_count ?? 0)),
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -269,7 +275,11 @@ export class PostgresEventRepository implements EventRepository {
       `select e.id, e.name, e.description, e.created_at, e.updated_at,
               (select count(*)::int
                from causal_relations r
-               where r.cause_event_id = e.id or r.effect_event_id = e.id) as relation_count
+               where r.cause_event_id = e.id or r.effect_event_id = e.id) as relation_count,
+              (select count(*)::int
+               from abstract_events preceding
+               where (preceding.updated_at, preceding.id) > (e.updated_at, e.id)
+              ) as preceding_count
        from abstract_events e
        where e.id = $1`,
       [id],
@@ -370,6 +380,13 @@ export class PostgresEventRepository implements EventRepository {
       const row = inserted.rows[0]!;
       await this.insertAliases(client, row.id, input.aliases);
       await this.replaceKeywords(client, row.id, input.keywords);
+      const preceding = await client.query<CountRow>(
+        `select count(*)::int as total
+         from abstract_events
+         where (updated_at, id) > ($1, $2)`,
+        [row.updated_at, row.id],
+      );
+      row.preceding_count = preceding.rows[0]!.total;
       await client.query('commit');
       return createDetail(row, input.aliases, input.keywords);
     } catch (error) {
@@ -407,6 +424,13 @@ export class PostgresEventRepository implements EventRepository {
          where cause_event_id = $1 or effect_event_id = $1`,
         [id],
       );
+      const preceding = await client.query<CountRow>(
+        `select count(*)::int as total
+         from abstract_events
+         where (updated_at, id) > ($1, $2)`,
+        [row.updated_at, row.id],
+      );
+      row.preceding_count = preceding.rows[0]!.total;
       await client.query('commit');
       return createDetail(row, input.aliases, input.keywords, relationCount.rows[0]!.total);
     } catch (error) {

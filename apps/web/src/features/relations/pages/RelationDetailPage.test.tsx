@@ -11,6 +11,7 @@ const detail = {
   effectEvent: { id: '33333333-3333-4333-8333-333333333333', name: '航空成本上升' },
   confidence: 82,
   caseCount: 2,
+  listPage: 3,
   description: '燃油成本传导',
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
@@ -47,7 +48,7 @@ function response(body: unknown, status = 200) {
   } as Response);
 }
 
-function renderDetail() {
+function renderDetail(state?: Record<string, unknown>) {
   const router = createMemoryRouter(
     [
       { path: '/relations/:relationId', element: <RelationDetailPage /> },
@@ -56,7 +57,7 @@ function renderDetail() {
       { path: '/events/:eventId', element: <div>事件详情</div> },
       { path: '/cases/:caseId', element: <div>案例详情</div> },
     ],
-    { initialEntries: [`/relations/${detail.id}`] },
+    { initialEntries: [{ pathname: `/relations/${detail.id}`, state }] },
   );
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -97,6 +98,9 @@ describe('RelationDetailPage', () => {
     expect(causeLink.className).toContain('overflow-text--multi-line');
     expect(screen.getByRole('link', { name: '编辑因果关系' }).getAttribute('href')).toBe(
       `/relations/${detail.id}/edit`,
+    );
+    expect(screen.getByRole('link', { name: '返回关系列表' }).getAttribute('href')).toBe(
+      '/relations?page=3',
     );
     expect((await screen.findByRole('link', { name: '案例一' })).className).toContain(
       'overflow-text--multi-line',

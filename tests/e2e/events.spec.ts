@@ -53,8 +53,15 @@ test('event list paginates 211 records and jumps directly from page 1 to page 5'
   await page.getByRole('button', { name: '跳转' }).click();
   await expect(page.getByText('共 211 条 · 第 5/5 页')).toBeVisible();
   await expect(page.locator('.event-table tbody tr')).toHaveCount(11);
-  await expect(page.getByRole('link', { name: `${token}-211` })).toBeVisible();
+  const lastPageEvent = page.getByRole('link', { name: `${token}-211` });
+  await expect(lastPageEvent).toBeVisible();
   expect(requestedPages).toEqual([5]);
+
+  await lastPageEvent.click();
+  await expect(page.getByRole('heading', { name: `${token}-211` })).toBeVisible();
+  await page.getByRole('link', { name: '返回事件列表' }).click();
+  await expect(page).toHaveURL(new RegExp(`/events\\?q=${token}&page=5$`));
+  await expect(page.getByRole('link', { name: `${token}-211` })).toBeInViewport();
 });
 
 test('user can search, create, inspect, edit, and find an atomic event', async ({ page }) => {
@@ -97,6 +104,7 @@ test('user can search, create, inspect, edit, and find an atomic event', async (
   await page.getByRole('button', { name: '保存修改' }).click();
 
   await expect(page).toHaveURL(/\/events$/);
+  await expect(page.getByRole('link', { name: updatedName })).toBeInViewport();
   await search.fill(updatedAlias);
   await expect(page.getByRole('link', { name: updatedName })).toBeVisible();
 

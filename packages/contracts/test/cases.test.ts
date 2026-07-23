@@ -69,6 +69,7 @@ describe('concrete case contracts', () => {
     const detail = {
       ...reference,
       relationCount: 2,
+      listPage: 3,
       createdAt: timestamp,
       updatedAt: timestamp,
     };

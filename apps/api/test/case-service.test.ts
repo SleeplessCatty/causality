@@ -8,6 +8,7 @@ const detail: CaseDetail = {
   id: '11111111-1111-4111-8111-111111111111',
   content: '2025年4月美国宣布新一轮关税措施',
   relationCount: 0,
+  listPage: 1,
   createdAt: '2026-07-21T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
 };

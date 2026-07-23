@@ -289,6 +289,15 @@ describe.sequential('event REST API', () => {
     );
     expect(clamped).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
     expect(clamped.items).toHaveLength(1);
+
+    const targetId = secondPage.items[0]!.id;
+    const target = (
+      await app!.inject({ method: 'GET', url: `/api/events/${targetId}` })
+    ).json<EventDetail>();
+    const locatedPage = (
+      await app!.inject({ method: 'GET', url: `/api/events?page=${target.listPage}` })
+    ).json<EventListResponse>();
+    expect(locatedPage.items.some((item) => item.id === targetId)).toBe(true);
   });
 
   it('searches names, aliases, and keywords with stable ranking', async () => {

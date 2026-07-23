@@ -14,6 +14,7 @@ const eventDetail = {
   aliases: ['油价上涨'],
   keywords: ['原油', '能源价格'],
   relationCount: 2,
+  listPage: 3,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
 };
@@ -26,14 +27,14 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response);
 }
 
-function renderRoute(path: string, element: React.ReactNode) {
+function renderRoute(path: string, element: React.ReactNode, state?: Record<string, unknown>) {
   const router = createMemoryRouter(
     [
       { path, element },
       { path: '/events/:eventId', element: <div>已进入事件详情</div> },
       { path: '/events', element: <div>事件列表</div> },
     ],
-    { initialEntries: [path.replace(':eventId', eventDetail.id)] },
+    { initialEntries: [{ pathname: path.replace(':eventId', eventDetail.id), state }] },
   );
   render(
     <AppProviders>
@@ -54,8 +55,14 @@ describe('event route pages', () => {
       return jsonResponse({ items: [] });
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderRoute('/events/new', <EventCreatePage />);
+    const router = renderRoute('/events/new', <EventCreatePage />, {
+      listReturnPath: '/events?page=4',
+    });
 
+    expect(screen.getByRole('link', { name: '返回事件列表' }).getAttribute('href')).toBe(
+      '/events?page=4',
+    );
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe('/events?page=4');
     fireEvent.change(screen.getByRole('textbox', { name: '标准名称' }), {
       target: { value: eventDetail.name },
     });
@@ -63,6 +70,11 @@ describe('event route pages', () => {
 
     expect(await screen.findByText('已进入事件详情')).toBeTruthy();
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true);
+    expect(router.state.location.state).toMatchObject({
+      notice: '事件已创建',
+      listReturnPath: '/events?page=3',
+      listFocusId: eventDetail.id,
+    });
   });
 
   it('shows full event detail and its edit link', async () => {
@@ -83,6 +95,9 @@ describe('event route pages', () => {
     const editLink = screen.getByRole('link', { name: '编辑事件' });
     expect(editLink.getAttribute('href')).toBe(`/events/${eventDetail.id}/edit`);
     expect(editLink.parentElement).toBe(heading);
+    expect(screen.getByRole('link', { name: '返回事件列表' }).getAttribute('href')).toBe(
+      '/events?page=3',
+    );
     expect(screen.getByRole('heading', { name: '关联的因果关系' })).toBeTruthy();
     expect(await screen.findByText('当前原子事件尚未关联因果关系')).toBeTruthy();
   });
@@ -175,11 +190,18 @@ describe('event route pages', () => {
         : jsonResponse(eventDetail),
     );
     vi.stubGlobal('fetch', fetchMock);
-    renderRoute('/events/:eventId/edit', <EventEditPage />);
+    const router = renderRoute('/events/:eventId/edit', <EventEditPage />, {
+      listReturnPath: '/events?q=%E5%8E%9F%E6%B2%B9&page=2',
+      listFocusId: eventDetail.id,
+    });
 
     const nameInput = await screen.findByRole('textbox', { name: '标准名称' });
-    expect(screen.getByRole('link', { name: '返回事件列表' }).getAttribute('href')).toBe('/events');
-    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe('/events');
+    expect(screen.getByRole('link', { name: '返回事件列表' }).getAttribute('href')).toBe(
+      '/events?q=%E5%8E%9F%E6%B2%B9&page=2',
+    );
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe(
+      '/events?q=%E5%8E%9F%E6%B2%B9&page=2',
+    );
     fireEvent.change(nameInput, { target: { value: '原油价格快速上涨' } });
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
 
@@ -187,5 +209,10 @@ describe('event route pages', () => {
       expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(true),
     );
     expect(await screen.findByText('事件列表')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/events');
+    expect(router.state.location.state).toMatchObject({
+      notice: '修改已保存',
+      listFocusId: eventDetail.id,
+    });
   });
 });

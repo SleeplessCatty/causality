@@ -11,6 +11,7 @@ const detail: EventDetail = {
   aliases: ['油价上涨'],
   keywords: ['原油'],
   relationCount: 0,
+  listPage: 1,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
 };

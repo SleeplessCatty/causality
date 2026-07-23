@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router';
 
 import { fetchAllRemainingPages } from '../../../shared/pagination/fetchAllRemainingPages';
+import { listFocusState, resolveListReturnPath } from '../../../shared/navigation/listReturn';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { RelationAssociationSection } from '../../relations/components/RelationAssociationSection';
 import { getEvent, getEventRelations } from '../api/eventApi';
@@ -50,13 +51,15 @@ export function EventDetailPage() {
       ]),
     ).values(),
   );
+  const listReturnTo = resolveListReturnPath(location.state, '/events', event.data?.listPage ?? 1);
+  const focusState = listFocusState(eventId);
 
   if (event.isPending) return <div className="page-state">加载事件详情…</div>;
   if (event.isError) {
     return (
       <div className="page-state page-state--error" role="alert">
         <strong>无法读取事件</strong>
-        <Link className="button button--secondary" to="/events">
+        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
           返回事件列表
         </Link>
       </div>
@@ -70,7 +73,7 @@ export function EventDetailPage() {
           {String(location.state.notice)}
         </div>
       ) : null}
-      <Link className="back-link" to="/events">
+      <Link className="back-link" to={listReturnTo} state={focusState}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
@@ -83,7 +86,11 @@ export function EventDetailPage() {
             <h1 id="event-detail-title">{event.data.name}</h1>
           </OverflowText>
         </div>
-        <Link className="button button--primary" to={`/events/${event.data.id}/edit`}>
+        <Link
+          className="button button--primary"
+          to={`/events/${event.data.id}/edit`}
+          state={{ listReturnPath: listReturnTo, listFocusId: event.data.id }}
+        >
           编辑事件
         </Link>
       </div>

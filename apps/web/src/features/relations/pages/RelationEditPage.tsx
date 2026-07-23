@@ -1,12 +1,18 @@
 import type { RelationFormInput } from '@causality/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
+import {
+  buildListPath,
+  listFocusState,
+  resolveListReturnPath,
+} from '../../../shared/navigation/listReturn';
 import { getAllRelationCases, getRelation, replaceRelation } from '../api/relationApi';
 import { RelationForm } from '../components/RelationForm';
 
 export function RelationEditPage() {
   const { relationId = '' } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const relation = useQuery({
@@ -21,13 +27,19 @@ export function RelationEditPage() {
   });
   const casesPending = relation.isSuccess && relation.data.caseCount > 0 && linkedCases.isPending;
   const casesError = relation.isSuccess && relation.data.caseCount > 0 && linkedCases.isError;
+  const listReturnTo = resolveListReturnPath(
+    location.state,
+    '/relations',
+    relation.data?.listPage ?? 1,
+  );
+  const focusState = listFocusState(relationId);
 
   if (relation.isPending || casesPending) return <div className="page-state">加载因果关系…</div>;
   if (relation.isError || casesError) {
     return (
       <div className="page-state page-state--error" role="alert">
         <strong>无法读取因果关系</strong>
-        <Link className="button button--secondary" to="/relations">
+        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
           返回关系列表
         </Link>
       </div>
@@ -42,7 +54,9 @@ export function RelationEditPage() {
       queryClient.invalidateQueries({ queryKey: ['relations', 'pair-check'] }),
       queryClient.invalidateQueries({ queryKey: ['cases'] }),
     ]);
-    navigate('/relations', { state: { notice: '修改已保存' } });
+    navigate(buildListPath('/relations', updated.listPage), {
+      state: { notice: '修改已保存', listFocusId: updated.id },
+    });
   }
 
   return (
@@ -50,7 +64,7 @@ export function RelationEditPage() {
       className="event-editor-page relation-editor-page"
       aria-labelledby="edit-relation-title"
     >
-      <Link className="back-link" to="/relations">
+      <Link className="back-link" to={listReturnTo} state={focusState}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
@@ -72,7 +86,8 @@ export function RelationEditPage() {
           })),
         }}
         onSubmit={submit}
-        cancelTo="/relations"
+        cancelTo={listReturnTo}
+        cancelState={focusState}
       />
     </section>
   );

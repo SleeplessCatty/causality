@@ -52,6 +52,14 @@ test('relation list shows totals and numbered pages for 51 recognizable records'
     .locator('.relation-table tbody tr td:nth-child(3)')
     .allTextContents();
   expect(secondPageEffects.every((name) => !firstPageEffects.includes(name))).toBe(true);
+
+  await page.getByRole('link', { name: '查看因果关系详情' }).click();
+  await expect(
+    page.getByRole('heading', { name: new RegExp(secondPageEffects[0]!) }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: '返回关系列表' }).click();
+  await expect(page).toHaveURL(new RegExp(`/relations\\?q=${token}&page=2$`));
+  await expect(page.getByRole('link', { name: '查看因果关系详情' })).toBeInViewport();
 });
 
 test('user can create a reverse relation, inspect it inline, edit it, and find it', async ({
@@ -115,6 +123,7 @@ test('user can create a reverse relation, inspect it inline, edit it, and find i
     .filter({ hasText: effectName })
     .filter({ hasText: '79%' });
   await expect(savedRow).toBeVisible();
+  await expect(savedRow).toBeInViewport();
   const search = page.getByRole('searchbox', { name: '搜索因果关系' });
   await search.fill(suffix);
   const updatedRow = page.getByRole('row').filter({ hasText: '79%' });

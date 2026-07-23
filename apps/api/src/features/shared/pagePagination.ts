@@ -1,5 +1,11 @@
+import { MAIN_LIST_PAGE_SIZE } from '@causality/contracts';
+
 export interface CountRow {
   total: number;
+}
+
+export function resolveDefaultListPage(precedingItems: number): number {
+  return Math.floor(precedingItems / MAIN_LIST_PAGE_SIZE) + 1;
 }
 
 export function resolvePageWindow(

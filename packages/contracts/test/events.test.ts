@@ -164,6 +164,7 @@ describe('event contracts', () => {
       aliases: ['油价上涨'],
       keywords: ['原油'],
       relationCount: 2,
+      listPage: 3,
       createdAt: timestamp,
       updatedAt: timestamp,
     };

@@ -46,7 +46,12 @@ export const caseSummarySchema = caseReferenceSchema
   })
   .strict();
 
-export const caseDetailSchema = caseSummarySchema.extend({ createdAt: timestampSchema }).strict();
+export const caseDetailSchema = caseSummarySchema
+  .extend({
+    listPage: z.number().int().min(1),
+    createdAt: timestampSchema,
+  })
+  .strict();
 
 export const caseListResponseSchema = z
   .object({

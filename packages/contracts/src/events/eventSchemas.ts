@@ -104,6 +104,7 @@ export const eventDetailSchema = eventSummarySchema
   .extend({
     description: z.string().max(2_000).nullable(),
     relationCount: z.number().int().nonnegative(),
+    listPage: z.number().int().min(1),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,
   })

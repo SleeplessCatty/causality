@@ -42,6 +42,12 @@ test('case list shows totals and numbered pages for 51 recognizable records', as
     .locator('.case-table tbody tr td:first-child')
     .allTextContents();
   expect(secondPageContents.every((content) => !firstPageContents.includes(content))).toBe(true);
+
+  await page.getByRole('link', { name: secondPageContents[0]! }).click();
+  await expect(page.getByRole('heading', { name: secondPageContents[0]! })).toBeVisible();
+  await page.getByRole('link', { name: '返回案例列表' }).click();
+  await expect(page).toHaveURL(new RegExp(`/cases\\?q=${token}&page=2$`));
+  await expect(page.getByRole('link', { name: secondPageContents[0]! })).toBeInViewport();
 });
 
 test('user can create, search, inspect, edit, and detect a duplicate independent case', async ({
@@ -63,6 +69,7 @@ test('user can create, search, inspect, edit, and detect a duplicate independent
   await page.getByRole('button', { name: '保存修改' }).click();
 
   await expect(page).toHaveURL(/\/cases$/);
+  await expect(page.getByRole('link', { name: updatedContent })).toBeInViewport();
   await page.getByRole('searchbox', { name: '搜索案例' }).fill(suffix);
   await expect(page.getByRole('link', { name: updatedContent })).toBeVisible();
 

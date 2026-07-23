@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useSearchParams } from 'react-router';
 
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
+import { createListReturnState } from '../../../shared/navigation/listReturn';
+import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getCases } from '../api/caseApi';
@@ -13,6 +15,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
 });
 
 export function CaseListPage() {
+  const location = useLocation();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
   const relationId = searchParameters.get('relationId') ?? '';
@@ -52,6 +55,7 @@ export function CaseListPage() {
       ),
     placeholderData: (previous) => previous,
   });
+  useListRecordFocus(cases.data?.items.map((item) => item.id) ?? []);
 
   useEffect(() => {
     if (!cases.data || cases.isPlaceholderData || cases.data.page === page) return;
@@ -86,7 +90,11 @@ export function CaseListPage() {
           <h1 id="case-list-title">具体案例</h1>
           <p>记录真实发生的事件，并将其作为抽象因果关系的验证依据</p>
         </div>
-        <Link className="button button--primary" to="/cases/new">
+        <Link
+          className="button button--primary"
+          to="/cases/new"
+          state={createListReturnState(location)}
+        >
           创建案例
         </Link>
       </div>
@@ -133,7 +141,11 @@ export function CaseListPage() {
           <strong>{query || relationId ? '没有找到案例' : '还没有具体案例'}</strong>
           <span>{query || relationId ? '尝试调整筛选条件。' : '创建第一条真实事件记录。'}</span>
           {!relationId ? (
-            <Link className="button button--secondary" to="/cases/new">
+            <Link
+              className="button button--secondary"
+              to="/cases/new"
+              state={createListReturnState(location)}
+            >
               创建案例
             </Link>
           ) : null}
@@ -154,10 +166,15 @@ export function CaseListPage() {
             </thead>
             <tbody>
               {cases.data.items.map((item) => (
-                <tr key={item.id}>
+                <tr key={item.id} id={listRecordDomId(item.id)}>
                   <td>
                     <OverflowText content={item.content}>
-                      <Link to={`/cases/${item.id}`}>{item.content}</Link>
+                      <Link
+                        to={`/cases/${item.id}`}
+                        state={createListReturnState(location, item.id)}
+                      >
+                        {item.content}
+                      </Link>
                     </OverflowText>
                   </td>
                   <td>{item.relationCount}</td>
@@ -167,7 +184,11 @@ export function CaseListPage() {
                     </time>
                   </td>
                   <td>
-                    <Link className="table-action-link" to={`/cases/${item.id}/edit`}>
+                    <Link
+                      className="table-action-link"
+                      to={`/cases/${item.id}/edit`}
+                      state={createListReturnState(location, item.id)}
+                    >
                       编辑
                     </Link>
                   </td>

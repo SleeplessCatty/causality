@@ -1,7 +1,8 @@
 import type { RelationFormInput } from '@causality/contracts';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 
+import { buildListPath, resolveListReturnPath } from '../../../shared/navigation/listReturn';
 import { createRelation } from '../api/relationApi';
 import { RelationForm, type RelationFormValue } from '../components/RelationForm';
 
@@ -14,8 +15,10 @@ const emptyRelation: RelationFormValue = {
 };
 
 export function RelationCreatePage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const cancelTo = resolveListReturnPath(location.state, '/relations', 1);
 
   async function submit(input: RelationFormInput): Promise<void> {
     const relation = await createRelation(input);
@@ -24,7 +27,13 @@ export function RelationCreatePage() {
       queryClient.invalidateQueries({ queryKey: ['relations', 'list'] }),
       queryClient.invalidateQueries({ queryKey: ['cases'] }),
     ]);
-    navigate(`/relations/${relation.id}`, { state: { notice: '因果关系已创建' } });
+    navigate(`/relations/${relation.id}`, {
+      state: {
+        notice: '因果关系已创建',
+        listReturnPath: buildListPath('/relations', relation.listPage),
+        listFocusId: relation.id,
+      },
+    });
   }
 
   return (
@@ -32,7 +41,7 @@ export function RelationCreatePage() {
       className="event-editor-page relation-editor-page"
       aria-labelledby="create-relation-title"
     >
-      <Link className="back-link" to="/relations">
+      <Link className="back-link" to={cancelTo}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
@@ -43,7 +52,7 @@ export function RelationCreatePage() {
         mode="create"
         initialValue={emptyRelation}
         onSubmit={submit}
-        cancelTo="/relations"
+        cancelTo={cancelTo}
       />
     </section>
   );

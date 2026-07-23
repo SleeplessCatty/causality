@@ -12,6 +12,7 @@ const detail = {
   id: '11111111-1111-4111-8111-111111111111',
   content: '2025年4月美国宣布新一轮关税措施',
   relationCount: 1,
+  listPage: 3,
   createdAt: '2026-07-20T03:00:00.000Z',
   updatedAt: '2026-07-21T03:00:00.000Z',
 };
@@ -24,15 +25,24 @@ function response(body: unknown, status = 200) {
   } as Response);
 }
 
-function renderRoute(path: string, element: React.ReactNode) {
+function renderRoute(path: string, element: React.ReactNode, state?: Record<string, unknown>) {
   const routePath = path.split('?')[0]!;
+  const [initialPathname, initialSearch] = path.replace(':caseId', detail.id).split('?');
   const router = createMemoryRouter(
     [
       { path: routePath, element },
       { path: '/cases', element: <div>案例列表</div> },
       { path: '/cases/:caseId', element: <div>案例详情目标</div> },
     ],
-    { initialEntries: [path.replace(':caseId', detail.id)] },
+    {
+      initialEntries: [
+        {
+          pathname: initialPathname!,
+          search: initialSearch ? `?${initialSearch}` : '',
+          state,
+        },
+      ],
+    },
   );
   render(
     <AppProviders>
@@ -142,12 +152,23 @@ describe('case pages', () => {
       'fetch',
       vi.fn(() => response(detail, 201)),
     );
-    renderRoute('/cases/new', <CaseCreatePage />);
+    const router = renderRoute('/cases/new', <CaseCreatePage />, {
+      listReturnPath: '/cases?page=4',
+    });
+    expect(screen.getByRole('link', { name: '返回案例列表' }).getAttribute('href')).toBe(
+      '/cases?page=4',
+    );
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe('/cases?page=4');
     fireEvent.change(screen.getByRole('textbox', { name: '案例内容' }), {
       target: { value: detail.content },
     });
     fireEvent.click(screen.getByRole('button', { name: '创建案例' }));
     expect(await screen.findByText('案例详情目标')).toBeTruthy();
+    expect(router.state.location.state).toMatchObject({
+      notice: '案例已创建',
+      listReturnPath: '/cases?page=3',
+      listFocusId: detail.id,
+    });
   });
 
   it('shows detail relations and edits a case', async () => {
@@ -170,6 +191,9 @@ describe('case pages', () => {
     expect(heading?.querySelector('.detail-label')?.textContent).toBe('案例内容');
     const editLink = screen.getByRole('link', { name: '编辑案例' });
     expect(editLink.parentElement).toBe(heading);
+    expect(screen.getByRole('link', { name: '返回案例列表' }).getAttribute('href')).toBe(
+      '/cases?page=3',
+    );
     const relationLink = screen.getByRole('link', { name: /测试原因.*测试结果/ });
     expect(relationLink.getAttribute('href')).toBe(`/relations/${linkedRelation.id}`);
     expect(relationLink.querySelectorAll('.overflow-text--single-line')).toHaveLength(2);
@@ -295,13 +319,22 @@ describe('case pages', () => {
 
   it('loads and replaces case content before returning to the list', async () => {
     const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) =>
-      init?.method === 'PUT' ? response({ ...detail, content: '更新后的案例' }) : response(detail),
+      init?.method === 'PUT'
+        ? response({ ...detail, content: '更新后的案例', listPage: 1 })
+        : response(detail),
     );
     vi.stubGlobal('fetch', fetchMock);
-    const router = renderRoute('/cases/:caseId/edit', <CaseEditPage />);
+    const router = renderRoute('/cases/:caseId/edit', <CaseEditPage />, {
+      listReturnPath: '/cases?q=%E5%85%B3%E7%A8%8E&page=2',
+      listFocusId: detail.id,
+    });
     const input = await screen.findByRole('textbox', { name: '案例内容' });
-    expect(screen.getByRole('link', { name: '返回案例列表' }).getAttribute('href')).toBe('/cases');
-    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe('/cases');
+    expect(screen.getByRole('link', { name: '返回案例列表' }).getAttribute('href')).toBe(
+      '/cases?q=%E5%85%B3%E7%A8%8E&page=2',
+    );
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe(
+      '/cases?q=%E5%85%B3%E7%A8%8E&page=2',
+    );
     fireEvent.change(input, { target: { value: '更新后的案例' } });
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
     await waitFor(() =>
@@ -309,5 +342,10 @@ describe('case pages', () => {
     );
     expect(await screen.findByText('案例列表')).toBeTruthy();
     expect(router.state.location.pathname).toBe('/cases');
+    expect(router.state.location.search).toBe('');
+    expect(router.state.location.state).toMatchObject({
+      notice: '修改已保存',
+      listFocusId: detail.id,
+    });
   });
 });

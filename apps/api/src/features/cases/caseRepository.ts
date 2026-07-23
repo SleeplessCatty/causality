@@ -23,7 +23,11 @@ import {
   encodeCaseRelationCursor,
   encodeRelationCaseCursor,
 } from './caseCursor.js';
-import { resolvePageWindow, type CountRow } from '../shared/pagePagination.js';
+import {
+  resolveDefaultListPage,
+  resolvePageWindow,
+  type CountRow,
+} from '../shared/pagePagination.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface CaseRow {
@@ -33,6 +37,7 @@ interface CaseRow {
   created_at: Date;
   updated_at: Date;
   rank?: number;
+  preceding_count?: number;
 }
 
 interface CaseCandidateRow extends CaseRow {
@@ -82,7 +87,11 @@ function summary(row: CaseRow): CaseSummary {
 }
 
 function detail(row: CaseRow): CaseDetail {
-  return { ...summary(row), createdAt: row.created_at.toISOString() };
+  return {
+    ...summary(row),
+    listPage: resolveDefaultListPage(Number(row.preceding_count ?? 0)),
+    createdAt: row.created_at.toISOString(),
+  };
 }
 
 const caseSelect = `select c.id,
@@ -246,7 +255,13 @@ export class PostgresCaseRepository implements CaseRepository {
 
   async findById(id: string): Promise<CaseDetail | null> {
     const result = await this.pool.query<CaseRow>(
-      `${caseSelect} from concrete_cases c where c.id = $1`,
+      `${caseSelect},
+              (select count(*)::int
+               from concrete_cases preceding
+               where (preceding.updated_at, preceding.id) > (c.updated_at, c.id)
+              ) as preceding_count
+       from concrete_cases c
+       where c.id = $1`,
       [id],
     );
     return result.rows[0] ? detail(result.rows[0]) : null;

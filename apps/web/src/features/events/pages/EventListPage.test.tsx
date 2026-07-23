@@ -29,7 +29,10 @@ function jsonResponse(body: unknown, status = 200) {
   } as Response);
 }
 
-function renderList(initialEntry = '/events') {
+function renderList(
+  initialEntry:
+    string | { pathname: string; search?: string; state?: Record<string, unknown> } = '/events',
+) {
   const router = createMemoryRouter(
     [
       { path: '/events', element: <EventListPage /> },
@@ -69,6 +72,32 @@ describe('EventListPage', () => {
     expect(screen.getByRole('link', { name: '原油价格上涨' }).getAttribute('href')).toBe(
       '/events/11111111-1111-4111-8111-111111111111',
     );
+  });
+
+  it('preserves the current page for row navigation and restores the row position on return', async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse({ ...firstPage, page: 3 })),
+    );
+    const router = renderList({
+      pathname: '/events',
+      search: '?q=%E5%8E%9F%E6%B2%B9&page=3',
+      state: { listFocusId: firstPage.items[0]!.id },
+    });
+
+    const detailLink = await screen.findByRole('link', { name: '原油价格上涨' });
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+    fireEvent.click(detailLink);
+    await waitFor(() => expect(router.state.location.pathname).toContain(firstPage.items[0]!.id));
+    expect(router.state.location.state).toMatchObject({
+      listReturnPath: '/events?q=%E5%8E%9F%E6%B2%B9&page=3',
+      listFocusId: firstPage.items[0]!.id,
+    });
   });
 
   it('links row editing and reveals all non-empty metadata after two seconds', async () => {

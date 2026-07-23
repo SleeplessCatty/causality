@@ -458,6 +458,15 @@ describe.sequential('relation REST API', () => {
     );
     expect(clamped).toMatchObject({ page: 2, pageSize: 30, totalItems: 31, totalPages: 2 });
     expect(clamped.items).toHaveLength(1);
+
+    const targetId = second.items[0]!.id;
+    const target = (
+      await app!.inject({ method: 'GET', url: `/api/relations/${targetId}` })
+    ).json<RelationDetail>();
+    const locatedPage = (
+      await app!.inject({ method: 'GET', url: `/api/relations?page=${target.listPage}` })
+    ).json<RelationListResponse>();
+    expect(locatedPage.items.some((item) => item.id === targetId)).toBe(true);
   });
 
   it('returns not found and publishes relation paths in OpenAPI', async () => {

@@ -9,6 +9,7 @@ import { Link } from 'react-router';
 
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
 import { ApiClientError } from '../../../shared/api/httpClient';
+import type { ListReturnState } from '../../../shared/navigation/listReturn';
 import { checkRelationPair } from '../api/relationApi';
 import { EventSelector } from './EventSelector';
 import { RelationCasesField, type RelationCaseSelectionValue } from './RelationCasesField';
@@ -27,6 +28,7 @@ interface RelationFormProps {
   relationId?: string;
   onSubmit: (value: RelationFormInput) => Promise<unknown>;
   cancelTo: string;
+  cancelState?: ListReturnState;
 }
 
 export function RelationForm({
@@ -35,6 +37,7 @@ export function RelationForm({
   relationId,
   onSubmit,
   cancelTo,
+  cancelState,
 }: RelationFormProps) {
   const [causeEvent, setCauseEvent] = useState(initialValue.causeEvent);
   const [effectEvent, setEffectEvent] = useState(initialValue.effectEvent);
@@ -244,7 +247,7 @@ export function RelationForm({
       </div>
 
       <div className="form-actions">
-        <Link className="button button--secondary" to={cancelTo}>
+        <Link className="button button--secondary" to={cancelTo} state={cancelState}>
           取消
         </Link>
         <button

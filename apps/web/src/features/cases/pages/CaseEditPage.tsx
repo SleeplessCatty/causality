@@ -1,12 +1,18 @@
 import type { CaseFormInput } from '@causality/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
+import {
+  buildListPath,
+  listFocusState,
+  resolveListReturnPath,
+} from '../../../shared/navigation/listReturn';
 import { getCase, replaceCase } from '../api/caseApi';
 import { CaseForm } from '../components/CaseForm';
 
 export function CaseEditPage() {
   const { caseId = '' } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const detail = useQuery({
@@ -14,13 +20,15 @@ export function CaseEditPage() {
     queryFn: ({ signal }) => getCase(caseId, signal),
     enabled: Boolean(caseId),
   });
+  const listReturnTo = resolveListReturnPath(location.state, '/cases', detail.data?.listPage ?? 1);
+  const focusState = listFocusState(caseId);
 
   if (detail.isPending) return <div className="page-state">加载案例…</div>;
   if (detail.isError) {
     return (
       <div className="page-state page-state--error" role="alert">
         <strong>无法读取案例</strong>
-        <Link className="button button--secondary" to="/cases">
+        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
           返回案例列表
         </Link>
       </div>
@@ -35,12 +43,14 @@ export function CaseEditPage() {
       queryClient.invalidateQueries({ queryKey: ['cases', 'candidates'] }),
       queryClient.invalidateQueries({ queryKey: ['relations'] }),
     ]);
-    navigate('/cases', { state: { notice: '修改已保存' } });
+    navigate(buildListPath('/cases', updated.listPage), {
+      state: { notice: '修改已保存', listFocusId: updated.id },
+    });
   }
 
   return (
     <section className="event-editor-page" aria-labelledby="edit-case-title">
-      <Link className="back-link" to="/cases">
+      <Link className="back-link" to={listReturnTo} state={focusState}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
@@ -56,7 +66,8 @@ export function CaseEditPage() {
         mode="edit"
         initialContent={detail.data.content}
         onSubmit={submit}
-        cancelTo="/cases"
+        cancelTo={listReturnTo}
+        cancelState={focusState}
       />
     </section>
   );

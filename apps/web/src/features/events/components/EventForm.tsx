@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
+import type { ListReturnState } from '../../../shared/navigation/listReturn';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getEventCandidates } from '../api/eventApi';
 import { ApiClientError } from '../../../shared/api/httpClient';
@@ -15,9 +16,17 @@ interface EventFormProps {
   excludeId?: string;
   onSubmit: (value: EventFormInput) => Promise<unknown>;
   cancelTo: string;
+  cancelState?: ListReturnState;
 }
 
-export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }: EventFormProps) {
+export function EventForm({
+  mode,
+  initialValue,
+  excludeId,
+  onSubmit,
+  cancelTo,
+  cancelState,
+}: EventFormProps) {
   const [name, setName] = useState(initialValue.name);
   const [description, setDescription] = useState(initialValue.description ?? '');
   const [aliases, setAliases] = useState(initialValue.aliases);
@@ -174,7 +183,7 @@ export function EventForm({ mode, initialValue, excludeId, onSubmit, cancelTo }:
       </div>
 
       <div className="form-actions">
-        <Link className="button button--secondary" to={cancelTo}>
+        <Link className="button button--secondary" to={cancelTo} state={cancelState}>
           取消
         </Link>
         <button className="button button--primary" type="submit" disabled={isSubmitting}>

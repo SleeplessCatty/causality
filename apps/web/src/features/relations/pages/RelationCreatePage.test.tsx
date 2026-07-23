@@ -14,7 +14,11 @@ describe('RelationCreatePage', () => {
         { path: '/relations/new', element: <RelationCreatePage /> },
         { path: '/relations', element: <div>关系列表</div> },
       ],
-      { initialEntries: ['/relations/new'] },
+      {
+        initialEntries: [
+          { pathname: '/relations/new', state: { listReturnPath: '/relations?page=4' } },
+        ],
+      },
     );
 
     render(
@@ -29,6 +33,12 @@ describe('RelationCreatePage', () => {
     expect((numberInput as HTMLInputElement).value).toBe('10');
     expect((slider as HTMLInputElement).value).toBe('10');
     expect(slider.hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('link', { name: '返回关系列表' }).getAttribute('href')).toBe(
+      '/relations?page=4',
+    );
+    expect(screen.getByRole('link', { name: '取消' }).getAttribute('href')).toBe(
+      '/relations?page=4',
+    );
   });
 
   it('navigates a created relation to its detail page', async () => {
@@ -40,6 +50,7 @@ describe('RelationCreatePage', () => {
       effectEvent: effect,
       confidence: 10,
       caseCount: 0,
+      listPage: 1,
       description: null,
       createdAt: '2026-07-20T03:00:00.000Z',
       updatedAt: '2026-07-20T03:00:00.000Z',
@@ -92,5 +103,10 @@ describe('RelationCreatePage', () => {
 
     await screen.findByText('关系详情目标');
     await waitFor(() => expect(router.state.location.pathname).toBe(`/relations/${relation.id}`));
+    expect(router.state.location.state).toMatchObject({
+      notice: '因果关系已创建',
+      listReturnPath: '/relations',
+      listFocusId: relation.id,
+    });
   });
 });

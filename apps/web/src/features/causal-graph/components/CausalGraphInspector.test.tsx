@@ -21,6 +21,7 @@ const eventDetail = {
   aliases: ['油价上涨'],
   keywords: ['能源', '成本'],
   relationCount: 0,
+  listPage: 1,
   createdAt: '2026-07-20T00:00:00.000Z',
   updatedAt: '2026-07-20T00:00:00.000Z',
 };
@@ -34,6 +35,7 @@ const relationDetail = {
   },
   confidence: 80,
   caseCount: 6,
+  listPage: 1,
   description: '能源成本向航空业传导',
   createdAt: '2026-07-20T00:00:00.000Z',
   updatedAt: '2026-07-20T00:00:00.000Z',

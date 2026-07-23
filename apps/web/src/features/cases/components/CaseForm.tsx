@@ -4,15 +4,17 @@ import { Link } from 'react-router';
 
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
 import { ApiClientError } from '../../../shared/api/httpClient';
+import type { ListReturnState } from '../../../shared/navigation/listReturn';
 
 interface CaseFormProps {
   mode: 'create' | 'edit';
   initialContent: string;
   onSubmit: (value: CaseFormInput) => Promise<unknown>;
   cancelTo: string;
+  cancelState?: ListReturnState;
 }
 
-export function CaseForm({ mode, initialContent, onSubmit, cancelTo }: CaseFormProps) {
+export function CaseForm({ mode, initialContent, onSubmit, cancelTo, cancelState }: CaseFormProps) {
   const [content, setContent] = useState(initialContent);
   const [fieldError, setFieldError] = useState<string>();
   const [formError, setFormError] = useState<string>();
@@ -103,7 +105,7 @@ export function CaseForm({ mode, initialContent, onSubmit, cancelTo }: CaseFormP
       </div>
 
       <div className="form-actions">
-        <Link className="button button--secondary" to={cancelTo}>
+        <Link className="button button--secondary" to={cancelTo} state={cancelState}>
           取消
         </Link>
         <button className="button button--primary" type="submit" disabled={isSubmitting}>

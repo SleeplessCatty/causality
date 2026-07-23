@@ -16,6 +16,7 @@ const relation = {
 
 const detail = {
   ...relation,
+  listPage: 3,
   description: '燃油成本传导',
   createdAt: '2026-07-20T03:00:00.000Z',
   recentCases: [

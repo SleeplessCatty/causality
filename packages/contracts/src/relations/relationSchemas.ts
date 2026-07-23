@@ -98,6 +98,7 @@ export const relationSummarySchema = relationReferenceSchema
 export const relationDetailSchema = relationSummarySchema
   .extend({
     description: z.string().max(2_000).nullable(),
+    listPage: z.number().int().min(1),
     createdAt: timestampSchema,
     recentCases: z.array(caseReferenceSchema).max(5),
   })

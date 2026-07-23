@@ -206,6 +206,7 @@ describe('relation contracts', () => {
       confidence: 75,
       description: null,
       caseCount: 2,
+      listPage: 3,
       recentCases: [
         {
           id: '44444444-4444-4444-8444-444444444444',

@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { fetchAllRemainingPages } from '../../../shared/pagination/fetchAllRemainingPages';
+import { listFocusState, resolveListReturnPath } from '../../../shared/navigation/listReturn';
 import { RelationAssociationSection } from '../../relations/components/RelationAssociationSection';
 import { getCase, getCaseRelations } from '../api/caseApi';
 
@@ -36,13 +37,15 @@ export function CaseDetailPage() {
       ]),
     ).values(),
   );
+  const listReturnTo = resolveListReturnPath(location.state, '/cases', detail.data?.listPage ?? 1);
+  const focusState = listFocusState(caseId);
 
   if (detail.isPending) return <div className="page-state">加载案例详情…</div>;
   if (detail.isError) {
     return (
       <div className="page-state page-state--error" role="alert">
         <strong>无法读取案例</strong>
-        <Link className="button button--secondary" to="/cases">
+        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
           返回案例列表
         </Link>
       </div>
@@ -56,7 +59,7 @@ export function CaseDetailPage() {
           {String(location.state.notice)}
         </div>
       ) : null}
-      <Link className="back-link" to="/cases">
+      <Link className="back-link" to={listReturnTo} state={focusState}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
@@ -69,7 +72,11 @@ export function CaseDetailPage() {
             <h1 id="case-detail-title">{detail.data.content}</h1>
           </OverflowText>
         </div>
-        <Link className="button button--primary" to={`/cases/${detail.data.id}/edit`}>
+        <Link
+          className="button button--primary"
+          to={`/cases/${detail.data.id}/edit`}
+          state={{ listReturnPath: listReturnTo, listFocusId: detail.data.id }}
+        >
           编辑案例
         </Link>
       </div>

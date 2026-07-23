@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useSearchParams } from 'react-router';
 
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
+import { createListReturnState } from '../../../shared/navigation/listReturn';
+import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { getRelation, getRelations } from '../api/relationApi';
@@ -13,6 +15,7 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
 });
 
 export function RelationListPage() {
+  const location = useLocation();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
   const expandedId = searchParameters.get('expanded') ?? '';
@@ -58,6 +61,7 @@ export function RelationListPage() {
     expanded.data && !items.some((item) => item.id === expanded.data.id)
       ? [expanded.data, ...items]
       : items;
+  useListRecordFocus(relations.data?.items.map((relation) => relation.id) ?? []);
 
   useEffect(() => {
     if (!relations.data || relations.isPlaceholderData || relations.data.page === page) return;
@@ -99,7 +103,11 @@ export function RelationListPage() {
           <h1 id="relation-list-title">因果关系</h1>
           <p>维护原子事件之间有方向的因果关联</p>
         </div>
-        <Link className="button button--primary" to="/relations/new">
+        <Link
+          className="button button--primary"
+          to="/relations/new"
+          state={createListReturnState(location)}
+        >
           创建关系
         </Link>
       </div>
@@ -136,7 +144,11 @@ export function RelationListPage() {
         <div className="table-state table-state--empty">
           <strong>{query ? '没有找到因果关系' : '还没有因果关系'}</strong>
           <span>{query ? '尝试更换搜索词。' : '创建第一条关系，连接已有的原子事件。'}</span>
-          <Link className="button button--secondary" to="/relations/new">
+          <Link
+            className="button button--secondary"
+            to="/relations/new"
+            state={createListReturnState(location)}
+          >
             创建关系
           </Link>
         </div>
@@ -160,7 +172,10 @@ export function RelationListPage() {
             <tbody>
               {visibleItems.map((relation) => (
                 <Fragment key={relation.id}>
-                  <tr className={expandedId === relation.id ? 'relation-row--expanded' : undefined}>
+                  <tr
+                    id={listRecordDomId(relation.id)}
+                    className={expandedId === relation.id ? 'relation-row--expanded' : undefined}
+                  >
                     <td>
                       <OverflowText content={relation.causeEvent.name}>
                         <Link
@@ -175,6 +190,7 @@ export function RelationListPage() {
                       <Link
                         className="relation-entity-link relation-direction__link"
                         to={`/relations/${relation.id}`}
+                        state={createListReturnState(location, relation.id)}
                         aria-label="查看因果关系详情"
                       >
                         →
@@ -208,7 +224,11 @@ export function RelationListPage() {
                       >
                         {expandedId === relation.id ? '收起' : '展开'}
                       </button>
-                      <Link className="text-button" to={`/relations/${relation.id}/edit`}>
+                      <Link
+                        className="text-button"
+                        to={`/relations/${relation.id}/edit`}
+                        state={createListReturnState(location, relation.id)}
+                      >
                         编辑
                       </Link>
                     </td>

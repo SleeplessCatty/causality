@@ -4,6 +4,7 @@ import { Link, useLocation, useParams } from 'react-router';
 
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { fetchAllRemainingPages } from '../../../shared/pagination/fetchAllRemainingPages';
+import { listFocusState, resolveListReturnPath } from '../../../shared/navigation/listReturn';
 import { getRelation, getRelationCases } from '../api/relationApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -39,13 +40,19 @@ export function RelationDetailPage() {
     }
     return [...unique.values()];
   }, [linkedCases.data?.pages]);
+  const listReturnTo = resolveListReturnPath(
+    location.state,
+    '/relations',
+    relation.data?.listPage ?? 1,
+  );
+  const focusState = listFocusState(relationId);
 
   if (relation.isPending) return <div className="page-state">加载因果关系详情…</div>;
   if (relation.isError) {
     return (
       <div className="page-state page-state--error" role="alert">
         <strong>无法读取因果关系</strong>
-        <Link className="button button--secondary" to="/relations">
+        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
           返回关系列表
         </Link>
       </div>
@@ -62,7 +69,7 @@ export function RelationDetailPage() {
           {String(location.state.notice)}
         </div>
       ) : null}
-      <Link className="back-link" to="/relations">
+      <Link className="back-link" to={listReturnTo} state={focusState}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
@@ -85,7 +92,11 @@ export function RelationDetailPage() {
             </OverflowText>
           </h1>
         </div>
-        <Link className="button button--primary" to={`/relations/${relation.data.id}/edit`}>
+        <Link
+          className="button button--primary"
+          to={`/relations/${relation.data.id}/edit`}
+          state={{ listReturnPath: listReturnTo, listFocusId: relation.data.id }}
+        >
           编辑因果关系
         </Link>
       </div>
