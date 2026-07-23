@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -68,6 +68,17 @@ describe('RelationListPage', () => {
     expect(screen.getByText('共 0 条 · 第 1/1 页')).toBeTruthy();
     expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('describes empty hidden filters as no matching relations', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse({ items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 })),
+    );
+    renderList('/relations?orphan=true');
+
+    expect(await screen.findByText('没有找到因果关系')).toBeTruthy();
+    expect(screen.queryByText('还没有因果关系')).toBeNull();
   });
 
   it('links the row entities and keeps expansion concise', async () => {
@@ -228,5 +239,50 @@ describe('RelationListPage', () => {
         fetchMock.mock.calls.some(([url]) => String(url).includes('q=%E6%B2%B9%E4%BB%B7')),
       ).toBe(true),
     );
+  });
+
+  it('permanently deletes a relation while preserving hidden filters', async () => {
+    let listRequests = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'DELETE') return jsonResponse({ deleted: true });
+      if (url.includes('/deletion-impact')) {
+        return jsonResponse({ canDelete: true, hasEvents: true, hasCases: true });
+      }
+      listRequests += 1;
+      return jsonResponse(
+        listRequests === 1
+          ? { items: [relation], page: 2, pageSize: 50, totalItems: 51, totalPages: 2 }
+          : { items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderList(
+      `/relations?eventId=${relation.causeEvent.id}&orphan=true&q=%E5%8E%9F%E6%B2%B9&page=2`,
+    );
+
+    const row = (await screen.findByText('原油价格上涨')).closest('tr')!;
+    const edit = within(row).getByRole('link', { name: '编辑' });
+    const remove = within(row).getByRole('button', { name: '删除' });
+    expect(edit.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(remove);
+    expect(await screen.findByText(/删除只会移除因果关系及其关联/)).toBeTruthy();
+    expect(screen.queryByText(detail.recentCases[0]!.content)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true),
+    );
+    expect(await screen.findByText('没有找到因果关系')).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([input]) => {
+        const url = new URL(String(input), 'http://localhost');
+        return (
+          url.pathname === '/api/relations' &&
+          url.searchParams.get('eventId') === relation.causeEvent.id &&
+          url.searchParams.get('orphan') === 'true'
+        );
+      }),
+    ).toBe(true);
   });
 });

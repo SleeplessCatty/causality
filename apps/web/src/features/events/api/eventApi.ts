@@ -1,12 +1,15 @@
 import {
   DETAIL_ASSOCIATION_PAGE_SIZE,
   MAIN_LIST_PAGE_SIZE,
+  deleteResultSchema,
   eventCandidateListResponseSchema,
+  eventDeletionImpactSchema,
   eventDetailSchema,
   eventListResponseSchema,
   eventRelationListResponseSchema,
   type EventCandidate,
   type EventCandidateListResponse,
+  type EventDeletionImpact,
   type EventDetail,
   type EventFormInput,
   type EventListResponse,
@@ -16,15 +19,29 @@ import {
 import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getEvents(
-  query: { q: string; page: number; limit?: number },
+  query: { q: string; page: number; limit?: number; orphan?: boolean },
   signal?: AbortSignal,
 ): Promise<EventListResponse> {
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
+  if (query.orphan) parameters.set('orphan', 'true');
   parameters.set('page', String(query.page));
   parameters.set('limit', String(query.limit ?? MAIN_LIST_PAGE_SIZE));
 
   return eventListResponseSchema.parse(await requestJson(`/api/events?${parameters}`, {}, signal));
+}
+
+export async function getEventDeletionImpact(
+  id: string,
+  signal?: AbortSignal,
+): Promise<EventDeletionImpact> {
+  return eventDeletionImpactSchema.parse(
+    await requestJson(`/api/events/${id}/deletion-impact`, {}, signal),
+  );
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  deleteResultSchema.parse(await requestJson(`/api/events/${id}`, { method: 'DELETE' }));
 }
 
 export async function getEventCandidates(

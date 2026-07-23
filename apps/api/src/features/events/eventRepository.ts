@@ -84,6 +84,11 @@ const eventSearchCte = `with matches as (
          group by id
        )`;
 
+const eventRelationCountSql = `(select count(*)::int
+  from causal_relations relation_count_source
+  where relation_count_source.cause_event_id = e.id
+     or relation_count_source.effect_event_id = e.id)`;
+
 export interface EventRepository {
   list(query: EventListQuery): Promise<EventListResponse>;
   findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse>;
@@ -106,6 +111,7 @@ function createSummary(row: EventRow, aliases: string[], keywords: string[]): Ev
     name: row.name,
     aliases: sortAliases(aliases),
     keywords,
+    relationCount: Number(row.relation_count ?? 0),
     updatedAt: row.updated_at.toISOString(),
   };
 }
@@ -173,7 +179,7 @@ export class PostgresEventRepository implements EventRepository {
       : await this.countListRows(query.orphan);
     const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
     const rows = normalizedQuery
-      ? await this.searchRows(normalizedQuery, query.limit, undefined, offset, query.orphan)
+      ? await this.searchRows(normalizedQuery, query.limit, undefined, offset, query.orphan, true)
       : await this.listRows(query.limit, offset, query.orphan);
     const eventIds = rows.map((row) => row.id);
     const [aliasMap, keywordMap] = await Promise.all([
@@ -203,7 +209,8 @@ export class PostgresEventRepository implements EventRepository {
 
   private async listRows(limit: number, offset: number, orphan: boolean): Promise<EventRow[]> {
     const result = await this.pool.query<EventRow>(
-      `select id, name, description, created_at, updated_at
+      `select e.id, e.name, e.description, e.created_at, e.updated_at,
+              ${eventRelationCountSql} as relation_count
        from abstract_events e
        where ($1::boolean = false or not exists (
          select 1
@@ -240,6 +247,7 @@ export class PostgresEventRepository implements EventRepository {
     cursor?: EventCandidateCursorState,
     offset = 0,
     orphan = false,
+    includeRelationCount = false,
   ): Promise<EventRow[]> {
     const searchCursor = cursor;
     const escaped = escapeLikePattern(query);
@@ -257,11 +265,14 @@ export class PostgresEventRepository implements EventRepository {
          or filter_relation.effect_event_id = e.id
     ))`);
     parameters.push(limit, offset);
+    const relationCountSelection = includeRelationCount
+      ? `, ${eventRelationCountSql} as relation_count`
+      : '';
 
     const result = await this.pool.query<EventRow>(
       `${eventSearchCte}
        select e.id, e.name, e.description, e.created_at, e.updated_at,
-              e.normalized_name, r.rank
+              e.normalized_name, r.rank${relationCountSelection}
        from ranked r
        join abstract_events e on e.id = r.id
        where ${conditions.join(' and ')}
@@ -302,9 +313,7 @@ export class PostgresEventRepository implements EventRepository {
   async findById(id: string): Promise<EventDetail | null> {
     const result = await this.pool.query<EventRow>(
       `select e.id, e.name, e.description, e.created_at, e.updated_at,
-              (select count(*)::int
-               from causal_relations r
-               where r.cause_event_id = e.id or r.effect_event_id = e.id) as relation_count,
+              ${eventRelationCountSql} as relation_count,
               (select count(*)::int
                from abstract_events preceding
                where (preceding.updated_at, preceding.id) > (e.updated_at, e.id)

@@ -1,13 +1,20 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
 
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
+import { DeleteRecordDialog } from '../../../shared/deletion/DeleteRecordDialog';
+import { usePermanentDeletion } from '../../../shared/deletion/usePermanentDeletion';
 import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
-import { getRelation, getRelations } from '../api/relationApi';
+import {
+  deleteRelation,
+  getRelation,
+  getRelationDeletionImpact,
+  getRelations,
+} from '../api/relationApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   dateStyle: 'medium',
@@ -15,9 +22,13 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
 });
 
 export function RelationListPage() {
+  const queryClient = useQueryClient();
   const location = useLocation();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
+  const orphan = searchParameters.get('orphan') === 'true';
+  const eventId = searchParameters.get('eventId') ?? '';
+  const hasActiveFilter = Boolean(query || eventId) || orphan;
   const expandedId = searchParameters.get('expanded') ?? '';
   const page = readListPage(searchParameters.get('page'));
   const [searchInput, setSearchInput] = useState(query);
@@ -46,9 +57,36 @@ export function RelationListPage() {
   }, [query, searchInput, setSearchParameters]);
 
   const relations = useQuery({
-    queryKey: ['relations', 'list', query, page],
-    queryFn: ({ signal }) => getRelations({ q: query, page }, signal),
+    queryKey: ['relations', 'list', query, orphan, eventId || null, page],
+    queryFn: ({ signal }) =>
+      getRelations(
+        {
+          q: query,
+          page,
+          orphan,
+          ...(eventId ? { eventId } : {}),
+        },
+        signal,
+      ),
     placeholderData: (previous) => previous,
+  });
+  const deletion = usePermanentDeletion({
+    getImpact: getRelationDeletionImpact,
+    deleteRecord: deleteRelation,
+    notFoundCode: 'RELATION_NOT_FOUND',
+    afterDelete: async (deletedId) => {
+      if (expandedId === deletedId) {
+        setSearchParameters(
+          (current) => {
+            const next = new URLSearchParams(current);
+            next.delete('expanded');
+            return next;
+          },
+          { replace: true },
+        );
+      }
+      await queryClient.invalidateQueries({ queryKey: ['relations', 'list'] });
+    },
   });
   const expanded = useQuery({
     queryKey: ['relations', 'detail', expandedId],
@@ -58,7 +96,7 @@ export function RelationListPage() {
 
   const items = relations.data?.items ?? [];
   const visibleItems =
-    expanded.data && !items.some((item) => item.id === expanded.data.id)
+    expandedId && expanded.data && !items.some((item) => item.id === expanded.data.id)
       ? [expanded.data, ...items]
       : items;
   useListRecordFocus(relations.data?.items.map((relation) => relation.id) ?? []);
@@ -126,6 +164,11 @@ export function RelationListPage() {
         />
       </div>
 
+      {deletion.pageError ? (
+        <div className="form-alert list-action-error" role="alert">
+          {deletion.pageError}
+        </div>
+      ) : null}
       {relations.isPending ? <div className="table-state">加载因果关系…</div> : null}
       {relations.isError || expanded.isError ? (
         <div className="table-state table-state--error" role="alert">
@@ -142,8 +185,10 @@ export function RelationListPage() {
       ) : null}
       {relations.isSuccess && visibleItems.length === 0 && !expandedId ? (
         <div className="table-state table-state--empty">
-          <strong>{query ? '没有找到因果关系' : '还没有因果关系'}</strong>
-          <span>{query ? '尝试更换搜索词。' : '创建第一条关系，连接已有的原子事件。'}</span>
+          <strong>{hasActiveFilter ? '没有找到因果关系' : '还没有因果关系'}</strong>
+          <span>
+            {hasActiveFilter ? '尝试调整筛选条件。' : '创建第一条关系，连接已有的原子事件。'}
+          </span>
           <Link
             className="button button--secondary"
             to="/relations/new"
@@ -231,6 +276,14 @@ export function RelationListPage() {
                       >
                         编辑
                       </Link>
+                      <button
+                        className="text-button text-button--danger"
+                        type="button"
+                        disabled={deletion.loadingId === relation.id}
+                        onClick={() => void deletion.requestDelete(relation.id)}
+                      >
+                        {deletion.loadingId === relation.id ? '检查中…' : '删除'}
+                      </button>
                     </td>
                   </tr>
                   {expandedId === relation.id ? (
@@ -297,6 +350,20 @@ export function RelationListPage() {
           onNavigate={scrollMainContentToTop}
         />
       ) : null}
+      <DeleteRecordDialog
+        open={Boolean(deletion.targetId && deletion.impact)}
+        title="删除因果关系"
+        message={
+          deletion.impact?.hasCases
+            ? '该因果关系关联原子事件，并且有关联具体案例。删除只会移除因果关系及其关联，不会删除事件或案例。'
+            : '该因果关系关联原子事件，并且没有关联具体案例。删除只会移除因果关系及其关联，不会删除事件或案例。'
+        }
+        blocked={false}
+        pending={deletion.pending}
+        error={deletion.dialogError}
+        onCancel={deletion.close}
+        onConfirm={() => void deletion.confirmDelete()}
+      />
     </section>
   );
 }

@@ -183,6 +183,7 @@ describe('event contracts', () => {
             name: detail.name,
             aliases: detail.aliases,
             keywords: detail.keywords,
+            relationCount: detail.relationCount,
             updatedAt: timestamp,
           },
         ],
@@ -191,7 +192,13 @@ describe('event contracts', () => {
         totalItems: 1,
         totalPages: 1,
       }),
-    ).toMatchObject({ page: 1, pageSize: 30, totalItems: 1, totalPages: 1 });
+    ).toMatchObject({
+      items: [expect.objectContaining({ relationCount: 2 })],
+      page: 1,
+      pageSize: 30,
+      totalItems: 1,
+      totalPages: 1,
+    });
     expect(() =>
       eventListResponseSchema.parse({
         items: [],

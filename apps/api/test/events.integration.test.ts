@@ -217,6 +217,13 @@ describe.sequential('event REST API', () => {
 
     const detail = await app!.inject({ method: 'GET', url: `/api/events/${center.id}` });
     expect(detail.json<EventDetail>().relationCount).toBe(2);
+    const list = await app!.inject({
+      method: 'GET',
+      url: `/api/events?q=${encodeURIComponent(center.name)}`,
+    });
+    expect(list.json<EventListResponse>().items[0]?.relationCount).toBe(
+      detail.json<EventDetail>().relationCount,
+    );
     const first = await app!.inject({
       method: 'GET',
       url: `/api/events/${center.id}/relations?limit=1`,

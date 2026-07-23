@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -92,6 +92,17 @@ describe('case pages', () => {
     expect(screen.getByText('共 0 条 · 第 1/1 页')).toBeTruthy();
     expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('describes an empty hidden orphan filter as no matching cases', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response({ items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 })),
+    );
+    renderRoute('/cases?orphan=true', <CaseListPage />);
+
+    expect(await screen.findByText('没有找到案例')).toBeTruthy();
+    expect(screen.queryByText('还没有具体案例')).toBeNull();
   });
 
   it('restores URL pages, supports every navigation control, and resets page after filters', async () => {
@@ -315,6 +326,60 @@ describe('case pages', () => {
     expect(heading.textContent).toBe(longContent);
     expect(heading.className).toContain('overflow-text--multi-line');
     expect(heading.style.getPropertyValue('--overflow-text-lines')).toBe('3');
+  });
+
+  it('permanently deletes a case while keeping relation and orphan filters', async () => {
+    const relationId = '22222222-2222-4222-8222-222222222222';
+    let listRequests = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'DELETE') return response({ deleted: true });
+      if (url.includes('/deletion-impact')) {
+        return response({ canDelete: true, hasRelations: true });
+      }
+      listRequests += 1;
+      return response(
+        listRequests === 1
+          ? {
+              items: [
+                {
+                  id: detail.id,
+                  content: detail.content,
+                  relationCount: 1,
+                  updatedAt: detail.updatedAt,
+                },
+              ],
+              page: 1,
+              pageSize: 50,
+              totalItems: 1,
+              totalPages: 1,
+            }
+          : { items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute(`/cases?relationId=${relationId}&orphan=true`, <CaseListPage />);
+
+    const row = (await screen.findByText(detail.content)).closest('tr')!;
+    const edit = within(row).getByRole('link', { name: '编辑' });
+    const remove = within(row).getByRole('button', { name: '删除' });
+    expect(edit.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(remove);
+    expect(await screen.findByText(/删除只会移除案例及其关联/)).toBeTruthy();
+    expect(screen.queryByText('1 条')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }));
+
+    expect(await screen.findByText('没有找到案例')).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([input]) => {
+        const url = new URL(String(input), 'http://localhost');
+        return (
+          url.pathname === '/api/cases' &&
+          url.searchParams.get('relationId') === relationId &&
+          url.searchParams.get('orphan') === 'true'
+        );
+      }),
+    ).toBe(true);
   });
 
   it('loads and replaces case content before returning to the list', async () => {

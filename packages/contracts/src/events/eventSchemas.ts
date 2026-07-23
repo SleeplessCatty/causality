@@ -97,6 +97,7 @@ export const eventSummarySchema = z
     name: eventNameSchema,
     aliases: z.array(eventAliasSchema),
     keywords: z.array(eventKeywordSchema),
+    relationCount: z.number().int().nonnegative(),
     updatedAt: timestampSchema,
   })
   .strict();
@@ -105,7 +106,6 @@ export const eventDetailSchema = eventSummarySchema
   .omit({ updatedAt: true })
   .extend({
     description: z.string().max(2_000).nullable(),
-    relationCount: z.number().int().nonnegative(),
     listPage: z.number().int().min(1),
     createdAt: timestampSchema,
     updatedAt: timestampSchema,

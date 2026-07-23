@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -12,6 +12,7 @@ const firstPage = {
       name: '原油价格上涨',
       aliases: ['油价上涨', '原油上涨', '国际油价上涨', '第四个别名'],
       keywords: ['原油', '能源价格'],
+      relationCount: 2,
       updatedAt: '2026-07-21T03:00:00.000Z',
     },
   ],
@@ -68,6 +69,8 @@ describe('EventListPage', () => {
     expect(await screen.findByRole('link', { name: '原油价格上涨' })).toBeTruthy();
     expect(screen.getByText('油价上涨、原油上涨、国际油价上涨')).toBeTruthy();
     expect(screen.getByText('+1')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '关联关系数' })).toBeTruthy();
+    expect(screen.getByRole('cell', { name: '2' })).toBeTruthy();
     expect(screen.getByRole('link', { name: '创建事件' }).getAttribute('href')).toBe('/events/new');
     expect(screen.getByRole('link', { name: '原油价格上涨' }).getAttribute('href')).toBe(
       '/events/11111111-1111-4111-8111-111111111111',
@@ -169,6 +172,7 @@ describe('EventListPage', () => {
                 name: '市场流动性收紧',
                 aliases: [],
                 keywords: [],
+                relationCount: 0,
                 updatedAt: '2026-07-20T03:00:00.000Z',
               },
             ],
@@ -219,5 +223,177 @@ describe('EventListPage', () => {
     expect(screen.getByText('共 0 条 · 第 1/1 页')).toBeTruthy();
     expect(screen.getByRole('button', { name: '上一页' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('describes an empty hidden orphan filter as no matching events', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse({ items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 })),
+    );
+    renderList('/events?orphan=true');
+
+    expect(await screen.findByText('没有找到事件')).toBeTruthy();
+    expect(screen.queryByText('还没有原子事件')).toBeNull();
+  });
+
+  it('opens a blocked deletion dialog without association details and keeps hidden filters', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/deletion-impact')) {
+        return jsonResponse({ canDelete: false, hasRelations: true });
+      }
+      return jsonResponse({ ...firstPage, page: 2, totalItems: 51, totalPages: 2 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderList('/events?orphan=true&q=%E5%8E%9F%E6%B2%B9&page=2');
+
+    const row = (await screen.findByRole('link', { name: '原油价格上涨' })).closest('tr')!;
+    const edit = within(row).getByRole('link', { name: '编辑' });
+    const remove = within(row).getByRole('button', { name: '删除' });
+    expect(edit.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(remove);
+
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(screen.getByText('这个原子事件存在关联因果关系，必须先删除相关因果关系。')).toBeTruthy();
+    expect(screen.queryByRole('list')).toBeNull();
+    expect(screen.queryByText('2 条')).toBeNull();
+    expect(screen.getByRole('link', { name: '查看相关因果关系' }).getAttribute('href')).toBe(
+      `/relations?eventId=${firstPage.items[0]!.id}`,
+    );
+    expect(
+      fetchMock.mock.calls.some(([input]) => {
+        const url = new URL(String(input), 'http://localhost');
+        return (
+          url.pathname === '/api/events' &&
+          url.searchParams.get('orphan') === 'true' &&
+          url.searchParams.get('q') === '原油' &&
+          url.searchParams.get('page') === '2'
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it('switches to blocked mode when a concurrent relation prevents deletion', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        return jsonResponse(
+          {
+            code: 'EVENT_DELETE_BLOCKED',
+            message: '这个原子事件存在关联因果关系，必须先删除相关因果关系',
+          },
+          409,
+        );
+      }
+      if (String(input).includes('/deletion-impact')) {
+        return jsonResponse({ canDelete: true, hasRelations: false });
+      }
+      return jsonResponse({ ...firstPage, totalItems: 1, totalPages: 1 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderList();
+
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    expect(
+      await screen.findByText('这个原子事件存在关联因果关系，必须先删除相关因果关系。'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '确认删除' })).toBeNull();
+    expect(screen.getByRole('link', { name: '查看相关因果关系' })).toBeTruthy();
+  });
+
+  it('treats an already deleted event as success and refreshes the list', async () => {
+    let listRequests = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        return jsonResponse({ code: 'EVENT_NOT_FOUND', message: '事件不存在' }, 404);
+      }
+      if (String(input).includes('/deletion-impact')) {
+        return jsonResponse({ canDelete: true, hasRelations: false });
+      }
+      listRequests += 1;
+      return jsonResponse(
+        listRequests === 1
+          ? { ...firstPage, totalItems: 1, totalPages: 1 }
+          : { items: [], page: 1, pageSize: 50, totalItems: 0, totalPages: 1 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderList();
+
+    fireEvent.click(await screen.findByRole('button', { name: '删除' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+
+    expect(await screen.findByText('还没有原子事件')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('automatically dismisses an impact loading error after three seconds', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((input: string | URL | Request) =>
+      String(input).includes('/deletion-impact')
+        ? jsonResponse({ code: 'INTERNAL_ERROR', message: '无法检查删除影响' }, 500)
+        : jsonResponse({ ...firstPage, totalItems: 1, totalPages: 1 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderList();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+
+    fireEvent.click(screen.getByRole('button', { name: '删除' }));
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(screen.getByRole('alert').textContent).toBe('无法检查删除影响');
+
+    await act(() => vi.advanceTimersByTimeAsync(2_999));
+    expect(screen.getByRole('alert')).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('ignores a stale impact response after another row is selected', async () => {
+    const secondEvent = {
+      ...firstPage.items[0]!,
+      id: '22222222-2222-4222-8222-222222222222',
+      name: '市场流动性收紧',
+    };
+    let resolveFirst: (response: Response) => void = () => {};
+    let resolveSecond: (response: Response) => void = () => {};
+    const firstImpact = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondImpact = new Promise<Response>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes(`${firstPage.items[0]!.id}/deletion-impact`)) return firstImpact;
+      if (url.includes(`${secondEvent.id}/deletion-impact`)) return secondImpact;
+      return jsonResponse({
+        ...firstPage,
+        items: [firstPage.items[0]!, secondEvent],
+        totalItems: 2,
+        totalPages: 1,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderList();
+
+    const firstRow = (await screen.findByRole('link', { name: '原油价格上涨' })).closest('tr')!;
+    const secondRow = screen.getByRole('link', { name: '市场流动性收紧' }).closest('tr')!;
+    fireEvent.click(within(firstRow).getByRole('button', { name: '删除' }));
+    fireEvent.click(within(secondRow).getByRole('button', { name: '删除' }));
+
+    await act(async () => {
+      resolveSecond(await jsonResponse({ canDelete: false, hasRelations: true }));
+    });
+    expect(screen.getByRole('link', { name: '查看相关因果关系' }).getAttribute('href')).toBe(
+      `/relations?eventId=${secondEvent.id}`,
+    );
+
+    await act(async () => {
+      resolveFirst(await jsonResponse({ canDelete: false, hasRelations: true }));
+    });
+    expect(screen.getByRole('link', { name: '查看相关因果关系' }).getAttribute('href')).toBe(
+      `/relations?eventId=${secondEvent.id}`,
+    );
   });
 });

@@ -1,12 +1,15 @@
 import {
   DETAIL_ASSOCIATION_PAGE_SIZE,
   MAIN_LIST_PAGE_SIZE,
+  caseDeletionImpactSchema,
   caseCandidateListResponseSchema,
   caseDetailSchema,
   caseListResponseSchema,
   caseRelationListResponseSchema,
+  deleteResultSchema,
   type CaseCandidateListResponse,
   type CaseDetail,
+  type CaseDeletionImpact,
   type CaseFormInput,
   type CaseListResponse,
   type CaseReference,
@@ -16,15 +19,29 @@ import {
 import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getCases(
-  query: { q: string; relationId?: string; page: number; limit?: number },
+  query: { q: string; relationId?: string; page: number; limit?: number; orphan?: boolean },
   signal?: AbortSignal,
 ): Promise<CaseListResponse> {
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
   if (query.relationId) parameters.set('relationId', query.relationId);
+  if (query.orphan) parameters.set('orphan', 'true');
   parameters.set('page', String(query.page));
   parameters.set('limit', String(query.limit ?? MAIN_LIST_PAGE_SIZE));
   return caseListResponseSchema.parse(await requestJson(`/api/cases?${parameters}`, {}, signal));
+}
+
+export async function getCaseDeletionImpact(
+  id: string,
+  signal?: AbortSignal,
+): Promise<CaseDeletionImpact> {
+  return caseDeletionImpactSchema.parse(
+    await requestJson(`/api/cases/${id}/deletion-impact`, {}, signal),
+  );
+}
+
+export async function deleteCase(id: string): Promise<void> {
+  deleteResultSchema.parse(await requestJson(`/api/cases/${id}`, { method: 'DELETE' }));
 }
 
 export async function getCaseCandidates(

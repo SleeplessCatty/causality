@@ -1,13 +1,15 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
 
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
+import { DeleteRecordDialog } from '../../../shared/deletion/DeleteRecordDialog';
+import { usePermanentDeletion } from '../../../shared/deletion/usePermanentDeletion';
 import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
-import { getCases } from '../api/caseApi';
+import { deleteCase, getCaseDeletionImpact, getCases } from '../api/caseApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   dateStyle: 'medium',
@@ -15,10 +17,13 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
 });
 
 export function CaseListPage() {
+  const queryClient = useQueryClient();
   const location = useLocation();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
   const relationId = searchParameters.get('relationId') ?? '';
+  const orphan = searchParameters.get('orphan') === 'true';
+  const hasActiveFilter = Boolean(query || relationId) || orphan;
   const page = readListPage(searchParameters.get('page'));
   const [searchInput, setSearchInput] = useState(query);
 
@@ -43,17 +48,26 @@ export function CaseListPage() {
   }, [query, searchInput, setSearchParameters]);
 
   const cases = useQuery({
-    queryKey: ['cases', 'list', query, relationId || null, page],
+    queryKey: ['cases', 'list', query, relationId || null, orphan, page],
     queryFn: ({ signal }) =>
       getCases(
         {
           q: query,
           page,
+          orphan,
           ...(relationId ? { relationId } : {}),
         },
         signal,
       ),
     placeholderData: (previous) => previous,
+  });
+  const deletion = usePermanentDeletion({
+    getImpact: getCaseDeletionImpact,
+    deleteRecord: deleteCase,
+    notFoundCode: 'CASE_NOT_FOUND',
+    afterDelete: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', 'list'] });
+    },
   });
   useListRecordFocus(cases.data?.items.map((item) => item.id) ?? []);
 
@@ -72,6 +86,7 @@ export function CaseListPage() {
   function clearRelationFilter(): void {
     const next = new URLSearchParams();
     if (query) next.set('q', query);
+    if (orphan) next.set('orphan', 'true');
     setSearchParameters(next);
   }
 
@@ -122,6 +137,11 @@ export function CaseListPage() {
         />
       </div>
 
+      {deletion.pageError ? (
+        <div className="form-alert list-action-error" role="alert">
+          {deletion.pageError}
+        </div>
+      ) : null}
       {cases.isPending ? <div className="table-state">加载案例…</div> : null}
       {cases.isError ? (
         <div className="table-state table-state--error" role="alert">
@@ -138,8 +158,8 @@ export function CaseListPage() {
       ) : null}
       {cases.isSuccess && cases.data.items.length === 0 ? (
         <div className="table-state table-state--empty">
-          <strong>{query || relationId ? '没有找到案例' : '还没有具体案例'}</strong>
-          <span>{query || relationId ? '尝试调整筛选条件。' : '创建第一条真实事件记录。'}</span>
+          <strong>{hasActiveFilter ? '没有找到案例' : '还没有具体案例'}</strong>
+          <span>{hasActiveFilter ? '尝试调整筛选条件。' : '创建第一条真实事件记录。'}</span>
           {!relationId ? (
             <Link
               className="button button--secondary"
@@ -183,7 +203,7 @@ export function CaseListPage() {
                       {dateFormatter.format(new Date(item.updatedAt))}
                     </time>
                   </td>
-                  <td>
+                  <td className="case-row-actions">
                     <Link
                       className="table-action-link"
                       to={`/cases/${item.id}/edit`}
@@ -191,6 +211,14 @@ export function CaseListPage() {
                     >
                       编辑
                     </Link>
+                    <button
+                      className="text-button text-button--danger"
+                      type="button"
+                      disabled={deletion.loadingId === item.id}
+                      onClick={() => void deletion.requestDelete(item.id)}
+                    >
+                      {deletion.loadingId === item.id ? '检查中…' : '删除'}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -208,6 +236,20 @@ export function CaseListPage() {
           onNavigate={scrollMainContentToTop}
         />
       ) : null}
+      <DeleteRecordDialog
+        open={Boolean(deletion.targetId && deletion.impact)}
+        title="删除具体案例"
+        message={
+          deletion.impact?.hasRelations
+            ? '该具体案例有关联因果关系。删除只会移除案例及其关联，不会删除因果关系。'
+            : '该具体案例没有关联因果关系。删除只会移除案例及其关联，不会删除因果关系。'
+        }
+        blocked={false}
+        pending={deletion.pending}
+        error={deletion.dialogError}
+        onCancel={deletion.close}
+        onConfirm={() => void deletion.confirmDelete()}
+      />
     </section>
   );
 }

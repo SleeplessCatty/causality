@@ -621,6 +621,11 @@ Do not push.
 
 - Create: `apps/web/src/shared/deletion/DeleteRecordDialog.tsx`
 - Create: `apps/web/src/shared/deletion/DeleteRecordDialog.test.tsx`
+- Create: `apps/web/src/shared/deletion/usePermanentDeletion.ts`
+- Modify: `packages/contracts/src/events/eventSchemas.ts`
+- Modify: `packages/contracts/test/events.test.ts`
+- Modify: `apps/api/src/features/events/eventRepository.ts`
+- Modify: `apps/api/test/events.integration.test.ts`
 - Modify: `apps/web/src/features/events/api/eventApi.ts`
 - Modify: `apps/web/src/features/relations/api/relationApi.ts`
 - Modify: `apps/web/src/features/cases/api/caseApi.ts`
@@ -650,7 +655,7 @@ interface DeleteRecordDialogProps {
 
 Resource API adapters produce `get*DeletionImpact(id)` and `delete*(id)`.
 
-- [ ] **Step 1: Write failing dialog tests**
+- [x] **Step 1: Write failing dialog tests**
 
 Cover:
 
@@ -665,7 +670,7 @@ expect(screen.getByRole('link', { name: '查看相关因果关系' })).toHaveAtt
 
 Verify blocked mode has no confirm button, Escape/cancel closes, pending disables actions, and an error stays in the existing dialog position.
 
-- [ ] **Step 2: Run dialog tests and verify failure**
+- [x] **Step 2: Run dialog tests and verify failure**
 
 Run:
 
@@ -675,7 +680,7 @@ pnpm --filter @causality/web test -- DeleteRecordDialog.test.tsx
 
 Expected: FAIL because the component is absent.
 
-- [ ] **Step 3: Implement the shared dialog**
+- [x] **Step 3: Implement the shared dialog**
 
 Use a native accessible modal pattern with:
 
@@ -696,7 +701,7 @@ Use a native accessible modal pattern with:
 
 Do not render names, counts, lists, or record previews.
 
-- [ ] **Step 4: Add API adapter functions**
+- [x] **Step 4: Add API adapter functions**
 
 Use `requestJson`, parse shared schemas, and send `DELETE`:
 
@@ -710,7 +715,7 @@ export async function deleteEvent(id: string): Promise<DeleteResult> {
 
 Implement the corresponding impact functions and relation/case variants.
 
-- [ ] **Step 5: Add delete state to each list**
+- [x] **Step 5: Add delete state to each list**
 
 Each page tracks only the selected resource ID, impact state, and transient error. Include `orphan` or `eventId` in the TanStack Query key and API call.
 
@@ -723,7 +728,7 @@ setDeleteTargetId(null);
 
 Let the existing server-clamped page effect move to the previous page when necessary.
 
-- [ ] **Step 6: Add exact resource copy**
+- [x] **Step 6: Add exact resource copy**
 
 Event, deletable:
 
@@ -749,13 +754,13 @@ Case:
 该具体案例{有/没有}关联因果关系。删除只会移除案例及其关联，不会删除因果关系。
 ```
 
-- [ ] **Step 7: Extend list page tests**
+- [x] **Step 7: Extend list page tests**
 
 Verify delete follows edit, impact loads before dialog, no association details render, blocked event links to `eventId`, success refreshes the same filtered query, and API errors auto-dismiss after three seconds.
 Also verify a 404 closes the dialog and refreshes the list, while a 409 returned after
 an initially deletable impact switches the event dialog into its blocked state.
 
-- [ ] **Step 8: Run Web tests**
+- [x] **Step 8: Run Web tests**
 
 Run:
 
@@ -766,7 +771,7 @@ pnpm typecheck
 
 Expected: all pass.
 
-- [ ] **Step 9: Manual checkpoint**
+- [x] **Step 9: Manual checkpoint**
 
 Start the development app and ask the user to verify:
 
@@ -778,12 +783,17 @@ Start the development app and ask the user to verify:
 
 Do not continue until the user confirms this checkpoint.
 
-- [ ] **Step 10: Commit locally**
+- [x] **Step 10: Commit locally**
 
 ```bash
 git add \
+  packages/contracts/src/events/eventSchemas.ts \
+  packages/contracts/test/events.test.ts \
+  apps/api/src/features/events/eventRepository.ts \
+  apps/api/test/events.integration.test.ts \
   apps/web/src/shared/deletion/DeleteRecordDialog.tsx \
   apps/web/src/shared/deletion/DeleteRecordDialog.test.tsx \
+  apps/web/src/shared/deletion/usePermanentDeletion.ts \
   apps/web/src/features/events/api/eventApi.ts \
   apps/web/src/features/events/pages/EventListPage.tsx \
   apps/web/src/features/events/pages/EventListPage.test.tsx \
@@ -798,6 +808,21 @@ git commit -m "feat: add list deletion workflows"
 ```
 
 Do not push.
+
+**Execution result before manual checkpoint (2026-07-23):**
+
+- Dialog RED: the shared deletion component was absent as expected.
+- List RED: 4 expected failures for absent delete actions and workflows.
+- GREEN: 37 Web test files and 181 tests passed; Web and workspace typecheck passed.
+- The shared workflow treats delete-time 404 as an idempotent success, changes an event dialog
+  to blocked mode on a concurrent 409, and auto-dismisses request errors after three seconds.
+- Hidden `orphan`, `eventId`, `relationId`, search, and page parameters remain part of the active
+  list query; dialogs contain no association names, counts, or lists.
+- The event list now includes a relation count sourced from the same incoming/outgoing relation
+  predicate as event detail; its contract, repository query, integration test, and table UI pass.
+- Review follow-ups add a modal Tab focus loop, accurate hidden-filter empty states, and stale
+  deletion-impact response protection; candidate search avoids unused relation-count work.
+- Manual checkpoint approved by the user on 2026-07-23.
 
 ---
 
