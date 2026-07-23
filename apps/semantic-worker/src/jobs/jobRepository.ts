@@ -1,3 +1,4 @@
+import type { SemanticEntityType, SemanticTaskType } from '@causality/contracts';
 import type { SemanticModelCode } from '@causality/semantic-core';
 import type { Pool, PoolClient } from 'pg';
 
@@ -7,6 +8,16 @@ export interface DownloadJob {
   stateVersion: number;
   attempts: number;
   totalBytes: number;
+}
+
+export interface SemanticIndexJob {
+  id: string;
+  jobType: Extract<SemanticTaskType, 'full_index' | 'incremental'>;
+  modelCode: SemanticModelCode;
+  stateVersion: number;
+  attempts: number;
+  entityType: SemanticEntityType | null;
+  entityId: string | null;
 }
 
 export interface ReadyActiveModel {
@@ -26,6 +37,13 @@ export interface DownloadJobRepository {
   markActiveModelUnavailable(modelCode: SemanticModelCode, error: string): Promise<void>;
 }
 
+export interface IndexJobRepository {
+  claimNextIndex(workerId: string, leaseMilliseconds: number): Promise<SemanticIndexJob | null>;
+  renewLease(jobId: string, workerId: string, leaseMilliseconds: number): Promise<void>;
+  completeIndex(jobId: string, workerId: string): Promise<void>;
+  failIndex(jobId: string, workerId: string, error: string): Promise<void>;
+}
+
 interface DownloadJobRow {
   id: string;
   model_code: SemanticModelCode;
@@ -34,7 +52,20 @@ interface DownloadJobRow {
   total_bytes: number;
 }
 
+interface IndexJobRow {
+  id: string;
+  job_type: SemanticIndexJob['jobType'];
+  model_code: SemanticModelCode;
+  state_version: number;
+  attempts: number;
+  entity_type: SemanticEntityType | null;
+  entity_id: string | null;
+}
+
 interface LockedJobRow extends DownloadJobRow {
+  job_type: SemanticTaskType;
+  entity_type: SemanticEntityType | null;
+  entity_id: string | null;
   lease_owner: string | null;
   status: string;
 }
@@ -60,6 +91,18 @@ function mapJob(row: DownloadJobRow): DownloadJob {
   };
 }
 
+function mapIndexJob(row: IndexJobRow): SemanticIndexJob {
+  return {
+    id: row.id,
+    jobType: row.job_type,
+    modelCode: row.model_code,
+    stateVersion: row.state_version,
+    attempts: row.attempts,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+  };
+}
+
 async function lockOwnedJob(
   client: PoolClient,
   jobId: string,
@@ -67,10 +110,13 @@ async function lockOwnedJob(
 ): Promise<LockedJobRow> {
   const result = await client.query<LockedJobRow>(
     `select id,
+            job_type,
             model_code,
             state_version,
             attempts,
             total_bytes,
+            entity_type,
+            entity_id,
             lease_owner,
             status
      from semantic_jobs
@@ -94,7 +140,7 @@ async function lockIndexState(client: PoolClient): Promise<void> {
   );
 }
 
-export class PostgresDownloadJobRepository implements DownloadJobRepository {
+export class PostgresDownloadJobRepository implements DownloadJobRepository, IndexJobRepository {
   public constructor(private readonly pool: Pool) {}
 
   public async claimNextDownload(
@@ -136,6 +182,52 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository {
       [workerId, leaseMilliseconds],
     );
     return result.rows[0] ? mapJob(result.rows[0]) : null;
+  }
+
+  public async claimNextIndex(
+    workerId: string,
+    leaseMilliseconds: number,
+  ): Promise<SemanticIndexJob | null> {
+    const result = await this.pool.query<IndexJobRow>(
+      `with candidate as (
+         select id
+         from semantic_jobs
+         where job_type in ('full_index', 'incremental')
+           and (
+             status = 'queued'
+             or (status = 'running' and lease_expires_at <= clock_timestamp())
+           )
+         order by
+           case when job_type = 'full_index' then 0 else 1 end,
+           created_at,
+           id
+         limit 1
+         for update skip locked
+       )
+       update semantic_jobs as job
+       set status = 'running',
+           attempts = job.attempts + 1,
+           lease_owner = $1,
+           lease_expires_at = clock_timestamp() + ($2::integer * interval '1 millisecond'),
+           started_at = case
+             when job.status = 'queued' then clock_timestamp()
+             else job.started_at
+           end,
+           completed_at = null,
+           error = null,
+           updated_at = clock_timestamp()
+       from candidate
+       where job.id = candidate.id
+       returning job.id,
+                 job.job_type,
+                 job.model_code,
+                 job.state_version,
+                 job.attempts,
+                 job.entity_type,
+                 job.entity_id`,
+      [workerId, leaseMilliseconds],
+    );
+    return result.rows[0] ? mapIndexJob(result.rows[0]) : null;
   }
 
   public async renewLease(
@@ -311,6 +403,117 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository {
            and active_model_code = $1
            and state_version = $2`,
         [job.model_code, job.state_version, finalFailure ? 'failed' : 'waiting_model', message],
+      );
+    });
+  }
+
+  public async completeIndex(jobId: string, workerId: string): Promise<void> {
+    await this.withTransaction(async (client) => {
+      await lockIndexState(client);
+      const job = await lockOwnedJob(client, jobId, workerId);
+      if (job.job_type === 'incremental') {
+        await client.query(
+          `delete from semantic_jobs
+           where id = $1
+             and status = 'running'
+             and lease_owner = $2`,
+          [job.id, workerId],
+        );
+        await client.query(
+          `update semantic_index_state
+           set pending_items = (
+                 select count(*)::int
+                 from semantic_jobs
+                 where job_type = 'incremental'
+                   and status in ('queued', 'running')
+                   and model_code = $1
+                   and state_version = $2
+               ),
+               status = case
+                 when status = 'updating'
+                   and not exists (
+                     select 1
+                     from semantic_jobs
+                     where job_type = 'incremental'
+                       and status in ('queued', 'running')
+                       and model_code = $1
+                       and state_version = $2
+                   )
+                 then 'ready'
+                 else status
+               end,
+               updated_at = clock_timestamp()
+           where singleton_key = true
+             and active_model_code = $1
+             and state_version = $2`,
+          [job.model_code, job.state_version],
+        );
+        return;
+      }
+
+      await client.query(
+        `update semantic_jobs
+         set status = 'succeeded',
+             processed_items = total_items,
+             lease_owner = null,
+             lease_expires_at = null,
+             error = null,
+             completed_at = clock_timestamp(),
+             updated_at = clock_timestamp()
+         where id = $1
+           and status = 'running'
+           and lease_owner = $2`,
+        [job.id, workerId],
+      );
+    });
+  }
+
+  public async failIndex(jobId: string, workerId: string, error: string): Promise<void> {
+    await this.withTransaction(async (client) => {
+      await lockIndexState(client);
+      const job = await lockOwnedJob(client, jobId, workerId);
+      const finalFailure = job.attempts >= 3;
+      const message = boundedError(error);
+      await client.query(
+        `update semantic_jobs
+         set status = $3::varchar(20),
+             lease_owner = null,
+             lease_expires_at = null,
+             started_at = case
+               when $3::varchar(20) = 'failed' then started_at
+               else null
+             end,
+             completed_at = case
+               when $3::varchar(20) = 'failed' then clock_timestamp()
+               else null
+             end,
+             error = $4,
+             updated_at = clock_timestamp()
+         where id = $1
+           and lease_owner = $2`,
+        [job.id, workerId, finalFailure ? 'failed' : 'queued', message],
+      );
+      await client.query(
+        `update semantic_index_state
+         set status = case
+               when $3 then 'failed'
+               when $4::varchar(20) = 'full_index' then 'loading'
+               else 'updating'
+             end,
+             pending_items = (
+               select count(*)::int
+               from semantic_jobs
+               where job_type = 'incremental'
+                 and status in ('queued', 'running')
+                 and model_code = $1
+                 and state_version = $2
+             ),
+             error = $5,
+             updated_at = clock_timestamp()
+         where singleton_key = true
+           and active_model_code = $1
+           and state_version = $2`,
+        [job.model_code, job.state_version, finalFailure, job.job_type, message],
       );
     });
   }

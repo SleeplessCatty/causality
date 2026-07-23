@@ -3,8 +3,6 @@ import { inject } from 'vitest';
 
 import { runMigrations } from '../../../api/src/database/migrate.js';
 
-const databaseName = 'causality_semantic_worker_test';
-
 function pool(database: string): Pool {
   return new Pool({
     host: inject('postgresHost'),
@@ -15,10 +13,15 @@ function pool(database: string): Pool {
   });
 }
 
-export async function startWorkerPostgresTestContext(): Promise<{
+export async function startWorkerPostgresTestContext(
+  databaseName = 'causality_semantic_worker_test',
+): Promise<{
   pool: Pool;
   close(): Promise<void>;
 }> {
+  if (!/^causality_[a-z_]+_test$/.test(databaseName)) {
+    throw new Error(`Unsupported Worker test database: ${databaseName}`);
+  }
   const adminPool = pool('postgres');
   try {
     await adminPool.query(`create database "${databaseName}"`);

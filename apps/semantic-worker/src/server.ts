@@ -6,8 +6,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { parseWorkerEnv } from './config/env.js';
 import { createWorkerDatabasePool } from './database.js';
+import { PostgresIndexBuilder, PostgresSemanticSourceRepository } from './jobs/indexBuilder.js';
 import { PostgresDownloadJobRepository } from './jobs/jobRepository.js';
-import { DownloadJobRunner } from './jobs/jobRunner.js';
+import { DownloadJobRunner, IndexJobRunner } from './jobs/jobRunner.js';
 import { buildInternalServer, SemanticWorkerService } from './internalServer.js';
 import { PinnedModelDownloader } from './model/modelDownloader.js';
 import { TransformersEmbeddingRuntime } from './model/transformersRuntime.js';
@@ -23,11 +24,25 @@ const service = new SemanticWorkerService({
   runtime,
   modelsDirectory: env.MODEL_DIRECTORY,
 });
+const workerId = `${hostname()}-${process.pid}-${randomUUID()}`;
 const runner = new DownloadJobRunner({
   repository,
   downloader: new PinnedModelDownloader(),
   modelsDirectory: env.MODEL_DIRECTORY,
-  workerId: `${hostname()}-${process.pid}-${randomUUID()}`,
+  workerId,
+});
+const indexBuilder = new PostgresIndexBuilder({
+  pool,
+  sourceRepository: new PostgresSemanticSourceRepository(pool),
+  runtime,
+  modelsDirectory: env.MODEL_DIRECTORY,
+  onModelLoading: () => service.markModelLoading(),
+  onModelReady: (modelCode) => service.markLoadedModel(modelCode),
+});
+const indexRunner = new IndexJobRunner({
+  repository,
+  builder: indexBuilder,
+  workerId,
 });
 const app = buildInternalServer({
   service,
@@ -49,8 +64,10 @@ async function pollJobs(): Promise<void> {
     try {
       const processed = await runner.runOnce();
       if (processed) continue;
+      const indexed = await indexRunner.runOnce();
+      if (indexed) continue;
     } catch (error) {
-      app.log.error(error, 'Semantic download job failed outside retry handling');
+      app.log.error(error, 'Semantic job failed outside retry handling');
     }
 
     try {

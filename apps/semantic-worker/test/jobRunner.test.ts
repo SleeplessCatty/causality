@@ -4,8 +4,14 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { DownloadJob, DownloadJobRepository } from '../src/jobs/jobRepository.js';
-import { DownloadJobRunner } from '../src/jobs/jobRunner.js';
+import type { IndexBuilder } from '../src/jobs/indexBuilder.js';
+import type {
+  DownloadJob,
+  DownloadJobRepository,
+  IndexJobRepository,
+  SemanticIndexJob,
+} from '../src/jobs/jobRepository.js';
+import { DownloadJobRunner, IndexJobRunner } from '../src/jobs/jobRunner.js';
 import type { ModelDownloader } from '../src/model/modelDownloader.js';
 
 const job: DownloadJob = {
@@ -137,5 +143,110 @@ describe('DownloadJobRunner', () => {
 
     await expect(runner.runOnce()).resolves.toBe(false);
     expect(fake.transitions).toEqual(['claimed']);
+  });
+});
+
+const fullIndexJob: SemanticIndexJob = {
+  id: '41111111-1111-4111-8111-111111111111',
+  jobType: 'full_index',
+  modelCode: 'multilingual-e5-small',
+  stateVersion: 4,
+  attempts: 1,
+  entityType: null,
+  entityId: null,
+};
+
+function fakeIndexRepository(nextJob: SemanticIndexJob | null) {
+  const completed: string[] = [];
+  const failures: string[] = [];
+  let claimed = false;
+  const repository: IndexJobRepository = {
+    claimNextIndex: async () => {
+      if (claimed) return null;
+      claimed = true;
+      return nextJob;
+    },
+    renewLease: async () => undefined,
+    completeIndex: async (jobId) => {
+      completed.push(jobId);
+    },
+    failIndex: async (_jobId, _workerId, error) => {
+      failures.push(error);
+    },
+  };
+  return { repository, completed, failures };
+}
+
+describe('IndexJobRunner', () => {
+  it('builds and completes full and incremental jobs through the matching path', async () => {
+    const built: string[] = [];
+    const builder: IndexBuilder = {
+      buildFull: async (indexJob) => {
+        built.push(`full:${indexJob.id}`);
+      },
+      buildIncremental: async (indexJob) => {
+        built.push(`incremental:${indexJob.id}`);
+      },
+    };
+    const full = fakeIndexRepository(fullIndexJob);
+    const fullRunner = new IndexJobRunner({
+      repository: full.repository,
+      builder,
+      workerId: 'worker-test',
+    });
+    const incrementalJob: SemanticIndexJob = {
+      ...fullIndexJob,
+      id: '41111111-1111-4111-8111-111111111112',
+      jobType: 'incremental',
+      entityType: 'event',
+      entityId: '10000000-0000-4000-8000-000000000001',
+    };
+    const incremental = fakeIndexRepository(incrementalJob);
+    const incrementalRunner = new IndexJobRunner({
+      repository: incremental.repository,
+      builder,
+      workerId: 'worker-test',
+    });
+
+    await expect(fullRunner.runOnce()).resolves.toBe(true);
+    await expect(incrementalRunner.runOnce()).resolves.toBe(true);
+
+    expect(built).toEqual([`full:${fullIndexJob.id}`, `incremental:${incrementalJob.id}`]);
+    expect(full.completed).toEqual([fullIndexJob.id]);
+    expect(incremental.completed).toEqual([incrementalJob.id]);
+  });
+
+  it('records a bounded index failure without stopping the polling loop', async () => {
+    const fake = fakeIndexRepository(fullIndexJob);
+    const runner = new IndexJobRunner({
+      repository: fake.repository,
+      builder: {
+        buildFull: async () => {
+          throw new Error('索引失败'.repeat(300));
+        },
+        buildIncremental: async () => undefined,
+      },
+      workerId: 'worker-test',
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(true);
+
+    expect(fake.completed).toEqual([]);
+    expect(fake.failures).toHaveLength(1);
+    expect(fake.failures[0]!.length).toBeLessThanOrEqual(500);
+  });
+
+  it('returns false when no index job is available', async () => {
+    const fake = fakeIndexRepository(null);
+    const runner = new IndexJobRunner({
+      repository: fake.repository,
+      builder: {
+        buildFull: async () => undefined,
+        buildIncremental: async () => undefined,
+      },
+      workerId: 'worker-test',
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(false);
   });
 });

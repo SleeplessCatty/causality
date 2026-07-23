@@ -90,6 +90,14 @@ export class SemanticWorkerService implements SemanticWorkerQueryService {
     };
   }
 
+  public markModelLoading(): void {
+    this.activeModelCode = null;
+  }
+
+  public markLoadedModel(modelCode: SemanticModelCode): void {
+    this.activeModelCode = modelCode;
+  }
+
   public async embedQuery(
     modelCode: SemanticModelCode,
     text: string,

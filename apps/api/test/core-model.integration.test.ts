@@ -807,6 +807,58 @@ describe.sequential('core PostgreSQL model', () => {
     expect(metadataJobs.rows[0]?.count).toBe(1);
   });
 
+  it('keeps a leased incremental job recoverable while queuing newer source changes', async () => {
+    const eventId = '10000000-0000-4000-8000-000000000073';
+    await pool!.query(
+      `update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 2`,
+    );
+    await pool!.query(`insert into abstract_events (id, name) values ($1, '初始语义事件')`, [
+      eventId,
+    ]);
+    await pool!.query(
+      `update semantic_jobs
+       set status = 'running',
+           attempts = 1,
+           lease_owner = 'stopped-worker',
+           lease_expires_at = clock_timestamp() + interval '1 minute',
+           started_at = clock_timestamp()
+       where job_type = 'incremental'
+         and entity_type = 'event'
+         and entity_id = $1
+         and status = 'queued'`,
+      [eventId],
+    );
+
+    await pool!.query(`update abstract_events set name = '更新后的语义事件' where id = $1`, [
+      eventId,
+    ]);
+
+    const changed = await pool!.query<{ status: string }>(
+      `select status
+       from semantic_jobs
+       where job_type = 'incremental'
+         and entity_type = 'event'
+         and entity_id = $1
+       order by status`,
+      [eventId],
+    );
+    expect(changed.rows).toEqual([{ status: 'queued' }, { status: 'running' }]);
+
+    await pool!.query(`delete from abstract_events where id = $1`, [eventId]);
+    const deleted = await pool!.query<{ status: string }>(
+      `select status
+       from semantic_jobs
+       where job_type = 'incremental'
+         and entity_type = 'event'
+         and entity_id = $1`,
+      [eventId],
+    );
+    expect(deleted.rows).toEqual([{ status: 'running' }]);
+  });
+
   it('removes an entity vector and its queued job inside the deleting transaction', async () => {
     const orphanEventId = '10000000-0000-4000-8000-000000000072';
     await pool!.query(`insert into abstract_events (id, name) values ($1, '待删除语义事件')`, [

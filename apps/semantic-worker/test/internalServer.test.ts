@@ -146,4 +146,32 @@ describe('semantic worker internal server', () => {
       },
     ]);
   });
+
+  it('keeps internal inference unavailable while a newly loaded model is being indexed', async () => {
+    const fake = startupRepository();
+    const runtime: EmbeddingRuntime = {
+      load: async () => undefined,
+      embedQuery: async () => Array.from({ length: 384 }, () => 0.1),
+      embedDocuments: async () => [],
+      dispose: async () => undefined,
+    };
+    const service = new SemanticWorkerService({
+      repository: fake.repository,
+      runtime,
+      modelsDirectory: '/models',
+      verifyModel: async () => true,
+    });
+
+    service.markModelLoading();
+    expect(service.health().activeModelCode).toBeNull();
+    await expect(service.embedQuery('multilingual-e5-small', '索引过程中')).rejects.toBeInstanceOf(
+      ActiveModelMismatchError,
+    );
+
+    service.markLoadedModel('multilingual-e5-small');
+    await expect(service.embedQuery('multilingual-e5-small', '索引完成后')).resolves.toMatchObject({
+      modelCode: 'multilingual-e5-small',
+      dimensions: 384,
+    });
+  });
 });

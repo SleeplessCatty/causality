@@ -2,7 +2,8 @@ import { join } from 'node:path';
 
 import { MODEL_CATALOG } from '@causality/semantic-core';
 
-import type { DownloadJobRepository } from './jobRepository.js';
+import type { IndexBuilder } from './indexBuilder.js';
+import type { DownloadJobRepository, IndexJobRepository } from './jobRepository.js';
 import type { ModelDownloader } from '../model/modelDownloader.js';
 import { verifyReadyModel } from '../model/modelDownloader.js';
 
@@ -91,6 +92,57 @@ export class DownloadJobRunner {
         this.options.workerId,
         errorMessage(error),
       );
+    } finally {
+      clearInterval(heartbeat);
+    }
+    return true;
+  }
+}
+
+interface IndexJobRunnerOptions {
+  repository: IndexJobRepository;
+  builder: IndexBuilder;
+  workerId: string;
+  leaseMilliseconds?: number;
+}
+
+export class IndexJobRunner {
+  private readonly leaseMilliseconds: number;
+
+  public constructor(private readonly options: IndexJobRunnerOptions) {
+    this.leaseMilliseconds = options.leaseMilliseconds ?? 60_000;
+  }
+
+  public async runOnce(): Promise<boolean> {
+    const job = await this.options.repository.claimNextIndex(
+      this.options.workerId,
+      this.leaseMilliseconds,
+    );
+    if (!job) return false;
+
+    let leaseFailure: unknown;
+    const heartbeat = setInterval(
+      () => {
+        void this.options.repository
+          .renewLease(job.id, this.options.workerId, this.leaseMilliseconds)
+          .catch((error: unknown) => {
+            leaseFailure = error;
+          });
+      },
+      Math.max(1_000, Math.floor(this.leaseMilliseconds / 3)),
+    );
+    heartbeat.unref();
+
+    try {
+      if (job.jobType === 'full_index') {
+        await this.options.builder.buildFull(job);
+      } else {
+        await this.options.builder.buildIncremental(job);
+      }
+      if (leaseFailure) throw leaseFailure;
+      await this.options.repository.completeIndex(job.id, this.options.workerId);
+    } catch (error) {
+      await this.options.repository.failIndex(job.id, this.options.workerId, errorMessage(error));
     } finally {
       clearInterval(heartbeat);
     }
