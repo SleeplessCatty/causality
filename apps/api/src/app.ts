@@ -14,6 +14,7 @@ import { registerEventRoutes } from './features/events/eventRoutes.js';
 import { registerRelationRoutes } from './features/relations/relationRoutes.js';
 import { registerCaseRoutes } from './features/cases/caseRoutes.js';
 import { registerCausalGraphRoutes } from './features/causal-graph/causalGraphRoutes.js';
+import { registerDataCheckRoutes } from './features/data-checks/dataCheckRoutes.js';
 
 interface BuildAppOptions {
   logger?: FastifyServerOptions['logger'];
@@ -50,6 +51,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       registerRelationRoutes(app, options.databasePool);
       registerCaseRoutes(app, options.databasePool);
       registerCausalGraphRoutes(app, options.databasePool);
+      registerDataCheckRoutes(app, options.databasePool);
     }
 
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());

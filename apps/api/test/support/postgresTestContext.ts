@@ -8,6 +8,7 @@ import { isDatabaseReady } from '../../src/database/readiness.js';
 const allowedDatabaseNames = new Set([
   'causality_cases_test',
   'causality_core_model_test',
+  'causality_data_checks_test',
   'causality_database_tools_test',
   'causality_events_test',
   'causality_graph_test',

@@ -1,0 +1,65 @@
+import type {
+  DataCheckActionMode,
+  DataCheckIssue,
+  DataCheckIssueListQuery,
+  DataCheckIssueListResponse,
+  DataCheckLatestResponse,
+  DataCheckSeverity,
+  DataCheckTargetType,
+} from '@causality/contracts';
+import type { PoolClient } from 'pg';
+
+export interface DataCheckIssueDraft {
+  severity: DataCheckSeverity;
+  issueType: string;
+  targetType: DataCheckTargetType;
+  targetId: string;
+  relatedId: string | null;
+  description: string;
+  suggestion: string;
+  actionMode: DataCheckActionMode;
+}
+
+export interface DataCheckRule {
+  readonly issueType: string;
+  scan(client: PoolClient, snapshotId: string): Promise<DataCheckIssueDraft[]>;
+}
+
+export interface DataCheckOrphanCounts {
+  events: number;
+  relations: number;
+  cases: number;
+}
+
+export interface DataCheckRuleTiming {
+  rule: string;
+  milliseconds: number;
+}
+
+export interface DataCheckScanResult {
+  snapshotId: string;
+  checkedAt: Date;
+  orphanCounts: DataCheckOrphanCounts;
+  issues: DataCheckIssueDraft[];
+  timings: DataCheckRuleTiming[];
+}
+
+export interface DataCheckStartResult {
+  started: boolean;
+  latest: DataCheckLatestResponse;
+}
+
+export interface DataCheckRepository {
+  tryStart(): Promise<DataCheckStartResult>;
+  latest(): Promise<DataCheckLatestResponse>;
+  replaceSnapshot(result: DataCheckScanResult): Promise<DataCheckLatestResponse>;
+  markFailure(message: string): Promise<DataCheckLatestResponse>;
+  recoverInterrupted(): Promise<DataCheckLatestResponse>;
+  listIssues(query: DataCheckIssueListQuery): Promise<DataCheckIssueListResponse>;
+  autoHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue>;
+  manualHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue>;
+}
+
+export interface DataCheckScanner {
+  run(): Promise<DataCheckScanResult>;
+}

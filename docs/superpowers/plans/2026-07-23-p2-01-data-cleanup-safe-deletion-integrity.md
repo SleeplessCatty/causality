@@ -863,7 +863,7 @@ interface DataCheckCoordinator {
 }
 ```
 
-- [ ] **Step 1: Write failing coordinator unit tests**
+- [x] **Step 1: Write failing coordinator unit tests**
 
 Use repository and rule-runner fakes to assert:
 
@@ -875,7 +875,7 @@ expect(ruleRunner.run).toHaveBeenCalledTimes(1);
 
 Also assert success replacement, failure retention, interrupted recovery, manual handling, and auto-handler revalidation branches.
 
-- [ ] **Step 2: Run unit tests and verify failure**
+- [x] **Step 2: Run unit tests and verify failure**
 
 Run:
 
@@ -885,7 +885,7 @@ pnpm --filter @causality/api test -- data-check-service.test.ts
 
 Expected: FAIL because the data-check module is absent.
 
-- [ ] **Step 3: Implement singleton task coordination**
+- [x] **Step 3: Implement singleton task coordination**
 
 `tryStart()` performs one transaction:
 
@@ -903,7 +903,7 @@ If the lock is not acquired or state is running, return the current task instead
 
 Track the background promise in the coordinator so Fastify can observe it during shutdown without exposing it through the HTTP interface.
 
-- [ ] **Step 4: Implement consistent snapshot scanning**
+- [x] **Step 4: Implement consistent snapshot scanning**
 
 Run orphan counts and all rules through one client:
 
@@ -913,7 +913,7 @@ begin transaction isolation level repeatable read read only;
 
 Commit the read transaction after collecting drafts. Then use a separate write transaction to replace the snapshot and issues atomically.
 
-- [ ] **Step 5: Implement the deterministic rule catalog**
+- [x] **Step 5: Implement the deterministic rule catalog**
 
 Create one `DataCheckRule` per rule family:
 
@@ -936,7 +936,7 @@ cross_event_shared_alias
 
 The first twelve produce errors. The final two produce warnings. Do not emit orphan issues, reverse-relation issues, fuzzy matches, or subjective quality issues.
 
-- [ ] **Step 6: Implement issue drafts with compact copy**
+- [x] **Step 6: Implement issue drafts with compact copy**
 
 Each rule returns only:
 
@@ -955,7 +955,7 @@ Each rule returns only:
 
 Descriptions and suggestions must be at most 300 characters and must not contain HTML. Web builds links from target metadata.
 
-- [ ] **Step 7: Implement auto and manual handling**
+- [x] **Step 7: Implement auto and manual handling**
 
 Auto handlers exist only for:
 
@@ -978,7 +978,7 @@ and 409 `DATA_CHECK_AUTO_HANDLE_UNSAFE` when revalidation makes an automatic cha
 unsafe. Repeating manual handling for an already-handled current issue returns the
 unchanged issue successfully.
 
-- [ ] **Step 8: Add routes and lifecycle hook**
+- [x] **Step 8: Add routes and lifecycle hook**
 
 Register exactly:
 
@@ -995,7 +995,7 @@ the already-running task. Add a Fastify `onReady` hook that calls
 `recoverInterrupted()` and an `onClose` hook that waits only for the coordinator's
 currently tracked promise.
 
-- [ ] **Step 9: Write isolated integration tests**
+- [x] **Step 9: Write isolated integration tests**
 
 Add `causality_data_checks_test` to the allowlist.
 
@@ -1020,7 +1020,7 @@ production table-name parameters or test-only query branches.
 
 Assert every rule, pagination/filtering, one-running-task behavior, snapshot replacement, failed-attempt retention, restart recovery, and both handling modes.
 
-- [ ] **Step 10: Add the benchmark command**
+- [x] **Step 10: Add the benchmark command**
 
 Add:
 
@@ -1030,7 +1030,7 @@ Add:
 
 The root command uses the same Docker/Testcontainers environment setup as `graph:benchmark`. Generate 100,000 events, 500,000 relations, and 100,000 cases, run one complete check, print per-rule and total milliseconds, and fail when total duration exceeds 30,000 ms.
 
-- [ ] **Step 11: Run focused, integration, and benchmark tests**
+- [x] **Step 11: Run focused, integration, and benchmark tests**
 
 Run:
 
@@ -1043,7 +1043,7 @@ pnpm typecheck
 
 Expected: all pass; benchmark total is at most 30 seconds.
 
-- [ ] **Step 12: Commit locally**
+- [x] **Step 12: Commit locally**
 
 ```bash
 git add \
@@ -1065,6 +1065,21 @@ git commit -m "feat: add asynchronous integrity checks"
 ```
 
 Do not push.
+
+**Execution result (2026-07-23):**
+
+- Coordinator and scanner RED tests failed because the data-check modules were absent, then passed
+  after implementing single-task coordination and one repeatable-read snapshot.
+- The deterministic catalog contains all 14 approved rule families; impossible normal-operation
+  corruption is exercised in rollback-only transactions without production test branches.
+- Snapshot replacement, failure retention, restart recovery, fixed 50-row pagination, all six
+  automatic actions, vanished targets, unsafe revalidation, stale snapshots, and idempotent manual
+  handling pass database integration coverage.
+- API unit suite: 14 files and 96 tests passed.
+- API integration suite: 8 files and 75 tests passed.
+- The 100,000-event, 500,000-relation, 100,000-case benchmark completed one full check in
+  2,483.48 ms against the 30,000 ms target; the slowest rule completed in 320.51 ms.
+- Workspace typecheck, lint, formatting, and diff checks passed.
 
 ---
 
