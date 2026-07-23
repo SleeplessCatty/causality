@@ -5,7 +5,6 @@ import { Link } from 'react-router';
 import type {
   DataCheckIssue,
   DataCheckIssueListQuery,
-  DataCheckIssueListResponse,
   DataCheckIssueStatus,
   DataCheckSeverity,
 } from '@causality/contracts';
@@ -28,6 +27,8 @@ interface IssueFilters {
 }
 
 const issueTypeOptions = [
+  ['missing_relation_cause_event', '原因事件引用失效'],
+  ['missing_relation_effect_event', '结果事件引用失效'],
   ['delete_missing_alias', '失效别名'],
   ['delete_missing_keyword', '失效关键词'],
   ['delete_missing_relation_case', '失效关系案例关联'],
@@ -79,7 +80,8 @@ function targetPath(issue: DataCheckIssue): { href: string; label: string } | nu
       return { href: `/cases/${issue.targetId}`, label: '查看具体案例' };
     case 'alias':
     case 'keyword':
-      return issue.relatedId
+      return issue.relatedId &&
+        (issue.issueType === 'invalid_alias_text' || issue.issueType === 'invalid_keyword_text')
         ? { href: `/events/${issue.relatedId}`, label: '查看所属原子事件' }
         : null;
     case 'relation_case':
@@ -166,15 +168,8 @@ export function DataCheckIssueTable({ snapshotId }: DataCheckIssueTableProps) {
         ? autoHandleDataCheckIssue(current.id, current.snapshotId)
         : manualHandleDataCheckIssue(current.id, current.snapshotId);
     },
-    onSuccess: (updated) => {
-      queryClient.setQueryData<DataCheckIssueListResponse>(queryKey, (current) =>
-        current
-          ? {
-              ...current,
-              items: current.items.map((item) => (item.id === updated.id ? updated : item)),
-            }
-          : current,
-      );
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['data-checks', 'issues'] });
       void queryClient.invalidateQueries({ queryKey: ['data-checks', 'latest'] });
     },
     onError: (error) => {

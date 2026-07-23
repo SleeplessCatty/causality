@@ -95,6 +95,7 @@ describe.sequential('data-check REST API and rules', () => {
       app!.inject({ method: 'POST', url: '/api/data-checks' }),
     ]);
     expect([first.statusCode, second.statusCode]).toEqual([202, 202]);
+    expect([first.json().task.status, second.json().task.status]).toEqual(['running', 'running']);
 
     const latest = await waitForFinished();
     expect(latest).toMatchObject({

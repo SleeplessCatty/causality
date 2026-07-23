@@ -447,15 +447,7 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
     const client = await this.pool.connect();
     try {
       await client.query('begin');
-      const lock = await client.query<{ acquired: boolean }>(
-        `select pg_try_advisory_xact_lock($1) as acquired`,
-        [dataCheckLockKey],
-      );
-      if (!lock.rows[0]?.acquired) {
-        const latest = await readLatest(client);
-        await client.query('commit');
-        return { started: false, latest };
-      }
+      await client.query(`select pg_advisory_xact_lock($1)`, [dataCheckLockKey]);
 
       const state = await client.query<{ status: string }>(
         `select status from data_check_state where singleton_key = true for update`,
@@ -582,50 +574,61 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
   }
 
   public async listIssues(query: DataCheckIssueListQuery): Promise<DataCheckIssueListResponse> {
-    const latest = await this.latest();
-    const snapshotId = latest.snapshot?.snapshotId;
-    if (!snapshotId) {
-      return { items: [], page: 1, pageSize: issuePageSize, totalItems: 0, totalPages: 1 };
-    }
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin transaction isolation level repeatable read read only');
+      const latest = await readLatest(client);
+      const snapshotId = latest.snapshot?.snapshotId;
+      if (!snapshotId) {
+        await client.query('commit');
+        return { items: [], page: 1, pageSize: issuePageSize, totalItems: 0, totalPages: 1 };
+      }
 
-    const parameters = [
-      snapshotId,
-      query.severity ?? null,
-      query.issueType ?? null,
-      query.status ?? null,
-    ];
-    const filter = `
-      snapshot_id = $1
-      and ($2::text is null or severity = $2)
-      and ($3::text is null or issue_type = $3)
-      and ($4::text is null or status = $4)
-    `;
-    const count = await this.pool.query<{ total: number }>(
-      `select count(*)::int as total
-       from data_check_issues
-       where ${filter}`,
-      parameters,
-    );
-    const totalItems = Number(count.rows[0]?.total ?? 0);
-    const totalPages = Math.max(1, Math.ceil(totalItems / issuePageSize));
-    const page = Math.min(query.page, totalPages);
-    const issues = await this.pool.query<IssueRow>(
-      `${issueSelect}
-       where ${filter}
-       order by case severity when 'error' then 0 else 1 end,
-                issue_type,
-                id
-       limit ${issuePageSize}
-       offset $5`,
-      [...parameters, (page - 1) * issuePageSize],
-    );
-    return {
-      items: issues.rows.map(mapIssue),
-      page,
-      pageSize: issuePageSize,
-      totalItems,
-      totalPages,
-    };
+      const parameters = [
+        snapshotId,
+        query.severity ?? null,
+        query.issueType ?? null,
+        query.status ?? null,
+      ];
+      const filter = `
+        snapshot_id = $1
+        and ($2::text is null or severity = $2)
+        and ($3::text is null or issue_type = $3)
+        and ($4::text is null or status = $4)
+      `;
+      const count = await client.query<{ total: number }>(
+        `select count(*)::int as total
+         from data_check_issues
+         where ${filter}`,
+        parameters,
+      );
+      const totalItems = Number(count.rows[0]?.total ?? 0);
+      const totalPages = Math.max(1, Math.ceil(totalItems / issuePageSize));
+      const page = Math.min(query.page, totalPages);
+      const issues = await client.query<IssueRow>(
+        `${issueSelect}
+         where ${filter}
+         order by case severity when 'error' then 0 else 1 end,
+                  issue_type,
+                  id
+         limit ${issuePageSize}
+         offset $5`,
+        [...parameters, (page - 1) * issuePageSize],
+      );
+      await client.query('commit');
+      return {
+        items: issues.rows.map(mapIssue),
+        page,
+        pageSize: issuePageSize,
+        totalItems,
+        totalPages,
+      };
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   public async manualHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue> {

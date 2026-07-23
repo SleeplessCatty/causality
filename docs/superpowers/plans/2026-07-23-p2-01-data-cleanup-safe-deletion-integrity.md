@@ -1297,7 +1297,7 @@ Do not push.
 - Consumes all Task 1–5 public behavior.
 - Produces a release-quality local P2-01 candidate; it does not push GitHub.
 
-- [ ] **Step 1: Write end-to-end deletion tests**
+- [x] **Step 1: Write end-to-end deletion tests**
 
 Use API-created unique records and assert:
 
@@ -1308,7 +1308,7 @@ Use API-created unique records and assert:
 - current search, hidden filter, and valid page remain after deletion;
 - dialogs never render association lists, names, or counts.
 
-- [ ] **Step 2: Write end-to-end data-check tests**
+- [x] **Step 2: Write end-to-end data-check tests**
 
 Assert:
 
@@ -1321,7 +1321,7 @@ Assert:
 - manual handling changes only the current issue;
 - a new check rediscovers an unchanged manually handled warning.
 
-- [ ] **Step 3: Extend production smoke**
+- [x] **Step 3: Extend production smoke**
 
 In the isolated production Compose project:
 
@@ -1333,7 +1333,7 @@ In the isolated production Compose project:
 6. verify deletion and hidden orphan list endpoints;
 7. clean the temporary project and volume.
 
-- [ ] **Step 4: Update README**
+- [x] **Step 4: Update README**
 
 Add concise user-facing documentation:
 
@@ -1346,7 +1346,7 @@ Add concise user-facing documentation:
 
 Do not add implementation history or test counts to the public README.
 
-- [ ] **Step 5: Run the complete release-candidate gate**
+- [x] **Step 5: Run the complete release-candidate gate**
 
 Run in order:
 
@@ -1368,7 +1368,14 @@ git diff --check
 
 Expected: every command passes; Playwright and production smoke have no skipped P2-01 checks; data-check benchmark is at most 30 seconds.
 
-- [ ] **Step 6: Perform final code review**
+Result (2026-07-23): all commands passed after review fixes. Unit suites passed
+41 contracts, 96 API, and 192 Web tests; integration passed 75 tests; E2E passed
+22 tests; Compose passed 6 tests; production smoke passed 1 test. The graph
+benchmark generated 100,000 events, 500,000 relations, and 100,000 cases in
+60.3 seconds and recorded a 24.98 ms P95 query time. The complete data check
+finished in 2.53 seconds against the same dataset.
+
+- [x] **Step 6: Perform final code review**
 
 Review the complete P2-01 diff against:
 
@@ -1378,7 +1385,14 @@ docs/stages/phase-2/P2-01-data-cleanup-safe-deletion-integrity-design.md
 
 Check for unbounded SQL, unsafe cascades, duplicate query logic, stale query keys, inaccessible dialogs, dead styles, unused dependencies, and snapshot overwrite races. Fix every Critical, Important, and relevant Minor finding, then rerun the affected test and full gate.
 
-- [ ] **Step 7: Commit the local implementation candidate**
+Result (2026-07-23): the review found no Critical issues. All four Important
+findings were fixed: concurrent starts now serialize before reading task state;
+handled issues refetch filtered pagination; deletion dialogs retain modal focus
+while pending; and issue links interpret alias/keyword identifiers by issue type.
+Issue pagination now also reads the snapshot, total, and rows in one repeatable-read
+transaction. The targeted tests and complete release gate passed after these fixes.
+
+- [x] **Step 7: Commit the local implementation candidate**
 
 First inspect `git status --short` and verify that every listed path belongs to
 P2-01. Stage only the P2-01 paths from the file map; never stage unrelated user

@@ -26,16 +26,39 @@ export function DeleteRecordDialog({
 }: DeleteRecordDialogProps) {
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const onCancelRef = useRef(onCancel);
+  const pendingRef = useRef(pending);
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+    pendingRef.current = pending;
+  });
 
   useEffect(() => {
     if (!open) return;
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     cancelButtonRef.current?.focus();
+    return () => {
+      previousFocus?.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (pending) {
+      dialogRef.current?.focus();
+    } else if (!dialogRef.current?.contains(document.activeElement)) {
+      cancelButtonRef.current?.focus();
+    }
+  }, [open, pending]);
+
+  useEffect(() => {
+    if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !pending) {
+      if (event.key === 'Escape' && !pendingRef.current) {
         event.preventDefault();
-        onCancel();
+        onCancelRef.current();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -56,9 +79,8 @@ export function DeleteRecordDialog({
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      previousFocus?.focus();
     };
-  }, [onCancel, open, pending]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -76,6 +98,7 @@ export function DeleteRecordDialog({
         aria-modal="true"
         aria-labelledby="delete-dialog-title"
         aria-describedby="delete-dialog-message"
+        tabIndex={-1}
       >
         <h2 id="delete-dialog-title">{title}</h2>
         <p id="delete-dialog-message">{message}</p>

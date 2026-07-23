@@ -6,8 +6,8 @@ import { DeleteRecordDialog } from './DeleteRecordDialog';
 
 function renderDialog(
   overrides: Partial<React.ComponentProps<typeof DeleteRecordDialog>> = {},
-): void {
-  render(
+): ReturnType<typeof render> {
+  return render(
     <MemoryRouter>
       <DeleteRecordDialog
         open
@@ -85,5 +85,27 @@ describe('DeleteRecordDialog', () => {
 
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(confirm);
+  });
+
+  it('keeps focus in the dialog while deletion becomes pending', () => {
+    const view = renderDialog();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '取消' }));
+
+    view.rerender(
+      <MemoryRouter>
+        <DeleteRecordDialog
+          open
+          title="删除原子事件"
+          message="确认永久删除这个原子事件？此操作无法恢复。"
+          blocked={false}
+          pending
+          error={null}
+          onCancel={vi.fn()}
+          onConfirm={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(document.activeElement).toBe(screen.getByRole('dialog'));
   });
 });

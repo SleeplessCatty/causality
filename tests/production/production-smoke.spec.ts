@@ -56,6 +56,15 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
     valid: true,
   });
 
+  const startCheck = await request.post('/api/data-checks');
+  expect(startCheck.status()).toBe(202);
+  await expect
+    .poll(async () => (await request.get('/api/data-checks/latest')).json())
+    .toMatchObject({ task: { status: 'succeeded' }, snapshot: { snapshotId: expect.any(String) } });
+  const snapshotBeforeRestart = (await (await request.get('/api/data-checks/latest')).json()) as {
+    snapshot: { snapshotId: string };
+  };
+
   const eventName = `生产持久化测试 ${Date.now()}`;
   const create = await request.post('/api/events', {
     data: { name: eventName, description: null, aliases: [], keywords: [] },
@@ -67,11 +76,28 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   compose(['up', '-d', '--wait']);
   await expect.poll(async () => (await request.get('/api/ready')).status()).toBe(200);
   expect((await request.get(`/api/events/${created.id}`)).status()).toBe(200);
+  expect(
+    (await (await request.get('/api/data-checks/latest')).json()) as {
+      snapshot: { snapshotId: string };
+    },
+  ).toMatchObject({ snapshot: snapshotBeforeRestart.snapshot });
+
+  const orphanEvents = await request.get(
+    `/api/events?orphan=true&q=${encodeURIComponent(eventName)}`,
+  );
+  expect(orphanEvents.status()).toBe(200);
+  expect((await orphanEvents.json()) as { totalItems: number }).toMatchObject({ totalItems: 1 });
+  expect((await request.get(`/api/events/${created.id}/deletion-impact`)).status()).toBe(200);
+  expect((await request.delete(`/api/events/${created.id}`)).status()).toBe(200);
+  const deletedOrphans = await request.get(
+    `/api/events?orphan=true&q=${encodeURIComponent(eventName)}`,
+  );
+  expect((await deletedOrphans.json()) as { totalItems: number }).toMatchObject({ totalItems: 0 });
 
   compose(['run', '--rm', 'seed']);
   const afterFirstSeed = verifyDatabase();
   expect(afterFirstSeed.counts).toMatchObject({
-    abstractEvents: 13,
+    abstractEvents: 12,
     causalRelations: 15,
     concreteCases: 18,
   });

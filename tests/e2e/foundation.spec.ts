@@ -23,6 +23,10 @@ test('application shell opens events and reports system readiness', async ({ pag
   await page.getByRole('link', { name: '具体案例' }).click();
   await expect(page.getByRole('heading', { name: '具体案例' })).toBeVisible();
 
+  await page.getByRole('link', { name: '数据维护' }).click();
+  await expect(page.getByRole('heading', { name: '数据检查' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '检查数据' })).toBeVisible();
+
   await page.getByRole('link', { name: '系统状态' }).click();
   await expect(page.getByText('正常', { exact: true })).toBeVisible();
   await expect(page.getByText('就绪', { exact: true })).toBeVisible();

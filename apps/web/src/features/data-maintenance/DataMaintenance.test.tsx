@@ -359,9 +359,62 @@ describe('DataMaintenance', () => {
     );
   });
 
+  it('creates event links only when alias and keyword issue metadata contains an event id', async () => {
+    const invalidAlias: DataCheckIssue = {
+      ...issue('b1000000-0000-4000-8000-000000000010', 'manual'),
+      issueType: 'invalid_alias_text',
+      targetType: 'alias',
+      targetId: '41000000-0000-4000-8000-000000000010',
+      relatedId: '11000000-0000-4000-8000-000000000010',
+      description: '事件别名内容异常',
+    };
+    const missingAlias: DataCheckIssue = {
+      ...invalidAlias,
+      id: 'b1000000-0000-4000-8000-000000000011',
+      issueType: 'delete_missing_alias',
+      targetId: '41000000-0000-4000-8000-000000000011',
+      relatedId: '11000000-0000-4000-8000-000000000011',
+      description: '事件别名引用的原子事件不存在',
+    };
+    const duplicateKeyword: DataCheckIssue = {
+      ...invalidAlias,
+      id: 'b1000000-0000-4000-8000-000000000012',
+      issueType: 'delete_duplicate_keyword',
+      targetType: 'keyword',
+      targetId: '51000000-0000-4000-8000-000000000012',
+      relatedId: '51000000-0000-4000-8000-000000000013',
+      description: '同一原子事件存在重复关键词',
+    };
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health')) {
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      }
+      if (url.endsWith('/api/ready')) {
+        return jsonResponse({ status: 'ready', database: 'available' });
+      }
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/api/data-checks/latest/issues')) {
+        return jsonResponse(issuePage([invalidAlias, missingAlias, duplicateKeyword]));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenance();
+
+    await screen.findByText(invalidAlias.description);
+    const table = screen.getByRole('table');
+    const links = within(table).getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]?.getAttribute('href')).toBe('/events/11000000-0000-4000-8000-000000000010');
+    expect(within(table).getByText('11000000-0000-4000-8000-000000000011')).toBeTruthy();
+    expect(within(table).getByText('51000000-0000-4000-8000-000000000013')).toBeTruthy();
+  });
+
   it('updates auto and manual action cells to handled without refreshing resource lists', async () => {
     const autoIssue = issue('b1000000-0000-4000-8000-000000000001', 'auto');
     const manualIssue = issue('b1000000-0000-4000-8000-000000000002', 'manual');
+    const handledIds = new Set<string>();
     const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/api/health')) {
@@ -372,9 +425,22 @@ describe('DataMaintenance', () => {
       }
       if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
       if (url.includes('/api/data-checks/latest/issues')) {
-        return jsonResponse(issuePage([autoIssue, manualIssue]));
+        return jsonResponse(
+          issuePage(
+            [autoIssue, manualIssue].map((current) =>
+              handledIds.has(current.id)
+                ? {
+                    ...current,
+                    status: 'handled',
+                    handledAt: '2026-07-23T09:10:00.000Z',
+                  }
+                : current,
+            ),
+          ),
+        );
       }
       if (url.endsWith('/auto-handle') && options?.method === 'POST') {
+        handledIds.add(autoIssue.id);
         return jsonResponse({
           ...autoIssue,
           status: 'handled',
@@ -382,6 +448,7 @@ describe('DataMaintenance', () => {
         });
       }
       if (url.endsWith('/manual-handle') && options?.method === 'POST') {
+        handledIds.add(manualIssue.id);
         return jsonResponse({
           ...manualIssue,
           status: 'handled',
@@ -406,5 +473,51 @@ describe('DataMaintenance', () => {
         /^\/api\/(events|relations|cases)/.test(String(input)),
       ),
     ).toBe(false);
+  });
+
+  it('removes a handled issue from the open filter and refreshes pagination totals', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000003', 'manual');
+    let handled = false;
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/health')) {
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      }
+      if (url.endsWith('/api/ready')) {
+        return jsonResponse({ status: 'ready', database: 'available' });
+      }
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/api/data-checks/latest/issues')) {
+        const requestUrl = new URL(url, 'http://localhost');
+        const openOnly = requestUrl.searchParams.get('status') === 'open';
+        return jsonResponse(issuePage(handled && openOnly ? [] : [current]));
+      }
+      if (url.endsWith('/manual-handle') && options?.method === 'POST') {
+        handled = true;
+        return jsonResponse({
+          ...current,
+          status: 'handled',
+          handledAt: '2026-07-23T09:10:00.000Z',
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenance();
+    await screen.findByText(current.description);
+
+    fireEvent.click(screen.getByRole('button', { name: '处理状态' }));
+    fireEvent.click(screen.getByRole('option', { name: '未处理' }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes('status=open'))).toBe(
+        true,
+      ),
+    );
+    await screen.findByText(current.description);
+
+    fireEvent.click(screen.getByRole('button', { name: '手动处理' }));
+
+    await waitFor(() => expect(screen.queryByText(current.description)).toBeNull());
+    expect(screen.getByText(/共\s*0\s*条/u)).toBeTruthy();
   });
 });
