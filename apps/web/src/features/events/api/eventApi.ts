@@ -14,17 +14,25 @@ import {
   type EventFormInput,
   type EventListResponse,
   type EventRelationListResponse,
+  type SearchMode,
 } from '@causality/contracts';
 
 import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getEvents(
-  query: { q: string; page: number; limit?: number; orphan?: boolean },
+  query: {
+    q: string;
+    page: number;
+    limit?: number;
+    orphan?: boolean;
+    searchMode?: SearchMode;
+  },
   signal?: AbortSignal,
 ): Promise<EventListResponse> {
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
   if (query.orphan) parameters.set('orphan', 'true');
+  if (query.searchMode === 'enhanced') parameters.set('searchMode', query.searchMode);
   parameters.set('page', String(query.page));
   parameters.set('limit', String(query.limit ?? MAIN_LIST_PAGE_SIZE));
 

@@ -10,6 +10,15 @@ import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import {
+  EnhancedSearchButton,
+  EnhancedSearchNotice,
+} from '../../../shared/search/EnhancedSearchButton';
+import {
+  isSemanticSearchError,
+  useEnhancedListSearch,
+  useEnhancedListSearchResult,
+} from '../../../shared/search/useEnhancedListSearch';
+import {
   deleteRelation,
   getRelation,
   getRelationDeletionImpact,
@@ -32,6 +41,10 @@ export function RelationListPage() {
   const expandedId = searchParameters.get('expanded') ?? '';
   const page = readListPage(searchParameters.get('page'));
   const [searchInput, setSearchInput] = useState(query);
+  const enhancedSearch = useEnhancedListSearch({
+    normalizedQuery: query,
+    resetPage: changePage,
+  });
 
   useEffect(() => {
     setSearchInput(query);
@@ -57,19 +70,31 @@ export function RelationListPage() {
   }, [query, searchInput, setSearchParameters]);
 
   const relations = useQuery({
-    queryKey: ['relations', 'list', query, orphan, eventId || null, page],
+    queryKey: [
+      'relations',
+      'list',
+      query,
+      orphan,
+      eventId || null,
+      page,
+      enhancedSearch.mode,
+      enhancedSearch.mode === 'enhanced' ? enhancedSearch.requestId : 0,
+    ],
     queryFn: ({ signal }) =>
       getRelations(
         {
           q: query,
           page,
           orphan,
+          searchMode: enhancedSearch.mode,
           ...(eventId ? { eventId } : {}),
         },
         signal,
       ),
     placeholderData: (previous) => previous,
   });
+  const semanticQueryError = isSemanticSearchError(relations.error);
+  useEnhancedListSearchResult(enhancedSearch, relations);
   const deletion = usePermanentDeletion({
     getImpact: getRelationDeletionImpact,
     deleteRecord: deleteRelation,
@@ -150,27 +175,36 @@ export function RelationListPage() {
         </Link>
       </div>
 
-      <div className="event-search">
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="m16 16 4 4" />
-        </svg>
-        <input
-          aria-label="搜索因果关系"
-          type="search"
-          value={searchInput}
-          onChange={(event) => setSearchInput(event.target.value)}
-          placeholder="搜索原因事件、结果事件或关系说明"
+      <div className="list-search-controls">
+        <div className="event-search">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="m16 16 4 4" />
+          </svg>
+          <input
+            aria-label="搜索因果关系"
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="搜索原因事件、结果事件或关系说明"
+          />
+        </div>
+        <EnhancedSearchButton
+          isEnhancing={enhancedSearch.isEnhancing}
+          onClick={enhancedSearch.requestEnhanced}
         />
       </div>
+      <EnhancedSearchNotice notice={enhancedSearch.notice} />
 
       {deletion.pageError ? (
         <div className="form-alert list-action-error" role="alert">
           {deletion.pageError}
         </div>
       ) : null}
-      {relations.isPending ? <div className="table-state">加载因果关系…</div> : null}
-      {relations.isError || expanded.isError ? (
+      {relations.isPending && !relations.data ? (
+        <div className="table-state">加载因果关系…</div>
+      ) : null}
+      {(relations.isError && !semanticQueryError) || expanded.isError ? (
         <div className="table-state table-state--error" role="alert">
           <strong>无法加载因果关系</strong>
           <span>请确认服务连接后重试。</span>
@@ -183,7 +217,7 @@ export function RelationListPage() {
           </button>
         </div>
       ) : null}
-      {relations.isSuccess && visibleItems.length === 0 && !expandedId ? (
+      {relations.data && visibleItems.length === 0 && !expandedId ? (
         <div className="table-state table-state--empty">
           <strong>{hasActiveFilter ? '没有找到因果关系' : '还没有因果关系'}</strong>
           <span>
@@ -340,7 +374,7 @@ export function RelationListPage() {
           </table>
         </div>
       ) : null}
-      {relations.isSuccess ? (
+      {relations.data ? (
         <ListPagination
           page={relations.data.page}
           totalPages={relations.data.totalPages}

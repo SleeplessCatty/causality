@@ -14,18 +14,27 @@ import {
   type CaseListResponse,
   type CaseReference,
   type CaseRelationListResponse,
+  type SearchMode,
 } from '@causality/contracts';
 
 import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getCases(
-  query: { q: string; relationId?: string; page: number; limit?: number; orphan?: boolean },
+  query: {
+    q: string;
+    relationId?: string;
+    page: number;
+    limit?: number;
+    orphan?: boolean;
+    searchMode?: SearchMode;
+  },
   signal?: AbortSignal,
 ): Promise<CaseListResponse> {
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
   if (query.relationId) parameters.set('relationId', query.relationId);
   if (query.orphan) parameters.set('orphan', 'true');
+  if (query.searchMode === 'enhanced') parameters.set('searchMode', query.searchMode);
   parameters.set('page', String(query.page));
   parameters.set('limit', String(query.limit ?? MAIN_LIST_PAGE_SIZE));
   return caseListResponseSchema.parse(await requestJson(`/api/cases?${parameters}`, {}, signal));

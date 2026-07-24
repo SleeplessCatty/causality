@@ -9,6 +9,15 @@ import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
+import {
+  EnhancedSearchButton,
+  EnhancedSearchNotice,
+} from '../../../shared/search/EnhancedSearchButton';
+import {
+  isSemanticSearchError,
+  useEnhancedListSearch,
+  useEnhancedListSearchResult,
+} from '../../../shared/search/useEnhancedListSearch';
 import { deleteCase, getCaseDeletionImpact, getCases } from '../api/caseApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -26,6 +35,10 @@ export function CaseListPage() {
   const hasActiveFilter = Boolean(query || relationId) || orphan;
   const page = readListPage(searchParameters.get('page'));
   const [searchInput, setSearchInput] = useState(query);
+  const enhancedSearch = useEnhancedListSearch({
+    normalizedQuery: query,
+    resetPage: changePage,
+  });
 
   useEffect(() => setSearchInput(query), [query]);
 
@@ -48,19 +61,32 @@ export function CaseListPage() {
   }, [query, searchInput, setSearchParameters]);
 
   const cases = useQuery({
-    queryKey: ['cases', 'list', query, relationId || null, orphan, page],
+    queryKey: [
+      'cases',
+      'list',
+      query,
+      relationId || null,
+      orphan,
+      page,
+      enhancedSearch.mode,
+      enhancedSearch.mode === 'enhanced' ? enhancedSearch.requestId : 0,
+    ],
     queryFn: ({ signal }) =>
       getCases(
         {
           q: query,
           page,
           orphan,
+          searchMode: enhancedSearch.mode,
           ...(relationId ? { relationId } : {}),
         },
         signal,
       ),
     placeholderData: (previous) => previous,
   });
+  const semanticQueryError = isSemanticSearchError(cases.error);
+  const caseData = cases.data;
+  useEnhancedListSearchResult(enhancedSearch, cases);
   const deletion = usePermanentDeletion({
     getImpact: getCaseDeletionImpact,
     deleteRecord: deleteCase,
@@ -123,27 +149,34 @@ export function CaseListPage() {
         </div>
       ) : null}
 
-      <div className="event-search">
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="m16 16 4 4" />
-        </svg>
-        <input
-          aria-label="搜索案例"
-          type="search"
-          value={searchInput}
-          onChange={(event) => setSearchInput(event.target.value)}
-          placeholder="搜索案例内容"
+      <div className="list-search-controls">
+        <div className="event-search">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="m16 16 4 4" />
+          </svg>
+          <input
+            aria-label="搜索案例"
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="搜索案例内容"
+          />
+        </div>
+        <EnhancedSearchButton
+          isEnhancing={enhancedSearch.isEnhancing}
+          onClick={enhancedSearch.requestEnhanced}
         />
       </div>
+      <EnhancedSearchNotice notice={enhancedSearch.notice} />
 
       {deletion.pageError ? (
         <div className="form-alert list-action-error" role="alert">
           {deletion.pageError}
         </div>
       ) : null}
-      {cases.isPending ? <div className="table-state">加载案例…</div> : null}
-      {cases.isError ? (
+      {cases.isPending && !caseData ? <div className="table-state">加载案例…</div> : null}
+      {cases.isError && !semanticQueryError ? (
         <div className="table-state table-state--error" role="alert">
           <strong>无法加载案例</strong>
           <span>请确认服务连接后重试。</span>
@@ -156,7 +189,7 @@ export function CaseListPage() {
           </button>
         </div>
       ) : null}
-      {cases.isSuccess && cases.data.items.length === 0 ? (
+      {caseData && caseData.items.length === 0 ? (
         <div className="table-state table-state--empty">
           <strong>{hasActiveFilter ? '没有找到案例' : '还没有具体案例'}</strong>
           <span>{hasActiveFilter ? '尝试调整筛选条件。' : '创建第一条真实事件记录。'}</span>
@@ -171,7 +204,7 @@ export function CaseListPage() {
           ) : null}
         </div>
       ) : null}
-      {cases.isSuccess && cases.data.items.length > 0 ? (
+      {caseData && caseData.items.length > 0 ? (
         <div className="event-table-wrap">
           <table className="event-table case-table">
             <thead>
@@ -185,7 +218,7 @@ export function CaseListPage() {
               </tr>
             </thead>
             <tbody>
-              {cases.data.items.map((item) => (
+              {caseData.items.map((item) => (
                 <tr key={item.id} id={listRecordDomId(item.id)}>
                   <td>
                     <OverflowText content={item.content}>
@@ -226,11 +259,11 @@ export function CaseListPage() {
           </table>
         </div>
       ) : null}
-      {cases.isSuccess ? (
+      {caseData ? (
         <ListPagination
-          page={cases.data.page}
-          totalPages={cases.data.totalPages}
-          totalItems={cases.data.totalItems}
+          page={caseData.page}
+          totalPages={caseData.totalPages}
+          totalItems={caseData.totalItems}
           disabled={cases.isFetching}
           onPageChange={changePage}
           onNavigate={scrollMainContentToTop}

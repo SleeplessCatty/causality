@@ -9,6 +9,15 @@ import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
+import {
+  EnhancedSearchButton,
+  EnhancedSearchNotice,
+} from '../../../shared/search/EnhancedSearchButton';
+import {
+  isSemanticSearchError,
+  useEnhancedListSearch,
+  useEnhancedListSearchResult,
+} from '../../../shared/search/useEnhancedListSearch';
 import { deleteEvent, getEventDeletionImpact, getEvents } from '../api/eventApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -40,6 +49,10 @@ export function EventListPage() {
   const hasActiveFilter = Boolean(query) || orphan;
   const page = readListPage(searchParameters.get('page'));
   const [searchInput, setSearchInput] = useState(query);
+  const enhancedSearch = useEnhancedListSearch({
+    normalizedQuery: query,
+    resetPage: changePage,
+  });
 
   useEffect(() => setSearchInput(query), [query]);
 
@@ -62,10 +75,22 @@ export function EventListPage() {
   }, [query, searchInput, setSearchParameters]);
 
   const events = useQuery({
-    queryKey: ['events', 'list', query, orphan, page],
-    queryFn: ({ signal }) => getEvents({ q: query, page, orphan }, signal),
+    queryKey: [
+      'events',
+      'list',
+      query,
+      orphan,
+      page,
+      enhancedSearch.mode,
+      enhancedSearch.mode === 'enhanced' ? enhancedSearch.requestId : 0,
+    ],
+    queryFn: ({ signal }) =>
+      getEvents({ q: query, page, orphan, searchMode: enhancedSearch.mode }, signal),
     placeholderData: (previous) => previous,
   });
+  const semanticQueryError = isSemanticSearchError(events.error);
+  const eventData = events.data;
+  useEnhancedListSearchResult(enhancedSearch, events);
   const deletion = usePermanentDeletion({
     getImpact: getEventDeletionImpact,
     deleteRecord: deleteEvent,
@@ -116,27 +141,34 @@ export function EventListPage() {
         </Link>
       </div>
 
-      <div className="event-search">
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <circle cx="11" cy="11" r="6.5" />
-          <path d="m16 16 4 4" />
-        </svg>
-        <input
-          aria-label="搜索事件"
-          type="search"
-          value={searchInput}
-          onChange={(event) => setSearchInput(event.target.value)}
-          placeholder="搜索名称、别名或关键词"
+      <div className="list-search-controls">
+        <div className="event-search">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="6.5" />
+            <path d="m16 16 4 4" />
+          </svg>
+          <input
+            aria-label="搜索事件"
+            type="search"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            placeholder="搜索名称、别名或关键词"
+          />
+        </div>
+        <EnhancedSearchButton
+          isEnhancing={enhancedSearch.isEnhancing}
+          onClick={enhancedSearch.requestEnhanced}
         />
       </div>
+      <EnhancedSearchNotice notice={enhancedSearch.notice} />
 
       {deletion.pageError ? (
         <div className="form-alert list-action-error" role="alert">
           {deletion.pageError}
         </div>
       ) : null}
-      {events.isPending ? <div className="table-state">加载事件…</div> : null}
-      {events.isError ? (
+      {events.isPending && !eventData ? <div className="table-state">加载事件…</div> : null}
+      {events.isError && !semanticQueryError ? (
         <div className="table-state table-state--error" role="alert">
           <strong>无法加载事件</strong>
           <span>请确认服务连接后重试。</span>
@@ -149,7 +181,7 @@ export function EventListPage() {
           </button>
         </div>
       ) : null}
-      {events.isSuccess && events.data.items.length === 0 ? (
+      {eventData && eventData.items.length === 0 ? (
         <div className="table-state table-state--empty">
           <strong>{hasActiveFilter ? '没有找到事件' : '还没有原子事件'}</strong>
           <span>
@@ -164,7 +196,7 @@ export function EventListPage() {
           </Link>
         </div>
       ) : null}
-      {events.isSuccess && events.data.items.length > 0 ? (
+      {eventData && eventData.items.length > 0 ? (
         <div className="event-table-wrap">
           <table className="event-table">
             <thead>
@@ -180,7 +212,7 @@ export function EventListPage() {
               </tr>
             </thead>
             <tbody>
-              {events.data.items.map((event) => (
+              {eventData.items.map((event) => (
                 <tr key={event.id} id={listRecordDomId(event.id)}>
                   <td>
                     <OverflowText content={event.name}>
@@ -227,11 +259,11 @@ export function EventListPage() {
           </table>
         </div>
       ) : null}
-      {events.isSuccess ? (
+      {eventData ? (
         <ListPagination
-          page={events.data.page}
-          totalPages={events.data.totalPages}
-          totalItems={events.data.totalItems}
+          page={eventData.page}
+          totalPages={eventData.totalPages}
+          totalItems={eventData.totalItems}
           disabled={events.isFetching}
           onPageChange={changePage}
           onNavigate={scrollMainContentToTop}

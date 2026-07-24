@@ -413,4 +413,55 @@ describe('case pages', () => {
       listFocusId: detail.id,
     });
   });
+
+  it('keeps enhanced case mode while paging and resets it when the search text changes', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = new URL(String(input), 'http://localhost');
+      const page = Number(url.searchParams.get('page') ?? '1');
+      return response({
+        items: [listSummary(page)],
+        page,
+        pageSize: 50,
+        totalItems: 101,
+        totalPages: 3,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/cases?q=%E5%85%B3%E7%A8%8E', <CaseListPage />);
+    await screen.findByText('第 1 页案例');
+
+    fireEvent.click(screen.getByRole('button', { name: '增强查询' }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input).includes('searchMode=enhanced')),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => {
+          const url = new URL(String(input), 'http://localhost');
+          return (
+            url.searchParams.get('searchMode') === 'enhanced' &&
+            url.searchParams.get('page') === '2'
+          );
+        }),
+      ).toBe(true),
+    );
+
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索案例' }), {
+      target: { value: '新案例' },
+    });
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => {
+          const url = new URL(String(input), 'http://localhost');
+          return url.searchParams.get('q') === '新案例' && !url.searchParams.has('searchMode');
+        }),
+      ).toBe(true),
+    );
+  });
 });

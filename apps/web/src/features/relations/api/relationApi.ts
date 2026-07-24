@@ -13,19 +13,28 @@ import {
   type RelationFormInput,
   type RelationListResponse,
   type RelationPairCheckResponse,
+  type SearchMode,
 } from '@causality/contracts';
 import type { CaseReference } from '@causality/contracts';
 
 import { requestJson } from '../../../shared/api/httpClient';
 
 export async function getRelations(
-  query: { q: string; page: number; limit?: number; orphan?: boolean; eventId?: string },
+  query: {
+    q: string;
+    page: number;
+    limit?: number;
+    orphan?: boolean;
+    eventId?: string;
+    searchMode?: SearchMode;
+  },
   signal?: AbortSignal,
 ): Promise<RelationListResponse> {
   const parameters = new URLSearchParams();
   if (query.q) parameters.set('q', query.q);
   if (query.orphan) parameters.set('orphan', 'true');
   if (query.eventId) parameters.set('eventId', query.eventId);
+  if (query.searchMode === 'enhanced') parameters.set('searchMode', query.searchMode);
   parameters.set('page', String(query.page));
   parameters.set('limit', String(query.limit ?? MAIN_LIST_PAGE_SIZE));
   return relationListResponseSchema.parse(

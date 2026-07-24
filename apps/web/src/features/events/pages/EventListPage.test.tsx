@@ -396,4 +396,56 @@ describe('EventListPage', () => {
       `/relations?eventId=${secondEvent.id}`,
     );
   });
+
+  it('runs enhanced search from page one without storing the mode in the URL', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = new URL(String(input), 'http://localhost');
+      return jsonResponse({
+        ...firstPage,
+        page: Number(url.searchParams.get('page')),
+        totalItems: 101,
+        totalPages: 3,
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderList('/events?q=%E6%94%BF%E7%AD%96&page=2');
+    await screen.findByText('共 101 条 · 第 2/3 页');
+
+    fireEvent.click(screen.getByRole('button', { name: '增强查询' }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => {
+          const url = new URL(String(input), 'http://localhost');
+          return (
+            url.pathname === '/api/events' &&
+            url.searchParams.get('searchMode') === 'enhanced' &&
+            url.searchParams.get('page') === '1'
+          );
+        }),
+      ).toBe(true),
+    );
+    expect(new URLSearchParams(router.state.location.search).has('searchMode')).toBe(false);
+  });
+
+  it('keeps normal event rows and links settings when enhanced search is unavailable', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = new URL(String(input), 'http://localhost');
+      return url.searchParams.get('searchMode') === 'enhanced'
+        ? jsonResponse({ code: 'SEMANTIC_INDEX_FAILED', message: '索引失败详情' }, 503)
+        : jsonResponse({ ...firstPage, totalItems: 1, totalPages: 1 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderList('/events?q=%E6%94%BF%E7%AD%96');
+    expect(await screen.findByRole('link', { name: '原油价格上涨' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '增强查询' }));
+
+    expect(await screen.findByText('语义索引生成失败')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '前往参数配置' }).getAttribute('href')).toBe(
+      '/settings',
+    );
+    expect(screen.getByRole('link', { name: '原油价格上涨' })).toBeTruthy();
+    expect(screen.queryByText('无法加载事件')).toBeNull();
+  });
 });

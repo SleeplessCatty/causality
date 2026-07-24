@@ -284,5 +284,30 @@ describe('RelationListPage', () => {
         );
       }),
     ).toBe(true);
+    await waitFor(() => expect(listRequests).toBeGreaterThanOrEqual(3));
+  });
+
+  it('runs enhanced relation search and shows the updating-index notice', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const enhanced = new URL(String(input), 'http://localhost').searchParams.get('searchMode');
+      return jsonResponse({
+        items: [relation],
+        page: 1,
+        pageSize: 50,
+        totalItems: 1,
+        totalPages: 1,
+        semanticIndexUpdating: enhanced === 'enhanced',
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderList('/relations?q=%E6%94%BF%E7%AD%96');
+    await screen.findByText('原油价格上涨');
+
+    fireEvent.click(screen.getByRole('button', { name: '增强查询' }));
+
+    expect(await screen.findByText('语义索引更新中，结果可能暂不包含最新修改')).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('searchMode=enhanced')),
+    ).toBe(true);
   });
 });
