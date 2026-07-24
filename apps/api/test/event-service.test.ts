@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { EventRepository } from '../src/features/events/eventRepository.js';
 import { EventService } from '../src/features/events/eventService.js';
+import type { SemanticQueryService } from '../src/features/semantic/semanticQueryService.js';
 
 const detail: EventDetail = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -25,7 +26,22 @@ const input = {
 
 function repository(overrides: Partial<EventRepository> = {}): EventRepository {
   return {
-    list: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
+    list: vi.fn().mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 50,
+      totalItems: 0,
+      totalPages: 1,
+      semanticIndexUpdating: false,
+    }),
+    listEnhanced: vi.fn().mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 50,
+      totalItems: 0,
+      totalPages: 1,
+      semanticIndexUpdating: true,
+    }),
     findCandidates: vi.fn().mockResolvedValue([]),
     findById: vi.fn().mockResolvedValue(detail),
     existsById: vi.fn().mockResolvedValue(true),
@@ -38,7 +54,46 @@ function repository(overrides: Partial<EventRepository> = {}): EventRepository {
   };
 }
 
+function semanticQueryService(): SemanticQueryService {
+  return {
+    candidateIds: vi.fn().mockResolvedValue({
+      ids: ['10000000-0000-4000-8000-000000000001'],
+      semanticIndexUpdating: true,
+    }),
+  } as unknown as SemanticQueryService;
+}
+
 describe('EventService', () => {
+  it('uses semantic candidates only for an enhanced event list query', async () => {
+    const eventRepository = repository();
+    const semantic = semanticQueryService();
+    const service = new EventService(eventRepository, semantic);
+
+    await service.list({
+      q: '政策',
+      orphan: false,
+      searchMode: 'standard',
+      page: 1,
+      limit: 50,
+    });
+    expect(semantic.candidateIds).not.toHaveBeenCalled();
+    expect(eventRepository.list).toHaveBeenCalledTimes(1);
+
+    await service.list({
+      q: '政策',
+      orphan: false,
+      searchMode: 'enhanced',
+      page: 1,
+      limit: 50,
+    });
+    expect(semantic.candidateIds).toHaveBeenCalledWith('event', '政策');
+    expect(eventRepository.listEnhanced).toHaveBeenCalledWith(
+      expect.objectContaining({ q: '政策', searchMode: 'enhanced' }),
+      ['10000000-0000-4000-8000-000000000001'],
+      true,
+    );
+  });
+
   it('returns a stable not-found error for missing detail and replacement targets', async () => {
     const service = new EventService(
       repository({

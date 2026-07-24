@@ -11,6 +11,8 @@ const app = buildApp({
   corsOrigin: env.CORS_ORIGIN,
   checkDatabase: () => isDatabaseReady(pool),
   databasePool: pool,
+  semanticWorkerUrl: env.SEMANTIC_WORKER_URL,
+  semanticQueryTimeoutMs: env.SEMANTIC_QUERY_TIMEOUT_MS,
   logger:
     env.NODE_ENV === 'development'
       ? {

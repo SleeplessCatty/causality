@@ -10,6 +10,7 @@ import type {
 } from '@causality/contracts';
 
 import type { RelationRepository } from './relationRepository.js';
+import type { SemanticQueryService } from '../semantic/semanticQueryService.js';
 import {
   RelationCaseContentConflictError,
   RelationCaseNotFoundError,
@@ -76,10 +77,16 @@ function mapWriteError(error: unknown): never {
 }
 
 export class RelationService {
-  constructor(private readonly repository: RelationRepository) {}
+  constructor(
+    private readonly repository: RelationRepository,
+    private readonly semanticQuery?: Pick<SemanticQueryService, 'candidateIds'>,
+  ) {}
 
-  list(query: RelationListQuery): Promise<RelationListResponse> {
-    return this.repository.list(query);
+  async list(query: RelationListQuery): Promise<RelationListResponse> {
+    if (query.searchMode === 'standard') return this.repository.list(query);
+    if (!this.semanticQuery) throw new Error('Semantic query service is not configured');
+    const candidates = await this.semanticQuery.candidateIds('relation', query.q);
+    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexUpdating);
   }
 
   checkPair(query: RelationPairCheckQuery): Promise<RelationPairCheckResponse> {

@@ -9,6 +9,7 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { buildApp } from '../src/app.js';
+import { PostgresRelationRepository } from '../src/features/relations/relationRepository.js';
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 describe.sequential('relation REST API', () => {
@@ -18,7 +19,11 @@ describe.sequential('relation REST API', () => {
   let eventSequence = 0;
 
   beforeAll(async () => {
-    context = await startPostgresTestContext('causality_relations_test');
+    context = await startPostgresTestContext('causality_relations_test', {
+      semanticWorkerClient: {
+        embedQuery: async () => [1, ...Array.from({ length: 383 }, () => 0)],
+      },
+    });
     ({ pool, app } = context);
   }, 120_000);
 
@@ -624,6 +629,133 @@ describe.sequential('relation REST API', () => {
     } finally {
       client.release();
     }
+  });
+
+  it('merges normal relation matches before semantic candidates and applies both list filters', async () => {
+    const sharedEventId = '19000000-0000-4000-8000-000000000001';
+    const exactEventId = '19000000-0000-4000-8000-000000000002';
+    const prefixEventId = '19000000-0000-4000-8000-000000000003';
+    const semanticCauseId = '19000000-0000-4000-8000-000000000004';
+    const semanticEffectId = '19000000-0000-4000-8000-000000000005';
+    const exactId = '29000000-0000-4000-8000-000000000001';
+    const prefixId = '29000000-0000-4000-8000-000000000002';
+    const semanticOnlyId = '29000000-0000-4000-8000-000000000003';
+    const containsId = '29000000-0000-4000-8000-000000000004';
+    const linkedCaseId = '39000000-0000-4000-8000-000000000001';
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values
+         ($1, '关系合并共同事件'),
+         ($2, 'SEMANTIC_RELATION_MERGE'),
+         ($3, 'SEMANTIC_RELATION_MERGE 扩展'),
+         ($4, '语义关系原因'),
+         ($5, '语义关系结果')`,
+      [sharedEventId, exactEventId, prefixEventId, semanticCauseId, semanticEffectId],
+    );
+    await pool!.query(
+      `insert into causal_relations
+         (id, cause_event_id, effect_event_id, confidence)
+       values
+         ($1, $2, $3, 50),
+         ($4, $2, $5, 50),
+         ($6, $7, $8, 50),
+         ($9, $8, $7, 50)`,
+      [
+        exactId,
+        sharedEventId,
+        exactEventId,
+        prefixId,
+        prefixEventId,
+        semanticOnlyId,
+        semanticCauseId,
+        semanticEffectId,
+        containsId,
+      ],
+    );
+    await pool!.query(
+      `update causal_relations
+       set description = '前置 SEMANTIC_RELATION_MERGE 后置'
+       where id = $1`,
+      [containsId],
+    );
+    await pool!.query(
+      `insert into concrete_cases (id, content)
+       values ($1, '语义关系已关联案例')`,
+      [linkedCaseId],
+    );
+    await pool!.query(
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+       values ($1, $2)`,
+      [semanticOnlyId, linkedCaseId],
+    );
+    const repository = new PostgresRelationRepository(pool!);
+    const query = {
+      q: 'SEMANTIC_RELATION_MERGE',
+      orphan: false,
+      searchMode: 'enhanced' as const,
+      page: 1,
+      limit: 50,
+    };
+
+    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], false);
+    expect(merged.items.map((item) => item.id)).toEqual([
+      exactId,
+      prefixId,
+      containsId,
+      semanticOnlyId,
+    ]);
+    expect(merged).toMatchObject({
+      pageSize: 50,
+      totalItems: 4,
+      totalPages: 1,
+      semanticIndexUpdating: false,
+    });
+
+    const filtered = await repository.listEnhanced(
+      { ...query, orphan: true, eventId: sharedEventId },
+      [semanticOnlyId, exactId],
+      true,
+    );
+    expect(filtered.items.map((item) => item.id)).toEqual([exactId, prefixId]);
+    expect(filtered.totalItems).toBe(2);
+    expect(filtered.semanticIndexUpdating).toBe(true);
+
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'multilingual-e5-small';
+       update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 1
+       where singleton_key = true`,
+    );
+    const vector = `[1,${Array.from({ length: 383 }, () => 0).join(',')}]`;
+    await pool!.query(
+      `insert into semantic_embeddings
+         (entity_type, entity_id, model_code, source_hash, embedding)
+       values
+         ('relation', $1, 'multilingual-e5-small', repeat('a', 64), $3::vector),
+         ('relation', $2, 'multilingual-e5-small', repeat('b', 64), $3::vector)`,
+      [exactId, semanticOnlyId, vector],
+    );
+    const response = await app!.inject({
+      method: 'GET',
+      url: '/api/relations?q=SEMANTIC_RELATION_MERGE&searchMode=enhanced',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<RelationListResponse>().items.map((item) => item.id)).toEqual([
+      exactId,
+      prefixId,
+      containsId,
+      semanticOnlyId,
+    ]);
+    expect(response.json<RelationListResponse>()).toMatchObject({
+      pageSize: 50,
+      totalItems: 4,
+      semanticIndexUpdating: false,
+    });
   });
 
   it('returns not found and publishes relation paths in OpenAPI', async () => {

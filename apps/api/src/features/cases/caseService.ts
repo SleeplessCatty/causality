@@ -12,6 +12,7 @@ import type {
 } from '@causality/contracts';
 
 import type { CaseRepository } from './caseRepository.js';
+import type { SemanticQueryService } from '../semantic/semanticQueryService.js';
 
 export type CaseServiceErrorCode = 'CASE_NOT_FOUND' | 'CASE_CONTENT_CONFLICT';
 
@@ -32,10 +33,16 @@ interface PostgreSqlError {
 }
 
 export class CaseService {
-  constructor(private readonly repository: CaseRepository) {}
+  constructor(
+    private readonly repository: CaseRepository,
+    private readonly semanticQuery?: Pick<SemanticQueryService, 'candidateIds'>,
+  ) {}
 
-  list(query: CaseListQuery): Promise<CaseListResponse> {
-    return this.repository.list(query);
+  async list(query: CaseListQuery): Promise<CaseListResponse> {
+    if (query.searchMode === 'standard') return this.repository.list(query);
+    if (!this.semanticQuery) throw new Error('Semantic query service is not configured');
+    const candidates = await this.semanticQuery.candidateIds('case', query.q);
+    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexUpdating);
   }
 
   candidates(query: CaseCandidateQuery): Promise<CaseCandidateListResponse> {

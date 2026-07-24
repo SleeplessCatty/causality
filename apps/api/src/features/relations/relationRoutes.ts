@@ -24,10 +24,20 @@ import { InvalidCaseCursorError } from '../cases/caseCursor.js';
 import { PostgresCaseRepository } from '../cases/caseRepository.js';
 import { PostgresRelationRepository } from './relationRepository.js';
 import { RelationService, RelationServiceError } from './relationService.js';
+import {
+  SemanticQueryError,
+  semanticQueryErrorStatus,
+  type SemanticQueryService,
+} from '../semantic/semanticQueryService.js';
 
 const relationParamsSchema = z.object({ relationId: z.uuid() }).strict();
 
 function sendRelationError(error: unknown, reply: FastifyReply) {
+  if (error instanceof SemanticQueryError) {
+    return reply
+      .status(semanticQueryErrorStatus(error))
+      .send({ code: error.code, message: error.message });
+  }
   if (error instanceof InvalidCaseCursorError) {
     return reply.status(400).send({ code: 'VALIDATION_ERROR', message: '分页游标不合法' });
   }
@@ -49,11 +59,15 @@ function sendRelationError(error: unknown, reply: FastifyReply) {
   throw error;
 }
 
-export function registerRelationRoutes(app: FastifyInstance, pool: Pool): void {
+export function registerRelationRoutes(
+  app: FastifyInstance,
+  pool: Pool,
+  semanticQuery: SemanticQueryService,
+): void {
   const routes = app.withTypeProvider<ZodTypeProvider>();
   routes.setValidatorCompiler(validatorCompiler);
   routes.setSerializerCompiler(serializerCompiler);
-  const service = new RelationService(new PostgresRelationRepository(pool));
+  const service = new RelationService(new PostgresRelationRepository(pool), semanticQuery);
   const caseRepository = new PostgresCaseRepository(pool);
 
   routes.get(
@@ -62,7 +76,13 @@ export function registerRelationRoutes(app: FastifyInstance, pool: Pool): void {
       schema: {
         tags: ['relations'],
         querystring: relationListQuerySchema,
-        response: { 200: relationListResponseSchema, 400: apiErrorSchema, 500: apiErrorSchema },
+        response: {
+          200: relationListResponseSchema,
+          400: apiErrorSchema,
+          409: apiErrorSchema,
+          503: apiErrorSchema,
+          500: apiErrorSchema,
+        },
       },
     },
     async (request, reply) => {

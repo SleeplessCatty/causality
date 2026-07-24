@@ -8,6 +8,7 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { buildApp } from '../src/app.js';
+import { PostgresEventRepository } from '../src/features/events/eventRepository.js';
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 describe.sequential('event REST API', () => {
@@ -16,7 +17,11 @@ describe.sequential('event REST API', () => {
   let pool: Pool | undefined;
 
   beforeAll(async () => {
-    context = await startPostgresTestContext('causality_events_test');
+    context = await startPostgresTestContext('causality_events_test', {
+      semanticWorkerClient: {
+        embedQuery: async () => [1, ...Array.from({ length: 383 }, () => 0)],
+      },
+    });
     ({ app, pool } = context);
   }, 120_000);
 
@@ -505,6 +510,112 @@ describe.sequential('event REST API', () => {
     expect(first.items.some((item) => item.id === orphanIds[0])).toBe(false);
     expect(clamped).toMatchObject({ page: 2, pageSize: 20, totalItems: 30, totalPages: 2 });
     expect(clamped.items).toHaveLength(10);
+  });
+
+  it('merges normal event matches before unique semantic candidates and applies orphan filtering', async () => {
+    const exactId = '18000000-0000-4000-8000-000000000001';
+    const prefixId = '18000000-0000-4000-8000-000000000002';
+    const semanticOnlyId = '18000000-0000-4000-8000-000000000003';
+    const linkedEffectId = '18000000-0000-4000-8000-000000000004';
+    const containsId = '18000000-0000-4000-8000-000000000005';
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values
+         ($1, 'SEMANTIC_EVENT_MERGE'),
+         ($2, 'SEMANTIC_EVENT_MERGE 扩展'),
+         ($3, '语义候选事件'),
+         ($4, '语义候选关联结果'),
+         ($5, '前置 SEMANTIC_EVENT_MERGE 后置')`,
+      [exactId, prefixId, semanticOnlyId, linkedEffectId, containsId],
+    );
+    await pool!.query(
+      `insert into causal_relations (cause_event_id, effect_event_id, confidence)
+       values ($1, $2, 50)`,
+      [semanticOnlyId, linkedEffectId],
+    );
+    const repository = new PostgresEventRepository(pool!);
+    const query = {
+      q: 'SEMANTIC_EVENT_MERGE',
+      orphan: false,
+      searchMode: 'enhanced' as const,
+      page: 1,
+      limit: 50,
+    };
+
+    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], true);
+    expect(merged.items.map((item) => item.id)).toEqual([
+      exactId,
+      prefixId,
+      containsId,
+      semanticOnlyId,
+    ]);
+    expect(merged).toMatchObject({
+      page: 1,
+      pageSize: 50,
+      totalItems: 4,
+      totalPages: 1,
+      semanticIndexUpdating: true,
+    });
+
+    const orphan = await repository.listEnhanced(
+      { ...query, orphan: true },
+      [semanticOnlyId, exactId],
+      false,
+    );
+    expect(orphan.items.map((item) => item.id)).toEqual([exactId, prefixId, containsId]);
+    expect(orphan.totalItems).toBe(3);
+
+    const normalOnly = await repository.listEnhanced(query, [], false);
+    expect(normalOnly.items.map((item) => item.id)).toEqual([exactId, prefixId, containsId]);
+    expect(normalOnly.totalItems).toBe(3);
+
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'multilingual-e5-small';
+       update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 1
+       where singleton_key = true`,
+    );
+    const vector = `[1,${Array.from({ length: 383 }, () => 0).join(',')}]`;
+    await pool!.query(
+      `insert into semantic_embeddings
+         (entity_type, entity_id, model_code, source_hash, embedding)
+       values
+         ('event', $1, 'multilingual-e5-small', repeat('a', 64), $3::vector),
+         ('event', $2, 'multilingual-e5-small', repeat('b', 64), $3::vector)`,
+      [exactId, semanticOnlyId, vector],
+    );
+    const response = await app!.inject({
+      method: 'GET',
+      url: '/api/events?q=SEMANTIC_EVENT_MERGE&searchMode=enhanced',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<EventListResponse>().items.map((item) => item.id)).toEqual([
+      exactId,
+      prefixId,
+      containsId,
+      semanticOnlyId,
+    ]);
+    expect(response.json<EventListResponse>()).toMatchObject({
+      pageSize: 50,
+      totalItems: 4,
+      semanticIndexUpdating: false,
+    });
+
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'updating'
+       where singleton_key = true`,
+    );
+    const updating = await app!.inject({
+      method: 'GET',
+      url: '/api/events?q=SEMANTIC_EVENT_MERGE&searchMode=enhanced',
+    });
+    expect(updating.json<EventListResponse>().semanticIndexUpdating).toBe(true);
   });
 
   it('returns not found from both event deletion endpoints', async () => {

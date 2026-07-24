@@ -8,6 +8,7 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { buildApp } from '../src/app.js';
+import { PostgresCaseRepository } from '../src/features/cases/caseRepository.js';
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 describe.sequential('case REST API', () => {
@@ -16,7 +17,11 @@ describe.sequential('case REST API', () => {
   let app: ReturnType<typeof buildApp> | undefined;
 
   beforeAll(async () => {
-    context = await startPostgresTestContext('causality_cases_test');
+    context = await startPostgresTestContext('causality_cases_test', {
+      semanticWorkerClient: {
+        embedQuery: async () => [1, ...Array.from({ length: 383 }, () => 0)],
+      },
+    });
     ({ pool, app } = context);
   }, 120_000);
 
@@ -339,6 +344,114 @@ describe.sequential('case REST API', () => {
       `select row_to_json(data_check_state)::text as state from data_check_state`,
     );
     expect(stateAfter.rows[0]?.state).toBe(stateBefore.rows[0]?.state);
+  });
+
+  it('merges normal case matches before semantic candidates and applies relation and orphan filters', async () => {
+    const causeId = '16000000-0000-4000-8000-000000000001';
+    const effectId = '16000000-0000-4000-8000-000000000002';
+    const relationId = '26000000-0000-4000-8000-000000000001';
+    const exactId = '36000000-0000-4000-8000-000000000001';
+    const prefixId = '36000000-0000-4000-8000-000000000002';
+    const semanticOnlyId = '36000000-0000-4000-8000-000000000003';
+    const containsId = '36000000-0000-4000-8000-000000000004';
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values ($1, '案例合并原因'), ($2, '案例合并结果')`,
+      [causeId, effectId],
+    );
+    await pool!.query(
+      `insert into causal_relations
+         (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $2, $3, 50)`,
+      [relationId, causeId, effectId],
+    );
+    await pool!.query(
+      `insert into concrete_cases (id, content)
+       values
+         ($1, 'SEMANTIC_CASE_MERGE'),
+         ($2, 'SEMANTIC_CASE_MERGE 扩展'),
+         ($3, '语义候选具体案例'),
+         ($4, '前置 SEMANTIC_CASE_MERGE 后置')`,
+      [exactId, prefixId, semanticOnlyId, containsId],
+    );
+    await pool!.query(
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+       values ($1, $2), ($1, $3), ($1, $4)`,
+      [relationId, exactId, prefixId, containsId],
+    );
+    const repository = new PostgresCaseRepository(pool!);
+    const query = {
+      q: 'SEMANTIC_CASE_MERGE',
+      orphan: false,
+      searchMode: 'enhanced' as const,
+      page: 1,
+      limit: 50,
+    };
+
+    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], false);
+    expect(merged.items.map((item) => item.id)).toEqual([
+      exactId,
+      prefixId,
+      containsId,
+      semanticOnlyId,
+    ]);
+    expect(merged).toMatchObject({
+      pageSize: 50,
+      totalItems: 4,
+      totalPages: 1,
+      semanticIndexUpdating: false,
+    });
+
+    const linked = await repository.listEnhanced(
+      { ...query, relationId },
+      [semanticOnlyId, exactId],
+      true,
+    );
+    expect(linked.items.map((item) => item.id)).toEqual([exactId, prefixId, containsId]);
+
+    const orphan = await repository.listEnhanced(
+      { ...query, orphan: true },
+      [semanticOnlyId, exactId],
+      false,
+    );
+    expect(orphan.items.map((item) => item.id)).toEqual([semanticOnlyId]);
+
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'multilingual-e5-small';
+       update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 1
+       where singleton_key = true`,
+    );
+    const vector = `[1,${Array.from({ length: 383 }, () => 0).join(',')}]`;
+    await pool!.query(
+      `insert into semantic_embeddings
+         (entity_type, entity_id, model_code, source_hash, embedding)
+       values
+         ('case', $1, 'multilingual-e5-small', repeat('a', 64), $3::vector),
+         ('case', $2, 'multilingual-e5-small', repeat('b', 64), $3::vector)`,
+      [exactId, semanticOnlyId, vector],
+    );
+    const response = await app!.inject({
+      method: 'GET',
+      url: '/api/cases?q=SEMANTIC_CASE_MERGE&searchMode=enhanced',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<CaseListResponse>().items.map((item) => item.id)).toEqual([
+      exactId,
+      prefixId,
+      containsId,
+      semanticOnlyId,
+    ]);
+    expect(response.json<CaseListResponse>()).toMatchObject({
+      pageSize: 50,
+      totalItems: 4,
+      semanticIndexUpdating: false,
+    });
   });
 
   it('returns stable client errors and publishes case paths', async () => {

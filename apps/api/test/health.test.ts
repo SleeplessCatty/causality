@@ -107,6 +107,8 @@ describe('environment configuration', () => {
       PORT: 3000,
       LOG_LEVEL: 'info',
       CORS_ORIGIN: 'http://localhost:5173',
+      SEMANTIC_WORKER_URL: 'http://127.0.0.1:3100',
+      SEMANTIC_QUERY_TIMEOUT_MS: 10_000,
     });
   });
 

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CaseRepository } from '../src/features/cases/caseRepository.js';
 import { CaseService } from '../src/features/cases/caseService.js';
+import type { SemanticQueryService } from '../src/features/semantic/semanticQueryService.js';
 
 const detail: CaseDetail = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -15,7 +16,22 @@ const detail: CaseDetail = {
 
 function repository(overrides: Partial<CaseRepository> = {}): CaseRepository {
   return {
-    list: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
+    list: vi.fn().mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 50,
+      totalItems: 0,
+      totalPages: 1,
+      semanticIndexUpdating: false,
+    }),
+    listEnhanced: vi.fn().mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 50,
+      totalItems: 0,
+      totalPages: 1,
+      semanticIndexUpdating: true,
+    }),
     listForRelation: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
     candidates: vi.fn().mockResolvedValue({ items: [] }),
     findById: vi.fn().mockResolvedValue(detail),
@@ -29,7 +45,47 @@ function repository(overrides: Partial<CaseRepository> = {}): CaseRepository {
   };
 }
 
+function semanticQueryService(): SemanticQueryService {
+  return {
+    candidateIds: vi.fn().mockResolvedValue({
+      ids: ['30000000-0000-4000-8000-000000000001'],
+      semanticIndexUpdating: true,
+    }),
+  } as unknown as SemanticQueryService;
+}
+
 describe('CaseService', () => {
+  it('merges semantic candidates only for an enhanced case list query', async () => {
+    const caseRepository = repository();
+    const semantic = semanticQueryService();
+    const service = new CaseService(caseRepository, semantic);
+
+    await service.list({
+      q: '关税',
+      relationId: undefined,
+      orphan: false,
+      searchMode: 'standard',
+      page: 1,
+      limit: 50,
+    });
+    expect(semantic.candidateIds).not.toHaveBeenCalled();
+
+    await service.list({
+      q: '关税',
+      relationId: undefined,
+      orphan: false,
+      searchMode: 'enhanced',
+      page: 1,
+      limit: 50,
+    });
+    expect(semantic.candidateIds).toHaveBeenCalledWith('case', '关税');
+    expect(caseRepository.listEnhanced).toHaveBeenCalledWith(
+      expect.objectContaining({ q: '关税' }),
+      ['30000000-0000-4000-8000-000000000001'],
+      true,
+    );
+  });
+
   it('returns a stable not-found error for missing detail and replacement targets', async () => {
     const service = new CaseService(
       repository({

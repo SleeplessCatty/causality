@@ -4,6 +4,7 @@ import { inject } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { runMigrations } from '../../src/database/migrate.js';
 import { isDatabaseReady } from '../../src/database/readiness.js';
+import type { SemanticWorkerClient } from '../../src/features/semantic/semanticWorkerClient.js';
 
 const allowedDatabaseNames = new Set([
   'causality_cases_test',
@@ -38,7 +39,10 @@ export function closePostgresTestPool(pool: Pool): Promise<void> {
   return closure;
 }
 
-export async function startPostgresTestContext(databaseName: string): Promise<{
+export async function startPostgresTestContext(
+  databaseName: string,
+  options: { semanticWorkerClient?: SemanticWorkerClient } = {},
+): Promise<{
   pool: Pool;
   app: ReturnType<typeof buildApp>;
   close(): Promise<void>;
@@ -62,6 +66,9 @@ export async function startPostgresTestContext(databaseName: string): Promise<{
       logger: false,
       checkDatabase: () => isDatabaseReady(pool),
       databasePool: pool,
+      ...(options.semanticWorkerClient
+        ? { semanticWorkerClient: options.semanticWorkerClient }
+        : {}),
     });
     await app.ready();
   } catch (error) {

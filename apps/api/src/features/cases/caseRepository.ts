@@ -29,6 +29,7 @@ import {
   resolvePageWindow,
   type CountRow,
 } from '../shared/pagePagination.js';
+import { buildSemanticMergeCtes, buildSemanticValues } from '../shared/semanticListMerge.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface CaseRow {
@@ -63,6 +64,11 @@ interface RelationCaseRow extends CaseRow {
 
 export interface CaseRepository {
   list(query: CaseListQuery): Promise<CaseListResponse>;
+  listEnhanced(
+    query: CaseListQuery,
+    semanticIds: string[],
+    semanticIndexUpdating: boolean,
+  ): Promise<CaseListResponse>;
   listForRelation(
     relationId: string,
     query: RelationCaseListQuery,
@@ -163,6 +169,84 @@ export class PostgresCaseRepository implements CaseRepository {
       totalItems,
       totalPages,
       semanticIndexUpdating: false,
+    };
+  }
+
+  async listEnhanced(
+    query: CaseListQuery,
+    semanticIds: string[],
+    semanticIndexUpdating: boolean,
+  ): Promise<CaseListResponse> {
+    const normalized = normalizeSearchQuery(query.q);
+    const escaped = escapeLikePattern(normalized);
+    const semantic = buildSemanticValues(semanticIds, 4);
+    const relationParameter = 4 + semantic.parameters.length;
+    const orphanParameter = relationParameter + 1;
+    const parameters: unknown[] = [
+      normalized,
+      `${escaped}%`,
+      `%${escaped}%`,
+      ...semantic.parameters,
+      query.relationId ?? null,
+      query.orphan,
+    ];
+    const mergedCte = `with ranked as (
+         ${caseSelect},
+                case
+                  when lower(c.content) = $1 then 1
+                  when lower(c.content) like $2 escape '\\' then 2
+                  when lower(c.content) like $3 escape '\\' then 3
+                  else null
+                end::int as rank
+         from concrete_cases c
+       ), ${buildSemanticMergeCtes(
+         `select id, rank as normal_rank
+          from ranked
+          where rank is not null`,
+         semantic.sql,
+       )}, filtered as (
+         select ranked.*,
+                merged.source_priority,
+                merged.normal_rank,
+                merged.semantic_rank
+         from merged
+         join ranked on ranked.id = merged.id
+         where ($${relationParameter}::uuid is null or exists (
+           select 1
+           from causal_relation_cases relation_filter
+           where relation_filter.concrete_case_id = ranked.id
+             and relation_filter.causal_relation_id = $${relationParameter}
+         ))
+           and ($${orphanParameter}::boolean = false or ranked.relation_count = 0)
+       )`;
+    const countResult = await this.pool.query<CountRow>(
+      `${mergedCte}
+       select count(*)::int as total
+       from filtered`,
+      parameters,
+    );
+    const totalItems = countResult.rows[0]!.total;
+    const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
+    const rowsResult = await this.pool.query<CaseRow>(
+      `${mergedCte}
+       select *
+       from filtered
+       order by source_priority,
+                normal_rank nulls last,
+                semantic_rank nulls last,
+                updated_at desc,
+                id desc
+       limit $${orphanParameter + 1}
+       offset $${orphanParameter + 2}`,
+      [...parameters, query.limit, offset],
+    );
+    return {
+      items: rowsResult.rows.map(summary),
+      page,
+      pageSize: query.limit,
+      totalItems,
+      totalPages,
+      semanticIndexUpdating,
     };
   }
 

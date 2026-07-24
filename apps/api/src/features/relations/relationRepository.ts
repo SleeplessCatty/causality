@@ -17,6 +17,7 @@ import {
   resolvePageWindow,
   type CountRow,
 } from '../shared/pagePagination.js';
+import { buildSemanticMergeCtes, buildSemanticValues } from '../shared/semanticListMerge.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface RelationRow {
@@ -50,6 +51,11 @@ export class RelationCaseContentConflictError extends Error {
 
 export interface RelationRepository {
   list(query: RelationListQuery): Promise<RelationListResponse>;
+  listEnhanced(
+    query: RelationListQuery,
+    semanticIds: string[],
+    semanticIndexUpdating: boolean,
+  ): Promise<RelationListResponse>;
   checkPair(query: RelationPairCheckQuery): Promise<RelationPairCheckResponse>;
   findById(id: string): Promise<RelationDetail | null>;
   create(input: RelationFormInput): Promise<RelationDetail>;
@@ -160,6 +166,73 @@ export class PostgresRelationRepository implements RelationRepository {
       totalItems,
       totalPages,
       semanticIndexUpdating: false,
+    };
+  }
+
+  async listEnhanced(
+    query: RelationListQuery,
+    semanticIds: string[],
+    semanticIndexUpdating: boolean,
+  ): Promise<RelationListResponse> {
+    const normalizedQuery = normalizeSearchQuery(query.q);
+    const escaped = escapeLikePattern(normalizedQuery);
+    const semantic = buildSemanticValues(semanticIds, 4);
+    const orphanParameter = 4 + semantic.parameters.length;
+    const eventParameter = orphanParameter + 1;
+    const parameters: unknown[] = [
+      normalizedQuery,
+      `${escaped}%`,
+      `%${escaped}%`,
+      ...semantic.parameters,
+      query.orphan,
+      query.eventId ?? null,
+    ];
+    const mergedCte = `${rankedRelationsCte},
+       ${buildSemanticMergeCtes(
+         `select id, rank as normal_rank
+          from ranked
+          where rank <= 6`,
+         semantic.sql,
+       )}, filtered as (
+         select ranked.*,
+                merged.source_priority,
+                merged.normal_rank,
+                merged.semantic_rank
+         from merged
+         join ranked on ranked.id = merged.id
+         where ($${orphanParameter}::boolean = false or ranked.case_count = 0)
+           and ($${eventParameter}::uuid is null
+             or ranked.cause_event_id = $${eventParameter}
+             or ranked.effect_event_id = $${eventParameter})
+       )`;
+    const countResult = await this.pool.query<CountRow>(
+      `${mergedCte}
+       select count(*)::int as total
+       from filtered`,
+      parameters,
+    );
+    const totalItems = countResult.rows[0]!.total;
+    const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
+    const rowsResult = await this.pool.query<RelationRow>(
+      `${mergedCte}
+       select *
+       from filtered
+       order by source_priority,
+                normal_rank nulls last,
+                semantic_rank nulls last,
+                updated_at desc,
+                id desc
+       limit $${eventParameter + 1}
+       offset $${eventParameter + 2}`,
+      [...parameters, query.limit, offset],
+    );
+    return {
+      items: rowsResult.rows.map(summary),
+      page,
+      pageSize: query.limit,
+      totalItems,
+      totalPages,
+      semanticIndexUpdating,
     };
   }
 

@@ -12,6 +12,7 @@ import type {
 } from '@causality/contracts';
 
 import type { EventRepository } from './eventRepository.js';
+import type { SemanticQueryService } from '../semantic/semanticQueryService.js';
 
 export type EventServiceErrorCode =
   'EVENT_NOT_FOUND' | 'EVENT_NAME_CONFLICT' | 'EVENT_ALIAS_CONFLICT' | 'EVENT_DELETE_BLOCKED';
@@ -50,10 +51,16 @@ function mapWriteError(error: unknown): never {
 }
 
 export class EventService {
-  constructor(private readonly repository: EventRepository) {}
+  constructor(
+    private readonly repository: EventRepository,
+    private readonly semanticQuery?: Pick<SemanticQueryService, 'candidateIds'>,
+  ) {}
 
-  list(query: EventListQuery): Promise<EventListResponse> {
-    return this.repository.list(query);
+  async list(query: EventListQuery): Promise<EventListResponse> {
+    if (query.searchMode === 'standard') return this.repository.list(query);
+    if (!this.semanticQuery) throw new Error('Semantic query service is not configured');
+    const candidates = await this.semanticQuery.candidateIds('event', query.q);
+    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexUpdating);
   }
 
   findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse> {

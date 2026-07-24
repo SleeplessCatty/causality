@@ -1,6 +1,8 @@
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { PostgresSemanticSearchRepository } from '../src/features/semantic/semanticSearchRepository.js';
+import { SemanticWorkerClientError } from '../src/features/semantic/semanticWorkerClient.js';
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 const eventId = '10000000-0000-4000-8000-000000000080';
@@ -10,7 +12,13 @@ describe.sequential('semantic configuration API', () => {
   let pool: Pool | undefined;
 
   beforeAll(async () => {
-    context = await startPostgresTestContext('causality_semantic_test');
+    context = await startPostgresTestContext('causality_semantic_test', {
+      semanticWorkerClient: {
+        embedQuery: async () => {
+          throw new SemanticWorkerClientError();
+        },
+      },
+    });
     ({ pool } = context);
   }, 120_000);
 
@@ -264,5 +272,109 @@ describe.sequential('semantic configuration API', () => {
     });
     expect(invalidModel.statusCode).toBe(400);
     expect(invalidModel.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('retrieves only same-type vectors above the configured cosine threshold', async () => {
+    const relatedEventId = '10000000-0000-4000-8000-000000000081';
+    const unrelatedEventId = '10000000-0000-4000-8000-000000000082';
+    const sameVectorCaseId = '30000000-0000-4000-8000-000000000081';
+    const related = [1, ...Array.from({ length: 383 }, () => 0)];
+    const unrelated = [0, 1, ...Array.from({ length: 382 }, () => 0)];
+    await pool!.query(
+      `insert into semantic_embeddings (
+         entity_type,
+         entity_id,
+         model_code,
+         source_hash,
+         embedding
+       )
+       values
+         ('event', $1, 'multilingual-e5-small', repeat('a', 64), $4::vector),
+         ('event', $2, 'multilingual-e5-small', repeat('b', 64), $5::vector),
+         ('case', $3, 'multilingual-e5-small', repeat('c', 64), $4::vector)`,
+      [
+        relatedEventId,
+        unrelatedEventId,
+        sameVectorCaseId,
+        `[${related.join(',')}]`,
+        `[${unrelated.join(',')}]`,
+      ],
+    );
+    const repository = new PostgresSemanticSearchRepository(pool!);
+
+    await expect(
+      repository.candidates({
+        entityType: 'event',
+        modelCode: 'multilingual-e5-small',
+        dimensions: 384,
+        threshold: 70,
+        vector: related,
+        limit: 100,
+      }),
+    ).resolves.toEqual([{ id: relatedEventId, similarity: 1 }]);
+  });
+
+  it('keeps standard lists independent and returns stable enhanced-query state errors', async () => {
+    const standard = await context!.app.inject({
+      method: 'GET',
+      url: '/api/events?searchMode=standard',
+    });
+    expect(standard.statusCode).toBe(200);
+    expect(standard.json()).toMatchObject({ semanticIndexUpdating: false });
+
+    for (const path of ['/api/events', '/api/relations', '/api/cases']) {
+      const empty = await context!.app.inject({
+        method: 'GET',
+        url: `${path}?searchMode=enhanced`,
+      });
+      expect(empty.statusCode).toBe(400);
+      expect(empty.json()).toMatchObject({ code: 'SEMANTIC_QUERY_EMPTY' });
+    }
+
+    const states = [
+      ['empty', 'SEMANTIC_MODEL_UNAVAILABLE'],
+      ['waiting_model', 'SEMANTIC_MODEL_DOWNLOADING'],
+      ['loading', 'SEMANTIC_INDEX_BUILDING'],
+      ['building', 'SEMANTIC_INDEX_BUILDING'],
+      ['failed', 'SEMANTIC_INDEX_FAILED'],
+    ] as const;
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'multilingual-e5-small'`,
+    );
+    for (const [status, code] of states) {
+      await pool!.query(
+        `update semantic_index_state
+         set active_model_code = $1,
+             status = $2,
+             state_version = 9
+         where singleton_key = true`,
+        [status === 'empty' ? null : 'multilingual-e5-small', status],
+      );
+      const response = await context!.app.inject({
+        method: 'GET',
+        url: '/api/events?q=政策&searchMode=enhanced',
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ code });
+    }
+
+    await pool!.query(
+      `update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 10
+       where singleton_key = true`,
+    );
+    const unavailableWorker = await context!.app.inject({
+      method: 'GET',
+      url: '/api/events?q=政策&searchMode=enhanced',
+    });
+    expect(unavailableWorker.statusCode).toBe(503);
+    expect(unavailableWorker.json()).toMatchObject({
+      code: 'SEMANTIC_WORKER_UNAVAILABLE',
+    });
   });
 });

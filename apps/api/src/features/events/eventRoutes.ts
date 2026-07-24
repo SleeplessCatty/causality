@@ -23,10 +23,20 @@ import { z } from 'zod';
 import { PostgresEventRepository } from './eventRepository.js';
 import { InvalidEventCursorError } from './eventCursor.js';
 import { EventService, EventServiceError } from './eventService.js';
+import {
+  SemanticQueryError,
+  semanticQueryErrorStatus,
+  type SemanticQueryService,
+} from '../semantic/semanticQueryService.js';
 
 const eventParamsSchema = z.object({ eventId: z.uuid() }).strict();
 
 function sendEventError(error: unknown, reply: FastifyReply) {
+  if (error instanceof SemanticQueryError) {
+    return reply
+      .status(semanticQueryErrorStatus(error))
+      .send({ code: error.code, message: error.message });
+  }
   if (error instanceof InvalidEventCursorError) {
     return reply.status(400).send({
       code: 'VALIDATION_ERROR',
@@ -45,11 +55,15 @@ function sendEventError(error: unknown, reply: FastifyReply) {
   throw error;
 }
 
-export function registerEventRoutes(app: FastifyInstance, pool: Pool): void {
+export function registerEventRoutes(
+  app: FastifyInstance,
+  pool: Pool,
+  semanticQuery: SemanticQueryService,
+): void {
   const routes = app.withTypeProvider<ZodTypeProvider>();
   routes.setValidatorCompiler(validatorCompiler);
   routes.setSerializerCompiler(serializerCompiler);
-  const service = new EventService(new PostgresEventRepository(pool));
+  const service = new EventService(new PostgresEventRepository(pool), semanticQuery);
 
   routes.get(
     '/api/events',
@@ -57,7 +71,13 @@ export function registerEventRoutes(app: FastifyInstance, pool: Pool): void {
       schema: {
         tags: ['events'],
         querystring: eventListQuerySchema,
-        response: { 200: eventListResponseSchema, 400: apiErrorSchema, 500: apiErrorSchema },
+        response: {
+          200: eventListResponseSchema,
+          400: apiErrorSchema,
+          409: apiErrorSchema,
+          503: apiErrorSchema,
+          500: apiErrorSchema,
+        },
       },
     },
     async (request, reply) => {

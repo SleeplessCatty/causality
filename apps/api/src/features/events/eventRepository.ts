@@ -25,6 +25,7 @@ import {
   resolvePageWindow,
   type CountRow,
 } from '../shared/pagePagination.js';
+import { buildSemanticMergeCtes, buildSemanticValues } from '../shared/semanticListMerge.js';
 import { escapeLikePattern, normalizeSearchQuery } from '../shared/sqlSearch.js';
 
 interface EventRow {
@@ -91,6 +92,11 @@ const eventRelationCountSql = `(select count(*)::int
 
 export interface EventRepository {
   list(query: EventListQuery): Promise<EventListResponse>;
+  listEnhanced(
+    query: EventListQuery,
+    semanticIds: string[],
+    semanticIndexUpdating: boolean,
+  ): Promise<EventListResponse>;
   findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse>;
   findById(id: string): Promise<EventDetail | null>;
   existsById(id: string): Promise<boolean>;
@@ -197,6 +203,85 @@ export class PostgresEventRepository implements EventRepository {
       totalItems,
       totalPages,
       semanticIndexUpdating: false,
+    };
+  }
+
+  async listEnhanced(
+    query: EventListQuery,
+    semanticIds: string[],
+    semanticIndexUpdating: boolean,
+  ): Promise<EventListResponse> {
+    const normalizedQuery = normalizeSearchQuery(query.q);
+    const escaped = escapeLikePattern(normalizedQuery);
+    const semantic = buildSemanticValues(semanticIds, 4);
+    const orphanParameter = 4 + semantic.parameters.length;
+    const parameters: unknown[] = [
+      normalizedQuery,
+      `${escaped}%`,
+      `%${escaped}%`,
+      ...semantic.parameters,
+      query.orphan,
+    ];
+    const mergedCte = `${eventSearchCte},
+       ${buildSemanticMergeCtes(
+         `select id, rank as normal_rank
+          from ranked`,
+         semantic.sql,
+       )}, filtered as (
+         select e.id,
+                e.name,
+                e.description,
+                e.created_at,
+                e.updated_at,
+                e.normalized_name,
+                merged.source_priority,
+                merged.normal_rank,
+                merged.semantic_rank,
+                ${eventRelationCountSql} as relation_count
+         from merged
+         join abstract_events e on e.id = merged.id
+         where ($${orphanParameter}::boolean = false or not exists (
+           select 1
+           from causal_relations filter_relation
+           where filter_relation.cause_event_id = e.id
+              or filter_relation.effect_event_id = e.id
+         ))
+       )`;
+    const countResult = await this.pool.query<CountRow>(
+      `${mergedCte}
+       select count(*)::int as total
+       from filtered`,
+      parameters,
+    );
+    const totalItems = countResult.rows[0]!.total;
+    const { page, totalPages, offset } = resolvePageWindow(totalItems, query.page, query.limit);
+    const rowsResult = await this.pool.query<EventRow>(
+      `${mergedCte}
+       select *
+       from filtered
+       order by source_priority,
+                normal_rank nulls last,
+                semantic_rank nulls last,
+                normalized_name,
+                id
+       limit $${orphanParameter + 1}
+       offset $${orphanParameter + 2}`,
+      [...parameters, query.limit, offset],
+    );
+    const eventIds = rowsResult.rows.map((row) => row.id);
+    const [aliasMap, keywordMap] = await Promise.all([
+      this.loadAliases(eventIds),
+      this.loadKeywords(eventIds),
+    ]);
+    return {
+      items: rowsResult.rows.map((row) =>
+        createSummary(row, aliasMap.get(row.id) ?? [], keywordMap.get(row.id) ?? []),
+      ),
+      page,
+      pageSize: query.limit,
+      totalItems,
+      totalPages,
+      semanticIndexUpdating,
     };
   }
 

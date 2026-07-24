@@ -7,6 +7,7 @@ import {
   type RelationRepository,
 } from '../src/features/relations/relationRepository.js';
 import { RelationService } from '../src/features/relations/relationService.js';
+import type { SemanticQueryService } from '../src/features/semantic/semanticQueryService.js';
 
 const detail: RelationDetail = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -31,7 +32,22 @@ const input = {
 
 function repository(overrides: Partial<RelationRepository> = {}): RelationRepository {
   return {
-    list: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
+    list: vi.fn().mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 50,
+      totalItems: 0,
+      totalPages: 1,
+      semanticIndexUpdating: false,
+    }),
+    listEnhanced: vi.fn().mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 50,
+      totalItems: 0,
+      totalPages: 1,
+      semanticIndexUpdating: true,
+    }),
     checkPair: vi.fn().mockResolvedValue({ sameDirection: null, reverseDirection: null }),
     findById: vi.fn().mockResolvedValue(detail),
     create: vi.fn().mockResolvedValue(detail),
@@ -46,7 +62,45 @@ function repository(overrides: Partial<RelationRepository> = {}): RelationReposi
   };
 }
 
+function semanticQueryService(): SemanticQueryService {
+  return {
+    candidateIds: vi.fn().mockResolvedValue({
+      ids: ['20000000-0000-4000-8000-000000000001'],
+      semanticIndexUpdating: false,
+    }),
+  } as unknown as SemanticQueryService;
+}
+
 describe('RelationService', () => {
+  it('merges semantic candidates only for an enhanced relation list query', async () => {
+    const relationRepository = repository();
+    const semantic = semanticQueryService();
+    const service = new RelationService(relationRepository, semantic);
+
+    await service.list({
+      q: '融资',
+      orphan: false,
+      searchMode: 'standard',
+      page: 1,
+      limit: 50,
+    });
+    expect(semantic.candidateIds).not.toHaveBeenCalled();
+
+    await service.list({
+      q: '融资',
+      orphan: false,
+      searchMode: 'enhanced',
+      page: 1,
+      limit: 50,
+    });
+    expect(semantic.candidateIds).toHaveBeenCalledWith('relation', '融资');
+    expect(relationRepository.listEnhanced).toHaveBeenCalledWith(
+      expect.objectContaining({ q: '融资' }),
+      ['20000000-0000-4000-8000-000000000001'],
+      false,
+    );
+  });
+
   it('returns a stable not-found error for missing detail and replacement targets', async () => {
     const service = new RelationService(
       repository({
