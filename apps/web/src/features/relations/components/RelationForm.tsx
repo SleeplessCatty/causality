@@ -9,6 +9,7 @@ import { Link } from 'react-router';
 
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
 import { ApiClientError } from '../../../shared/api/httpClient';
+import { PercentageControl } from '../../../shared/controls/PercentageControl';
 import type { ListReturnState } from '../../../shared/navigation/listReturn';
 import { checkRelationPair } from '../api/relationApi';
 import { EventSelector } from './EventSelector';
@@ -173,45 +174,17 @@ export function RelationForm({
             </div>
           ) : null}
 
-          <div className="form-field confidence-field">
-            <label htmlFor="relation-confidence">
-              置信度 <span aria-hidden="true">*</span>
-            </label>
-            <div className="confidence-control">
-              <input
-                id="relation-confidence"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={confidence ?? 0}
-                aria-label="置信度滑块"
-                disabled={confidence === null}
-                onChange={(event) => setConfidence(Number(event.target.value))}
-              />
-              <div>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={confidence ?? ''}
-                  aria-label="置信度数值"
-                  aria-invalid={Boolean(fieldErrors.confidence)}
-                  onChange={(event) =>
-                    setConfidence(event.target.value === '' ? null : Number(event.target.value))
-                  }
-                />
-                <span>%</span>
-              </div>
-            </div>
-            <span className="field-help">由人工判断并填写 0–100 的整数。</span>
-            {fieldErrors.confidence ? (
-              <span className="field-error" role="alert">
-                {fieldErrors.confidence}
-              </span>
-            ) : null}
-          </div>
+          <PercentageControl
+            id="relation-confidence"
+            label="置信度"
+            value={confidence}
+            required
+            sliderLabel="置信度滑块"
+            numberLabel="置信度数值"
+            help="由人工判断并填写 0–100 的整数。"
+            error={fieldErrors.confidence}
+            onChange={setConfidence}
+          />
 
           <div className="form-field">
             <label htmlFor="relation-description">关系说明</label>

@@ -15,6 +15,7 @@ import { CaseCreatePage } from '../features/cases/pages/CaseCreatePage';
 import { CaseDetailPage } from '../features/cases/pages/CaseDetailPage';
 import { CaseEditPage } from '../features/cases/pages/CaseEditPage';
 import { CaseListPage } from '../features/cases/pages/CaseListPage';
+import { ParameterSettings } from '../features/parameter-settings/ParameterSettings';
 
 function GraphRouteFallback() {
   return <div className="page-state">正在加载因果图…</div>;
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
         },
       },
       { path: 'maintenance', element: <DataMaintenance /> },
+      { path: 'settings', element: <ParameterSettings /> },
       { path: 'system', element: <SystemStatus /> },
       { path: '*', element: <Navigate to="/events" replace /> },
     ],

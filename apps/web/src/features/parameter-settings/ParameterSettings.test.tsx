@@ -1,0 +1,290 @@
+import type { SemanticSettingsResponse } from '@causality/contracts';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { AppProviders } from '../../app/AppProviders';
+import { ParameterSettings } from './ParameterSettings';
+
+const settings: SemanticSettingsResponse = {
+  activeModelCode: null,
+  index: {
+    status: 'empty',
+    processedItems: 0,
+    totalItems: 0,
+    pendingItems: 0,
+    updatedAt: null,
+    error: null,
+  },
+  models: [
+    {
+      code: 'multilingual-e5-small',
+      label: '轻量快速',
+      description: '适合普通 CPU 的快速语义检索',
+      languageLabel: '中文、英文及中英混排',
+      dimensions: 384,
+      expectedDownloadBytes: 135_392_857,
+      threshold: 70,
+      downloadStatus: 'not_downloaded',
+      downloadedAt: null,
+      isActive: false,
+      error: null,
+    },
+    {
+      code: 'bge-m3',
+      label: '质量优先',
+      description: '适合更高质量的多语言语义检索',
+      languageLabel: '中文、英文及中英混排',
+      dimensions: 1024,
+      expectedDownloadBytes: 608_174_424,
+      threshold: 55,
+      downloadStatus: 'downloaded',
+      downloadedAt: '2026-07-23T10:00:00.000Z',
+      isActive: false,
+      error: null,
+    },
+  ],
+  activeTask: null,
+};
+
+function jsonResponse(body: unknown, status = 200): Promise<Response> {
+  return Promise.resolve(
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    }),
+  );
+}
+
+function renderPage() {
+  render(
+    <AppProviders>
+      <ParameterSettings />
+    </AppProviders>,
+  );
+}
+
+describe('ParameterSettings', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows both built-in models, independent thresholds, and no enable switch', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse(settings)),
+    );
+    renderPage();
+
+    expect(await screen.findByRole('heading', { name: '参数配置' })).toBeTruthy();
+    const lightweight = screen.getByRole('article', { name: '轻量快速' });
+    const quality = screen.getByRole('article', { name: '质量优先' });
+
+    expect(within(lightweight).getByText('中文、英文及中英混排')).toBeTruthy();
+    expect(within(lightweight).getByText('约 129 MB')).toBeTruthy();
+    expect(
+      (
+        within(lightweight).getByRole('spinbutton', {
+          name: '相似度门槛数值',
+        }) as HTMLInputElement
+      ).valueAsNumber,
+    ).toBe(70);
+    expect(
+      (
+        within(quality).getByRole('spinbutton', {
+          name: '相似度门槛数值',
+        }) as HTMLInputElement
+      ).valueAsNumber,
+    ).toBe(55);
+    expect(within(lightweight).getByRole('button', { name: '下载并使用' })).toBeTruthy();
+    expect(within(quality).getByRole('button', { name: '切换到此模型' })).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('shows the active ready model and index build progress', async () => {
+    const activeReady: SemanticSettingsResponse = {
+      ...settings,
+      activeModelCode: 'multilingual-e5-small',
+      index: {
+        status: 'ready',
+        processedItems: 1_000,
+        totalItems: 1_000,
+        pendingItems: 0,
+        updatedAt: '2026-07-23T11:00:00.000Z',
+        error: null,
+      },
+      models: settings.models.map((model) =>
+        model.code === 'multilingual-e5-small'
+          ? { ...model, isActive: true, downloadStatus: 'downloaded' as const }
+          : model,
+      ),
+    };
+    const building: SemanticSettingsResponse = {
+      ...activeReady,
+      index: {
+        ...activeReady.index,
+        status: 'building',
+        processedItems: 120,
+        totalItems: 1_000,
+      },
+      activeTask: {
+        id: '11111111-1111-4111-8111-111111111111',
+        type: 'full_index',
+        status: 'running',
+        modelCode: 'multilingual-e5-small',
+        processedItems: 120,
+        totalItems: 1_000,
+        downloadedBytes: 0,
+        totalBytes: 0,
+        createdAt: '2026-07-23T10:00:00.000Z',
+        startedAt: '2026-07-23T10:01:00.000Z',
+        updatedAt: '2026-07-23T10:02:00.000Z',
+        completedAt: null,
+        error: null,
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse(building)),
+    );
+    renderPage();
+
+    expect(await screen.findByText('当前使用')).toBeTruthy();
+    expect(screen.getByText('正在生成索引')).toBeTruthy();
+    expect(screen.getByText('120 / 1000')).toBeTruthy();
+    const progress = screen.getByRole('progressbar', { name: '索引生成进度' });
+    expect((progress as HTMLProgressElement).value).toBe(120);
+    expect(
+      within(screen.getByRole('article', { name: '轻量快速' })).queryByRole('button', {
+        name: /使用/u,
+      }),
+    ).toBeNull();
+  });
+
+  it('starts the first model directly, confirms a switch, saves thresholds, and retries failures', async () => {
+    const failed: SemanticSettingsResponse = {
+      ...settings,
+      activeModelCode: 'multilingual-e5-small',
+      index: {
+        ...settings.index,
+        status: 'failed',
+        error: '索引任务中断',
+      },
+      models: settings.models.map((model) =>
+        model.code === 'multilingual-e5-small'
+          ? {
+              ...model,
+              isActive: true,
+              downloadStatus: 'downloaded' as const,
+              error: '索引任务中断',
+            }
+          : model,
+      ),
+      activeTask: {
+        id: '22222222-2222-4222-8222-222222222222',
+        type: 'full_index',
+        status: 'failed',
+        modelCode: 'multilingual-e5-small',
+        processedItems: 12,
+        totalItems: 100,
+        downloadedBytes: 0,
+        totalBytes: 0,
+        createdAt: '2026-07-23T10:00:00.000Z',
+        startedAt: '2026-07-23T10:01:00.000Z',
+        updatedAt: '2026-07-23T10:02:00.000Z',
+        completedAt: '2026-07-23T10:03:00.000Z',
+        error: '索引任务中断',
+      },
+    };
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/threshold')) return jsonResponse(failed);
+      if (url.endsWith('/retry') || url.endsWith('/use')) {
+        return jsonResponse(
+          {
+            accepted: true,
+            taskId: '33333333-3333-4333-8333-333333333333',
+            activeModelCode: url.includes('bge-m3') ? 'bge-m3' : 'multilingual-e5-small',
+          },
+          202,
+        );
+      }
+      return jsonResponse(failed);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    await screen.findByRole('heading', { name: '参数配置' });
+    const quality = screen.getByRole('article', { name: '质量优先' });
+    fireEvent.click(within(quality).getByRole('button', { name: '切换到此模型' }));
+    const dialog = screen.getByRole('dialog', { name: '确认切换模型' });
+    expect(dialog.textContent).toContain('将立即删除当前语义索引');
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认切换' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/semantic/models/bge-m3/use',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+
+    const light = screen.getByRole('article', { name: '轻量快速' });
+    const threshold = within(light).getByRole('spinbutton', { name: '相似度门槛数值' });
+    fireEvent.change(threshold, { target: { value: '66' } });
+    fireEvent.blur(threshold);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/semantic/models/multilingual-e5-small/threshold',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ threshold: 66 }),
+        }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '重试任务' }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/semantic/retry',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  it('shows a failed switch action inside the still-open confirmation dialog', async () => {
+    const activeReady: SemanticSettingsResponse = {
+      ...settings,
+      activeModelCode: 'multilingual-e5-small',
+      index: {
+        ...settings.index,
+        status: 'ready',
+        processedItems: 1_000,
+        totalItems: 1_000,
+      },
+      models: settings.models.map((model) =>
+        model.code === 'multilingual-e5-small'
+          ? { ...model, isActive: true, downloadStatus: 'downloaded' as const }
+          : model,
+      ),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) =>
+        String(input).endsWith('/use')
+          ? jsonResponse(
+              {
+                code: 'SEMANTIC_SWITCH_CONFLICT',
+                message: '已有模型任务正在执行',
+              },
+              409,
+            )
+          : jsonResponse(activeReady),
+      ),
+    );
+    renderPage();
+
+    const quality = await screen.findByRole('article', { name: '质量优先' });
+    fireEvent.click(within(quality).getByRole('button', { name: '切换到此模型' }));
+    const dialog = screen.getByRole('dialog', { name: '确认切换模型' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认切换' }));
+
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert.textContent).toContain('已有模型任务正在执行');
+  });
+});
