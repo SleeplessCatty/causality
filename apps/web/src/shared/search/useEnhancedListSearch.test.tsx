@@ -1,4 +1,4 @@
-import type { SearchMode } from '@causality/contracts';
+import type { SearchMode, SemanticIndexNotice } from '@causality/contracts';
 import { act, renderHook } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -101,17 +101,33 @@ describe('useEnhancedListSearch', () => {
     expect(result.current.notice).toEqual({ tone: 'error', message });
   });
 
-  it('reports a non-blocking notice when a successful result uses an updating index', () => {
+  it.each([
+    [null, null],
+    [
+      'updating',
+      {
+        tone: 'info',
+        message: '语义索引尚在同步，结果可能暂不包含最新修改',
+      },
+    ],
+    [
+      'incomplete',
+      {
+        tone: 'info',
+        message: '语义索引不完整，结果可能缺少部分记录',
+        settingsLink: true,
+      },
+    ],
+  ] satisfies ReadonlyArray<
+    readonly [SemanticIndexNotice, { tone: 'info'; message: string; settingsLink?: true } | null]
+  >)('maps successful semantic notice %s to shared list feedback', (notice, expected) => {
     const { result } = renderHook(() => useEnhancedSearchHarness('政策收紧'));
 
     act(() => result.current.requestEnhanced());
-    act(() => result.current.reportEnhancedSuccess(true));
+    act(() => result.current.reportEnhancedSuccess(notice));
 
     expect(result.current.mode).toBe('enhanced');
     expect(result.current.isEnhancing).toBe(false);
-    expect(result.current.notice).toEqual({
-      tone: 'info',
-      message: '语义索引更新中，结果可能暂不包含最新修改',
-    });
+    expect(result.current.notice).toEqual(expected);
   });
 });

@@ -13,6 +13,7 @@ import type {
   CaseSummary,
   RelationCaseListQuery,
   RelationCaseListResponse,
+  SemanticIndexNotice,
 } from '@causality/contracts';
 import type { Pool } from 'pg';
 
@@ -67,7 +68,7 @@ export interface CaseRepository {
   listEnhanced(
     query: CaseListQuery,
     semanticIds: string[],
-    semanticIndexUpdating: boolean,
+    semanticIndexNotice: SemanticIndexNotice,
   ): Promise<CaseListResponse>;
   listForRelation(
     relationId: string,
@@ -169,14 +170,13 @@ export class PostgresCaseRepository implements CaseRepository {
       totalItems,
       totalPages,
       semanticIndexNotice: null,
-      semanticIndexUpdating: false,
     };
   }
 
   async listEnhanced(
     query: CaseListQuery,
     semanticIds: string[],
-    semanticIndexUpdating: boolean,
+    semanticIndexNotice: SemanticIndexNotice,
   ): Promise<CaseListResponse> {
     const normalized = normalizeSearchQuery(query.q);
     const escaped = escapeLikePattern(normalized);
@@ -247,8 +247,7 @@ export class PostgresCaseRepository implements CaseRepository {
       pageSize: query.limit,
       totalItems,
       totalPages,
-      semanticIndexNotice: null,
-      semanticIndexUpdating,
+      semanticIndexNotice,
     };
   }
 

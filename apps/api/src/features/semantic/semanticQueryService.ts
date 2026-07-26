@@ -3,6 +3,7 @@ import type {
   SemanticDownloadStatus,
   SemanticEntityType,
   SemanticIndexStatus,
+  SemanticIndexNotice,
   SemanticModelCode,
   SemanticModelFileStatus,
 } from '@causality/contracts';
@@ -25,7 +26,7 @@ export interface SemanticQueryContextRepository {
 
 export interface SemanticCandidateIds {
   ids: string[];
-  semanticIndexUpdating: boolean;
+  semanticIndexNotice: SemanticIndexNotice;
 }
 
 export type SemanticQueryErrorCode = Extract<
@@ -133,7 +134,12 @@ export class SemanticQueryService {
       });
       return {
         ids: candidates.map((candidate) => candidate.id),
-        semanticIndexUpdating: context.status === 'updating',
+        semanticIndexNotice:
+          context.status === 'updating'
+            ? 'updating'
+            : context.status === 'incomplete'
+              ? 'incomplete'
+              : null,
       };
     } catch (error) {
       if (error instanceof SemanticWorkerClientError) {
@@ -153,7 +159,11 @@ export class SemanticQueryService {
     if (context.status === 'waiting_model') {
       throw new SemanticQueryError('SEMANTIC_MODEL_DOWNLOADING');
     }
-    if (context.status === 'loading' || context.status === 'building') {
+    if (
+      context.status === 'loading' ||
+      context.status === 'index_queued' ||
+      context.status === 'building'
+    ) {
       throw new SemanticQueryError('SEMANTIC_INDEX_BUILDING');
     }
     if (context.status === 'failed') {

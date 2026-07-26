@@ -22,7 +22,7 @@ function repository(overrides: Partial<CaseRepository> = {}): CaseRepository {
       pageSize: 50,
       totalItems: 0,
       totalPages: 1,
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     }),
     listEnhanced: vi.fn().mockResolvedValue({
       items: [],
@@ -30,7 +30,7 @@ function repository(overrides: Partial<CaseRepository> = {}): CaseRepository {
       pageSize: 50,
       totalItems: 0,
       totalPages: 1,
-      semanticIndexUpdating: true,
+      semanticIndexNotice: 'updating',
     }),
     listForRelation: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
     candidates: vi.fn().mockResolvedValue({ items: [] }),
@@ -49,7 +49,7 @@ function semanticQueryService(): SemanticQueryService {
   return {
     candidateIds: vi.fn().mockResolvedValue({
       ids: ['30000000-0000-4000-8000-000000000001'],
-      semanticIndexUpdating: true,
+      semanticIndexNotice: 'updating',
     }),
   } as unknown as SemanticQueryService;
 }
@@ -82,7 +82,7 @@ describe('CaseService', () => {
     expect(caseRepository.listEnhanced).toHaveBeenCalledWith(
       expect.objectContaining({ q: '关税' }),
       ['30000000-0000-4000-8000-000000000001'],
-      true,
+      'updating',
     );
   });
 

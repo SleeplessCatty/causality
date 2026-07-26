@@ -1182,7 +1182,7 @@ describe.sequential('semantic configuration API', () => {
       url: '/api/events?searchMode=standard',
     });
     expect(standard.statusCode).toBe(200);
-    expect(standard.json()).toMatchObject({ semanticIndexUpdating: false });
+    expect(standard.json()).toMatchObject({ semanticIndexNotice: null });
 
     for (const path of ['/api/events', '/api/relations', '/api/cases']) {
       const empty = await context!.app.inject({
@@ -1197,6 +1197,7 @@ describe.sequential('semantic configuration API', () => {
       ['empty', 'SEMANTIC_MODEL_UNAVAILABLE'],
       ['waiting_model', 'SEMANTIC_MODEL_DOWNLOADING'],
       ['loading', 'SEMANTIC_INDEX_BUILDING'],
+      ['index_queued', 'SEMANTIC_INDEX_BUILDING'],
       ['building', 'SEMANTIC_INDEX_BUILDING'],
       ['failed', 'SEMANTIC_INDEX_FAILED'],
     ] as const;

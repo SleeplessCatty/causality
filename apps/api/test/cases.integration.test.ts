@@ -393,7 +393,7 @@ describe.sequential('case REST API', () => {
       limit: 50,
     };
 
-    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], false);
+    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], null);
     expect(merged.items.map((item) => item.id)).toEqual([
       exactId,
       prefixId,
@@ -404,20 +404,20 @@ describe.sequential('case REST API', () => {
       pageSize: 50,
       totalItems: 4,
       totalPages: 1,
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     });
 
     const linked = await repository.listEnhanced(
       { ...query, relationId },
       [semanticOnlyId, exactId],
-      true,
+      'updating',
     );
     expect(linked.items.map((item) => item.id)).toEqual([exactId, prefixId, containsId]);
 
     const orphan = await repository.listEnhanced(
       { ...query, orphan: true },
       [semanticOnlyId, exactId],
-      false,
+      null,
     );
     expect(orphan.items.map((item) => item.id)).toEqual([semanticOnlyId]);
 
@@ -455,7 +455,7 @@ describe.sequential('case REST API', () => {
     expect(response.json<CaseListResponse>()).toMatchObject({
       pageSize: 50,
       totalItems: 4,
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     });
   });
 

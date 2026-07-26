@@ -60,7 +60,7 @@ export class EventService {
     if (query.searchMode === 'standard') return this.repository.list(query);
     if (!this.semanticQuery) throw new Error('Semantic query service is not configured');
     const candidates = await this.semanticQuery.candidateIds('event', query.q);
-    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexUpdating);
+    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexNotice);
   }
 
   findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse> {

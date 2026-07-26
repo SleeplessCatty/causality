@@ -702,7 +702,7 @@ describe.sequential('relation REST API', () => {
       limit: 50,
     };
 
-    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], false);
+    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], null);
     expect(merged.items.map((item) => item.id)).toEqual([
       exactId,
       prefixId,
@@ -713,17 +713,17 @@ describe.sequential('relation REST API', () => {
       pageSize: 50,
       totalItems: 4,
       totalPages: 1,
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     });
 
     const filtered = await repository.listEnhanced(
       { ...query, orphan: true, eventId: sharedEventId },
       [semanticOnlyId, exactId],
-      true,
+      'updating',
     );
     expect(filtered.items.map((item) => item.id)).toEqual([exactId, prefixId]);
     expect(filtered.totalItems).toBe(2);
-    expect(filtered.semanticIndexUpdating).toBe(true);
+    expect(filtered.semanticIndexNotice).toBe('updating');
 
     await pool!.query(
       `update semantic_model_settings
@@ -759,7 +759,7 @@ describe.sequential('relation REST API', () => {
     expect(response.json<RelationListResponse>()).toMatchObject({
       pageSize: 50,
       totalItems: 4,
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     });
   });
 

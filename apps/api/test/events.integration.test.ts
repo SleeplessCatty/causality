@@ -547,7 +547,7 @@ describe.sequential('event REST API', () => {
       limit: 50,
     };
 
-    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], true);
+    const merged = await repository.listEnhanced(query, [semanticOnlyId, exactId], 'updating');
     expect(merged.items.map((item) => item.id)).toEqual([
       exactId,
       prefixId,
@@ -559,18 +559,18 @@ describe.sequential('event REST API', () => {
       pageSize: 50,
       totalItems: 4,
       totalPages: 1,
-      semanticIndexUpdating: true,
+      semanticIndexNotice: 'updating',
     });
 
     const orphan = await repository.listEnhanced(
       { ...query, orphan: true },
       [semanticOnlyId, exactId],
-      false,
+      null,
     );
     expect(orphan.items.map((item) => item.id)).toEqual([exactId, prefixId, containsId]);
     expect(orphan.totalItems).toBe(3);
 
-    const normalOnly = await repository.listEnhanced(query, [], false);
+    const normalOnly = await repository.listEnhanced(query, [], null);
     expect(normalOnly.items.map((item) => item.id)).toEqual([exactId, prefixId, containsId]);
     expect(normalOnly.totalItems).toBe(3);
 
@@ -608,7 +608,7 @@ describe.sequential('event REST API', () => {
     expect(response.json<EventListResponse>()).toMatchObject({
       pageSize: 50,
       totalItems: 4,
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     });
 
     await pool!.query(
@@ -620,7 +620,18 @@ describe.sequential('event REST API', () => {
       method: 'GET',
       url: '/api/events?q=SEMANTIC_EVENT_MERGE&searchMode=enhanced',
     });
-    expect(updating.json<EventListResponse>().semanticIndexUpdating).toBe(true);
+    expect(updating.json<EventListResponse>().semanticIndexNotice).toBe('updating');
+
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'incomplete'
+       where singleton_key = true`,
+    );
+    const incomplete = await app!.inject({
+      method: 'GET',
+      url: '/api/events?q=SEMANTIC_EVENT_MERGE&searchMode=enhanced',
+    });
+    expect(incomplete.json<EventListResponse>().semanticIndexNotice).toBe('incomplete');
   });
 
   it('returns not found from both event deletion endpoints', async () => {

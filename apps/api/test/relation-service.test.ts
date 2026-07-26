@@ -38,7 +38,7 @@ function repository(overrides: Partial<RelationRepository> = {}): RelationReposi
       pageSize: 50,
       totalItems: 0,
       totalPages: 1,
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     }),
     listEnhanced: vi.fn().mockResolvedValue({
       items: [],
@@ -46,7 +46,7 @@ function repository(overrides: Partial<RelationRepository> = {}): RelationReposi
       pageSize: 50,
       totalItems: 0,
       totalPages: 1,
-      semanticIndexUpdating: true,
+      semanticIndexNotice: null,
     }),
     checkPair: vi.fn().mockResolvedValue({ sameDirection: null, reverseDirection: null }),
     findById: vi.fn().mockResolvedValue(detail),
@@ -66,7 +66,7 @@ function semanticQueryService(): SemanticQueryService {
   return {
     candidateIds: vi.fn().mockResolvedValue({
       ids: ['20000000-0000-4000-8000-000000000001'],
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     }),
   } as unknown as SemanticQueryService;
 }
@@ -97,7 +97,7 @@ describe('RelationService', () => {
     expect(relationRepository.listEnhanced).toHaveBeenCalledWith(
       expect.objectContaining({ q: '融资' }),
       ['20000000-0000-4000-8000-000000000001'],
-      false,
+      null,
     );
   });
 

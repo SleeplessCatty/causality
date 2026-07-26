@@ -1,4 +1,4 @@
-import type { ApiErrorCode, SearchMode } from '@causality/contracts';
+import type { ApiErrorCode, SearchMode, SemanticIndexNotice } from '@causality/contracts';
 import { useCallback, useEffect, useState } from 'react';
 
 import { ApiClientError } from '../api/httpClient';
@@ -24,11 +24,11 @@ export interface EnhancedListSearchState {
   notice: EnhancedSearchNotice | null;
   requestId: number;
   reportEnhancedError(error: unknown): boolean;
-  reportEnhancedSuccess(semanticIndexUpdating: boolean): void;
+  reportEnhancedSuccess(semanticIndexNotice: SemanticIndexNotice): void;
 }
 
 interface EnhancedListQueryResult {
-  data: { semanticIndexUpdating: boolean } | undefined;
+  data: { semanticIndexNotice: SemanticIndexNotice } | undefined;
   error: unknown;
   isFetching: boolean;
   isPlaceholderData: boolean;
@@ -50,6 +50,25 @@ function semanticErrorMessage(error: unknown): string | null {
 
 export function isSemanticSearchError(error: unknown): boolean {
   return semanticErrorMessage(error) !== null;
+}
+
+function enhancedSuccessNotice(
+  semanticIndexNotice: SemanticIndexNotice,
+): EnhancedSearchNotice | null {
+  if (semanticIndexNotice === 'updating') {
+    return {
+      tone: 'info',
+      message: '语义索引尚在同步，结果可能暂不包含最新修改',
+    };
+  }
+  if (semanticIndexNotice === 'incomplete') {
+    return {
+      tone: 'info',
+      message: '语义索引不完整，结果可能缺少部分记录',
+      settingsLink: true,
+    };
+  }
+  return null;
 }
 
 export function useEnhancedListSearch({
@@ -109,16 +128,9 @@ export function useEnhancedListSearch({
     [deactivateEnhanced, showError],
   );
 
-  const reportEnhancedSuccess = useCallback((semanticIndexUpdating: boolean) => {
+  const reportEnhancedSuccess = useCallback((semanticIndexNotice: SemanticIndexNotice) => {
     setIsEnhancing(false);
-    setNotice(
-      semanticIndexUpdating
-        ? {
-            tone: 'info',
-            message: '语义索引更新中，结果可能暂不包含最新修改',
-          }
-        : null,
-    );
+    setNotice(enhancedSuccessNotice(semanticIndexNotice));
   }, []);
 
   return {
@@ -143,7 +155,7 @@ export function useEnhancedListSearchResult(
       return;
     }
     if (result.isSuccess && !result.isFetching && !result.isPlaceholderData && result.data) {
-      search.reportEnhancedSuccess(result.data.semanticIndexUpdating);
+      search.reportEnhancedSuccess(result.data.semanticIndexNotice);
     }
   }, [
     result.data,

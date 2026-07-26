@@ -58,39 +58,27 @@ describe('semantic search contracts', () => {
     expect(caseListQuerySchema.safeParse({ searchMode: 'other' }).success).toBe(false);
   });
 
-  it('adds non-visual semantic update metadata to list responses', () => {
+  it('uses one strict semantic index notice field in all list responses', () => {
     for (const schema of [
       eventListResponseSchema,
       relationListResponseSchema,
       caseListResponseSchema,
     ]) {
+      const response = {
+        items: [],
+        page: 1,
+        pageSize: 50,
+        totalItems: 0,
+        totalPages: 1,
+      };
+      expect(schema.parse(response)).toMatchObject({ semanticIndexNotice: null });
       expect(
         schema.parse({
-          items: [],
-          page: 1,
-          pageSize: 50,
-          totalItems: 0,
-          totalPages: 1,
-        }),
-      ).toMatchObject({
-        semanticIndexNotice: null,
-        // Transitional compatibility removed after all three list callers migrate in Task 8.
-        semanticIndexUpdating: false,
-      });
-      expect(
-        schema.parse({
-          items: [],
-          page: 1,
-          pageSize: 50,
-          totalItems: 0,
-          totalPages: 1,
+          ...response,
           semanticIndexNotice: 'incomplete',
-          semanticIndexUpdating: true,
         }),
-      ).toMatchObject({
-        semanticIndexNotice: 'incomplete',
-        semanticIndexUpdating: true,
-      });
+      ).toMatchObject({ semanticIndexNotice: 'incomplete' });
+      expect(schema.safeParse({ ...response, semanticIndexUpdating: true }).success).toBe(false);
     }
   });
 

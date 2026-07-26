@@ -9,6 +9,7 @@ import type {
   RelationReference,
   RelationSummary,
   CaseReference,
+  SemanticIndexNotice,
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
@@ -54,7 +55,7 @@ export interface RelationRepository {
   listEnhanced(
     query: RelationListQuery,
     semanticIds: string[],
-    semanticIndexUpdating: boolean,
+    semanticIndexNotice: SemanticIndexNotice,
   ): Promise<RelationListResponse>;
   checkPair(query: RelationPairCheckQuery): Promise<RelationPairCheckResponse>;
   findById(id: string): Promise<RelationDetail | null>;
@@ -166,14 +167,13 @@ export class PostgresRelationRepository implements RelationRepository {
       totalItems,
       totalPages,
       semanticIndexNotice: null,
-      semanticIndexUpdating: false,
     };
   }
 
   async listEnhanced(
     query: RelationListQuery,
     semanticIds: string[],
-    semanticIndexUpdating: boolean,
+    semanticIndexNotice: SemanticIndexNotice,
   ): Promise<RelationListResponse> {
     const normalizedQuery = normalizeSearchQuery(query.q);
     const escaped = escapeLikePattern(normalizedQuery);
@@ -233,8 +233,7 @@ export class PostgresRelationRepository implements RelationRepository {
       pageSize: query.limit,
       totalItems,
       totalPages,
-      semanticIndexNotice: null,
-      semanticIndexUpdating,
+      semanticIndexNotice,
     };
   }
 

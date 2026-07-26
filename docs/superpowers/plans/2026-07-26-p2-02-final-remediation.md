@@ -1115,7 +1115,7 @@ interface SemanticCandidateIds {
 }
 ```
 
-- [ ] **Step 1: Write query availability tests**
+- [x] **Step 1: Write query availability tests**
 
 Use table tests:
 
@@ -1133,7 +1133,7 @@ it.each([
 
 Assert empty/waiting/loading/index_queued/building/failed reject with stable reasons, and Worker mismatch/unreachable maps to `SEMANTIC_WORKER_UNAVAILABLE`.
 
-- [ ] **Step 2: Write Web notice tests**
+- [x] **Step 2: Write Web notice tests**
 
 Assert exact copy:
 
@@ -1150,7 +1150,7 @@ expect(noticeFor('incomplete')).toEqual({
 });
 ```
 
-- [ ] **Step 3: Run tests and verify failure**
+- [x] **Step 3: Run tests and verify failure**
 
 Run:
 
@@ -1161,15 +1161,15 @@ pnpm --filter @causality/web test -- useEnhancedListSearch.test.tsx EventListPag
 
 Expected: FAIL because responses still use `semanticIndexUpdating`.
 
-- [ ] **Step 4: Implement API notice propagation**
+- [x] **Step 4: Implement API notice propagation**
 
 The query context reads the approved index status. The three domain list repositories return normal-first merged rows with `semanticIndexNotice`. Standard search always returns `null`. Remove the transitional `semanticIndexUpdating` field from all three contracts, API responses, adapters, and tests in this task.
 
-- [ ] **Step 5: Implement shared Web notice behavior**
+- [x] **Step 5: Implement shared Web notice behavior**
 
 Keep current enhanced mode and list-return URL behavior. Map the notice enum centrally in `useEnhancedListSearch`; do not duplicate copy in three pages.
 
-- [ ] **Step 6: Run API and Web tests**
+- [x] **Step 6: Run API and Web tests**
 
 Run:
 
@@ -1180,7 +1180,7 @@ pnpm --filter @causality/web test -- useEnhancedListSearch.test.tsx EventListPag
 
 Expected: all three lists distinguish updating and incomplete indexes.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/contracts apps/api/src apps/api/test apps/web/src

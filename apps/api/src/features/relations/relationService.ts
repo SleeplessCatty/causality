@@ -86,7 +86,7 @@ export class RelationService {
     if (query.searchMode === 'standard') return this.repository.list(query);
     if (!this.semanticQuery) throw new Error('Semantic query service is not configured');
     const candidates = await this.semanticQuery.candidateIds('relation', query.q);
-    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexUpdating);
+    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexNotice);
   }
 
   checkPair(query: RelationPairCheckQuery): Promise<RelationPairCheckResponse> {

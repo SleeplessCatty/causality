@@ -296,7 +296,7 @@ describe('RelationListPage', () => {
         pageSize: 50,
         totalItems: 1,
         totalPages: 1,
-        semanticIndexUpdating: enhanced === 'enhanced',
+        semanticIndexNotice: enhanced === 'enhanced' ? 'updating' : null,
       });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -305,7 +305,7 @@ describe('RelationListPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '增强查询' }));
 
-    expect(await screen.findByText('语义索引更新中，结果可能暂不包含最新修改')).toBeTruthy();
+    expect(await screen.findByText('语义索引尚在同步，结果可能暂不包含最新修改')).toBeTruthy();
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('searchMode=enhanced')),
     ).toBe(true);

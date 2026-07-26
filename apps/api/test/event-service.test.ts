@@ -32,7 +32,7 @@ function repository(overrides: Partial<EventRepository> = {}): EventRepository {
       pageSize: 50,
       totalItems: 0,
       totalPages: 1,
-      semanticIndexUpdating: false,
+      semanticIndexNotice: null,
     }),
     listEnhanced: vi.fn().mockResolvedValue({
       items: [],
@@ -40,7 +40,7 @@ function repository(overrides: Partial<EventRepository> = {}): EventRepository {
       pageSize: 50,
       totalItems: 0,
       totalPages: 1,
-      semanticIndexUpdating: true,
+      semanticIndexNotice: 'incomplete',
     }),
     findCandidates: vi.fn().mockResolvedValue([]),
     findById: vi.fn().mockResolvedValue(detail),
@@ -58,7 +58,7 @@ function semanticQueryService(): SemanticQueryService {
   return {
     candidateIds: vi.fn().mockResolvedValue({
       ids: ['10000000-0000-4000-8000-000000000001'],
-      semanticIndexUpdating: true,
+      semanticIndexNotice: 'incomplete',
     }),
   } as unknown as SemanticQueryService;
 }
@@ -90,7 +90,7 @@ describe('EventService', () => {
     expect(eventRepository.listEnhanced).toHaveBeenCalledWith(
       expect.objectContaining({ q: '政策', searchMode: 'enhanced' }),
       ['10000000-0000-4000-8000-000000000001'],
-      true,
+      'incomplete',
     );
   });
 

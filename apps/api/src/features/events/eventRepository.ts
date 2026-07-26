@@ -10,6 +10,7 @@ import type {
   EventRelationListResponse,
   EventRelationSummary,
   EventSummary,
+  SemanticIndexNotice,
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
@@ -95,7 +96,7 @@ export interface EventRepository {
   listEnhanced(
     query: EventListQuery,
     semanticIds: string[],
-    semanticIndexUpdating: boolean,
+    semanticIndexNotice: SemanticIndexNotice,
   ): Promise<EventListResponse>;
   findCandidates(query: EventCandidateQuery): Promise<EventCandidateListResponse>;
   findById(id: string): Promise<EventDetail | null>;
@@ -203,14 +204,13 @@ export class PostgresEventRepository implements EventRepository {
       totalItems,
       totalPages,
       semanticIndexNotice: null,
-      semanticIndexUpdating: false,
     };
   }
 
   async listEnhanced(
     query: EventListQuery,
     semanticIds: string[],
-    semanticIndexUpdating: boolean,
+    semanticIndexNotice: SemanticIndexNotice,
   ): Promise<EventListResponse> {
     const normalizedQuery = normalizeSearchQuery(query.q);
     const escaped = escapeLikePattern(normalizedQuery);
@@ -282,8 +282,7 @@ export class PostgresEventRepository implements EventRepository {
       pageSize: query.limit,
       totalItems,
       totalPages,
-      semanticIndexNotice: null,
-      semanticIndexUpdating,
+      semanticIndexNotice,
     };
   }
 

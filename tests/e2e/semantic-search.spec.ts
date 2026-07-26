@@ -12,18 +12,22 @@ interface RecordedListRequest {
 interface SemanticListControls {
   requests: RecordedListRequest[];
   failure: Partial<Record<Entity, string>>;
-  updating: Partial<Record<Entity, boolean>>;
+  notice: Partial<Record<Entity, 'updating' | 'incomplete'>>;
 }
 
 const updatedAt = '2026-07-23T10:00:00.000Z';
 
-function listBody(entity: Entity, page: number, semanticIndexUpdating: boolean) {
+function listBody(
+  entity: Entity,
+  page: number,
+  semanticIndexNotice: 'updating' | 'incomplete' | null,
+) {
   const metadata = {
     page,
     pageSize: 50,
     totalItems: 101,
     totalPages: 3,
-    semanticIndexUpdating,
+    semanticIndexNotice,
   };
   if (entity === 'events') {
     return {
@@ -78,7 +82,7 @@ async function mockListApis(page: Page): Promise<SemanticListControls> {
   const controls: SemanticListControls = {
     requests: [],
     failure: {},
-    updating: {},
+    notice: {},
   };
 
   await page.route(/\/api\/(events|relations|cases)\?/u, async (route) => {
@@ -105,7 +109,7 @@ async function mockListApis(page: Page): Promise<SemanticListControls> {
       json: listBody(
         entity,
         request.page,
-        request.searchMode === 'enhanced' && Boolean(controls.updating[entity]),
+        request.searchMode === 'enhanced' ? (controls.notice[entity] ?? null) : null,
       ),
     });
   });
@@ -146,7 +150,7 @@ test('all three list pages run ordinary search before an explicit enhanced searc
   }
 });
 
-test('enhanced pagination stays local while text changes and refresh return to ordinary search', async ({
+test('enhanced pagination and refresh stay active while text changes return to ordinary search', async ({
   page,
 }) => {
   const controls = await mockListApis(page);
@@ -180,10 +184,10 @@ test('enhanced pagination stays local while text changes and refresh return to o
   const reloadStart = controls.requests.length;
   await page.reload();
   await expect.poll(() => controls.requests.length).toBeGreaterThan(reloadStart);
-  expect(controls.requests.at(-1)?.searchMode).toBeNull();
+  expect(controls.requests.at(-1)?.searchMode).toBe('enhanced');
 });
 
-test('enhanced failures retain ordinary rows and successful updating indexes show a notice', async ({
+test('enhanced failures retain ordinary rows and queryable index states show notices', async ({
   page,
 }) => {
   const controls = await mockListApis(page);
@@ -200,8 +204,19 @@ test('enhanced failures retain ordinary rows and successful updating indexes sho
   await expect(page.getByText('政策事件（第 1 页）')).toBeVisible();
   await expect(page.getByText('无法加载事件')).toHaveCount(0);
 
-  controls.updating.relations = true;
+  controls.notice.relations = 'updating';
   await page.goto(`/relations?q=${encodeURIComponent('政策')}`);
   await page.getByRole('button', { name: '增强查询' }).click();
-  await expect(page.getByRole('status')).toContainText('语义索引更新中，结果可能暂不包含最新修改');
+  await expect(page.getByRole('status')).toContainText(
+    '语义索引尚在同步，结果可能暂不包含最新修改',
+  );
+
+  controls.notice.cases = 'incomplete';
+  await page.goto(`/cases?q=${encodeURIComponent('政策')}`);
+  await page.getByRole('button', { name: '增强查询' }).click();
+  await expect(page.getByRole('status')).toContainText('语义索引不完整，结果可能缺少部分记录');
+  await expect(page.getByRole('link', { name: '前往参数配置' })).toHaveAttribute(
+    'href',
+    '/settings',
+  );
 });

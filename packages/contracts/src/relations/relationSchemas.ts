@@ -114,8 +114,6 @@ export const relationListResponseSchema = z
     items: z.array(relationSummarySchema),
     ...pageListMetadataSchema.shape,
     semanticIndexNotice: semanticIndexNoticeSchema.default(null),
-    /** @deprecated Removed after all list callers migrate to semanticIndexNotice in Task 8. */
-    semanticIndexUpdating: z.boolean().default(false),
   })
   .strict();
 

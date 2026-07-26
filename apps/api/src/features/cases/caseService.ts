@@ -42,7 +42,7 @@ export class CaseService {
     if (query.searchMode === 'standard') return this.repository.list(query);
     if (!this.semanticQuery) throw new Error('Semantic query service is not configured');
     const candidates = await this.semanticQuery.candidateIds('case', query.q);
-    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexUpdating);
+    return this.repository.listEnhanced(query, candidates.ids, candidates.semanticIndexNotice);
   }
 
   candidates(query: CaseCandidateQuery): Promise<CaseCandidateListResponse> {

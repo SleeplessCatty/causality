@@ -424,6 +424,7 @@ describe('case pages', () => {
         pageSize: 50,
         totalItems: 101,
         totalPages: 3,
+        semanticIndexNotice: url.searchParams.get('searchMode') === 'enhanced' ? 'updating' : null,
       });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -437,6 +438,7 @@ describe('case pages', () => {
       ).toBe(true),
     );
     expect(new URLSearchParams(router.state.location.search).get('searchMode')).toBe('enhanced');
+    expect(await screen.findByText('语义索引尚在同步，结果可能暂不包含最新修改')).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(false),
     );

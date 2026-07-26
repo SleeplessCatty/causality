@@ -406,6 +406,8 @@ describe('EventListPage', () => {
         page: Number(url.searchParams.get('page')),
         totalItems: 101,
         totalPages: 3,
+        semanticIndexNotice:
+          url.searchParams.get('searchMode') === 'enhanced' ? 'incomplete' : null,
       });
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -428,6 +430,10 @@ describe('EventListPage', () => {
     );
     expect(new URLSearchParams(router.state.location.search).get('searchMode')).toBe('enhanced');
     expect(new URLSearchParams(router.state.location.search).get('page')).toBe('1');
+    expect(await screen.findByText('语义索引不完整，结果可能缺少部分记录')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '前往参数配置' }).getAttribute('href')).toBe(
+      '/settings',
+    );
   });
 
   it('restores enhanced search when the saved list URL is mounted again', async () => {
