@@ -14,6 +14,7 @@ import type {
   SemanticIndexJob,
 } from '../src/jobs/jobTypes.js';
 import { DownloadJobRunner, IndexJobRunner, LoadJobRunner } from '../src/jobs/jobRunner.js';
+import { WorkerLeaseLostError } from '../src/jobs/postgresJobSupport.js';
 import { ModelHashMismatchError, type ModelDownloader } from '../src/model/modelDownloader.js';
 import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
 
@@ -42,6 +43,7 @@ function fakeRepository(nextJob: DownloadJob | null = job) {
     code: string;
     message: string;
   }> = [];
+  const released: string[] = [];
   let claimed = false;
 
   const repository: DownloadJobRepository = {
@@ -52,6 +54,10 @@ function fakeRepository(nextJob: DownloadJob | null = job) {
       return nextJob;
     },
     renewLease: async () => undefined,
+    releaseLease: async (jobId) => {
+      released.push(jobId);
+      transitions.push('released');
+    },
     markDownloading: async () => {
       transitions.push('downloading');
     },
@@ -69,11 +75,12 @@ function fakeRepository(nextJob: DownloadJob | null = job) {
       transitions.push('failed');
     },
     findReadyActiveModel: async () => null,
-    invalidateActiveModel: async () => undefined,
+    isReadyActiveModel: async () => true,
+    invalidateActiveModel: async () => true,
     failActiveModelLoad: async () => undefined,
   };
 
-  return { repository, transitions, progress, failures };
+  return { repository, transitions, progress, failures, released };
 }
 
 afterEach(async () => {
@@ -157,6 +164,28 @@ describe('DownloadJobRunner', () => {
 
     await expect(runner.runOnce()).resolves.toBe(false);
     expect(fake.transitions).toEqual(['claimed']);
+  });
+
+  it('releases a claimed download without recording failure when shutdown is requested', async () => {
+    const fake = fakeRepository();
+    const controller = new AbortController();
+    const runner = new DownloadJobRunner({
+      repository: fake.repository,
+      downloader: {
+        download: async () => {
+          controller.abort();
+        },
+      },
+      modelsDirectory: await temporaryModelDirectory(),
+      workerId: 'worker-test',
+      validateModel: async () => undefined,
+    });
+
+    await expect(runner.runOnce(controller.signal)).resolves.toBe(true);
+
+    expect(fake.transitions).toEqual(['claimed', 'downloading', 'released']);
+    expect(fake.failures).toEqual([]);
+    expect(fake.released).toEqual([job.id]);
   });
 
   it('waits for an in-flight lease renewal before final download completion', async () => {
@@ -244,6 +273,30 @@ describe('DownloadJobRunner', () => {
       },
     ]);
   });
+
+  it('persists verification failure before best-effort file cleanup', async () => {
+    const fake = fakeRepository();
+    const ordering: string[] = [];
+    fake.repository.failDownload = async () => {
+      ordering.push('failed');
+    };
+    const runner = new DownloadJobRunner({
+      repository: fake.repository,
+      downloader: { download: async () => undefined },
+      modelsDirectory: await temporaryModelDirectory(),
+      workerId: 'worker-test',
+      validateModel: async () => {
+        throw new ModelHashMismatchError('model.onnx');
+      },
+      removeModelVersion: async () => {
+        ordering.push('cleanup');
+        throw new Error('cleanup failed');
+      },
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(true);
+    expect(ordering).toEqual(['failed', 'cleanup']);
+  });
 });
 
 const loadJob: SemanticLoadJob = {
@@ -261,6 +314,7 @@ function fakeLoadRepository(nextJob: SemanticLoadJob | null = loadJob, completeC
     kind: 'retryable' | 'manual';
     code: string;
   }> = [];
+  const released: string[] = [];
   let claimed = false;
   const repository: LoadJobRepository = {
     claimNextLoad: async () => {
@@ -270,6 +324,10 @@ function fakeLoadRepository(nextJob: SemanticLoadJob | null = loadJob, completeC
       return nextJob;
     },
     renewLease: async () => undefined,
+    releaseLease: async (jobId) => {
+      released.push(jobId);
+      transitions.push('released');
+    },
     markLoading: async () => {
       transitions.push('loading');
     },
@@ -282,10 +340,11 @@ function fakeLoadRepository(nextJob: SemanticLoadJob | null = loadJob, completeC
       transitions.push('failed');
     },
     findReadyActiveModel: async () => null,
-    invalidateActiveModel: async () => undefined,
+    isReadyActiveModel: async () => true,
+    invalidateActiveModel: async () => true,
     failActiveModelLoad: async () => undefined,
   };
-  return { repository, transitions, failures };
+  return { repository, transitions, failures, released };
 }
 
 describe('LoadJobRunner', () => {
@@ -348,6 +407,34 @@ describe('LoadJobRunner', () => {
     ]);
     expect(disposed).toBe(true);
     await expect(access(modelsDirectory)).resolves.toBeUndefined();
+  });
+
+  it('persists load failure even when runtime cleanup fails', async () => {
+    const fake = fakeLoadRepository();
+    const ordering: string[] = [];
+    fake.repository.failLoad = async () => {
+      ordering.push('failed');
+    };
+    const runner = new LoadJobRunner({
+      repository: fake.repository,
+      runtime: {
+        load: async () => {
+          throw Object.assign(new Error('runtime busy'), { code: 'EBUSY' });
+        },
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => {
+          ordering.push('cleanup');
+          throw new Error('dispose failed');
+        },
+      },
+      modelsDirectory: await temporaryModelDirectory(),
+      workerId: 'worker-test',
+      validateModel: async () => undefined,
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(true);
+    expect(ordering).toEqual(['failed', 'cleanup']);
   });
 
   it('clears the active runtime and invalidates files when pre-load validation fails', async () => {
@@ -418,6 +505,35 @@ describe('LoadJobRunner', () => {
     expect(disposed).toBe(true);
     expect(activated).toBe(false);
   });
+
+  it('releases a loaded task without publishing it when shutdown is requested', async () => {
+    const fake = fakeLoadRepository();
+    const controller = new AbortController();
+    let disposed = false;
+    const runner = new LoadJobRunner({
+      repository: fake.repository,
+      runtime: {
+        load: async () => {
+          controller.abort();
+        },
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => {
+          disposed = true;
+        },
+      },
+      modelsDirectory: await temporaryModelDirectory(),
+      workerId: 'worker-test',
+      validateModel: async () => undefined,
+    });
+
+    await expect(runner.runOnce(controller.signal)).resolves.toBe(true);
+
+    expect(fake.transitions).toEqual(['claimed', 'loading', 'released']);
+    expect(fake.failures).toEqual([]);
+    expect(fake.released).toEqual([loadJob.id]);
+    expect(disposed).toBe(true);
+  });
 });
 
 const fullIndexJob: SemanticIndexJob = {
@@ -428,11 +544,18 @@ const fullIndexJob: SemanticIndexJob = {
   attempts: 1,
   entityType: null,
   entityId: null,
+  leaseOwner: 'worker-test',
 };
 
 function fakeIndexRepository(nextJob: SemanticIndexJob | null) {
   const completed: string[] = [];
-  const failures: string[] = [];
+  const failures: Array<{
+    stage: 'full_index' | 'incremental';
+    kind: 'retryable' | 'manual';
+    code: string;
+    message: string;
+  }> = [];
+  const released: string[] = [];
   let claimed = false;
   const repository: IndexJobRepository = {
     claimNextIndex: async () => {
@@ -441,14 +564,17 @@ function fakeIndexRepository(nextJob: SemanticIndexJob | null) {
       return nextJob;
     },
     renewLease: async () => undefined,
+    releaseLease: async (jobId) => {
+      released.push(jobId);
+    },
     completeIndex: async (jobId) => {
       completed.push(jobId);
     },
-    failIndex: async (_jobId, _workerId, error) => {
-      failures.push(error);
+    failIndex: async (_jobId, _workerId, stage, failure) => {
+      failures.push({ stage, ...failure });
     },
   };
-  return { repository, completed, failures };
+  return { repository, completed, failures, released };
 }
 
 describe('IndexJobRunner', () => {
@@ -474,6 +600,7 @@ describe('IndexJobRunner', () => {
       jobType: 'incremental',
       entityType: 'event',
       entityId: '10000000-0000-4000-8000-000000000001',
+      leaseOwner: 'worker-test',
     };
     const incremental = fakeIndexRepository(incrementalJob);
     const incrementalRunner = new IndexJobRunner({
@@ -486,7 +613,7 @@ describe('IndexJobRunner', () => {
     await expect(incrementalRunner.runOnce()).resolves.toBe(true);
 
     expect(built).toEqual([`full:${fullIndexJob.id}`, `incremental:${incrementalJob.id}`]);
-    expect(full.completed).toEqual([fullIndexJob.id]);
+    expect(full.completed).toEqual([]);
     expect(incremental.completed).toEqual([incrementalJob.id]);
   });
 
@@ -507,7 +634,12 @@ describe('IndexJobRunner', () => {
 
     expect(fake.completed).toEqual([]);
     expect(fake.failures).toHaveLength(1);
-    expect(fake.failures[0]!.length).toBeLessThanOrEqual(500);
+    expect(fake.failures[0]).toMatchObject({
+      stage: 'full_index',
+      kind: 'manual',
+      code: 'INDEX_VALIDATION_FAILED',
+    });
+    expect(fake.failures[0]!.message.length).toBeLessThanOrEqual(500);
   });
 
   it('returns false when no index job is available', async () => {
@@ -526,7 +658,7 @@ describe('IndexJobRunner', () => {
 
   it('passes a live lease guard into the index builder before state publication', async () => {
     vi.useFakeTimers();
-    const leaseFailure = new Error('index lease renewal failed');
+    const leaseFailure = new WorkerLeaseLostError();
     let buildStarted!: () => void;
     let releaseBuild!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -563,6 +695,27 @@ describe('IndexJobRunner', () => {
 
     expect(receivedLeaseGuard).toBe(true);
     expect(fake.completed).toEqual([]);
-    expect(fake.failures).toEqual([leaseFailure.message]);
+    expect(fake.failures).toEqual([]);
+  });
+
+  it('releases an index task without publishing failure when shutdown is requested', async () => {
+    const fake = fakeIndexRepository(fullIndexJob);
+    const controller = new AbortController();
+    const runner = new IndexJobRunner({
+      repository: fake.repository,
+      builder: {
+        buildFull: async () => {
+          controller.abort();
+        },
+        buildIncremental: async () => undefined,
+      },
+      workerId: 'worker-test',
+    });
+
+    await expect(runner.runOnce(controller.signal)).resolves.toBe(true);
+
+    expect(fake.completed).toEqual([]);
+    expect(fake.failures).toEqual([]);
+    expect(fake.released).toEqual([fullIndexJob.id]);
   });
 });

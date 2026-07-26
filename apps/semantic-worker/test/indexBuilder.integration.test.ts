@@ -1,11 +1,14 @@
 import { hashSemanticDocument } from '@causality/semantic-core';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PostgresIndexBuilder } from '../src/jobs/indexBuilder.js';
+import { PostgresIncrementalIndexDrain } from '../src/jobs/incrementalIndexDrain.js';
 import { PostgresIndexJobRepository } from '../src/jobs/indexJobRepository.js';
 import { IndexJobRunner } from '../src/jobs/jobRunner.js';
 import type { SemanticIndexJob } from '../src/jobs/jobTypes.js';
+import { WorkerLeaseLostError } from '../src/jobs/postgresJobSupport.js';
 import { PostgresSemanticSourceRepository } from '../src/jobs/semanticSourceRepository.js';
 import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
 import { startWorkerPostgresTestContext } from './support/workerPostgresTestContext.js';
@@ -109,6 +112,9 @@ class FakeEmbeddingRuntime implements EmbeddingRuntime {
   public readonly loadedPaths: string[] = [];
   public embeddedDocuments: string[] = [];
   public failingDocumentText: string | undefined;
+  public globalFailureCode: string | undefined;
+  public vectorLength = 384;
+  public nonFiniteVector = false;
   public onFirstEmbedding: (() => Promise<void>) | undefined;
   private embeddingCalls = 0;
 
@@ -124,17 +130,22 @@ class FakeEmbeddingRuntime implements EmbeddingRuntime {
     this.embeddingCalls += 1;
     this.embeddedDocuments.push(...documents);
     if (this.embeddingCalls === 1) await this.onFirstEmbedding?.();
+    if (this.globalFailureCode) {
+      throw Object.assign(new Error('embedding runtime busy'), { code: this.globalFailureCode });
+    }
     if (
       this.failingDocumentText &&
       documents.some((document) => document.includes(this.failingDocumentText!))
     ) {
       throw new Error(`Cannot embed document containing ${this.failingDocumentText}`);
     }
-    return documents.map((_document, documentIndex) =>
-      Array.from({ length: 384 }, (_unused, dimension) =>
-        dimension === documentIndex % 384 ? 1 : 0,
-      ),
-    );
+    return documents.map((_document, documentIndex) => {
+      const vector: number[] = Array.from({ length: this.vectorLength }, (_unused, dimension) =>
+        dimension === documentIndex % this.vectorLength ? 1 : 0,
+      );
+      if (this.nonFiniteVector) vector[0] = Number.NaN;
+      return vector;
+    });
   }
 
   public async dispose(): Promise<void> {}
@@ -149,6 +160,7 @@ function fullJob(): SemanticIndexJob {
     attempts: 1,
     entityType: null,
     entityId: null,
+    leaseOwner: 'full-index-test-worker',
   };
 }
 
@@ -161,6 +173,7 @@ function incrementalJob(overrides: Partial<SemanticIndexJob> = {}): SemanticInde
     attempts: 1,
     entityType: 'event',
     entityId: fullCauseId,
+    leaseOwner: 'worker-test',
     ...overrides,
   };
 }
@@ -248,6 +261,33 @@ describe.sequential('PostgresIndexBuilder', () => {
            failure_code = null,
            error = null`,
     );
+    await pool!.query(
+      `insert into semantic_jobs (
+         id,
+         job_type,
+         model_code,
+         status,
+         phase,
+         state_version,
+         attempts,
+         lease_owner,
+         lease_expires_at,
+         started_at
+       )
+       values (
+         $1,
+         'full_index',
+         'multilingual-e5-small',
+         'running',
+         'indexing',
+         11,
+         1,
+         'full-index-test-worker',
+         clock_timestamp() + interval '1 hour',
+         clock_timestamp()
+       )`,
+      [fullJobId],
+    );
     sourceRepository = new PostgresSemanticSourceRepository(pool!);
     runtime = new FakeEmbeddingRuntime();
     builder = new PostgresIndexBuilder({
@@ -292,14 +332,20 @@ describe.sequential('PostgresIndexBuilder', () => {
 
   async function runQueuedFullIndex(): Promise<void> {
     await pool!.query(
-      `insert into semantic_jobs (
-         id,
-         job_type,
-         model_code,
-         status,
-         state_version
-       )
-       values ($1, 'full_index', 'multilingual-e5-small', 'queued', 11)`,
+      `update semantic_index_state
+       set status = 'index_queued'
+       where singleton_key = true`,
+    );
+    await pool!.query(
+      `update semantic_jobs
+       set status = 'queued',
+           phase = 'waiting',
+           attempts = 0,
+           lease_owner = null,
+           lease_expires_at = null,
+           started_at = null,
+           completed_at = null
+       where id = $1`,
       [fullJobId],
     );
     const repository = new PostgresIndexJobRepository(pool!);
@@ -365,6 +411,139 @@ describe.sequential('PostgresIndexBuilder', () => {
         full_jobs: 0,
       },
     ]);
+  });
+
+  it('retries the full job instead of publishing incomplete when embedding runtime is transiently unavailable', async () => {
+    runtime!.globalFailureCode = 'EBUSY';
+
+    await runQueuedFullIndex();
+
+    const result = await pool!.query<{
+      failed_sources: number;
+      failure_code: string | null;
+      job_status: string;
+      state_status: string;
+    }>(
+      `select state.status as state_status,
+              job.status as job_status,
+              job.failure_code,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'incremental'
+                  and status = 'failed'
+                  and failure_code = 'SOURCE_EMBEDDING_FAILED'
+              ) as failed_sources
+       from semantic_index_state as state
+       join semantic_jobs as job on job.id = $1`,
+      [fullJobId],
+    );
+
+    expect(result.rows).toEqual([
+      {
+        state_status: 'building',
+        job_status: 'retry_wait',
+        failure_code: 'SOURCE_EMBEDDING_FAILED',
+        failed_sources: 0,
+      },
+    ]);
+  });
+
+  it.each([
+    [
+      'VECTOR_DIMENSION_INVALID',
+      (target: FakeEmbeddingRuntime): void => {
+        target.vectorLength = 383;
+      },
+    ],
+    [
+      'VECTOR_VALUE_INVALID',
+      (target: FakeEmbeddingRuntime): void => {
+        target.nonFiniteVector = true;
+      },
+    ],
+  ] as const)(
+    'fails the full index for %s instead of publishing incomplete',
+    async (code, breakVector) => {
+      breakVector(runtime!);
+
+      await runQueuedFullIndex();
+
+      const result = await pool!.query<{
+        embeddings: number;
+        failure_code: string | null;
+        failed_sources: number;
+        job_status: string;
+        state_status: string;
+      }>(
+        `select state.status as state_status,
+              state.failure_code,
+              job.status as job_status,
+              (select count(*)::int from semantic_embeddings) as embeddings,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'incremental'
+                  and status = 'failed'
+                  and failure_code = 'SOURCE_EMBEDDING_FAILED'
+              ) as failed_sources
+       from semantic_index_state as state
+       join semantic_jobs as job on job.id = $1`,
+        [fullJobId],
+      );
+      expect(result.rows).toEqual([
+        {
+          state_status: 'failed',
+          job_status: 'failed',
+          failure_code: code,
+          embeddings: 0,
+          failed_sources: 0,
+        },
+      ]);
+    },
+  );
+
+  it('retries the full index when a transient database write fails', async () => {
+    await pool!.query(
+      `create function fail_semantic_embedding_write()
+       returns trigger
+       language plpgsql
+       as $$
+       begin
+         raise exception using errcode = '57P01', message = 'database restarting';
+       end;
+       $$;
+       create trigger fail_semantic_embedding_write_trigger
+       before insert or update on semantic_embeddings
+       for each row execute function fail_semantic_embedding_write()`,
+    );
+    try {
+      await runQueuedFullIndex();
+      const result = await pool!.query<{
+        failure_code: string | null;
+        job_status: string;
+        state_status: string;
+      }>(
+        `select state.status as state_status,
+                job.status as job_status,
+                job.failure_code
+         from semantic_index_state as state
+         join semantic_jobs as job on job.id = $1`,
+        [fullJobId],
+      );
+      expect(result.rows).toEqual([
+        {
+          state_status: 'building',
+          job_status: 'retry_wait',
+          failure_code: 'DATABASE_TEMPORARILY_UNAVAILABLE',
+        },
+      ]);
+    } finally {
+      await pool!.query(
+        `drop trigger if exists fail_semantic_embedding_write_trigger on semantic_embeddings;
+         drop function if exists fail_semantic_embedding_write()`,
+      );
+    }
   });
 
   it('returns an incomplete index to ready after editing and reindexing its failed source', async () => {
@@ -471,6 +650,24 @@ describe.sequential('PostgresIndexBuilder', () => {
     }
   });
 
+  it('checks the live guard after inference and before writing a full-index batch', async () => {
+    let active = true;
+    runtime!.onFirstEmbedding = async () => {
+      active = false;
+    };
+
+    await expect(
+      builder!.buildFull(fullJob(), () => {
+        if (!active) throw new WorkerLeaseLostError();
+      }),
+    ).rejects.toThrow(WorkerLeaseLostError);
+
+    const count = await pool!.query<{ count: number }>(
+      `select count(*)::int as count from semantic_embeddings`,
+    );
+    expect(count.rows).toEqual([{ count: 0 }]);
+  });
+
   it('validates embedding metadata in bounded pages', async () => {
     const originalQuery = pool!.query.bind(pool!);
     const querySpy = vi.spyOn(pool!, 'query');
@@ -517,6 +714,39 @@ describe.sequential('PostgresIndexBuilder', () => {
         `select status
          from semantic_index_state
          where singleton_key = true`,
+      );
+      expect(state.rows).toEqual([{ status: 'building' }]);
+    } finally {
+      publishSpy.mockRestore();
+    }
+  });
+
+  it('refuses publication after the full-index lease is reassigned', async () => {
+    const repository = new PostgresIndexJobRepository(pool!);
+    const guardedBuilder = new PostgresIndexBuilder({
+      pool: pool!,
+      stateRepository: repository,
+      sourceRepository: sourceRepository!,
+      runtime: runtime!,
+    });
+    const publishIndex = repository.publishIndex.bind(repository);
+    const publishSpy = vi.spyOn(repository, 'publishIndex');
+    publishSpy.mockImplementationOnce(async (...arguments_) => {
+      await pool!.query(
+        `update semantic_jobs
+         set lease_owner = 'replacement-worker',
+             attempts = attempts + 1,
+             lease_expires_at = clock_timestamp() + interval '1 minute'
+         where id = $1`,
+        [fullJobId],
+      );
+      return publishIndex(...arguments_);
+    });
+
+    try {
+      await expect(guardedBuilder.buildFull(fullJob())).rejects.toThrow(WorkerLeaseLostError);
+      const state = await pool!.query<{ status: string }>(
+        `select status from semantic_index_state where singleton_key = true`,
       );
       expect(state.rows).toEqual([{ status: 'building' }]);
     } finally {
@@ -719,6 +949,54 @@ describe.sequential('PostgresIndexBuilder', () => {
     } finally {
       querySpy.mockRestore();
     }
+  });
+
+  it('stops drained incremental work as soon as its lease is lost', async () => {
+    await pool!.query(
+      `insert into semantic_jobs (
+         id,
+         job_type,
+         model_code,
+         entity_type,
+         entity_id,
+         status,
+         state_version
+       )
+       values (
+         $1,
+         'incremental',
+         'multilingual-e5-small',
+         'event',
+         $2,
+         'queued',
+         11
+       )`,
+      [incrementalJobId, fullCauseId],
+    );
+    const drain = new PostgresIncrementalIndexDrain(pool!, 30);
+    let started!: () => void;
+    const buildStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let wroteAfterLeaseLoss = false;
+    const draining = drain.drain(fullJob(), async (_job, assertLeaseValid) => {
+      started();
+      await delay(50);
+      assertLeaseValid();
+      wroteAfterLeaseLoss = true;
+    });
+
+    await buildStarted;
+    await pool!.query(
+      `update semantic_jobs
+       set attempts = attempts + 1,
+           lease_expires_at = clock_timestamp() + interval '1 minute'
+       where id = $1`,
+      [incrementalJobId],
+    );
+
+    await expect(draining).rejects.toBeInstanceOf(WorkerLeaseLostError);
+    expect(wroteAfterLeaseLoss).toBe(false);
   });
 
   it('upserts the latest incremental source and removes a deleted source vector', async () => {

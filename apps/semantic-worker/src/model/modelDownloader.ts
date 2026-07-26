@@ -61,6 +61,7 @@ export interface ModelDownloader {
     model: SemanticModelDefinition,
     targetDirectory: string,
     onProgress: (loadedBytes: number, totalBytes: number) => Promise<void>,
+    signal?: AbortSignal,
   ): Promise<void>;
 }
 
@@ -225,7 +226,9 @@ export class PinnedModelDownloader implements ModelDownloader {
     model: SemanticModelDefinition,
     targetDirectory: string,
     onProgress: (loadedBytes: number, totalBytes: number) => Promise<void>,
+    signal?: AbortSignal,
   ): Promise<void> {
+    signal?.throwIfAborted();
     const modelsDirectory = assertPinnedTarget(model, targetDirectory);
     for (const file of model.files) {
       assertSafeManifestPath(file.localPath);
@@ -244,6 +247,7 @@ export class PinnedModelDownloader implements ModelDownloader {
     let loadedBytes = 0;
     try {
       for (const file of model.files) {
+        signal?.throwIfAborted();
         const destination = join(partialModelDirectory, file.localPath);
         const relativeDestination = relative(partialModelDirectory, destination);
         if (
@@ -268,7 +272,7 @@ export class PinnedModelDownloader implements ModelDownloader {
         try {
           const response = await this.fetch(fileUrl(model, file), {
             redirect: 'follow',
-            signal: controller.signal,
+            signal: signal ? AbortSignal.any([controller.signal, signal]) : controller.signal,
           });
           if (!response.ok || !response.body) {
             throw new ModelDownloadNetworkError(
@@ -281,6 +285,7 @@ export class PinnedModelDownloader implements ModelDownloader {
           let fileBytes = 0;
           try {
             for await (const chunk of response.body) {
+              signal?.throwIfAborted();
               refreshIdleTimeout();
               const bytes = Buffer.from(chunk);
               fileBytes += bytes.byteLength;

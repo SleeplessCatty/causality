@@ -77,7 +77,7 @@ async function findActiveJob(
      where job_type = $1
        and model_code = $2
        and state_version = $3
-       and status in ('queued', 'running')
+       and status in ('queued', 'running', 'retry_wait')
      order by created_at, id
      limit 1
      for update`,

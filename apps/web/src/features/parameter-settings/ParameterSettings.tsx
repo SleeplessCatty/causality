@@ -35,14 +35,27 @@ async function runSemanticAction(
   action: SemanticAction,
   modelCode: SemanticModelCode,
 ): Promise<unknown> {
-  if (action === 'download_and_use' || action === 'use') {
-    return useSemanticModel(modelCode);
+  switch (action) {
+    case 'download_and_use':
+    case 'use':
+      return useSemanticModel(modelCode);
+    case 'retry_download':
+      return retrySemanticDownload(modelCode);
+    case 'redownload_and_use':
+      return redownloadSemanticModel(modelCode);
+    case 'retry_load':
+      return retrySemanticLoad(modelCode);
+    case 'retry_full_index':
+      return retrySemanticFullIndex(modelCode);
+    case 'reindex':
+      return reindexSemanticModel();
+    default:
+      return assertNever(action);
   }
-  if (action === 'retry_download') return retrySemanticDownload(modelCode);
-  if (action === 'redownload_and_use') return redownloadSemanticModel(modelCode);
-  if (action === 'retry_load') return retrySemanticLoad(modelCode);
-  if (action === 'retry_full_index') return retrySemanticFullIndex(modelCode);
-  return reindexSemanticModel();
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported semantic action: ${String(value)}`);
 }
 
 export function ParameterSettings() {

@@ -36,6 +36,7 @@ export async function lockOwnedJob(
   client: PoolClient,
   jobId: string,
   workerId: string,
+  attempts?: number,
 ): Promise<LockedJobRow> {
   const result = await client.query<LockedJobRow>(
     `select id,
@@ -50,13 +51,15 @@ export async function lockOwnedJob(
             status
      from semantic_jobs
      where id = $1
+       and status = 'running'
+       and lease_owner = $2
+       and lease_expires_at > clock_timestamp()
+       and ($3::integer is null or attempts = $3)
      for update`,
-    [jobId],
+    [jobId, workerId, attempts ?? null],
   );
   const row = result.rows[0];
-  if (!row || row.status !== 'running' || row.lease_owner !== workerId) {
-    throw new WorkerLeaseLostError();
-  }
+  if (!row) throw new WorkerLeaseLostError();
   return row;
 }
 
@@ -88,6 +91,28 @@ export async function renewJobLease(
     [jobId, workerId, leaseMilliseconds],
   );
   if (result.rowCount !== 1) throw new WorkerLeaseLostError();
+}
+
+export async function releaseJobLease(pool: Pool, jobId: string, workerId: string): Promise<void> {
+  await pool.query(
+    `update semantic_jobs
+     set status = 'queued',
+         phase = 'waiting',
+         attempts = greatest(attempts - 1, 0),
+         lease_owner = null,
+         lease_expires_at = null,
+         next_attempt_at = null,
+         started_at = null,
+         completed_at = null,
+         failure_kind = null,
+         failure_code = null,
+         error = null,
+         updated_at = clock_timestamp()
+     where id = $1
+       and status = 'running'
+       and lease_owner = $2`,
+    [jobId, workerId],
+  );
 }
 
 export async function withJobTransaction<T>(

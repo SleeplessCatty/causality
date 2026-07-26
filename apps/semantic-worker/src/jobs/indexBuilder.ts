@@ -4,8 +4,15 @@ import type { Pool, PoolClient } from 'pg';
 import { toSql } from 'pgvector';
 
 import { PostgresIncrementalIndexDrain } from './incrementalIndexDrain.js';
+import {
+  classifySemanticFailure,
+  IndexValidationFailedError,
+  SourceEmbeddingFailedError,
+  VectorDimensionInvalidError,
+  VectorValueInvalidError,
+} from './failureClassifier.js';
 import type { IndexStateRepository, SemanticIndexJob } from './jobTypes.js';
-import { boundedJobError } from './postgresJobSupport.js';
+import { boundedJobError, WorkerLeaseLostError } from './postgresJobSupport.js';
 import type { SemanticSourceRecord, SemanticSourceRepository } from './semanticSourceRepository.js';
 import type { EmbeddingRuntime } from '../model/modelRuntime.js';
 
@@ -44,9 +51,8 @@ export function semanticIndexBatchSize(modelCode: SemanticIndexJob['modelCode'])
 }
 
 function vectorDimensions(vector: readonly number[], expected: number): void {
-  if (vector.length !== expected || vector.some((value) => !Number.isFinite(value))) {
-    throw new Error(`Semantic index vector must contain ${expected} finite dimensions`);
-  }
+  if (vector.length !== expected) throw new VectorDimensionInvalidError(expected, vector.length);
+  if (vector.some((value) => !Number.isFinite(value))) throw new VectorValueInvalidError();
 }
 
 async function lockBusinessSource(
@@ -151,7 +157,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
           }
           break;
         }
-        processedItems += await this.indexFullBatch(job, batch, model.dimensions);
+        processedItems += await this.indexFullBatch(job, batch, model.dimensions, assertLeaseValid);
         totalItems = Math.max(totalItems, processedItems);
         afterId = batch.at(-1)!.entityId;
         const now = Date.now();
@@ -164,8 +170,11 @@ export class PostgresIndexBuilder implements IndexBuilder {
     }
 
     for (let publishAttempt = 0; publishAttempt < 10; publishAttempt += 1) {
-      await this.incrementalDrain.drain(job, (incremental) =>
-        this.buildIncremental(incremental, assertLeaseValid),
+      await this.incrementalDrain.drain(job, (incremental, assertIncrementalLeaseValid) =>
+        this.buildIncremental(incremental, () => {
+          assertLeaseValid();
+          assertIncrementalLeaseValid();
+        }),
       );
       const validation = await this.validateCompleteIndex(job);
       await this.updateFullProgress(
@@ -182,7 +191,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
       );
       if (published) return;
     }
-    throw new Error('Semantic index kept changing during final publication');
+    throw new IndexValidationFailedError('Semantic index kept changing during final publication');
   }
 
   public async buildIncremental(
@@ -203,9 +212,22 @@ export class PostgresIndexBuilder implements IndexBuilder {
         if (result === 'changed') continue;
         return;
       }
-      const [vector] = await this.options.runtime.embedDocuments([source.document]);
-      if (!vector) throw new Error('Semantic runtime did not return an incremental vector');
+      let vector: readonly number[] | undefined;
+      try {
+        [vector] = await this.options.runtime.embedDocuments([source.document]);
+      } catch (error) {
+        throw new SourceEmbeddingFailedError(
+          error instanceof Error ? error.message : String(error),
+          error,
+        );
+      }
+      if (!vector) {
+        throw new IndexValidationFailedError(
+          'Semantic runtime did not return an incremental vector',
+        );
+      }
       vectorDimensions(vector, model.dimensions);
+      assertLeaseValid();
       const result = await this.writeStableRecord(job, source, vector);
       if (result === 'written' || result === 'deleted' || result === 'stale') {
         assertLeaseValid();
@@ -213,7 +235,9 @@ export class PostgresIndexBuilder implements IndexBuilder {
         return;
       }
     }
-    throw new Error('Semantic source changed repeatedly during incremental indexing');
+    throw new IndexValidationFailedError(
+      'Semantic source changed repeatedly during incremental indexing',
+    );
   }
 
   private async countSources(): Promise<number> {
@@ -241,41 +265,64 @@ export class PostgresIndexBuilder implements IndexBuilder {
     job: SemanticIndexJob,
     sources: readonly SemanticSourceRecord[],
     expectedDimensions: number,
+    assertLeaseValid: () => void,
   ): Promise<number> {
+    let vectors: number[][];
     try {
-      const vectors = await this.options.runtime.embedDocuments(
-        sources.map((record) => record.document),
-      );
-      if (vectors.length !== sources.length) {
-        throw new Error('Semantic runtime returned an unexpected batch size');
-      }
-      for (const vector of vectors) vectorDimensions(vector, expectedDimensions);
-      const results = await this.writeStableRecords(job, sources, vectors);
-      return results.filter((result) => result === 'written').length;
+      vectors = await this.options.runtime.embedDocuments(sources.map((record) => record.document));
     } catch {
-      let indexedItems = 0;
-      for (const source of sources) {
-        try {
-          const vectors = await this.options.runtime.embedDocuments([source.document]);
-          const vector = vectors[0];
-          if (vectors.length !== 1 || !vector) {
-            throw new Error('Semantic runtime returned an unexpected single-record batch size');
-          }
-          vectorDimensions(vector, expectedDimensions);
-          const result = await this.writeStableRecord(job, source, vector);
-          if (result === 'written') indexedItems += 1;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          await this.options.stateRepository.recordSourceFailure(job, {
-            entityType: source.entityType,
-            entityId: source.entityId,
-            code: 'SOURCE_EMBEDDING_FAILED',
-            message: boundedJobError(message),
-          });
-        }
-      }
-      return indexedItems;
+      assertLeaseValid();
+      return this.indexFullSourcesIndividually(job, sources, expectedDimensions, assertLeaseValid);
     }
+    assertLeaseValid();
+    if (vectors.length !== sources.length) {
+      throw new IndexValidationFailedError('Semantic runtime returned an unexpected batch size');
+    }
+    for (const vector of vectors) vectorDimensions(vector, expectedDimensions);
+    assertLeaseValid();
+    const results = await this.writeStableRecords(job, sources, vectors);
+    return results.filter((result) => result === 'written').length;
+  }
+
+  private async indexFullSourcesIndividually(
+    job: SemanticIndexJob,
+    sources: readonly SemanticSourceRecord[],
+    expectedDimensions: number,
+    assertLeaseValid: () => void,
+  ): Promise<number> {
+    let indexedItems = 0;
+    for (const source of sources) {
+      let vectors: number[][];
+      try {
+        vectors = await this.options.runtime.embedDocuments([source.document]);
+      } catch (error) {
+        assertLeaseValid();
+        const message = error instanceof Error ? error.message : String(error);
+        const sourceFailure = new SourceEmbeddingFailedError(message, error);
+        if (classifySemanticFailure('full_index', sourceFailure).kind === 'retryable') {
+          throw sourceFailure;
+        }
+        await this.options.stateRepository.recordSourceFailure(job, {
+          entityType: source.entityType,
+          entityId: source.entityId,
+          code: 'SOURCE_EMBEDDING_FAILED',
+          message: boundedJobError(message),
+        });
+        continue;
+      }
+      assertLeaseValid();
+      const vector = vectors[0];
+      if (vectors.length !== 1 || !vector) {
+        throw new IndexValidationFailedError(
+          'Semantic runtime returned an unexpected single-record batch size',
+        );
+      }
+      vectorDimensions(vector, expectedDimensions);
+      assertLeaseValid();
+      const result = await this.writeStableRecord(job, source, vector);
+      if (result === 'written') indexedItems += 1;
+    }
+    return indexedItems;
   }
 
   private async writeStableRecord(
@@ -292,7 +339,9 @@ export class PostgresIndexBuilder implements IndexBuilder {
     vectors: readonly (readonly number[])[],
   ): Promise<StableWriteResult[]> {
     if (sources.length !== vectors.length) {
-      throw new Error('Semantic stable-write batch size does not match its vectors');
+      throw new IndexValidationFailedError(
+        'Semantic stable-write batch size does not match its vectors',
+      );
     }
     if (sources.length === 0) return [];
 
@@ -318,6 +367,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
         await client.query('rollback');
         return sources.map(() => 'stale');
       }
+      await this.lockCurrentJobLease(client, job);
 
       const results: StableWriteResult[] = [];
       for (let index = 0; index < sources.length; index += 1) {
@@ -419,6 +469,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
         await client.query('rollback');
         return 'stale';
       }
+      await this.lockCurrentJobLease(client, job);
       const current = await this.options.sourceRepository.load(job.entityType, job.entityId);
       if (current) {
         await client.query('rollback');
@@ -506,7 +557,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
               embedding.source_hash !== source.sourceHash ||
               failuresById.has(source.entityId)
             ) {
-              throw new Error(
+              throw new IndexValidationFailedError(
                 `Semantic index validation failed for ${entityType}:${source.entityId}`,
               );
             }
@@ -516,7 +567,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
           if (failuresById.get(source.entityId) === 1) {
             failedItems += 1;
           } else {
-            throw new Error(
+            throw new IndexValidationFailedError(
               `Semantic index validation failed for ${entityType}:${source.entityId}`,
             );
           }
@@ -529,7 +580,9 @@ export class PostgresIndexBuilder implements IndexBuilder {
        from semantic_embeddings`,
     );
     if (embeddingCount.rows[0]?.count !== indexedItems) {
-      throw new Error('Semantic index record count does not match business records');
+      throw new IndexValidationFailedError(
+        'Semantic index record count does not match business records',
+      );
     }
     const failedCount = await this.options.pool.query<{
       source_failures: number;
@@ -550,8 +603,25 @@ export class PostgresIndexBuilder implements IndexBuilder {
       failedCount.rows[0]?.source_failures !== failedItems ||
       failedCount.rows[0]?.total_failures !== failedItems
     ) {
-      throw new Error('Semantic failed-source count does not match business records');
+      throw new IndexValidationFailedError(
+        'Semantic failed-source count does not match business records',
+      );
     }
     return { indexedItems, failedItems };
+  }
+
+  private async lockCurrentJobLease(client: PoolClient, job: SemanticIndexJob): Promise<void> {
+    const result = await client.query(
+      `select id
+       from semantic_jobs
+       where id = $1
+         and status = 'running'
+         and lease_owner = $2
+         and attempts = $3
+         and lease_expires_at > clock_timestamp()
+       for update`,
+      [job.id, job.leaseOwner, job.attempts],
+    );
+    if (result.rowCount !== 1) throw new WorkerLeaseLostError();
   }
 }

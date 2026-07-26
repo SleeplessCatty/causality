@@ -79,6 +79,16 @@ describe.sequential('semantic job repositories', () => {
     jobType: 'full_index' | 'incremental',
     entityId?: string,
   ): Promise<string> {
+    await pool!.query(
+      `update semantic_index_state
+       set status = case
+             when $1::varchar(20) = 'full_index' then 'index_queued'
+             when status in ('building', 'ready', 'updating', 'incomplete') then status
+             else 'updating'
+           end
+       where singleton_key = true`,
+      [jobType],
+    );
     const result = await pool!.query<{ id: string }>(
       `insert into semantic_jobs (
          job_type,
@@ -148,6 +158,126 @@ describe.sequential('semantic job repositories', () => {
     expect(reclaimed).toMatchObject({ id, attempts: 2 });
   });
 
+  it('requeues an owned task immediately when a worker shuts down', async () => {
+    const id = await enqueueDownload();
+    await downloadRepository!.claimNextDownload('worker-a', 60_000);
+    await downloadRepository!.markDownloading(id, 'worker-a');
+    await downloadRepository!.updateDownloadProgress(id, 'worker-a', 1024);
+
+    await downloadRepository!.releaseLease(id, 'worker-a');
+
+    const released = await pool!.query<{
+      attempts: number;
+      downloaded_bytes: number;
+      file_status: string;
+      lease_owner: string | null;
+      started_at: Date | null;
+      status: string;
+    }>(
+      `select job.status,
+              job.attempts,
+              job.downloaded_bytes,
+              job.lease_owner,
+              job.started_at,
+              settings.file_status
+       from semantic_jobs as job
+       join semantic_model_settings as settings
+         on settings.model_code = job.model_code
+       where job.id = $1`,
+      [id],
+    );
+    expect(released.rows).toEqual([
+      {
+        status: 'queued',
+        attempts: 0,
+        downloaded_bytes: 0,
+        lease_owner: null,
+        started_at: null,
+        file_status: 'download_queued',
+      },
+    ]);
+    await expect(downloadRepository!.claimNextDownload('worker-b', 60_000)).resolves.toMatchObject({
+      id,
+      attempts: 1,
+    });
+    await expect(
+      downloadRepository!.updateDownloadProgress(id, 'worker-b', 512),
+    ).resolves.toBeUndefined();
+  });
+
+  it('serializes concurrent claims so only one high-level task starts', async () => {
+    const firstId = await enqueueDownload();
+    const secondId = await enqueueDownload();
+
+    const claims = await Promise.all([
+      downloadRepository!.claimNextDownload('worker-a', 60_000),
+      downloadRepository!.claimNextDownload('worker-b', 60_000),
+    ]);
+
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(claims.filter(Boolean)[0]?.id).toBe(firstId);
+    const states = await pool!.query<{ id: string; status: string }>(
+      `select id, status
+       from semantic_jobs
+       where id in ($1, $2)
+       order by created_at, id`,
+      [firstId, secondId],
+    );
+    expect(states.rows.map((row) => row.status).sort()).toEqual(['queued', 'running']);
+  });
+
+  it('deletes stale-version tasks and only claims work allowed by the current lifecycle stage', async () => {
+    const stale = await pool!.query<{ id: string }>(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         state_version,
+         total_bytes
+       )
+       values ('download', $1, 'queued', 6, $2)
+       returning id`,
+      [model.code, model.expectedDownloadBytes],
+    );
+
+    await expect(downloadRepository!.claimNextDownload('worker-a', 60_000)).resolves.toBeNull();
+    const staleCount = await pool!.query<{ count: number }>(
+      `select count(*)::int as count from semantic_jobs where id = $1`,
+      [stale.rows[0]!.id],
+    );
+    expect(staleCount.rows).toEqual([{ count: 0 }]);
+
+    const current = await enqueueDownload();
+    await pool!.query(
+      `update semantic_index_state set status = 'loading' where singleton_key = true`,
+    );
+    await expect(downloadRepository!.claimNextDownload('worker-a', 60_000)).resolves.toBeNull();
+    const currentCount = await pool!.query<{ count: number }>(
+      `select count(*)::int as count from semantic_jobs where id = $1`,
+      [current],
+    );
+    expect(currentCount.rows).toEqual([{ count: 1 }]);
+  });
+
+  it('does not claim another high-level task while a live high-level lease exists', async () => {
+    const runningId = await enqueueIndex('full_index');
+    await indexRepository!.claimNextIndex('worker-a', 60_000);
+    const queuedId = await enqueueLoad();
+    await pool!.query(
+      `update semantic_index_state set status = 'loading' where singleton_key = true`,
+    );
+
+    await expect(downloadRepository!.claimNextLoad('worker-b', 60_000)).resolves.toBeNull();
+    const result = await pool!.query<{ queued: number; running: number }>(
+      `select
+         count(*) filter (where id = $1 and status = 'running')::int as running,
+         count(*) filter (where id = $2 and status = 'queued')::int as queued
+       from semantic_jobs`,
+      [runningId, queuedId],
+    );
+    expect(result.rows).toEqual([{ running: 1, queued: 1 }]);
+  });
+
   it('does not reclaim a live index lease and reclaims it after expiration', async () => {
     const id = await enqueueIndex('full_index');
 
@@ -176,6 +306,7 @@ describe.sequential('semantic job repositories', () => {
       builder: {
         buildFull: async (job) => {
           builtJobs.push(job.id);
+          await indexRepository!.publishIndex(job, 0, 0);
         },
         buildIncremental: async () => {
           throw new Error('unexpected incremental job');
@@ -220,9 +351,11 @@ describe.sequential('semantic job repositories', () => {
        where singleton_key = true`,
     );
 
-    await expect(downloadRepository!.findReadyActiveModel()).resolves.toEqual({
+    await expect(downloadRepository!.findReadyActiveModel()).resolves.toMatchObject({
       modelCode: model.code,
       revision: model.revision,
+      stateVersion: 7,
+      downloadedAt: expect.any(String),
     });
   });
 
@@ -240,9 +373,11 @@ describe.sequential('semantic job repositories', () => {
        where singleton_key = true`,
     );
 
-    await expect(downloadRepository!.findReadyActiveModel()).resolves.toEqual({
+    await expect(downloadRepository!.findReadyActiveModel()).resolves.toMatchObject({
       modelCode: model.code,
       revision: model.revision,
+      stateVersion: 7,
+      downloadedAt: expect.any(String),
     });
   });
 
@@ -333,18 +468,55 @@ describe.sequential('semantic job repositories', () => {
     expect(incremental.rows).toEqual([{ status: 'ready', pending_items: 0, jobs: 0 }]);
   });
 
-  it('requeues two index failures and records a bounded terminal failure on attempt three', async () => {
+  it('schedules retryable index failures after 5 and 30 seconds before terminal failure', async () => {
     const id = await enqueueIndex('full_index');
+    const failure = {
+      kind: 'retryable' as const,
+      code: 'DATABASE_TEMPORARILY_UNAVAILABLE' as const,
+      message: '索引失败'.repeat(200),
+    };
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       await indexRepository!.claimNextIndex(`index-worker-${attempt}`, 60_000);
-      await indexRepository!.failIndex(id, `index-worker-${attempt}`, '索引失败'.repeat(200));
+      await indexRepository!.failIndex(id, `index-worker-${attempt}`, 'full_index', failure);
+      if (attempt < 3) {
+        const waiting = await pool!.query<{
+          failure_code: string;
+          seconds_until_retry: number;
+          status: string;
+        }>(
+          `select status,
+                  failure_code,
+                  round(extract(epoch from (next_attempt_at - clock_timestamp())))::int
+                    as seconds_until_retry
+           from semantic_jobs
+           where id = $1`,
+          [id],
+        );
+        expect(waiting.rows[0]).toMatchObject({
+          status: 'retry_wait',
+          failure_code: 'DATABASE_TEMPORARILY_UNAVAILABLE',
+          seconds_until_retry: attempt === 1 ? 5 : 30,
+        });
+        await expect(
+          indexRepository!.claimNextIndex('early-index-worker', 60_000),
+        ).resolves.toBeNull();
+        await pool!.query(
+          `update semantic_jobs
+           set next_attempt_at = clock_timestamp() - interval '1 second'
+           where id = $1`,
+          [id],
+        );
+      }
     }
 
     const result = await pool!.query<{
       attempts: number;
       completed: boolean;
       error_length: number;
+      failure_code: string | null;
+      failure_kind: string | null;
+      failure_stage: string | null;
       job_status: string;
       pending_items: number;
       state_status: string;
@@ -353,6 +525,9 @@ describe.sequential('semantic job repositories', () => {
               job.status as job_status,
               state.status as state_status,
               state.pending_items,
+              state.failure_stage,
+              state.failure_kind,
+              state.failure_code,
               length(job.error)::int as error_length,
               job.completed_at is not null as completed
        from semantic_jobs as job
@@ -368,6 +543,9 @@ describe.sequential('semantic job repositories', () => {
         state_status: 'failed',
         pending_items: 0,
         error_length: 500,
+        failure_stage: 'full_index',
+        failure_kind: 'retryable',
+        failure_code: 'DATABASE_TEMPORARILY_UNAVAILABLE',
         completed: true,
       },
     ]);
@@ -389,10 +567,12 @@ describe.sequential('semantic job repositories', () => {
     );
     const id = await enqueueIndex('incremental', '10000000-0000-4000-8000-000000000090');
 
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await indexRepository!.claimNextIndex(`incremental-worker-${attempt}`, 60_000);
-      await indexRepository!.failIndex(id, `incremental-worker-${attempt}`, '单条增量索引失败');
-    }
+    await indexRepository!.claimNextIndex('incremental-worker', 60_000);
+    await indexRepository!.failIndex(id, 'incremental-worker', 'incremental', {
+      kind: 'manual',
+      code: 'SOURCE_EMBEDDING_FAILED',
+      message: '单条增量索引失败',
+    });
 
     const result = await pool!.query<{
       failed_items: number;
@@ -517,11 +697,13 @@ describe.sequential('semantic job repositories', () => {
     );
     const currentId = await enqueueIndex('incremental', entityId);
 
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      const workerId = `replacement-worker-${attempt}`;
-      await indexRepository!.claimNextIndex(workerId, 60_000);
-      await indexRepository!.failIndex(currentId, workerId, '更新后的记录仍无法建立索引');
-    }
+    const workerId = 'replacement-worker';
+    await indexRepository!.claimNextIndex(workerId, 60_000);
+    await indexRepository!.failIndex(currentId, workerId, 'incremental', {
+      kind: 'manual',
+      code: 'SOURCE_EMBEDDING_FAILED',
+      message: '更新后的记录仍无法建立索引',
+    });
 
     const result = await pool!.query<{
       failed_items: number;
@@ -795,11 +977,166 @@ describe.sequential('semantic job repositories', () => {
     ]);
   });
 
+  it('preserves a failed load job when startup loading fails', async () => {
+    await prepareDownloadedModelForLoad();
+    await enqueueLoad();
+
+    await downloadRepository!.failActiveModelLoad(model.code, 7, {
+      kind: 'manual',
+      code: 'MODEL_RUNTIME_INCOMPATIBLE',
+      message: 'runtime incompatible',
+    });
+
+    const result = await pool!.query<{
+      failure_code: string;
+      job_status: string;
+      load_jobs: number;
+      state_status: string;
+    }>(
+      `select state.status as state_status,
+              job.status as job_status,
+              job.failure_code,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'load'
+                  and model_code = $1
+                  and state_version = 7
+              ) as load_jobs
+       from semantic_index_state as state
+       join semantic_jobs as job
+         on job.job_type = 'load'
+        and job.model_code = state.active_model_code
+        and job.state_version = state.state_version
+       where state.singleton_key = true`,
+      [model.code],
+    );
+    expect(result.rows).toEqual([
+      {
+        state_status: 'failed',
+        job_status: 'failed',
+        failure_code: 'MODEL_RUNTIME_INCOMPATIBLE',
+        load_jobs: 1,
+      },
+    ]);
+  });
+
+  it('ignores a startup failure from an obsolete state version', async () => {
+    await prepareDownloadedModelForLoad();
+    await pool!.query(
+      `update semantic_index_state
+       set state_version = 8,
+           status = 'ready'
+       where singleton_key = true`,
+    );
+
+    await downloadRepository!.failActiveModelLoad(model.code, 7, {
+      kind: 'manual',
+      code: 'MODEL_RUNTIME_INCOMPATIBLE',
+      message: 'obsolete startup attempt',
+    });
+
+    const result = await pool!.query<{
+      failed_jobs: number;
+      state_status: string;
+      state_version: number;
+    }>(
+      `select state.status as state_status,
+              state.state_version,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'load'
+                  and status = 'failed'
+              ) as failed_jobs
+       from semantic_index_state as state
+       where singleton_key = true`,
+    );
+    expect(result.rows).toEqual([{ state_status: 'ready', state_version: 8, failed_jobs: 0 }]);
+  });
+
+  it('records observed invalid files without mutating a newer index state version', async () => {
+    await prepareDownloadedModelForLoad();
+    const generation = await pool!.query<{ downloaded_at: string }>(
+      `select downloaded_at::text as downloaded_at
+       from semantic_model_settings
+       where model_code = $1`,
+      [model.code],
+    );
+    await pool!.query(
+      `update semantic_index_state
+       set state_version = 8,
+           status = 'ready'
+       where singleton_key = true`,
+    );
+
+    await expect(
+      downloadRepository!.invalidateActiveModel(model.code, 7, generation.rows[0]!.downloaded_at, {
+        kind: 'manual',
+        code: 'MODEL_FILE_MISSING',
+        message: 'Model file is missing: model.onnx',
+      }),
+    ).resolves.toBe(false);
+
+    const result = await pool!.query<{
+      file_status: string;
+      state_status: string;
+      state_version: number;
+    }>(
+      `select settings.file_status,
+              state.status as state_status,
+              state.state_version
+       from semantic_model_settings as settings
+       join semantic_index_state as state
+         on state.active_model_code = settings.model_code
+       where settings.model_code = $1`,
+      [model.code],
+    );
+    expect(result.rows).toEqual([
+      { file_status: 'invalid', state_status: 'ready', state_version: 8 },
+    ]);
+  });
+
+  it('does not invalidate a newer downloaded file generation', async () => {
+    await prepareDownloadedModelForLoad();
+    const stale = await pool!.query<{ downloaded_at: string }>(
+      `select downloaded_at::text as downloaded_at
+       from semantic_model_settings
+       where model_code = $1`,
+      [model.code],
+    );
+    await pool!.query(
+      `update semantic_model_settings
+       set downloaded_at = downloaded_at + interval '1 second'
+       where model_code = $1`,
+      [model.code],
+    );
+
+    await expect(
+      downloadRepository!.invalidateActiveModel(model.code, 7, stale.rows[0]!.downloaded_at, {
+        kind: 'manual',
+        code: 'MODEL_HASH_MISMATCH',
+        message: 'stale validation result',
+      }),
+    ).resolves.toBe(false);
+
+    const result = await pool!.query<{ file_status: string; state_status: string }>(
+      `select settings.file_status,
+              state.status as state_status
+       from semantic_model_settings as settings
+       join semantic_index_state as state
+         on state.active_model_code = settings.model_code
+       where settings.model_code = $1`,
+      [model.code],
+    );
+    expect(result.rows).toEqual([{ file_status: 'downloaded', state_status: 'loading' }]);
+  });
+
   it('invalidates files when pre-load validation fails without queuing a download', async () => {
     await prepareDownloadedModelForLoad();
     const id = await enqueueLoad();
-    await enqueueIndex('full_index');
     await downloadRepository!.claimNextLoad('load-worker', 60_000);
+    await enqueueIndex('full_index');
 
     await downloadRepository!.failLoad(id, 'load-worker', 'verify', {
       kind: 'manual',

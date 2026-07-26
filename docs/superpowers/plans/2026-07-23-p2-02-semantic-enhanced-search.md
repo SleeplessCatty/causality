@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add user-triggered local semantic search to the event, relation, and case lists, backed by two pinned local embedding models, a dedicated TypeScript worker, and PostgreSQL pgvector.
+> **Status:** Historical initial implementation plan. Its original task snippets are retained as an execution record, not as current API or lifecycle guidance. The implemented behavior is defined by `docs/superpowers/specs/2026-07-26-semantic-model-lifecycle-design.md` and the final remediation plan `docs/superpowers/plans/2026-07-26-p2-02-final-remediation.md`. In particular, the legacy settings response and generic retry endpoint described by early tasks were removed.
+
+**Goal:** Add user-triggered local semantic search to the event, relation, and case lists, backed by four pinned local embedding models, a dedicated TypeScript worker, and PostgreSQL pgvector.
 
 **Architecture:** Existing list endpoints keep ownership of filters, pagination, and response rows. A new semantic API module owns model configuration and vector retrieval, while a dedicated `@causality/semantic-worker` process owns pinned model downloads, Transformers.js inference, and persistent indexing jobs. PostgreSQL stores one active model's vectors, task leases, model state, and partial HNSW indexes; normal search never depends on worker availability.
 
@@ -16,8 +18,8 @@
 - Add enhanced search only to the event, relation, and case list pages.
 - Fetch at most 100 semantic candidates, merge on the server, deduplicate by business ID, and rank every normal match before semantic-only rows.
 - Do not show match reasons, similarity scores, search source labels, model internals, or search logs.
-- Changing the search text immediately returns the page to normal search; refreshing the page never restores enhanced mode.
-- Use only the two pinned ONNX INT8 models in `@causality/semantic-core`; do not accept arbitrary model names, revisions, files, or URLs.
+- Changing the search text immediately returns the page to normal search. Detail return and same-URL refresh preserve enhanced mode; entering a bare list URL does not.
+- Use only the four pinned ONNX INT8 models in `@causality/semantic-core`; do not accept arbitrary model names, revisions, files, or URLs.
 - Do not add a semantic enable/disable switch.
 - The enhanced-search button always remains clickable; unavailable states return stable reason codes and preserve the current normal results.
 - First model download is manual. A completed download automatically loads the model and starts full indexing.
@@ -697,14 +699,14 @@ interface SemanticRepository {
   getSettings(): Promise<SemanticSettingsResponse>;
   setThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void>;
   requestUseModel(modelCode: SemanticModelCode): Promise<SemanticUseModelResponse>;
-  retryLatestFailure(): Promise<SemanticUseModelResponse>;
+  // Historical interface: the final lifecycle implementation replaced
+  // settings and generic retry with lifecycle facts and stage-specific commands.
 }
 
 class SemanticService {
   settings(): Promise<SemanticSettingsResponse>;
   updateThreshold(modelCode: SemanticModelCode, threshold: number): Promise<SemanticSettingsResponse>;
   useModel(modelCode: SemanticModelCode): Promise<SemanticUseModelResponse>;
-  retry(): Promise<SemanticUseModelResponse>;
 }
 ```
 
@@ -714,7 +716,11 @@ class SemanticService {
 GET   /api/semantic/settings
 PATCH /api/semantic/models/:modelCode/threshold
 POST  /api/semantic/models/:modelCode/use
-POST  /api/semantic/retry
+POST  /api/semantic/models/:modelCode/retry-download
+POST  /api/semantic/models/:modelCode/redownload
+POST  /api/semantic/models/:modelCode/retry-load
+POST  /api/semantic/models/:modelCode/retry-full-index
+POST  /api/semantic/reindex
 ```
 
 - [ ] **Step 1: Write failing service tests**
@@ -1346,7 +1352,6 @@ function updateSemanticThreshold(
   modelCode: SemanticModelCode,
   threshold: number,
 ): Promise<SemanticSettingsResponse>;
-function retrySemanticTask(): Promise<SemanticUseModelResponse>;
 ```
 
 - [ ] **Step 1: Extract the existing percentage control with tests**

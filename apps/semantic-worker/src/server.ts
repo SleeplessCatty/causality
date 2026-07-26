@@ -14,6 +14,7 @@ import { PostgresSemanticSourceRepository } from './jobs/semanticSourceRepositor
 import { buildInternalServer, SemanticWorkerService } from './internalServer.js';
 import { PinnedModelDownloader } from './model/modelDownloader.js';
 import { TransformersEmbeddingRuntime } from './model/transformersRuntime.js';
+import { waitForWorkerDrain } from './workerShutdown.js';
 
 const env = parseWorkerEnv(process.env);
 const pool = createWorkerDatabasePool(env.DATABASE_URL);
@@ -71,11 +72,11 @@ const pollingController = new AbortController();
 async function pollJobs(): Promise<void> {
   while (!pollingController.signal.aborted) {
     try {
-      const processed = await runner.runOnce();
+      const processed = await runner.runOnce(pollingController.signal);
       if (processed) continue;
-      const loaded = await loadRunner.runOnce();
+      const loaded = await loadRunner.runOnce(pollingController.signal);
       if (loaded) continue;
-      const indexed = await indexRunner.runOnce();
+      const indexed = await indexRunner.runOnce(pollingController.signal);
       if (indexed) continue;
     } catch (error) {
       app.log.error(error, 'Semantic job failed outside retry handling');
@@ -99,7 +100,14 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   isShuttingDown = true;
   app.log.info({ signal }, 'Shutting down semantic worker');
   pollingController.abort();
-  await polling;
+  const drainResult = await waitForWorkerDrain(polling, env.SHUTDOWN_DRAIN_TIMEOUT_MS);
+  if (drainResult === 'timed_out') {
+    app.log.error(
+      { timeoutMilliseconds: env.SHUTDOWN_DRAIN_TIMEOUT_MS },
+      'Semantic worker shutdown drain timed out; active leases will expire for recovery',
+    );
+    process.exit(1);
+  }
   await app.close();
   await service.dispose();
   await pool.end();

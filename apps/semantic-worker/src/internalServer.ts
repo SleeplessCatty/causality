@@ -12,11 +12,7 @@ import { z } from 'zod';
 import { classifySemanticFailure } from './jobs/failureClassifier.js';
 import type { ModelFileRepository } from './jobs/jobTypes.js';
 import type { EmbeddingRuntime } from './model/modelRuntime.js';
-import {
-  ModelHashMismatchError,
-  removeModelVersion,
-  validateReadyModel,
-} from './model/modelDownloader.js';
+import { ModelHashMismatchError, validateReadyModel } from './model/modelDownloader.js';
 
 const embedQuerySchema = z
   .object({
@@ -77,21 +73,40 @@ export class SemanticWorkerService implements SemanticWorkerQueryService {
       await this.validateModel(model, target);
     } catch (error) {
       const failure = classifySemanticFailure('verify', error);
-      await this.options.runtime.dispose();
-      await removeModelVersion(model, target);
-      await this.options.repository.invalidateActiveModel(model.code, failure);
+      await this.options.repository.invalidateActiveModel(
+        model.code,
+        active.stateVersion,
+        active.downloadedAt,
+        failure,
+      );
+      try {
+        await this.options.runtime.dispose();
+      } catch {
+        // The authoritative failure is persisted before best-effort runtime cleanup.
+      }
+      // Files remain untouched here: a concurrent redownload may already be publishing a new
+      // generation. The next explicit download safely replaces the invalid generation.
       return;
     }
 
     try {
       await this.options.runtime.load(model, target);
+      if (!(await this.options.repository.isReadyActiveModel(model.code, active.stateVersion))) {
+        await this.options.runtime.dispose();
+        return;
+      }
       this.activeModelCode = model.code;
     } catch (error) {
-      await this.options.runtime.dispose();
       await this.options.repository.failActiveModelLoad(
         model.code,
+        active.stateVersion,
         classifySemanticFailure('load', error),
       );
+      try {
+        await this.options.runtime.dispose();
+      } catch {
+        // The authoritative failure is persisted before best-effort runtime cleanup.
+      }
     }
   }
 

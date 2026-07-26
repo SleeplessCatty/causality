@@ -99,6 +99,13 @@
       "when": 1785072362596,
       "tag": "0013_semantic_lifecycle_state_machine",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1785076000000,
+      "tag": "0014_semantic_lifecycle_hardening",
+      "breakpoints": true
     }
   ]
 }

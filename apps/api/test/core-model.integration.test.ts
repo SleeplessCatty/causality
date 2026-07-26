@@ -879,6 +879,42 @@ describe.sequential('core PostgreSQL model', () => {
     expect(metadataJobs.rows[0]?.count).toBe(1);
   });
 
+  it('queues incremental work only for index stages that can consume it', async () => {
+    const loadingEventId = '10000000-0000-4000-8000-000000000076';
+    const failedEventId = '10000000-0000-4000-8000-000000000077';
+    const buildingEventId = '10000000-0000-4000-8000-000000000078';
+    const readyEventId = '10000000-0000-4000-8000-000000000079';
+
+    for (const [status, id] of [
+      ['loading', loadingEventId],
+      ['failed', failedEventId],
+      ['building', buildingEventId],
+      ['ready', readyEventId],
+    ] as const) {
+      await pool!.query(
+        `update semantic_index_state
+         set active_model_code = 'multilingual-e5-small',
+             status = $1,
+             state_version = state_version + 1`,
+        [status],
+      );
+      await pool!.query(`insert into abstract_events (id, name) values ($1, $2)`, [
+        id,
+        `${status}阶段事件`,
+      ]);
+    }
+
+    const jobs = await pool!.query<{ entity_id: string }>(
+      `select entity_id
+       from semantic_jobs
+       where job_type = 'incremental'
+         and entity_id = any($1::uuid[])
+       order by entity_id`,
+      [[loadingEventId, failedEventId, buildingEventId, readyEventId]],
+    );
+    expect(jobs.rows).toEqual([{ entity_id: buildingEventId }, { entity_id: readyEventId }]);
+  });
+
   it('keeps a leased incremental job recoverable while queuing newer source changes', async () => {
     const eventId = '10000000-0000-4000-8000-000000000073';
     await pool!.query(

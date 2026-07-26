@@ -22,6 +22,7 @@ export interface SemanticIndexJob extends SemanticJob {
   jobType: Extract<SemanticTaskType, 'full_index' | 'incremental'>;
   entityType: SemanticEntityType | null;
   entityId: string | null;
+  leaseOwner: string;
 }
 
 export interface RecordFailure {
@@ -34,16 +35,22 @@ export interface RecordFailure {
 export interface ReadyActiveModel {
   modelCode: SemanticModelCode;
   revision: string;
+  stateVersion: number;
+  downloadedAt: string;
 }
 
 export interface ModelFileRepository {
   findReadyActiveModel(): Promise<ReadyActiveModel | null>;
+  isReadyActiveModel(modelCode: SemanticModelCode, stateVersion: number): Promise<boolean>;
   invalidateActiveModel(
     modelCode: SemanticModelCode,
+    stateVersion: number,
+    downloadedAt: string,
     failure: ClassifiedSemanticFailure,
-  ): Promise<void>;
+  ): Promise<boolean>;
   failActiveModelLoad(
     modelCode: SemanticModelCode,
+    stateVersion: number,
     failure: ClassifiedSemanticFailure,
   ): Promise<void>;
 }
@@ -51,6 +58,7 @@ export interface ModelFileRepository {
 export interface DownloadJobRepository extends ModelFileRepository {
   claimNextDownload(workerId: string, leaseMilliseconds: number): Promise<DownloadJob | null>;
   renewLease(jobId: string, workerId: string, leaseMilliseconds: number): Promise<void>;
+  releaseLease(jobId: string, workerId: string): Promise<void>;
   markDownloading(jobId: string, workerId: string): Promise<void>;
   updateDownloadProgress(jobId: string, workerId: string, loadedBytes: number): Promise<void>;
   markVerifying(jobId: string, workerId: string): Promise<void>;
@@ -66,6 +74,7 @@ export interface DownloadJobRepository extends ModelFileRepository {
 export interface LoadJobRepository extends ModelFileRepository {
   claimNextLoad(workerId: string, leaseMilliseconds: number): Promise<SemanticLoadJob | null>;
   renewLease(jobId: string, workerId: string, leaseMilliseconds: number): Promise<void>;
+  releaseLease(jobId: string, workerId: string): Promise<void>;
   markLoading(jobId: string, workerId: string): Promise<void>;
   completeLoad(jobId: string, workerId: string): Promise<boolean>;
   failLoad(
@@ -79,8 +88,14 @@ export interface LoadJobRepository extends ModelFileRepository {
 export interface IndexJobRepository {
   claimNextIndex(workerId: string, leaseMilliseconds: number): Promise<SemanticIndexJob | null>;
   renewLease(jobId: string, workerId: string, leaseMilliseconds: number): Promise<void>;
+  releaseLease(jobId: string, workerId: string): Promise<void>;
   completeIndex(jobId: string, workerId: string): Promise<void>;
-  failIndex(jobId: string, workerId: string, error: string): Promise<void>;
+  failIndex(
+    jobId: string,
+    workerId: string,
+    stage: Extract<SemanticFailureStage, 'full_index' | 'incremental'>,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void>;
 }
 
 export interface IndexStateRepository {

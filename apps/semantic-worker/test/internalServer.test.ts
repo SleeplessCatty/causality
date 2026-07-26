@@ -55,6 +55,7 @@ function startupRepository() {
   const repository: DownloadJobRepository = {
     claimNextDownload: async () => null,
     renewLease: async () => undefined,
+    releaseLease: async () => undefined,
     markDownloading: async () => undefined,
     updateDownloadProgress: async () => undefined,
     markVerifying: async () => undefined,
@@ -63,11 +64,15 @@ function startupRepository() {
     findReadyActiveModel: async () => ({
       modelCode: 'multilingual-e5-small',
       revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
+      stateVersion: 4,
+      downloadedAt: '2026-07-26 00:00:00+00',
     }),
-    invalidateActiveModel: async (modelCode, failure) => {
+    isReadyActiveModel: async () => true,
+    invalidateActiveModel: async (modelCode, _stateVersion, _downloadedAt, failure) => {
       invalid.push({ modelCode, code: failure.code });
+      return true;
     },
-    failActiveModelLoad: async (modelCode, failure) => {
+    failActiveModelLoad: async (modelCode, _stateVersion, failure) => {
       loadFailures.push({ modelCode, code: failure.code });
     },
   };
@@ -138,7 +143,7 @@ describe('semantic worker internal server', () => {
     await app.close();
   });
 
-  it('removes and invalidates a ready database model when its local manifest is missing', async () => {
+  it('invalidates but does not race-delete a ready model when its manifest is missing', async () => {
     const fake = startupRepository();
     const modelsDirectory = await temporaryModelsDirectory();
     const modelDirectory = join(
@@ -178,7 +183,7 @@ describe('semantic worker internal server', () => {
       activeModelCode: null,
     });
     expect(disposed).toBe(true);
-    await expect(access(modelDirectory)).rejects.toThrow();
+    await expect(access(modelDirectory)).resolves.toBeUndefined();
     expect(fake.invalid).toEqual([
       { modelCode: 'multilingual-e5-small', code: 'MODEL_FILE_MISSING' },
     ]);
@@ -221,6 +226,117 @@ describe('semantic worker internal server', () => {
     expect(fake.loadFailures).toEqual([
       { modelCode: 'multilingual-e5-small', code: 'MODEL_RUNTIME_INCOMPATIBLE' },
     ]);
+  });
+
+  it('persists startup validation failure before best-effort cleanup', async () => {
+    const fake = startupRepository();
+    const ordering: string[] = [];
+    fake.repository.invalidateActiveModel = async () => {
+      ordering.push('failed');
+      return true;
+    };
+    const service = new SemanticWorkerService({
+      repository: fake.repository,
+      runtime: {
+        load: async () => undefined,
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => {
+          ordering.push('dispose');
+          throw new Error('dispose failed');
+        },
+      },
+      modelsDirectory: await temporaryModelsDirectory(),
+      validateModel: async () => {
+        throw new ModelFileMissingError('config.json');
+      },
+    });
+
+    await expect(service.initialize()).resolves.toBeUndefined();
+    expect(ordering).toEqual(['failed', 'dispose']);
+  });
+
+  it('does not delete model files when a stale startup validation failure is rejected', async () => {
+    const fake = startupRepository();
+    fake.repository.invalidateActiveModel = async () => false;
+    const modelsDirectory = await temporaryModelsDirectory();
+    const modelDirectory = join(
+      modelsDirectory,
+      'multilingual-e5-small',
+      '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
+    );
+    await mkdir(modelDirectory, { recursive: true });
+    const service = new SemanticWorkerService({
+      repository: fake.repository,
+      runtime: {
+        load: async () => undefined,
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => undefined,
+      },
+      modelsDirectory,
+      validateModel: async () => {
+        throw new ModelFileMissingError('config.json');
+      },
+    });
+
+    await service.initialize();
+
+    await expect(access(modelDirectory)).resolves.toBeUndefined();
+  });
+
+  it('persists startup load failure before best-effort runtime disposal', async () => {
+    const fake = startupRepository();
+    const ordering: string[] = [];
+    fake.repository.failActiveModelLoad = async () => {
+      ordering.push('failed');
+    };
+    const service = new SemanticWorkerService({
+      repository: fake.repository,
+      runtime: {
+        load: async () => {
+          throw new Error('runtime incompatible');
+        },
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => {
+          ordering.push('dispose');
+          throw new Error('dispose failed');
+        },
+      },
+      modelsDirectory: await temporaryModelsDirectory(),
+      validateModel: async () => undefined,
+    });
+
+    await expect(service.initialize()).resolves.toBeUndefined();
+    expect(ordering).toEqual(['failed', 'dispose']);
+  });
+
+  it('disposes a model that stopped being current while startup loading was in progress', async () => {
+    const fake = startupRepository();
+    fake.repository.isReadyActiveModel = async () => false;
+    let disposed = false;
+    const service = new SemanticWorkerService({
+      repository: fake.repository,
+      runtime: {
+        load: async () => undefined,
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => {
+          disposed = true;
+        },
+      },
+      modelsDirectory: await temporaryModelsDirectory(),
+      validateModel: async () => undefined,
+    });
+
+    await service.initialize();
+
+    expect(disposed).toBe(true);
+    expect(service.health()).toMatchObject({
+      modelLoaded: false,
+      activeModelCode: null,
+    });
   });
 
   it('keeps internal inference unavailable while a newly loaded model is being indexed', async () => {

@@ -1,10 +1,12 @@
 # 本地语义嵌入模型选型研究
 
-更新时间：2026-07-24
+更新时间：2026-07-26
+
+> 本文保留模型扩展前的选型过程。当前应用已固定集成中文轻量、轻量快速、均衡多语言和质量优先四个模型；下文的候选判断是研究记录，不表示当前只支持两个模型。
 
 ## 1. 结论
 
-当前项目最值得优先验证的替代模型是
+本轮研究中最值得优先验证的替代模型是
 [`granite-embedding-97m-multilingual-r2`](https://huggingface.co/ibm-granite/granite-embedding-97m-multilingual-r2)：
 
 - 97M 参数、384 维，中文和英文都在 52 个重点增强语言中；
@@ -35,20 +37,22 @@
 
 项目当前的
 [`MODEL_CATALOG`](../packages/semantic-core/src/modelCatalog.ts)
-只内置两个模型：
+内置四个模型：
 
 | 模型 | 项目固定格式 | 项目实际下载量 | 维度 | 项目最大 token | pooling / 前缀 |
 | --- | --- | ---: | ---: | ---: | --- |
+| `bge-small-zh-v1.5` | ONNX INT8 | 24,451,175 B（约 24 MB） | 512 | 512 | CLS；无前缀 |
 | `multilingual-e5-small` | ONNX INT8 | 135,392,857 B（约 135 MB） | 384 | 512 | mean；`query:` / `passage:` |
+| `granite-embedding-97m-multilingual-r2` | ONNX INT8 | 123,174,716 B（约 123 MB） | 384 | 512 | CLS；无前缀 |
 | `bge-m3` | ONNX INT8 | 585,565,019 B（约 586 MB） | 1024 | 1,024 | CLS；无前缀 |
 
 运行时只从固定目录加载固定文件，使用 CPU ONNX Runtime、顺序执行、2 个 intra-op 线程，
-并在每次推理后释放输出 tensor。数据库目前也只允许 384 或 1024 维，并为两个模型、
-三种实体分别建立了 HNSW 部分索引。因此增加任何新模型都不只是改 UI：
+并在每次推理后释放输出 tensor。数据库目前允许 384、512 或 1024 维，并为四个模型、
+三种实体分别建立了 HNSW 部分索引。因此继续增加任何新模型都不只是改 UI：
 必须扩展模型代码枚举、下载清单和校验和、数据库约束及部分索引、Worker/API 协议与测试。
 
-Granite 97M 虽然同为 384 维，可以复用相同的 pgvector 物理规格，
-但仍必须使用独立 `model_code`，不能把它伪装成 E5 Small。
+Granite 97M 虽然同为 384 维并复用相同的 pgvector 物理规格，
+仍使用独立 `model_code`，没有伪装成 E5 Small。
 
 ## 3. 候选对比
 
@@ -58,9 +62,10 @@ Granite 97M 虽然同为 384 维，可以复用相同的 pgvector 物理规格�
 
 | 模型 | 参数量 | 向量维度 | 最大长度 | 语言 | INT8 ONNX | 许可证 | 当前项目适配判断 |
 | --- | ---: | ---: | ---: | --- | ---: | --- | --- |
+| `bge-small-zh-v1.5`（当前） | 24M | 512 | 512 | 中文 | 24 MB | MIT | 中文轻量默认候选 |
 | `multilingual-e5-small`（当前） | 约 0.1B | 384 | 512 | 100 种，含中英文 | 118 MB | MIT | 已验证；轻量基线 |
 | `bge-m3`（当前） | 568M | 1024 | 官方 8,192；项目限制 1,024 | 100+ | 568 MB | MIT | 质量强，但当前 CPU/内存代价过高 |
-| `granite-embedding-97m-multilingual-r2` | 97M | 384 | 32,768 | 200+；52 种重点增强含中英文 | 97.9 MB | Apache-2.0 | **主推荐；先做本地兼容与领域质量门禁** |
+| `granite-embedding-97m-multilingual-r2`（当前） | 97M | 384 | 32,768；项目限制 512 | 200+；52 种重点增强含中英文 | 97.9 MB | Apache-2.0 | 已完成固定版本集成 |
 | `multilingual-e5-base` | 约 278M | 768 | 512 | 100 种，含中英文 | 279 MB | MIT | 最稳妥的中档备选；质量提升偏温和 |
 | `gte-multilingual-base` | 305M | 768（可截断到 128–768） | 8,192 | 70+/75 | 340 MB | Apache-2.0 | 强检索模型，但对本项目偏重，适配风险高于 E5 |
 | `paraphrase-multilingual-MiniLM-L12-v2` | 约 0.1B | 384 | Sentence Transformers 配置 128 | 50 种 | ARM64 QInt8 118 MB | Apache-2.0 | 适合作轻量相似度，不足以证明是 E5 Small 的升级 |
@@ -150,7 +155,7 @@ Sentence Transformers 官方模型卡说明该模型约 0.1B 参数、384 维、
 
 ## 4. 推荐实施顺序
 
-1. 不立即删除现有两个模型定义，也不把官方通用分数直接当作产品结论。
+1. 不立即删除现有四个模型定义，也不把官方通用分数直接当作产品结论。
 2. 为 Granite 97M 做一次独立技术验证，不先改生产数据库：
    固定 revision 和文件 SHA-256，在临时目录下载 INT8 ONNX，跑真实模型 smoke 和项目语义质量集。
 3. 如果 Linux ARM64、Transformers.js、领域质量和峰值内存全部通过，
@@ -185,4 +190,3 @@ Sentence Transformers 官方模型卡说明该模型约 0.1B 参数、384 维、
   https://aclanthology.org/2024.emnlp-industry.103.pdf
 - Paraphrase Multilingual MiniLM 官方模型卡：
   https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-

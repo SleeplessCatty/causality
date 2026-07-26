@@ -53,7 +53,7 @@ function baseLifecycle(): SemanticLifecycleSnapshot {
         modelCode: 'bge-m3',
         label: '质量优先',
         dimensions: 1024,
-        expectedDownloadBytes: 608_174_424,
+        expectedDownloadBytes: 585_565_019,
         fileState: 'downloaded',
         stage: 'downloaded',
         downloadedAt: timestamp,

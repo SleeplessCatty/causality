@@ -1254,7 +1254,7 @@ Assert:
 
 ```ts
 expect(screen.getByText('13.1 MB / 25.2 MB')).toBeTruthy();
-expect(within(bgeM3Card).getByText('约 608 MB')).toBeTruthy();
+expect(within(bgeM3Card).getByText('约 586 MB')).toBeTruthy();
 ```
 
 - [x] **Step 4: Run Web tests and verify failure**
@@ -1318,7 +1318,7 @@ git add apps/web/src apps/api/src/features/semantic packages/contracts tests/e2e
 git commit -m "feat: render semantic model lifecycle controls"
 ```
 
-- [ ] **Step 12: User review**
+- [x] **Step 12: User review**
 
 Manually verify every model card stage, action label, disabled switch behavior, progress transition, incomplete warning, and stable-state polling stop before starting Task 10.
 
@@ -1418,7 +1418,7 @@ git add apps/api/src/features/semantic apps/api/test apps/web/src/features/syste
 git commit -m "feat: report semantic worker system status"
 ```
 
-- [ ] **Step 8: User review**
+- [x] **Step 8: User review**
 
 Manually verify loaded, preparing, missing/mismatch, and unavailable Worker statuses; confirm “重新检查” does not start downloads or indexing.
 
@@ -1440,7 +1440,7 @@ Manually verify loaded, preparing, missing/mismatch, and unavailable Worker stat
 
 - Produces a release candidate with no old generic retry, no binary-MB labels, no contradictory refresh behavior, and no stale terminology.
 
-- [ ] **Step 1: Update documentation**
+- [x] **Step 1: Update documentation**
 
 Document:
 
@@ -1448,12 +1448,12 @@ Document:
 - immediate switch and reindex downtime;
 - incomplete index behavior;
 - Worker system status;
-- decimal model sizes: approximately 24 MB, 135 MB, 123 MB, and 608 MB;
+- decimal model sizes from the pinned manifests: approximately 24 MB, 135 MB, 123 MB, and 586 MB;
 - query URL behavior: detail return and same-URL refresh preserve enhanced mode, while entering a bare list route does not.
 
 Change “具体事件” to “具体案例” in the historical finance evaluation document. Remove the extra trailing blank line from `docs/semantic-model-selection-research.md`.
 
-- [ ] **Step 2: Run static gates**
+- [x] **Step 2: Run static gates**
 
 Run:
 
@@ -1466,7 +1466,7 @@ git diff --check
 
 Expected: all commands exit 0 and `git diff --check` prints nothing.
 
-- [ ] **Step 3: Run all unit and component tests**
+- [x] **Step 3: Run all unit and component tests**
 
 Run:
 
@@ -1476,7 +1476,7 @@ pnpm test
 
 Expected: all workspace tests pass and the total is not lower than the pre-remediation 422 tests.
 
-- [ ] **Step 4: Run all database integration tests**
+- [x] **Step 4: Run all database integration tests**
 
 Run:
 
@@ -1486,7 +1486,7 @@ pnpm test:integration
 
 Expected: API and Worker integration tests pass and the total is not lower than the pre-remediation 119 tests.
 
-- [ ] **Step 5: Run build and Compose contracts**
+- [x] **Step 5: Run build and Compose contracts**
 
 Run:
 
@@ -1497,7 +1497,7 @@ pnpm test:compose
 
 Expected: all workspaces build and production Compose contracts pass.
 
-- [ ] **Step 6: Run the real lightweight model smoke**
+- [x] **Step 6: Run the real lightweight model smoke**
 
 Run:
 

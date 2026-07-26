@@ -73,7 +73,7 @@ function lifecycle(overrides: Partial<SemanticLifecycleSnapshot> = {}): Semantic
         modelCode: 'bge-m3',
         label: '质量优先',
         dimensions: 1024,
-        expectedDownloadBytes: 608_174_424,
+        expectedDownloadBytes: 585_565_019,
       }),
     ],
     index: {
@@ -193,7 +193,7 @@ describe('ParameterSettings', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: '重试任务' })).toBeNull();
     expect(
-      within(screen.getByRole('article', { name: '质量优先' })).getByText('约 608 MB'),
+      within(screen.getByRole('article', { name: '质量优先' })).getByText('约 586 MB'),
     ).toBeTruthy();
   });
 

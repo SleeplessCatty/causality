@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { classifySemanticFailure } from '../src/jobs/failureClassifier.js';
+import {
+  classifySemanticFailure,
+  IndexValidationFailedError,
+  SourceEmbeddingFailedError,
+  VectorDimensionInvalidError,
+  VectorValueInvalidError,
+} from '../src/jobs/failureClassifier.js';
+import { WorkerLeaseLostError } from '../src/jobs/postgresJobSupport.js';
 import {
   ModelFileMissingError,
   ModelHashMismatchError,
@@ -99,5 +106,66 @@ describe('classifySemanticFailure', () => {
       code: 'MODEL_RUNTIME_INCOMPATIBLE',
     });
     expect(failure.message).toHaveLength(500);
+  });
+
+  it('classifies stable index failures without parsing display messages', () => {
+    const databaseFailure = Object.assign(new Error('database restarting'), { code: '57P01' });
+
+    expect(classifySemanticFailure('full_index', databaseFailure)).toMatchObject({
+      kind: 'retryable',
+      code: 'DATABASE_TEMPORARILY_UNAVAILABLE',
+    });
+    expect(classifySemanticFailure('incremental', new WorkerLeaseLostError())).toMatchObject({
+      kind: 'retryable',
+      code: 'WORKER_LEASE_LOST',
+    });
+    expect(
+      classifySemanticFailure('full_index', new VectorDimensionInvalidError(384, 512)),
+    ).toMatchObject({
+      kind: 'manual',
+      code: 'VECTOR_DIMENSION_INVALID',
+    });
+    expect(classifySemanticFailure('full_index', new VectorValueInvalidError())).toMatchObject({
+      kind: 'manual',
+      code: 'VECTOR_VALUE_INVALID',
+    });
+    expect(
+      classifySemanticFailure('full_index', new IndexValidationFailedError('count mismatch')),
+    ).toMatchObject({
+      kind: 'manual',
+      code: 'INDEX_VALIDATION_FAILED',
+    });
+    expect(
+      classifySemanticFailure(
+        'full_index',
+        new SourceEmbeddingFailedError(
+          'runtime busy',
+          Object.assign(new Error('runtime busy'), { code: 'EBUSY' }),
+        ),
+      ),
+    ).toMatchObject({
+      kind: 'retryable',
+      code: 'SOURCE_EMBEDDING_FAILED',
+    });
+    expect(
+      classifySemanticFailure(
+        'incremental',
+        new SourceEmbeddingFailedError(
+          'runtime unavailable',
+          new ModelLoadTransientError('runtime unavailable'),
+        ),
+      ),
+    ).toMatchObject({
+      kind: 'retryable',
+      code: 'SOURCE_EMBEDDING_FAILED',
+    });
+  });
+
+  it('treats an unknown index failure as manual validation failure', () => {
+    expect(classifySemanticFailure('full_index', new Error('unexpected index failure'))).toEqual({
+      kind: 'manual',
+      code: 'INDEX_VALIDATION_FAILED',
+      message: 'unexpected index failure',
+    });
   });
 });

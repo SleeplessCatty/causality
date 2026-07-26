@@ -23,7 +23,7 @@ export function startLeaseHeartbeat(options: LeaseHeartbeatOptions): LeaseHeartb
           failure = error;
         });
     },
-    Math.max(1_000, Math.floor(options.leaseMilliseconds / 3)),
+    Math.max(10, Math.floor(options.leaseMilliseconds / 3)),
   );
   heartbeat.unref();
 

@@ -9,11 +9,13 @@ import type {
   SemanticIndexJob,
   SemanticLoadJob,
 } from './jobTypes.js';
+import type { ClassifiedSemanticFailure, SemanticFailureStage } from './failureClassifier.js';
 import {
   boundedJobError,
   lockIndexState,
   lockOwnedJob,
   renewJobLease,
+  releaseJobLease,
   withJobTransaction,
 } from './postgresJobSupport.js';
 
@@ -25,6 +27,7 @@ interface IndexJobRow {
   attempts: number;
   entity_type: SemanticEntityType | null;
   entity_id: string | null;
+  lease_owner: string;
 }
 
 function mapIndexJob(row: IndexJobRow): SemanticIndexJob {
@@ -36,6 +39,7 @@ function mapIndexJob(row: IndexJobRow): SemanticIndexJob {
     attempts: row.attempts,
     entityType: row.entity_type,
     entityId: row.entity_id,
+    leaseOwner: row.lease_owner,
   };
 }
 
@@ -97,21 +101,53 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
     workerId: string,
     leaseMilliseconds: number,
   ): Promise<SemanticIndexJob | null> {
-    const result = await this.pool.query<IndexJobRow>(
-      `with candidate as (
-         select id
-         from semantic_jobs
-         where job_type in ('full_index', 'incremental')
+    return withJobTransaction(this.pool, async (client) => {
+      await lockIndexState(client);
+      const result = await client.query<IndexJobRow>(
+        `with stale as (
+         delete from semantic_jobs as stale_job
+         where not exists (
+           select 1
+           from semantic_index_state as current_state
+           where current_state.singleton_key = true
+             and current_state.active_model_code = stale_job.model_code
+             and current_state.state_version = stale_job.state_version
+         )
+       ),
+       candidate as (
+         select job.id
+         from semantic_jobs as job
+         join semantic_index_state as state
+           on state.singleton_key = true
+          and state.active_model_code = job.model_code
+          and state.state_version = job.state_version
+         where job.job_type in ('full_index', 'incremental')
            and (
-             status = 'queued'
-             or (status = 'running' and lease_expires_at <= clock_timestamp())
+             (job.job_type = 'full_index' and state.status in ('index_queued', 'building'))
+             or (
+               job.job_type = 'incremental'
+               and state.status in ('building', 'ready', 'updating', 'incomplete')
+             )
+           )
+           and (
+             job.status = 'queued'
+             or (job.status = 'retry_wait' and job.next_attempt_at <= clock_timestamp())
+             or (job.status = 'running' and job.lease_expires_at <= clock_timestamp())
+           )
+           and not exists (
+             select 1
+             from semantic_jobs as active
+             where active.id <> job.id
+               and active.job_type in ('download', 'load', 'full_index')
+               and active.status = 'running'
+               and active.lease_expires_at > clock_timestamp()
            )
          order by
-           case when job_type = 'full_index' then 0 else 1 end,
-           created_at,
-           id
+           case when job.job_type = 'full_index' then 0 else 1 end,
+           job.created_at,
+           job.id
          limit 1
-         for update skip locked
+         for update of job skip locked
        )
        update semantic_jobs as job
        set status = 'running',
@@ -124,6 +160,9 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
              else job.started_at
            end,
            completed_at = null,
+           next_attempt_at = null,
+           failure_kind = null,
+           failure_code = null,
            error = null,
            updated_at = clock_timestamp()
        from candidate
@@ -134,14 +173,20 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
                  job.state_version,
                  job.attempts,
                  job.entity_type,
-                 job.entity_id`,
-      [workerId, leaseMilliseconds],
-    );
-    return result.rows[0] ? mapIndexJob(result.rows[0]) : null;
+                 job.entity_id,
+                 job.lease_owner`,
+        [workerId, leaseMilliseconds],
+      );
+      return result.rows[0] ? mapIndexJob(result.rows[0]) : null;
+    });
   }
 
   public renewLease(jobId: string, workerId: string, leaseMilliseconds: number): Promise<void> {
     return renewJobLease(this.pool, jobId, workerId, leaseMilliseconds);
+  }
+
+  public releaseLease(jobId: string, workerId: string): Promise<void> {
+    return releaseJobLease(this.pool, jobId, workerId);
   }
 
   public async completeIndex(jobId: string, workerId: string): Promise<void> {
@@ -174,6 +219,7 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
           attempts: job.attempts,
           entityType: job.entity_type,
           entityId: job.entity_id,
+          leaseOwner: workerId,
         });
         return;
       }
@@ -188,12 +234,20 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
     });
   }
 
-  public async failIndex(jobId: string, workerId: string, error: string): Promise<void> {
+  public async failIndex(
+    jobId: string,
+    workerId: string,
+    stage: Extract<SemanticFailureStage, 'full_index' | 'incremental'>,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void> {
     await withJobTransaction(this.pool, async (client) => {
       await lockIndexState(client);
       const job = await lockOwnedJob(client, jobId, workerId);
-      const finalFailure = job.attempts >= 3;
-      const message = boundedJobError(error);
+      if (job.job_type !== stage) throw new Error('Index failure stage does not match job type');
+      const retry = failure.kind === 'retryable' && job.attempts < 3;
+      const finalFailure = !retry;
+      const message = boundedJobError(failure.message);
+      const retryDelaySeconds = job.attempts === 1 ? 5 : 30;
       if (job.job_type === 'incremental' && finalFailure) {
         await client.query(
           `delete from semantic_jobs
@@ -212,19 +266,30 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
          set status = $3::varchar(20),
              lease_owner = null,
              lease_expires_at = null,
-             started_at = case
-               when $3::varchar(20) = 'failed' then started_at
+             next_attempt_at = case
+               when $3::varchar(20) = 'retry_wait'
+               then clock_timestamp() + ($4::integer * interval '1 second')
                else null
              end,
              completed_at = case
                when $3::varchar(20) = 'failed' then clock_timestamp()
                else null
              end,
-             error = $4,
+             failure_kind = $5,
+             failure_code = $6,
+             error = $7,
              updated_at = clock_timestamp()
          where id = $1
            and lease_owner = $2`,
-        [job.id, workerId, finalFailure ? 'failed' : 'queued', message],
+        [
+          job.id,
+          workerId,
+          finalFailure ? 'failed' : 'retry_wait',
+          retryDelaySeconds,
+          failure.kind,
+          failure.code,
+          message,
+        ],
       );
       if (job.job_type === 'incremental') {
         await refreshIncrementalState(client, {
@@ -235,6 +300,7 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
           attempts: job.attempts,
           entityType: job.entity_type,
           entityId: job.entity_id,
+          leaseOwner: workerId,
         });
         return;
       }
@@ -242,13 +308,13 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
         `update semantic_index_state
          set status = case
                when $3 and $4::varchar(20) <> 'incremental' then 'failed'
-               when $4::varchar(20) = 'full_index' then 'loading'
+               when $4::varchar(20) = 'full_index' then 'building'
                when $4::varchar(20) = 'incremental'
                  and not exists (
                    select 1
                    from semantic_jobs
                    where job_type = 'incremental'
-                     and status in ('queued', 'running')
+                     and status in ('queued', 'running', 'retry_wait')
                      and model_code = $1
                      and state_version = $2
                  )
@@ -259,32 +325,53 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
                select count(*)::int
                from semantic_jobs
                where job_type = 'incremental'
-                 and status in ('queued', 'running')
+                 and status in ('queued', 'running', 'retry_wait')
                  and model_code = $1
                  and state_version = $2
              ),
              failed_items = 0,
-             error = $5,
+             failure_stage = case when $3 then $5 else null end,
+             failure_kind = case when $3 then $6 else null end,
+             failure_code = case when $3 then $7 else null end,
+             error = $8,
              updated_at = clock_timestamp()
          where singleton_key = true
            and active_model_code = $1
            and state_version = $2`,
-        [job.model_code, job.state_version, finalFailure, job.job_type, message],
+        [
+          job.model_code,
+          job.state_version,
+          finalFailure,
+          job.job_type,
+          stage,
+          failure.kind,
+          failure.code,
+          message,
+        ],
       );
     });
   }
 
   public async isCurrent(job: SemanticIndexJob): Promise<boolean> {
-    const result = await this.pool.query<{
-      active_model_code: SemanticModelCode | null;
-      state_version: number;
-    }>(
-      `select active_model_code, state_version
-       from semantic_index_state
-       where singleton_key = true`,
+    const result = await this.pool.query<{ current: boolean }>(
+      `select exists (
+         select 1
+         from semantic_index_state as state
+         join semantic_jobs as active_job
+           on active_job.id = $3
+          and active_job.model_code = state.active_model_code
+          and active_job.state_version = state.state_version
+         where state.singleton_key = true
+           and state.active_model_code = $1
+           and state.state_version = $2
+           and active_job.status = 'running'
+           and active_job.lease_owner = $4
+           and active_job.attempts = $5
+           and active_job.lease_expires_at > clock_timestamp()
+       ) as current`,
+      [job.modelCode, job.stateVersion, job.id, job.leaseOwner, job.attempts],
     );
-    const state = result.rows[0];
-    return state?.active_model_code === job.modelCode && state.state_version === job.stateVersion;
+    return result.rows[0]?.current ?? false;
   }
 
   public async markModelLoading(job: SemanticLoadJob): Promise<void> {
@@ -314,6 +401,7 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
       if (state.active_model_code !== job.modelCode || state.state_version !== job.stateVersion) {
         return;
       }
+      await lockOwnedJob(client, job.id, job.leaseOwner, job.attempts);
       await client.query(`delete from semantic_embeddings`);
       await client.query(
         `delete from semantic_jobs
@@ -373,6 +461,8 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
     totalItems: number,
   ): Promise<void> {
     await withJobTransaction(this.pool, async (client) => {
+      await lockIndexState(client);
+      await lockOwnedJob(client, job.id, job.leaseOwner, job.attempts);
       await client.query(
         `update semantic_index_state
          set processed_items = $3,
@@ -401,8 +491,15 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
     indexedItems: number,
     failedItems: number,
   ): Promise<boolean> {
-    const result = await this.pool.query(
-      `update semantic_index_state
+    return withJobTransaction(this.pool, async (client) => {
+      const state = await lockIndexState(client);
+      if (state.active_model_code !== job.modelCode || state.state_version !== job.stateVersion) {
+        return false;
+      }
+      const owned = await lockOwnedJob(client, job.id, job.leaseOwner, job.attempts);
+      if (owned.job_type !== 'full_index') throw new Error('Expected a full-index job');
+      const result = await client.query(
+        `update semantic_index_state
        set status = case when $4::integer = 0 then 'ready' else 'incomplete' end,
            processed_items = $3,
            total_items = $3 + $4,
@@ -442,9 +539,19 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
              and model_code = $1
              and state_version = $2
          )`,
-      [job.modelCode, job.stateVersion, indexedItems, failedItems],
-    );
-    return result.rowCount === 1;
+        [job.modelCode, job.stateVersion, indexedItems, failedItems],
+      );
+      if (result.rowCount !== 1) return false;
+      await client.query(
+        `delete from semantic_jobs
+         where id = $1
+           and status = 'running'
+           and lease_owner = $2
+           and attempts = $3`,
+        [job.id, job.leaseOwner, job.attempts],
+      );
+      return true;
+    });
   }
 
   public async recordSourceFailure(job: SemanticIndexJob, failure: RecordFailure): Promise<void> {
@@ -453,6 +560,7 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
       if (state.active_model_code !== job.modelCode || state.state_version !== job.stateVersion) {
         return;
       }
+      await lockOwnedJob(client, job.id, job.leaseOwner, job.attempts);
       await client.query(
         `delete from semantic_embeddings
          where entity_type = $1
@@ -513,6 +621,10 @@ export class PostgresIndexJobRepository implements IndexJobRepository, IndexStat
   }
 
   public async refreshIncrementalState(job: SemanticIndexJob): Promise<void> {
-    await withJobTransaction(this.pool, (client) => refreshIncrementalState(client, job));
+    await withJobTransaction(this.pool, async (client) => {
+      await lockIndexState(client);
+      await lockOwnedJob(client, job.id, job.leaseOwner, job.attempts);
+      await refreshIncrementalState(client, job);
+    });
   }
 }

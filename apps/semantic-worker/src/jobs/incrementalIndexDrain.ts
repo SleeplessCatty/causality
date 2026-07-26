@@ -4,6 +4,8 @@ import type { SemanticEntityType } from '@causality/contracts';
 import type { Pool } from 'pg';
 
 import type { SemanticIndexJob } from './jobTypes.js';
+import { startLeaseHeartbeat } from './leaseHeartbeat.js';
+import { WorkerLeaseLostError } from './postgresJobSupport.js';
 
 interface ClaimedIncrementalRow {
   id: string;
@@ -26,7 +28,7 @@ export class PostgresIncrementalIndexDrain {
 
   public async drain(
     fullIndexJob: SemanticIndexJob,
-    buildIncremental: (job: SemanticIndexJob) => Promise<void>,
+    buildIncremental: (job: SemanticIndexJob, assertLeaseValid: () => void) => Promise<void>,
   ): Promise<void> {
     const deadline = Date.now() + 65_000;
     const leaseOwner = this.leaseOwner(fullIndexJob);
@@ -46,7 +48,7 @@ export class PostgresIncrementalIndexDrain {
   }
 
   private leaseOwner(job: SemanticIndexJob): string {
-    return `full-index-${job.id}`;
+    return `full-index-${job.id}-attempt-${job.attempts}`;
   }
 
   private async claim(job: SemanticIndexJob, leaseOwner: string): Promise<SemanticIndexJob | null> {
@@ -59,6 +61,7 @@ export class PostgresIncrementalIndexDrain {
            and state_version = $2
            and (
              status = 'queued'
+             or (status = 'retry_wait' and next_attempt_at <= clock_timestamp())
              or (status = 'running' and lease_expires_at <= clock_timestamp())
            )
          order by created_at, id
@@ -75,6 +78,9 @@ export class PostgresIncrementalIndexDrain {
              else incremental.started_at
            end,
            completed_at = null,
+           next_attempt_at = null,
+           failure_kind = null,
+           failure_code = null,
            error = null,
            updated_at = clock_timestamp()
        from candidate
@@ -97,6 +103,7 @@ export class PostgresIncrementalIndexDrain {
           attempts: row.attempts,
           entityType: row.entity_type,
           entityId: row.entity_id,
+          leaseOwner,
         }
       : null;
   }
@@ -104,40 +111,30 @@ export class PostgresIncrementalIndexDrain {
   private async withRenewedLease(
     incremental: SemanticIndexJob,
     leaseOwner: string,
-    buildIncremental: (job: SemanticIndexJob) => Promise<void>,
+    buildIncremental: (job: SemanticIndexJob, assertLeaseValid: () => void) => Promise<void>,
   ): Promise<void> {
-    let leaseFailure: unknown;
-    let renewalTail = Promise.resolve();
-    const heartbeat = setInterval(
-      () => {
-        renewalTail = renewalTail
-          .then(async () => {
-            const renewed = await this.pool.query(
-              `update semantic_jobs
-               set lease_expires_at = clock_timestamp()
-                     + ($3::integer * interval '1 millisecond'),
-                   updated_at = clock_timestamp()
-               where id = $1
-                 and job_type = 'incremental'
-                 and status = 'running'
-                 and lease_owner = $2`,
-              [incremental.id, leaseOwner, this.leaseMilliseconds],
-            );
-            if (renewed.rowCount !== 1) {
-              throw new Error('Lost drained incremental index lease');
-            }
-          })
-          .catch((error: unknown) => {
-            leaseFailure ??= error;
-          });
+    const heartbeat = startLeaseHeartbeat({
+      leaseMilliseconds: this.leaseMilliseconds,
+      renew: async () => {
+        const renewed = await this.pool.query(
+          `update semantic_jobs
+           set lease_expires_at = clock_timestamp()
+                 + ($3::integer * interval '1 millisecond'),
+               updated_at = clock_timestamp()
+           where id = $1
+             and job_type = 'incremental'
+             and status = 'running'
+             and lease_owner = $2
+             and attempts = $4`,
+          [incremental.id, leaseOwner, this.leaseMilliseconds, incremental.attempts],
+        );
+        if (renewed.rowCount !== 1) throw new WorkerLeaseLostError();
       },
-      Math.max(10, Math.floor(this.leaseMilliseconds / 3)),
-    );
-    heartbeat.unref();
+    });
     try {
-      await buildIncremental(incremental);
-      await renewalTail;
-      if (leaseFailure) throw leaseFailure;
+      await buildIncremental(incremental, () => heartbeat.assertValid());
+      await heartbeat.stop();
+      heartbeat.assertValid();
       const completed = await this.pool.query<{ id: string }>(
         `delete from semantic_jobs
          where (
@@ -145,6 +142,7 @@ export class PostgresIncrementalIndexDrain {
              and job_type = 'incremental'
              and status = 'running'
              and lease_owner = $2
+             and attempts = $7
            )
            or (
              job_type = 'incremental'
@@ -162,14 +160,14 @@ export class PostgresIncrementalIndexDrain {
           incremental.stateVersion,
           incremental.entityType,
           incremental.entityId,
+          incremental.attempts,
         ],
       );
       if (!completed.rows.some((row) => row.id === incremental.id)) {
-        throw new Error('Lost drained incremental index lease');
+        throw new WorkerLeaseLostError();
       }
     } finally {
-      clearInterval(heartbeat);
-      await renewalTail;
+      await heartbeat.stop();
     }
   }
 

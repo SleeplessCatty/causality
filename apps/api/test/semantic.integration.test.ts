@@ -445,6 +445,25 @@ describe.sequential('semantic configuration API', () => {
     expect(duplicate.statusCode).toBe(202);
     expect(duplicate.json()).toEqual(accepted.json());
 
+    await pool!.query(
+      `update semantic_jobs
+       set status = 'retry_wait',
+           attempts = 1,
+           started_at = clock_timestamp(),
+           next_attempt_at = clock_timestamp() + interval '5 seconds',
+           failure_kind = 'retryable',
+           failure_code = 'DOWNLOAD_NETWORK_ERROR',
+           error = 'network unavailable'
+       where id = $1`,
+      [accepted.json().taskId],
+    );
+    const retryWaitingDuplicate = await context!.app.inject({
+      method: 'POST',
+      url: '/api/semantic/models/multilingual-e5-small/use',
+    });
+    expect(retryWaitingDuplicate.statusCode).toBe(202);
+    expect(retryWaitingDuplicate.json()).toEqual(accepted.json());
+
     const state = await pool!.query<{
       active_model_code: string;
       state_version: number;

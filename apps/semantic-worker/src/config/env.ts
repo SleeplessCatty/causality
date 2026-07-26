@@ -8,6 +8,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   MODEL_DIRECTORY: z.string().min(1).default('/var/lib/causality/models'),
   JOB_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
+  SHUTDOWN_DRAIN_TIMEOUT_MS: z.coerce.number().int().min(100).max(60_000).default(10_000),
 });
 
 export type WorkerEnv = z.infer<typeof envSchema>;
