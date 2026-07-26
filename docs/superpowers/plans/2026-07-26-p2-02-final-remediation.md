@@ -144,6 +144,8 @@ type SemanticAction =
   | 'reindex';
 ```
 
+`SemanticModelLifecycle` also carries the existing model-card fields `label`, `description`, `languageLabel`, `dimensions`, `expectedDownloadBytes`, `threshold`, and `downloadedAt`. Its stage enum includes the stable inactive-file stages `downloaded` and `invalid`. These fields let Task 9 remove the legacy settings endpoint without adding a second model-metadata request.
+
 - Adds the replacement list-response field:
 
 ```ts
@@ -164,7 +166,7 @@ function resolveSemanticLifecycle(input: {
 }): SemanticLifecycleSnapshot;
 ```
 
-- [ ] **Step 1: Add failing contract tests**
+- [x] **Step 1: Add failing contract tests**
 
 Add schema fixtures covering an incomplete current model, a running download, and a Worker mismatch:
 
@@ -208,7 +210,7 @@ expect(
 
 Update event, relation, and case response tests to accept `semanticIndexNotice`. For this transitional task, continue accepting `semanticIndexUpdating`; add a test comment that Task 8 removes it after API and Web callers migrate.
 
-- [ ] **Step 2: Run contract tests and verify failure**
+- [x] **Step 2: Run contract tests and verify failure**
 
 Run:
 
@@ -218,7 +220,7 @@ pnpm --filter @causality/contracts test
 
 Expected: FAIL because lifecycle schemas and `semanticIndexNotice` do not exist.
 
-- [ ] **Step 3: Implement exact Zod schemas and exports**
+- [x] **Step 3: Implement exact Zod schemas and exports**
 
 Define strict schemas for `SemanticFailure`, `SemanticOperation`, `SemanticWorkerStatus`, `SemanticIndexLifecycle`, `SemanticModelLifecycle`, and `SemanticLifecycleSnapshot`. Use:
 
@@ -234,7 +236,7 @@ Failure messages remain non-empty strings; attempts are nonnegative integers; pr
 
 Keep the current settings schemas and `SemanticDownloadStatus` exports as deprecated compatibility contracts until Task 9. Do not make the initial contract task break the existing settings page.
 
-- [ ] **Step 4: Add failing resolver table tests**
+- [x] **Step 4: Add failing resolver table tests**
 
 Use `it.each` for the approved states:
 
@@ -262,7 +264,7 @@ it.each([
 
 Add explicit tests for inactive `not_downloaded`, `downloaded`, `failed`, and `invalid` models; Worker `unreachable`, `missing`, and `mismatch`; stale-version jobs; and a 5-second poll when active work exists but Worker is unreachable.
 
-- [ ] **Step 5: Implement the pure resolver**
+- [x] **Step 5: Implement the pure resolver**
 
 The resolver must:
 
@@ -276,7 +278,7 @@ The resolver must:
 
 Keep the resolver free of database, network, clock, and React imports.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -289,7 +291,7 @@ pnpm --filter @causality/api typecheck
 
 Expected: all contract and resolver tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add packages/contracts apps/api/src/features/semantic/semanticLifecycleTypes.ts apps/api/src/features/semantic/semanticLifecycleResolver.ts apps/api/test/semantic-lifecycle-resolver.test.ts

@@ -168,6 +168,7 @@ export class PostgresCaseRepository implements CaseRepository {
       pageSize: query.limit,
       totalItems,
       totalPages,
+      semanticIndexNotice: null,
       semanticIndexUpdating: false,
     };
   }
@@ -246,6 +247,7 @@ export class PostgresCaseRepository implements CaseRepository {
       pageSize: query.limit,
       totalItems,
       totalPages,
+      semanticIndexNotice: null,
       semanticIndexUpdating,
     };
   }

@@ -202,6 +202,7 @@ export class PostgresEventRepository implements EventRepository {
       pageSize: query.limit,
       totalItems,
       totalPages,
+      semanticIndexNotice: null,
       semanticIndexUpdating: false,
     };
   }
@@ -281,6 +282,7 @@ export class PostgresEventRepository implements EventRepository {
       pageSize: query.limit,
       totalItems,
       totalPages,
+      semanticIndexNotice: null,
       semanticIndexUpdating,
     };
   }

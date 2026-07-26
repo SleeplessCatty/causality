@@ -8,7 +8,7 @@ import {
   pageListMetadataSchema,
   pageListQuerySchema,
 } from '../pagination/pageSchemas.js';
-import { searchModeSchema } from '../semantic/semanticSchemas.js';
+import { searchModeSchema, semanticIndexNoticeSchema } from '../semantic/semanticSchemas.js';
 
 const timestampSchema = z.iso.datetime({ offset: true });
 const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
@@ -113,6 +113,8 @@ export const relationListResponseSchema = z
   .object({
     items: z.array(relationSummarySchema),
     ...pageListMetadataSchema.shape,
+    semanticIndexNotice: semanticIndexNoticeSchema.default(null),
+    /** @deprecated Removed after all list callers migrate to semanticIndexNotice in Task 8. */
     semanticIndexUpdating: z.boolean().default(false),
   })
   .strict();

@@ -6,7 +6,7 @@ import {
   pageListMetadataSchema,
   pageListQuerySchema,
 } from '../pagination/pageSchemas.js';
-import { searchModeSchema } from '../semantic/semanticSchemas.js';
+import { searchModeSchema, semanticIndexNoticeSchema } from '../semantic/semanticSchemas.js';
 
 export const eventNameSchema = z.string().trim().min(1).max(50);
 export const eventAliasSchema = z.string().trim().min(1).max(80);
@@ -118,6 +118,8 @@ export const eventListResponseSchema = z
   .object({
     items: z.array(eventSummarySchema),
     ...pageListMetadataSchema.shape,
+    semanticIndexNotice: semanticIndexNoticeSchema.default(null),
+    /** @deprecated Removed after all list callers migrate to semanticIndexNotice in Task 8. */
     semanticIndexUpdating: z.boolean().default(false),
   })
   .strict();

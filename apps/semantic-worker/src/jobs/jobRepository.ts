@@ -1,4 +1,4 @@
-import type { SemanticEntityType, SemanticTaskType } from '@causality/contracts';
+import type { LegacySemanticTaskType, SemanticEntityType } from '@causality/contracts';
 import type { SemanticModelCode } from '@causality/semantic-core';
 import type { Pool, PoolClient } from 'pg';
 
@@ -12,7 +12,7 @@ export interface DownloadJob {
 
 export interface SemanticIndexJob {
   id: string;
-  jobType: Extract<SemanticTaskType, 'full_index' | 'incremental'>;
+  jobType: Extract<LegacySemanticTaskType, 'full_index' | 'incremental'>;
   modelCode: SemanticModelCode;
   stateVersion: number;
   attempts: number;
@@ -63,7 +63,7 @@ interface IndexJobRow {
 }
 
 interface LockedJobRow extends DownloadJobRow {
-  job_type: SemanticTaskType;
+  job_type: LegacySemanticTaskType;
   entity_type: SemanticEntityType | null;
   entity_id: string | null;
   lease_owner: string | null;

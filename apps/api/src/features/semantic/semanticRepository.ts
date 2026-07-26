@@ -1,10 +1,10 @@
 import type {
+  LegacySemanticTaskStatus,
+  LegacySemanticTaskType,
   SemanticDownloadStatus,
   SemanticIndexStatus,
   SemanticModelCode,
   SemanticSettingsResponse,
-  SemanticTaskStatus,
-  SemanticTaskType,
   SemanticUseModelResponse,
 } from '@causality/contracts';
 import { MODEL_CATALOG, semanticModelCodes } from '@causality/semantic-core';
@@ -34,9 +34,9 @@ interface IndexRow {
 
 interface TaskRow {
   id: string;
-  job_type: SemanticTaskType;
+  job_type: LegacySemanticTaskType;
   model_code: SemanticModelCode;
-  status: SemanticTaskStatus;
+  status: LegacySemanticTaskStatus;
   processed_items: number;
   total_items: number;
   downloaded_bytes: number;
@@ -54,7 +54,7 @@ interface TargetModelRow {
 
 interface FailedTaskRow {
   id: string;
-  job_type: SemanticTaskType;
+  job_type: LegacySemanticTaskType;
   entity_type: 'event' | 'relation' | 'case' | null;
   entity_id: string | null;
 }
@@ -128,7 +128,7 @@ async function clearCurrentIndex(client: PoolClient): Promise<void> {
 async function enqueueHighLevelTask(
   client: PoolClient,
   input: {
-    jobType: Extract<SemanticTaskType, 'download' | 'full_index'>;
+    jobType: Extract<LegacySemanticTaskType, 'download' | 'full_index'>;
     modelCode: SemanticModelCode;
     stateVersion: number;
   },
@@ -163,7 +163,7 @@ async function enqueueHighLevelTask(
 async function updateRequestedState(
   client: PoolClient,
   input: {
-    jobType: Extract<SemanticTaskType, 'download' | 'full_index'>;
+    jobType: Extract<LegacySemanticTaskType, 'download' | 'full_index'>;
     modelCode: SemanticModelCode;
     stateVersion: number;
   },

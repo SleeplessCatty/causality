@@ -471,6 +471,13 @@ interface SemanticLifecycleSnapshot {
 ```ts
 interface SemanticModelLifecycle {
   modelCode: SemanticModelCode;
+  label: string;
+  description: string;
+  languageLabel: string;
+  dimensions: number;
+  expectedDownloadBytes: number;
+  threshold: number;
+  downloadedAt: string | null;
   fileState: SemanticModelFileStatus;
   role: SemanticModelRole;
   stage:
@@ -478,6 +485,8 @@ interface SemanticModelLifecycle {
     | 'download_queued'
     | 'downloading'
     | 'verifying'
+    | 'downloaded'
+    | 'invalid'
     | 'loading'
     | 'index_queued'
     | 'building'
