@@ -30,6 +30,8 @@ describe.sequential('semantic job repositories', () => {
       `update semantic_model_settings
        set file_status = 'not_downloaded',
            downloaded_at = null,
+           failure_kind = null,
+           failure_code = null,
            error = null,
            updated_at = clock_timestamp()`,
     );
@@ -41,6 +43,9 @@ describe.sequential('semantic job repositories', () => {
            processed_items = 0,
            total_items = 0,
            pending_items = 0,
+           failure_stage = null,
+           failure_kind = null,
+           failure_code = null,
            error = null,
            last_ready_at = null,
            updated_at = clock_timestamp()
@@ -92,6 +97,36 @@ describe.sequential('semantic job repositories', () => {
       ],
     );
     return result.rows[0]!.id;
+  }
+
+  async function enqueueLoad(): Promise<string> {
+    const result = await pool!.query<{ id: string }>(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         state_version
+       )
+       values ('load', $1, 'queued', 7)
+       returning id`,
+      [model.code],
+    );
+    return result.rows[0]!.id;
+  }
+
+  async function prepareDownloadedModelForLoad(): Promise<void> {
+    await pool!.query(
+      `update semantic_model_settings
+       set file_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = $1`,
+      [model.code],
+    );
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'loading'
+       where singleton_key = true`,
+    );
   }
 
   it('claims exclusively, renews an expired lease, and increments attempts', async () => {
@@ -190,6 +225,26 @@ describe.sequential('semantic job repositories', () => {
     });
   });
 
+  it('restores the loaded runtime before resuming a queued full index after restart', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set file_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = $1`,
+      [model.code],
+    );
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'index_queued'
+       where singleton_key = true`,
+    );
+
+    await expect(downloadRepository!.findReadyActiveModel()).resolves.toEqual({
+      modelCode: model.code,
+      revision: model.revision,
+    });
+  });
+
   it('loads a lightweight model adapter after restarting during incremental updates', async () => {
     await pool!.query(
       `update semantic_model_settings
@@ -218,7 +273,7 @@ describe.sequential('semantic job repositories', () => {
       repository: downloadRepository!,
       runtime,
       modelsDirectory: '/models',
-      verifyModel: async () => true,
+      validateModel: async () => undefined,
     });
 
     await service.initialize();
@@ -414,7 +469,7 @@ describe.sequential('semantic job repositories', () => {
     expect(result.rows).toEqual([{ status: 'ready', jobs: 0 }]);
   });
 
-  it('publishes a verified download and queues exactly one full index', async () => {
+  it('publishes a verified download and queues exactly one load job', async () => {
     const id = await enqueueDownload();
     await downloadRepository!.claimNextDownload('worker-a', 60_000);
 
@@ -427,6 +482,7 @@ describe.sequential('semantic job repositories', () => {
       file_status: string;
       state_status: string;
       download_jobs: number;
+      load_jobs: number;
       full_index_jobs: number;
     }>(
       `select settings.file_status,
@@ -436,6 +492,12 @@ describe.sequential('semantic job repositories', () => {
                 from semantic_jobs
                 where id = $1
               ) as download_jobs,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'load'
+                  and status = 'queued'
+              ) as load_jobs,
               (
                 select count(*)::int
                 from semantic_jobs
@@ -453,31 +515,112 @@ describe.sequential('semantic job repositories', () => {
         file_status: 'downloaded',
         state_status: 'loading',
         download_jobs: 0,
-        full_index_jobs: 1,
+        load_jobs: 1,
+        full_index_jobs: 0,
       },
     ]);
   });
 
-  it('requeues two failures and records a bounded terminal failure on attempt three', async () => {
+  it('schedules retryable download failures after 5 and 30 seconds before attempt three fails', async () => {
     const id = await enqueueDownload();
+    const failure = {
+      kind: 'retryable' as const,
+      code: 'DOWNLOAD_NETWORK_ERROR' as const,
+      message: 'connection reset',
+    };
 
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await downloadRepository!.claimNextDownload(`worker-${attempt}`, 60_000);
-      await downloadRepository!.failDownload(id, `worker-${attempt}`, '失败'.repeat(400));
+    async function readAttempt() {
+      const result = await pool!.query<{
+        attempts: number;
+        failure_code: string | null;
+        failure_kind: string | null;
+        seconds_until_retry: number | null;
+        status: string;
+      }>(
+        `select attempts,
+                status,
+                failure_kind,
+                failure_code,
+                case
+                  when next_attempt_at is null then null
+                  else round(extract(epoch from (next_attempt_at - clock_timestamp())))::int
+                end as seconds_until_retry
+         from semantic_jobs
+         where id = $1`,
+        [id],
+      );
+      return result.rows[0]!;
     }
 
+    await downloadRepository!.claimNextDownload('worker-1', 60_000);
+    await downloadRepository!.failDownload(id, 'worker-1', 'download', failure);
+    expect(await readAttempt()).toMatchObject({
+      status: 'retry_wait',
+      attempts: 1,
+      failure_kind: 'retryable',
+      failure_code: 'DOWNLOAD_NETWORK_ERROR',
+      seconds_until_retry: 5,
+    });
+    await expect(downloadRepository!.claimNextDownload('worker-early', 60_000)).resolves.toBeNull();
+
+    await pool!.query(
+      `update semantic_jobs
+       set next_attempt_at = clock_timestamp() - interval '1 second'
+       where id = $1`,
+      [id],
+    );
+    await downloadRepository!.claimNextDownload('worker-2', 60_000);
+    await downloadRepository!.failDownload(id, 'worker-2', 'download', failure);
+    expect(await readAttempt()).toMatchObject({
+      status: 'retry_wait',
+      attempts: 2,
+      seconds_until_retry: 30,
+    });
+
+    await pool!.query(
+      `update semantic_jobs
+       set next_attempt_at = clock_timestamp() - interval '1 second'
+       where id = $1`,
+      [id],
+    );
+    await downloadRepository!.claimNextDownload('worker-3', 60_000);
+    await downloadRepository!.failDownload(id, 'worker-3', 'download', failure);
+    expect(await readAttempt()).toMatchObject({
+      status: 'failed',
+      attempts: 3,
+      seconds_until_retry: null,
+    });
+  });
+
+  it('marks a manual verification failure invalid without queuing another download', async () => {
+    const id = await enqueueDownload();
+    await downloadRepository!.claimNextDownload('worker-a', 60_000);
+
+    await downloadRepository!.failDownload(id, 'worker-a', 'verify', {
+      kind: 'manual',
+      code: 'MODEL_HASH_MISMATCH',
+      message: 'Model file checksum mismatch: model.onnx',
+    });
+
     const result = await pool!.query<{
-      attempts: number;
+      download_jobs: number;
+      failure_code: string | null;
+      file_status: string;
+      index_status: string;
+      job_phase: string;
       job_status: string;
-      model_status: string;
-      state_status: string;
-      error_length: number;
     }>(
-      `select job.attempts,
+      `select settings.file_status,
+              settings.failure_code,
+              state.status as index_status,
+              job.phase as job_phase,
               job.status as job_status,
-              settings.file_status as model_status,
-              state.status as state_status,
-              length(job.error)::int as error_length
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'download'
+                  and status in ('queued', 'running', 'retry_wait')
+              ) as download_jobs
        from semantic_jobs as job
        join semantic_model_settings as settings
          on settings.model_code = job.model_code
@@ -488,11 +631,138 @@ describe.sequential('semantic job repositories', () => {
     );
     expect(result.rows).toEqual([
       {
-        attempts: 3,
+        file_status: 'invalid',
+        failure_code: 'MODEL_HASH_MISMATCH',
+        index_status: 'waiting_model',
+        job_phase: 'verifying',
         job_status: 'failed',
-        model_status: 'failed',
-        state_status: 'failed',
-        error_length: 500,
+        download_jobs: 0,
+      },
+    ]);
+  });
+
+  it('publishes a successful load and queues exactly one full index job', async () => {
+    await prepareDownloadedModelForLoad();
+    const id = await enqueueLoad();
+
+    await downloadRepository!.claimNextLoad('load-worker', 60_000);
+    await downloadRepository!.markLoading(id, 'load-worker');
+    await downloadRepository!.completeLoad(id, 'load-worker');
+
+    const result = await pool!.query<{
+      full_index_jobs: number;
+      load_jobs: number;
+      state_status: string;
+    }>(
+      `select state.status as state_status,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'load'
+              ) as load_jobs,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'full_index'
+                  and status = 'queued'
+              ) as full_index_jobs
+       from semantic_index_state as state
+       where state.singleton_key = true`,
+    );
+    expect(result.rows).toEqual([
+      { state_status: 'index_queued', load_jobs: 0, full_index_jobs: 1 },
+    ]);
+  });
+
+  it('keeps downloaded files while a retryable load failure waits for retry', async () => {
+    await prepareDownloadedModelForLoad();
+    const id = await enqueueLoad();
+    await downloadRepository!.claimNextLoad('load-worker', 60_000);
+
+    await downloadRepository!.failLoad(id, 'load-worker', 'load', {
+      kind: 'retryable',
+      code: 'MODEL_LOAD_TRANSIENT',
+      message: 'runtime busy',
+    });
+
+    const result = await pool!.query<{
+      failure_code: string | null;
+      file_status: string;
+      job_status: string;
+      state_status: string;
+    }>(
+      `select settings.file_status,
+              state.status as state_status,
+              job.status as job_status,
+              job.failure_code
+       from semantic_jobs as job
+       join semantic_model_settings as settings
+         on settings.model_code = job.model_code
+       join semantic_index_state as state
+         on state.active_model_code = job.model_code
+       where job.id = $1`,
+      [id],
+    );
+    expect(result.rows).toEqual([
+      {
+        file_status: 'downloaded',
+        state_status: 'loading',
+        job_status: 'retry_wait',
+        failure_code: 'MODEL_LOAD_TRANSIENT',
+      },
+    ]);
+  });
+
+  it('invalidates files when pre-load validation fails without queuing a download', async () => {
+    await prepareDownloadedModelForLoad();
+    const id = await enqueueLoad();
+    await enqueueIndex('full_index');
+    await downloadRepository!.claimNextLoad('load-worker', 60_000);
+
+    await downloadRepository!.failLoad(id, 'load-worker', 'verify', {
+      kind: 'manual',
+      code: 'MODEL_SIZE_MISMATCH',
+      message: 'Model file size mismatch: model.onnx',
+    });
+
+    const result = await pool!.query<{
+      active_downloads: number;
+      file_status: string;
+      full_index_jobs: number;
+      load_jobs: number;
+      state_status: string;
+    }>(
+      `select settings.file_status,
+              state.status as state_status,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'load'
+              ) as load_jobs,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'full_index'
+              ) as full_index_jobs,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'download'
+                  and status in ('queued', 'running', 'retry_wait')
+              ) as active_downloads
+       from semantic_model_settings as settings
+       join semantic_index_state as state
+         on state.active_model_code = settings.model_code
+       where settings.model_code = $1`,
+      [model.code],
+    );
+    expect(result.rows).toEqual([
+      {
+        file_status: 'invalid',
+        state_status: 'waiting_model',
+        load_jobs: 0,
+        full_index_jobs: 0,
+        active_downloads: 0,
       },
     ]);
   });

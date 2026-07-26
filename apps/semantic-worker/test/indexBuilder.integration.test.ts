@@ -239,7 +239,6 @@ describe.sequential('PostgresIndexBuilder', () => {
       stateRepository: new PostgresIndexJobRepository(pool!),
       sourceRepository,
       runtime,
-      modelsDirectory: '/models',
     });
   });
 
@@ -272,9 +271,7 @@ describe.sequential('PostgresIndexBuilder', () => {
         pending_items: 0,
       },
     ]);
-    expect(runtime!.loadedPaths).toEqual([
-      '/models/multilingual-e5-small/761b726dd34fb83930e26aab4e9ac3899aa1fa78',
-    ]);
+    expect(runtime!.loadedPaths).toEqual([]);
   });
 
   it('writes each inference batch in one database transaction', async () => {
@@ -509,7 +506,6 @@ describe.sequential('PostgresIndexBuilder', () => {
       stateRepository: new PostgresIndexJobRepository(pool!),
       sourceRepository: sourceRepository!,
       runtime: slowRuntime,
-      modelsDirectory: '/models',
       drainedIncrementalLeaseMilliseconds: 30,
     });
     const originalQuery = pool!.query.bind(pool!);

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,10 +9,13 @@ import type {
   DownloadJob,
   DownloadJobRepository,
   IndexJobRepository,
+  LoadJobRepository,
+  SemanticLoadJob,
   SemanticIndexJob,
 } from '../src/jobs/jobTypes.js';
-import { DownloadJobRunner, IndexJobRunner } from '../src/jobs/jobRunner.js';
-import type { ModelDownloader } from '../src/model/modelDownloader.js';
+import { DownloadJobRunner, IndexJobRunner, LoadJobRunner } from '../src/jobs/jobRunner.js';
+import { ModelHashMismatchError, type ModelDownloader } from '../src/model/modelDownloader.js';
+import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
 
 const job: DownloadJob = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -33,7 +36,12 @@ async function temporaryModelDirectory(): Promise<string> {
 function fakeRepository(nextJob: DownloadJob | null = job) {
   const transitions: string[] = [];
   const progress: number[] = [];
-  const failures: string[] = [];
+  const failures: Array<{
+    stage: 'download' | 'verify';
+    kind: 'retryable' | 'manual';
+    code: string;
+    message: string;
+  }> = [];
   let claimed = false;
 
   const repository: DownloadJobRepository = {
@@ -56,12 +64,13 @@ function fakeRepository(nextJob: DownloadJob | null = job) {
     completeDownload: async () => {
       transitions.push('completed');
     },
-    failDownload: async (_jobId, _workerId, error) => {
-      failures.push(error);
+    failDownload: async (_jobId, _workerId, stage, failure) => {
+      failures.push({ stage, ...failure });
       transitions.push('failed');
     },
     findReadyActiveModel: async () => null,
-    markActiveModelUnavailable: async () => undefined,
+    invalidateActiveModel: async () => undefined,
+    failActiveModelLoad: async () => undefined,
   };
 
   return { repository, transitions, progress, failures };
@@ -97,7 +106,7 @@ describe('DownloadJobRunner', () => {
       modelsDirectory: await temporaryModelDirectory(),
       workerId: 'worker-test',
       now: () => now,
-      verifyModel: async () => true,
+      validateModel: async () => undefined,
     });
 
     await expect(runner.runOnce()).resolves.toBe(true);
@@ -118,14 +127,18 @@ describe('DownloadJobRunner', () => {
       downloader,
       modelsDirectory: await temporaryModelDirectory(),
       workerId: 'worker-test',
-      verifyModel: async () => false,
+      validateModel: async () => undefined,
     });
 
     await expect(runner.runOnce()).resolves.toBe(true);
 
     expect(fake.transitions).toEqual(['claimed', 'downloading', 'failed']);
     expect(fake.failures).toHaveLength(1);
-    expect(fake.failures[0]!.length).toBeLessThanOrEqual(500);
+    expect(fake.failures[0]).toMatchObject({
+      stage: 'download',
+      kind: 'manual',
+    });
+    expect(fake.failures[0]!.message.length).toBeLessThanOrEqual(500);
   });
 
   it('returns false when no download job is available', async () => {
@@ -139,7 +152,7 @@ describe('DownloadJobRunner', () => {
       },
       modelsDirectory: await temporaryModelDirectory(),
       workerId: 'worker-test',
-      verifyModel: async () => false,
+      validateModel: async () => undefined,
     });
 
     await expect(runner.runOnce()).resolves.toBe(false);
@@ -181,7 +194,7 @@ describe('DownloadJobRunner', () => {
       modelsDirectory: await temporaryModelDirectory(),
       workerId: 'worker-test',
       leaseMilliseconds: 3_000,
-      verifyModel: async () => true,
+      validateModel: async () => undefined,
     });
 
     const running = runner.runOnce();
@@ -194,6 +207,216 @@ describe('DownloadJobRunner', () => {
     releaseRenewal();
     await expect(running).resolves.toBe(true);
     expect(fake.transitions).toEqual(['claimed', 'downloading', 'verifying', 'completed']);
+  });
+
+  it('deletes invalid model files and records a manual verification failure', async () => {
+    const modelsDirectory = await temporaryModelDirectory();
+    const modelDirectory = join(
+      modelsDirectory,
+      job.modelCode,
+      '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
+    );
+    await mkdir(modelDirectory, { recursive: true });
+    await writeFile(join(modelDirectory, 'corrupt.onnx'), 'corrupt');
+    const fake = fakeRepository();
+    const runner = new DownloadJobRunner({
+      repository: fake.repository,
+      downloader: {
+        download: async () => undefined,
+      },
+      modelsDirectory,
+      workerId: 'worker-test',
+      validateModel: async () => {
+        throw new ModelHashMismatchError('corrupt.onnx');
+      },
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(true);
+
+    await expect(access(modelDirectory)).rejects.toThrow();
+    expect(fake.transitions).toEqual(['claimed', 'downloading', 'verifying', 'failed']);
+    expect(fake.failures).toEqual([
+      {
+        stage: 'verify',
+        kind: 'manual',
+        code: 'MODEL_HASH_MISMATCH',
+        message: 'Model file checksum mismatch: corrupt.onnx',
+      },
+    ]);
+  });
+});
+
+const loadJob: SemanticLoadJob = {
+  id: '31111111-1111-4111-8111-111111111111',
+  jobType: 'load',
+  modelCode: 'multilingual-e5-small',
+  stateVersion: 4,
+  attempts: 1,
+};
+
+function fakeLoadRepository(nextJob: SemanticLoadJob | null = loadJob, completeCurrent = true) {
+  const transitions: string[] = [];
+  const failures: Array<{
+    stage: 'verify' | 'load';
+    kind: 'retryable' | 'manual';
+    code: string;
+  }> = [];
+  let claimed = false;
+  const repository: LoadJobRepository = {
+    claimNextLoad: async () => {
+      if (claimed) return null;
+      claimed = true;
+      transitions.push('claimed');
+      return nextJob;
+    },
+    renewLease: async () => undefined,
+    markLoading: async () => {
+      transitions.push('loading');
+    },
+    completeLoad: async () => {
+      transitions.push('completed');
+      return completeCurrent;
+    },
+    failLoad: async (_jobId, _workerId, stage, failure) => {
+      failures.push({ stage, kind: failure.kind, code: failure.code });
+      transitions.push('failed');
+    },
+    findReadyActiveModel: async () => null,
+    invalidateActiveModel: async () => undefined,
+    failActiveModelLoad: async () => undefined,
+  };
+  return { repository, transitions, failures };
+}
+
+describe('LoadJobRunner', () => {
+  it('validates and loads a model before queuing its full index', async () => {
+    const fake = fakeLoadRepository();
+    const loaded: string[] = [];
+    const runtime: EmbeddingRuntime = {
+      load: async (_model, target) => {
+        loaded.push(target);
+      },
+      embedQuery: async () => [],
+      embedDocuments: async () => [],
+      dispose: async () => undefined,
+    };
+    let activated: SemanticLoadJob['modelCode'] | null = null;
+    const runner = new LoadJobRunner({
+      repository: fake.repository,
+      runtime,
+      modelsDirectory: await temporaryModelDirectory(),
+      workerId: 'worker-test',
+      validateModel: async () => undefined,
+      onModelLoaded: (modelCode) => {
+        activated = modelCode;
+      },
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(true);
+
+    expect(fake.transitions).toEqual(['claimed', 'loading', 'completed']);
+    expect(loaded).toHaveLength(1);
+    expect(activated).toBe(loadJob.modelCode);
+  });
+
+  it('keeps valid downloaded files when runtime loading fails', async () => {
+    const modelsDirectory = await temporaryModelDirectory();
+    const fake = fakeLoadRepository();
+    let disposed = false;
+    const runner = new LoadJobRunner({
+      repository: fake.repository,
+      runtime: {
+        load: async () => {
+          throw Object.assign(new Error('runtime busy'), { code: 'EBUSY' });
+        },
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => {
+          disposed = true;
+        },
+      },
+      modelsDirectory,
+      workerId: 'worker-test',
+      validateModel: async () => undefined,
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(true);
+
+    expect(fake.transitions).toEqual(['claimed', 'loading', 'failed']);
+    expect(fake.failures).toEqual([
+      { stage: 'load', kind: 'retryable', code: 'MODEL_LOAD_TRANSIENT' },
+    ]);
+    expect(disposed).toBe(true);
+    await expect(access(modelsDirectory)).resolves.toBeUndefined();
+  });
+
+  it('clears the active runtime and invalidates files when pre-load validation fails', async () => {
+    const modelsDirectory = await temporaryModelDirectory();
+    const modelDirectory = join(
+      modelsDirectory,
+      loadJob.modelCode,
+      '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
+    );
+    await mkdir(modelDirectory, { recursive: true });
+    const fake = fakeLoadRepository();
+    let markedLoading = false;
+    let disposed = false;
+    const runner = new LoadJobRunner({
+      repository: fake.repository,
+      runtime: {
+        load: async () => undefined,
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => {
+          disposed = true;
+        },
+      },
+      modelsDirectory,
+      workerId: 'worker-test',
+      validateModel: async () => {
+        throw new ModelHashMismatchError('model.onnx');
+      },
+      onModelLoading: () => {
+        markedLoading = true;
+      },
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(true);
+
+    expect(markedLoading).toBe(true);
+    expect(disposed).toBe(true);
+    await expect(access(modelDirectory)).rejects.toThrow();
+    expect(fake.failures).toEqual([
+      { stage: 'verify', kind: 'manual', code: 'MODEL_HASH_MISMATCH' },
+    ]);
+  });
+
+  it('disposes a loaded model when its task is no longer current', async () => {
+    const fake = fakeLoadRepository(loadJob, false);
+    let disposed = false;
+    let activated = false;
+    const runner = new LoadJobRunner({
+      repository: fake.repository,
+      runtime: {
+        load: async () => undefined,
+        embedQuery: async () => [],
+        embedDocuments: async () => [],
+        dispose: async () => {
+          disposed = true;
+        },
+      },
+      modelsDirectory: await temporaryModelDirectory(),
+      workerId: 'worker-test',
+      validateModel: async () => undefined,
+      onModelLoaded: () => {
+        activated = true;
+      },
+    });
+
+    await expect(runner.runOnce()).resolves.toBe(true);
+
+    expect(disposed).toBe(true);
+    expect(activated).toBe(false);
   });
 });
 

@@ -1,6 +1,8 @@
 import type { SemanticEntityType, SemanticTaskType } from '@causality/contracts';
 import type { SemanticModelCode } from '@causality/semantic-core';
 
+import type { ClassifiedSemanticFailure, SemanticFailureStage } from './failureClassifier.js';
+
 interface SemanticJob {
   id: string;
   modelCode: SemanticModelCode;
@@ -29,7 +31,14 @@ export interface ReadyActiveModel {
 
 export interface ModelFileRepository {
   findReadyActiveModel(): Promise<ReadyActiveModel | null>;
-  markActiveModelUnavailable(modelCode: SemanticModelCode, error: string): Promise<void>;
+  invalidateActiveModel(
+    modelCode: SemanticModelCode,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void>;
+  failActiveModelLoad(
+    modelCode: SemanticModelCode,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void>;
 }
 
 export interface DownloadJobRepository extends ModelFileRepository {
@@ -39,7 +48,25 @@ export interface DownloadJobRepository extends ModelFileRepository {
   updateDownloadProgress(jobId: string, workerId: string, loadedBytes: number): Promise<void>;
   markVerifying(jobId: string, workerId: string): Promise<void>;
   completeDownload(jobId: string, workerId: string): Promise<void>;
-  failDownload(jobId: string, workerId: string, error: string): Promise<void>;
+  failDownload(
+    jobId: string,
+    workerId: string,
+    stage: Extract<SemanticFailureStage, 'download' | 'verify'>,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void>;
+}
+
+export interface LoadJobRepository extends ModelFileRepository {
+  claimNextLoad(workerId: string, leaseMilliseconds: number): Promise<SemanticLoadJob | null>;
+  renewLease(jobId: string, workerId: string, leaseMilliseconds: number): Promise<void>;
+  markLoading(jobId: string, workerId: string): Promise<void>;
+  completeLoad(jobId: string, workerId: string): Promise<boolean>;
+  failLoad(
+    jobId: string,
+    workerId: string,
+    stage: Extract<SemanticFailureStage, 'verify' | 'load'>,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void>;
 }
 
 export interface IndexJobRepository {

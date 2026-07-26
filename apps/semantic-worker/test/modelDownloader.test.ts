@@ -6,7 +6,16 @@ import { dirname, join } from 'node:path';
 import type { SemanticModelDefinition } from '@causality/semantic-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PinnedModelDownloader, verifyReadyModel } from '../src/model/modelDownloader.js';
+import {
+  ModelDownloadTimeoutError,
+  ModelDownloadNetworkError,
+  ModelFileMissingError,
+  ModelHashMismatchError,
+  ModelSizeMismatchError,
+  PinnedModelDownloader,
+  validateReadyModel,
+  verifyReadyModel,
+} from '../src/model/modelDownloader.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -118,8 +127,8 @@ describe('PinnedModelDownloader', () => {
       fetch: fakeFetch(model, new Map([['config.json', corrupt]])),
     });
 
-    await expect(downloader.download(model, target, async () => undefined)).rejects.toThrow(
-      /checksum/i,
+    await expect(downloader.download(model, target, async () => undefined)).rejects.toBeInstanceOf(
+      ModelHashMismatchError,
     );
 
     await expect(access(join(modelsDirectory, '.partial', model.code))).rejects.toThrow();
@@ -160,5 +169,56 @@ describe('PinnedModelDownloader', () => {
     );
 
     expect(await verifyReadyModel(model, target)).toBe(true);
+  });
+
+  it('reports typed missing, size, and checksum failures during validation', async () => {
+    const body = new Uint8Array([1, 2, 3]);
+    const model = testModel([{ path: 'config.json', body }]);
+    const modelsDirectory = await createTemporaryDirectory();
+    const target = join(modelsDirectory, model.code, model.revision);
+    const downloader = new PinnedModelDownloader({
+      fetch: fakeFetch(model, new Map([['config.json', body]])),
+    });
+    await downloader.download(model, target, async () => undefined);
+
+    await rm(join(target, 'config.json'));
+    await expect(validateReadyModel(model, target)).rejects.toBeInstanceOf(ModelFileMissingError);
+
+    await writeFile(join(target, 'config.json'), new Uint8Array([1, 2]));
+    await expect(validateReadyModel(model, target)).rejects.toBeInstanceOf(ModelSizeMismatchError);
+
+    await writeFile(join(target, 'config.json'), new Uint8Array([1, 2, 4]));
+    await expect(validateReadyModel(model, target)).rejects.toBeInstanceOf(ModelHashMismatchError);
+  });
+
+  it('throws a typed timeout when a download request makes no progress', async () => {
+    const body = new Uint8Array([1]);
+    const model = testModel([{ path: 'config.json', body }]);
+    const modelsDirectory = await createTemporaryDirectory();
+    const target = join(modelsDirectory, model.code, model.revision);
+    const stalledFetch = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      })) as typeof fetch;
+
+    await expect(
+      new PinnedModelDownloader({
+        fetch: stalledFetch,
+        requestIdleTimeoutMilliseconds: 5,
+      }).download(model, target, async () => undefined),
+    ).rejects.toBeInstanceOf(ModelDownloadTimeoutError);
+  });
+
+  it('throws a typed network failure for an unsuccessful response', async () => {
+    const body = new Uint8Array([1]);
+    const model = testModel([{ path: 'missing.json', body }]);
+    const modelsDirectory = await createTemporaryDirectory();
+    const target = join(modelsDirectory, model.code, model.revision);
+
+    await expect(
+      new PinnedModelDownloader({
+        fetch: fakeFetch(model, new Map()),
+      }).download(model, target, async () => undefined),
+    ).rejects.toBeInstanceOf(ModelDownloadNetworkError);
   });
 });

@@ -1,5 +1,3 @@
-import { join } from 'node:path';
-
 import type { SemanticEntityType } from '@causality/contracts';
 import { MODEL_CATALOG } from '@causality/semantic-core';
 import type { Pool, PoolClient } from 'pg';
@@ -20,10 +18,7 @@ export interface PostgresIndexBuilderOptions {
   stateRepository: IndexStateRepository;
   sourceRepository: SemanticSourceRepository;
   runtime: EmbeddingRuntime;
-  modelsDirectory: string;
   drainedIncrementalLeaseMilliseconds?: number;
-  onModelLoading?: () => void | Promise<void>;
-  onModelReady?: (modelCode: SemanticIndexJob['modelCode']) => void | Promise<void>;
 }
 
 interface IndexStateRow {
@@ -125,12 +120,6 @@ export class PostgresIndexBuilder implements IndexBuilder {
     if (!(await this.options.stateRepository.isCurrent(job))) return;
 
     const model = MODEL_CATALOG[job.modelCode];
-    const target = join(this.options.modelsDirectory, model.code, model.revision);
-    await this.options.onModelLoading?.();
-    await this.options.runtime.load(model, target);
-    assertLeaseValid();
-    if (!(await this.options.stateRepository.isCurrent(job))) return;
-
     let totalItems = await this.countSources();
     assertLeaseValid();
     await this.options.stateRepository.beginFullBuild(job, totalItems);
@@ -187,10 +176,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
       await this.updateFullProgress(job, validatedItems, validatedItems, assertLeaseValid);
       assertLeaseValid();
       const published = await this.options.stateRepository.publishIndex(job, validatedItems, 0);
-      if (published) {
-        await this.options.onModelReady?.(job.modelCode);
-        return;
-      }
+      if (published) return;
     }
     throw new Error('Semantic index kept changing during final publication');
   }

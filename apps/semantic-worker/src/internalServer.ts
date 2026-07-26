@@ -9,9 +9,14 @@ import {
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { z } from 'zod';
 
+import { classifySemanticFailure } from './jobs/failureClassifier.js';
 import type { ModelFileRepository } from './jobs/jobTypes.js';
 import type { EmbeddingRuntime } from './model/modelRuntime.js';
-import { verifyReadyModel } from './model/modelDownloader.js';
+import {
+  ModelHashMismatchError,
+  removeModelVersion,
+  validateReadyModel,
+} from './model/modelDownloader.js';
 
 const embedQuerySchema = z
   .object({
@@ -48,20 +53,15 @@ interface SemanticWorkerServiceOptions {
   repository: ModelFileRepository;
   runtime: EmbeddingRuntime;
   modelsDirectory: string;
-  verifyModel?: typeof verifyReadyModel;
-}
-
-function boundedLoadError(error: unknown): string {
-  const detail = error instanceof Error ? error.message : String(error);
-  return `本地语义模型加载失败：${detail}`.slice(0, 500);
+  validateModel?: typeof validateReadyModel;
 }
 
 export class SemanticWorkerService implements SemanticWorkerQueryService {
-  private readonly verifyModel: typeof verifyReadyModel;
+  private readonly validateModel: typeof validateReadyModel;
   private activeModelCode: SemanticModelCode | null = null;
 
   public constructor(private readonly options: SemanticWorkerServiceOptions) {
-    this.verifyModel = options.verifyModel ?? verifyReadyModel;
+    this.validateModel = options.validateModel ?? validateReadyModel;
   }
 
   public async initialize(): Promise<void> {
@@ -70,11 +70,16 @@ export class SemanticWorkerService implements SemanticWorkerQueryService {
 
     const model = MODEL_CATALOG[active.modelCode];
     const target = join(this.options.modelsDirectory, model.code, model.revision);
-    if (active.revision !== model.revision || !(await this.verifyModel(model, target))) {
-      await this.options.repository.markActiveModelUnavailable(
-        model.code,
-        '本地语义模型文件缺失或校验失败',
-      );
+    try {
+      if (active.revision !== model.revision) {
+        throw new ModelHashMismatchError('READY.json');
+      }
+      await this.validateModel(model, target);
+    } catch (error) {
+      const failure = classifySemanticFailure('verify', error);
+      await this.options.runtime.dispose();
+      await removeModelVersion(model, target);
+      await this.options.repository.invalidateActiveModel(model.code, failure);
       return;
     }
 
@@ -82,7 +87,11 @@ export class SemanticWorkerService implements SemanticWorkerQueryService {
       await this.options.runtime.load(model, target);
       this.activeModelCode = model.code;
     } catch (error) {
-      await this.options.repository.markActiveModelUnavailable(model.code, boundedLoadError(error));
+      await this.options.runtime.dispose();
+      await this.options.repository.failActiveModelLoad(
+        model.code,
+        classifySemanticFailure('load', error),
+      );
     }
   }
 

@@ -1,7 +1,14 @@
 import type { SemanticModelCode } from '@causality/semantic-core';
 import type { Pool } from 'pg';
 
-import type { DownloadJob, DownloadJobRepository, ReadyActiveModel } from './jobTypes.js';
+import type { ClassifiedSemanticFailure, SemanticFailureStage } from './failureClassifier.js';
+import type {
+  DownloadJob,
+  DownloadJobRepository,
+  LoadJobRepository,
+  ReadyActiveModel,
+  SemanticLoadJob,
+} from './jobTypes.js';
 import {
   boundedJobError,
   lockIndexState,
@@ -29,7 +36,24 @@ function mapDownloadJob(row: DownloadJobRow): DownloadJob {
   };
 }
 
-export class PostgresDownloadJobRepository implements DownloadJobRepository {
+interface LoadJobRow {
+  id: string;
+  model_code: SemanticModelCode;
+  state_version: number;
+  attempts: number;
+}
+
+function mapLoadJob(row: LoadJobRow): SemanticLoadJob {
+  return {
+    id: row.id,
+    jobType: 'load',
+    modelCode: row.model_code,
+    stateVersion: row.state_version,
+    attempts: row.attempts,
+  };
+}
+
+export class PostgresDownloadJobRepository implements DownloadJobRepository, LoadJobRepository {
   public constructor(private readonly pool: Pool) {}
 
   public async claimNextDownload(
@@ -43,6 +67,7 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository {
          where job_type = 'download'
            and (
              status = 'queued'
+             or (status = 'retry_wait' and next_attempt_at <= clock_timestamp())
              or (status = 'running' and lease_expires_at <= clock_timestamp())
            )
          order by created_at, id
@@ -60,6 +85,9 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository {
              else job.started_at
            end,
            completed_at = null,
+           next_attempt_at = null,
+           failure_kind = null,
+           failure_code = null,
            error = null,
            updated_at = clock_timestamp()
        from candidate
@@ -76,6 +104,51 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository {
 
   public renewLease(jobId: string, workerId: string, leaseMilliseconds: number): Promise<void> {
     return renewJobLease(this.pool, jobId, workerId, leaseMilliseconds);
+  }
+
+  public async claimNextLoad(
+    workerId: string,
+    leaseMilliseconds: number,
+  ): Promise<SemanticLoadJob | null> {
+    const result = await this.pool.query<LoadJobRow>(
+      `with candidate as (
+         select id
+         from semantic_jobs
+         where job_type = 'load'
+           and (
+             status = 'queued'
+             or (status = 'retry_wait' and next_attempt_at <= clock_timestamp())
+             or (status = 'running' and lease_expires_at <= clock_timestamp())
+           )
+         order by created_at, id
+         limit 1
+         for update skip locked
+       )
+       update semantic_jobs as job
+       set status = 'running',
+           phase = 'loading',
+           attempts = job.attempts + 1,
+           lease_owner = $1,
+           lease_expires_at = clock_timestamp() + ($2::integer * interval '1 millisecond'),
+           started_at = case
+             when job.status = 'queued' then clock_timestamp()
+             else job.started_at
+           end,
+           completed_at = null,
+           next_attempt_at = null,
+           failure_kind = null,
+           failure_code = null,
+           error = null,
+           updated_at = clock_timestamp()
+       from candidate
+       where job.id = candidate.id
+       returning job.id,
+                 job.model_code,
+                 job.state_version,
+                 job.attempts`,
+      [workerId, leaseMilliseconds],
+    );
+    return result.rows[0] ? mapLoadJob(result.rows[0]) : null;
   }
 
   public async markDownloading(jobId: string, workerId: string): Promise<void> {
@@ -189,6 +262,84 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository {
              status,
              state_version
            )
+           select 'load',
+                  $1::varchar(64),
+                  'queued',
+                  $2::integer
+           where not exists (
+             select 1
+             from semantic_jobs
+             where job_type = 'load'
+               and model_code = $1::varchar(64)
+               and state_version = $2::integer
+               and status in ('queued', 'running', 'retry_wait')
+           )`,
+          [job.model_code, job.state_version],
+        );
+      }
+    });
+  }
+
+  public async markLoading(jobId: string, workerId: string): Promise<void> {
+    await withJobTransaction(this.pool, async (client) => {
+      const job = await lockOwnedJob(client, jobId, workerId);
+      if (job.job_type !== 'load') throw new Error('Expected a load job');
+      await client.query(
+        `update semantic_index_state
+         set status = 'loading',
+             failure_stage = null,
+             failure_kind = null,
+             failure_code = null,
+             error = null,
+             updated_at = clock_timestamp()
+         where singleton_key = true
+           and active_model_code = $1
+           and state_version = $2`,
+        [job.model_code, job.state_version],
+      );
+    });
+  }
+
+  public async completeLoad(jobId: string, workerId: string): Promise<boolean> {
+    return withJobTransaction(this.pool, async (client) => {
+      const state = await lockIndexState(client);
+      const job = await lockOwnedJob(client, jobId, workerId);
+      if (job.job_type !== 'load') throw new Error('Expected a load job');
+      const isCurrent =
+        state.active_model_code === job.model_code && state.state_version === job.state_version;
+      await client.query(
+        `delete from semantic_jobs
+         where id = $1
+           and status = 'running'
+           and lease_owner = $2`,
+        [job.id, workerId],
+      );
+      if (!isCurrent) return false;
+      const current = await client.query(
+        `update semantic_index_state
+         set status = 'index_queued',
+             processed_items = 0,
+             total_items = 0,
+             pending_items = 0,
+             failed_items = 0,
+             failure_stage = null,
+             failure_kind = null,
+             failure_code = null,
+             error = null,
+             updated_at = clock_timestamp()
+         where singleton_key = true
+           and active_model_code = $1
+           and state_version = $2`,
+        [job.model_code, job.state_version],
+      );
+      if (current.rowCount === 1) {
+        await client.query(
+          `insert into semantic_jobs (
+             job_type,
+             model_code,
+             status,
+             state_version
+           )
            select 'full_index',
                   $1::varchar(64),
                   'queued',
@@ -199,71 +350,195 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository {
              where job_type = 'full_index'
                and model_code = $1::varchar(64)
                and state_version = $2::integer
-               and status in ('queued', 'running')
+               and status in ('queued', 'running', 'retry_wait')
            )`,
           [job.model_code, job.state_version],
         );
       }
+      return current.rowCount === 1;
     });
   }
 
-  public async failDownload(jobId: string, workerId: string, error: string): Promise<void> {
+  public async failDownload(
+    jobId: string,
+    workerId: string,
+    stage: Extract<SemanticFailureStage, 'download' | 'verify'>,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void> {
     await withJobTransaction(this.pool, async (client) => {
       await lockIndexState(client);
       const job = await lockOwnedJob(client, jobId, workerId);
-      const finalFailure = job.attempts >= 3;
-      const message = boundedJobError(error);
+      const retry = failure.kind === 'retryable' && job.attempts < 3;
+      const finalFailure = !retry;
+      const message = boundedJobError(failure.message);
+      const retryDelaySeconds = job.attempts === 1 ? 5 : 30;
 
       await client.query(
         `update semantic_jobs
          set status = $3::varchar(20),
-             phase = case
-               when $3::varchar(20) = 'failed' then phase
-               else 'waiting'
-             end,
+             phase = case when $8::boolean then 'verifying' else phase end,
              lease_owner = null,
              lease_expires_at = null,
-             next_attempt_at = null,
-             failure_kind = null,
-             failure_code = null,
-             started_at = case
-               when $3::varchar(20) = 'failed' then started_at
+             next_attempt_at = case
+               when $3::varchar(20) = 'retry_wait'
+               then clock_timestamp() + ($4::integer * interval '1 second')
                else null
              end,
+             failure_kind = $5,
+             failure_code = $6,
              completed_at = case
                when $3::varchar(20) = 'failed' then clock_timestamp()
                else null
              end,
-             error = $4::text,
+             error = $7::text,
              updated_at = clock_timestamp()
          where id = $1
            and lease_owner = $2`,
-        [job.id, workerId, finalFailure ? 'failed' : 'queued', message],
+        [
+          job.id,
+          workerId,
+          finalFailure ? 'failed' : 'retry_wait',
+          retryDelaySeconds,
+          failure.kind,
+          failure.code,
+          message,
+          stage === 'verify',
+        ],
       );
       await client.query(
         `update semantic_model_settings
          set file_status = $2::varchar(20),
              downloaded_at = null,
-             failure_kind = null,
-             failure_code = null,
-             error = $3,
+             failure_kind = $3,
+             failure_code = $4,
+             error = $5,
              updated_at = clock_timestamp()
          where model_code = $1`,
-        [job.model_code, finalFailure ? 'failed' : 'not_downloaded', message],
+        [
+          job.model_code,
+          stage === 'verify' ? 'invalid' : finalFailure ? 'failed' : 'download_queued',
+          failure.kind,
+          failure.code,
+          message,
+        ],
       );
       await client.query(
         `update semantic_index_state
          set status = $3::varchar(20),
              failed_items = 0,
-             failure_stage = null,
-             failure_kind = null,
-             failure_code = null,
-             error = $4,
+             failure_stage = $4,
+             failure_kind = $5,
+             failure_code = $6,
+             error = $7,
              updated_at = clock_timestamp()
          where singleton_key = true
            and active_model_code = $1
            and state_version = $2`,
-        [job.model_code, job.state_version, finalFailure ? 'failed' : 'waiting_model', message],
+        [
+          job.model_code,
+          job.state_version,
+          stage === 'verify' || retry ? 'waiting_model' : 'failed',
+          stage,
+          failure.kind,
+          failure.code,
+          message,
+        ],
+      );
+    });
+  }
+
+  public async failLoad(
+    jobId: string,
+    workerId: string,
+    stage: Extract<SemanticFailureStage, 'verify' | 'load'>,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void> {
+    await withJobTransaction(this.pool, async (client) => {
+      await lockIndexState(client);
+      const job = await lockOwnedJob(client, jobId, workerId);
+      if (job.job_type !== 'load') throw new Error('Expected a load job');
+      const retry = stage === 'load' && failure.kind === 'retryable' && job.attempts < 3;
+      const message = boundedJobError(failure.message);
+      const retryDelaySeconds = job.attempts === 1 ? 5 : 30;
+
+      if (stage === 'verify') {
+        await client.query(
+          `delete from semantic_jobs
+           where (
+               id = $1
+               and status = 'running'
+               and lease_owner = $2
+             )
+             or (
+               job_type = 'full_index'
+               and model_code = $3
+               and state_version = $4
+             )`,
+          [job.id, workerId, job.model_code, job.state_version],
+        );
+        await client.query(
+          `update semantic_model_settings
+           set file_status = 'invalid',
+               downloaded_at = null,
+               failure_kind = $2,
+               failure_code = $3,
+               error = $4,
+               updated_at = clock_timestamp()
+           where model_code = $1`,
+          [job.model_code, failure.kind, failure.code, message],
+        );
+      } else {
+        await client.query(
+          `update semantic_jobs
+           set status = $3::varchar(20),
+               lease_owner = null,
+               lease_expires_at = null,
+               next_attempt_at = case
+                 when $3::varchar(20) = 'retry_wait'
+                 then clock_timestamp() + ($4::integer * interval '1 second')
+                 else null
+               end,
+               failure_kind = $5,
+               failure_code = $6,
+               completed_at = case
+                 when $3::varchar(20) = 'failed' then clock_timestamp()
+                 else null
+               end,
+               error = $7,
+               updated_at = clock_timestamp()
+           where id = $1
+             and lease_owner = $2`,
+          [
+            job.id,
+            workerId,
+            retry ? 'retry_wait' : 'failed',
+            retryDelaySeconds,
+            failure.kind,
+            failure.code,
+            message,
+          ],
+        );
+      }
+      await client.query(
+        `update semantic_index_state
+         set status = $3::varchar(20),
+             failure_stage = $4,
+             failure_kind = $5,
+             failure_code = $6,
+             error = $7,
+             updated_at = clock_timestamp()
+         where singleton_key = true
+           and active_model_code = $1
+           and state_version = $2`,
+        [
+          job.model_code,
+          job.state_version,
+          stage === 'verify' ? 'waiting_model' : retry ? 'loading' : 'failed',
+          stage,
+          failure.kind,
+          failure.code,
+          message,
+        ],
       );
     });
   }
@@ -279,37 +554,81 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository {
        join semantic_model_settings as settings
          on settings.model_code = state.active_model_code
        where state.singleton_key = true
-         and state.status in ('ready', 'updating')
+         and (
+           state.status in ('index_queued', 'building', 'ready', 'updating', 'incomplete')
+           or (state.status = 'failed' and state.failure_stage = 'full_index')
+         )
          and settings.file_status = 'downloaded'`,
     );
     const row = result.rows[0];
     return row ? { modelCode: row.model_code, revision: row.revision } : null;
   }
 
-  public async markActiveModelUnavailable(
+  public async invalidateActiveModel(
     modelCode: SemanticModelCode,
-    error: string,
+    failure: ClassifiedSemanticFailure,
   ): Promise<void> {
-    const message = boundedJobError(error);
+    const message = boundedJobError(failure.message);
     await withJobTransaction(this.pool, async (client) => {
-      await lockIndexState(client);
+      const state = await lockIndexState(client);
       await client.query(
         `update semantic_model_settings
-         set file_status = 'failed',
+         set file_status = 'invalid',
              downloaded_at = null,
-             error = $2,
+             failure_kind = $2,
+             failure_code = $3,
+             error = $4,
              updated_at = clock_timestamp()
          where model_code = $1`,
-        [modelCode, message],
+        [modelCode, failure.kind, failure.code, message],
       );
       await client.query(
         `update semantic_index_state
-         set status = 'failed',
-             error = $2,
+         set status = 'waiting_model',
+             failure_stage = 'verify',
+             failure_kind = $2,
+             failure_code = $3,
+             error = $4,
              updated_at = clock_timestamp()
          where singleton_key = true
            and active_model_code = $1`,
-        [modelCode, message],
+        [modelCode, failure.kind, failure.code, message],
+      );
+      await client.query(
+        `delete from semantic_jobs
+         where model_code = $1
+           and state_version = $2
+           and job_type in ('load', 'full_index')`,
+        [modelCode, state.state_version],
+      );
+    });
+  }
+
+  public async failActiveModelLoad(
+    modelCode: SemanticModelCode,
+    failure: ClassifiedSemanticFailure,
+  ): Promise<void> {
+    const message = boundedJobError(failure.message);
+    await withJobTransaction(this.pool, async (client) => {
+      const state = await lockIndexState(client);
+      await client.query(
+        `update semantic_index_state
+         set status = 'failed',
+             failure_stage = 'load',
+             failure_kind = $2,
+             failure_code = $3,
+             error = $4,
+             updated_at = clock_timestamp()
+         where singleton_key = true
+           and active_model_code = $1`,
+        [modelCode, failure.kind, failure.code, message],
+      );
+      await client.query(
+        `delete from semantic_jobs
+         where model_code = $1
+           and state_version = $2
+           and job_type in ('load', 'full_index')`,
+        [modelCode, state.state_version],
       );
     });
   }

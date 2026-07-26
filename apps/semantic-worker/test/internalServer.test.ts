@@ -1,5 +1,9 @@
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import type { SemanticModelCode } from '@causality/semantic-core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   ActiveModelMismatchError,
@@ -8,7 +12,24 @@ import {
   type SemanticWorkerQueryService,
 } from '../src/internalServer.js';
 import type { DownloadJobRepository } from '../src/jobs/jobTypes.js';
+import { ModelFileMissingError } from '../src/model/modelDownloader.js';
 import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
+
+const temporaryDirectories: string[] = [];
+
+async function temporaryModelsDirectory(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), 'causality-internal-server-'));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
 
 function queryService(activeModelCode: SemanticModelCode | null): SemanticWorkerQueryService {
   return {
@@ -29,7 +50,8 @@ function queryService(activeModelCode: SemanticModelCode | null): SemanticWorker
 }
 
 function startupRepository() {
-  const unavailable: Array<{ modelCode: SemanticModelCode; error: string }> = [];
+  const invalid: Array<{ modelCode: SemanticModelCode; code: string }> = [];
+  const loadFailures: Array<{ modelCode: SemanticModelCode; code: string }> = [];
   const repository: DownloadJobRepository = {
     claimNextDownload: async () => null,
     renewLease: async () => undefined,
@@ -42,11 +64,14 @@ function startupRepository() {
       modelCode: 'multilingual-e5-small',
       revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
     }),
-    markActiveModelUnavailable: async (modelCode, error) => {
-      unavailable.push({ modelCode, error });
+    invalidateActiveModel: async (modelCode, failure) => {
+      invalid.push({ modelCode, code: failure.code });
+    },
+    failActiveModelLoad: async (modelCode, failure) => {
+      loadFailures.push({ modelCode, code: failure.code });
     },
   };
-  return { repository, unavailable };
+  return { repository, invalid, loadFailures };
 }
 
 describe('semantic worker internal server', () => {
@@ -113,22 +138,35 @@ describe('semantic worker internal server', () => {
     await app.close();
   });
 
-  it('marks a ready database model unavailable when its local manifest is missing', async () => {
+  it('removes and invalidates a ready database model when its local manifest is missing', async () => {
     const fake = startupRepository();
+    const modelsDirectory = await temporaryModelsDirectory();
+    const modelDirectory = join(
+      modelsDirectory,
+      'multilingual-e5-small',
+      '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
+    );
+    await mkdir(modelDirectory, { recursive: true });
+    await writeFile(join(modelDirectory, 'stale-file'), 'stale');
     let loaded = false;
+    let disposed = false;
     const runtime: EmbeddingRuntime = {
       load: async () => {
         loaded = true;
       },
       embedQuery: async () => [],
       embedDocuments: async () => [],
-      dispose: async () => undefined,
+      dispose: async () => {
+        disposed = true;
+      },
     };
     const service = new SemanticWorkerService({
       repository: fake.repository,
       runtime,
-      modelsDirectory: '/models',
-      verifyModel: async () => false,
+      modelsDirectory,
+      validateModel: async () => {
+        throw new ModelFileMissingError('config.json');
+      },
     });
 
     await service.initialize();
@@ -139,11 +177,49 @@ describe('semantic worker internal server', () => {
       modelLoaded: false,
       activeModelCode: null,
     });
-    expect(fake.unavailable).toEqual([
-      {
-        modelCode: 'multilingual-e5-small',
-        error: '本地语义模型文件缺失或校验失败',
+    expect(disposed).toBe(true);
+    await expect(access(modelDirectory)).rejects.toThrow();
+    expect(fake.invalid).toEqual([
+      { modelCode: 'multilingual-e5-small', code: 'MODEL_FILE_MISSING' },
+    ]);
+    expect(fake.loadFailures).toEqual([]);
+  });
+
+  it('keeps valid files and records a runtime failure during startup loading', async () => {
+    const fake = startupRepository();
+    const modelsDirectory = await temporaryModelsDirectory();
+    const modelDirectory = join(
+      modelsDirectory,
+      'multilingual-e5-small',
+      '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
+    );
+    await mkdir(modelDirectory, { recursive: true });
+    await writeFile(join(modelDirectory, 'READY.json'), '{}');
+    let disposed = false;
+    const runtime: EmbeddingRuntime = {
+      load: async () => {
+        throw new Error('Error loading shared library ld-linux-aarch64.so.1');
       },
+      embedQuery: async () => [],
+      embedDocuments: async () => [],
+      dispose: async () => {
+        disposed = true;
+      },
+    };
+    const service = new SemanticWorkerService({
+      repository: fake.repository,
+      runtime,
+      modelsDirectory,
+      validateModel: async () => undefined,
+    });
+
+    await service.initialize();
+
+    await expect(access(modelDirectory)).resolves.toBeUndefined();
+    expect(disposed).toBe(true);
+    expect(fake.invalid).toEqual([]);
+    expect(fake.loadFailures).toEqual([
+      { modelCode: 'multilingual-e5-small', code: 'MODEL_RUNTIME_INCOMPATIBLE' },
     ]);
   });
 
@@ -159,7 +235,7 @@ describe('semantic worker internal server', () => {
       repository: fake.repository,
       runtime,
       modelsDirectory: '/models',
-      verifyModel: async () => true,
+      validateModel: async () => undefined,
     });
 
     service.markModelLoading();

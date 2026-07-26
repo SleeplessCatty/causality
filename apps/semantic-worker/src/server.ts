@@ -9,7 +9,7 @@ import { createWorkerDatabasePool } from './database.js';
 import { PostgresDownloadJobRepository } from './jobs/downloadJobRepository.js';
 import { PostgresIndexBuilder } from './jobs/indexBuilder.js';
 import { PostgresIndexJobRepository } from './jobs/indexJobRepository.js';
-import { DownloadJobRunner, IndexJobRunner } from './jobs/jobRunner.js';
+import { DownloadJobRunner, IndexJobRunner, LoadJobRunner } from './jobs/jobRunner.js';
 import { PostgresSemanticSourceRepository } from './jobs/semanticSourceRepository.js';
 import { buildInternalServer, SemanticWorkerService } from './internalServer.js';
 import { PinnedModelDownloader } from './model/modelDownloader.js';
@@ -34,14 +34,19 @@ const runner = new DownloadJobRunner({
   modelsDirectory: env.MODEL_DIRECTORY,
   workerId,
 });
+const loadRunner = new LoadJobRunner({
+  repository: downloadRepository,
+  runtime,
+  modelsDirectory: env.MODEL_DIRECTORY,
+  workerId,
+  onModelLoading: () => service.markModelLoading(),
+  onModelLoaded: (modelCode) => service.markLoadedModel(modelCode),
+});
 const indexBuilder = new PostgresIndexBuilder({
   pool,
   stateRepository: indexRepository,
   sourceRepository: new PostgresSemanticSourceRepository(pool),
   runtime,
-  modelsDirectory: env.MODEL_DIRECTORY,
-  onModelLoading: () => service.markModelLoading(),
-  onModelReady: (modelCode) => service.markLoadedModel(modelCode),
 });
 const indexRunner = new IndexJobRunner({
   repository: indexRepository,
@@ -68,6 +73,8 @@ async function pollJobs(): Promise<void> {
     try {
       const processed = await runner.runOnce();
       if (processed) continue;
+      const loaded = await loadRunner.runOnce();
+      if (loaded) continue;
       const indexed = await indexRunner.runOnce();
       if (indexed) continue;
     } catch (error) {

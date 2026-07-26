@@ -852,7 +852,7 @@ interface ClassifiedSemanticFailure {
 function classifySemanticFailure(stage: SemanticFailureStage, error: unknown): ClassifiedSemanticFailure;
 ```
 
-- [ ] **Step 1: Write classifier tests**
+- [x] **Step 1: Write classifier tests**
 
 Map explicit typed errors, Node error codes, timeout errors, ONNX load errors, and unknown errors. Assert unknown is manual:
 
@@ -865,7 +865,7 @@ expect(classifySemanticFailure('load', new Error('unknown'))).toMatchObject({
 
 Use dedicated error classes for file missing, size mismatch, and hash mismatch rather than matching strings.
 
-- [ ] **Step 2: Write retry schedule integration tests**
+- [x] **Step 2: Write retry schedule integration tests**
 
 Fail a retryable download three times. Assert:
 
@@ -879,7 +879,7 @@ expect(attempt3).toMatchObject({ status: 'failed', attempts: 3 });
 
 Fail a manual validation once and assert it becomes `invalid`, deletes the invalid directory, creates no automatic download, and stops polling.
 
-- [ ] **Step 3: Run focused tests and verify failure**
+- [x] **Step 3: Run focused tests and verify failure**
 
 Run:
 
@@ -890,7 +890,7 @@ pnpm --filter @causality/semantic-worker test:integration -- jobRepository.integ
 
 Expected: FAIL because load tasks, retry_wait, next attempt time, and typed file failures are not implemented.
 
-- [ ] **Step 4: Implement failure classification and retry scheduling**
+- [x] **Step 4: Implement failure classification and retry scheduling**
 
 Claim queries include:
 
@@ -909,7 +909,7 @@ const terminal = job.attempts >= 3;
 
 Manual failures become terminal immediately. Persist code, kind, bounded message, and attempts.
 
-- [ ] **Step 5: Separate download and load jobs**
+- [x] **Step 5: Separate download and load jobs**
 
 Download success:
 
@@ -929,7 +929,7 @@ Load success:
 
 Load failure never changes a valid downloaded file to failed.
 
-- [ ] **Step 6: Implement startup/use-time validation**
+- [x] **Step 6: Implement startup/use-time validation**
 
 Validate the current model at Worker startup and before load. Missing, size, or hash failure:
 
@@ -940,7 +940,7 @@ Validate the current model at Worker startup and before load. Missing, size, or 
 5. removes load/full-index jobs;
 6. does not enqueue download.
 
-- [ ] **Step 7: Run Worker tests**
+- [x] **Step 7: Run Worker tests**
 
 Run:
 
@@ -951,7 +951,7 @@ pnpm --filter @causality/semantic-worker test:integration
 
 Expected: download → verify → load → full-index task chain and all retry classifications pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/semantic-worker/src apps/semantic-worker/test

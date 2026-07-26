@@ -110,6 +110,27 @@ interface TransformersEmbeddingRuntimeOptions {
   backend?: TransformersBackend;
 }
 
+export class ModelLoadTransientError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = 'ModelLoadTransientError';
+  }
+}
+
+export class ModelRuntimeIncompatibleError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = 'ModelRuntimeIncompatibleError';
+  }
+}
+
+export class ModelMemoryInsufficientError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = 'ModelMemoryInsufficientError';
+  }
+}
+
 export class TransformersEmbeddingRuntime implements EmbeddingRuntime {
   private readonly backend: TransformersBackend;
   private pipeline: FeatureExtractionPipeline | undefined;

@@ -21,6 +21,41 @@ interface PinnedModelDownloaderOptions {
   requestIdleTimeoutMilliseconds?: number;
 }
 
+export class ModelFileMissingError extends Error {
+  public constructor(path: string) {
+    super(`Model file is missing: ${path}`);
+    this.name = 'ModelFileMissingError';
+  }
+}
+
+export class ModelSizeMismatchError extends Error {
+  public constructor(path: string) {
+    super(`Model file size mismatch: ${path}`);
+    this.name = 'ModelSizeMismatchError';
+  }
+}
+
+export class ModelHashMismatchError extends Error {
+  public constructor(path: string) {
+    super(`Model file checksum mismatch: ${path}`);
+    this.name = 'ModelHashMismatchError';
+  }
+}
+
+export class ModelDownloadTimeoutError extends Error {
+  public constructor() {
+    super('Model download timed out');
+    this.name = 'ModelDownloadTimeoutError';
+  }
+}
+
+export class ModelDownloadNetworkError extends Error {
+  public constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'ModelDownloadNetworkError';
+  }
+}
+
 export interface ModelDownloader {
   download(
     model: SemanticModelDefinition,
@@ -72,32 +107,54 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
-async function assertReadyModel(
+export async function validateReadyModel(
   model: SemanticModelDefinition,
   targetDirectory: string,
 ): Promise<void> {
-  const rawManifest = await readFile(join(targetDirectory, 'READY.json'), 'utf8');
-  const manifest = JSON.parse(rawManifest) as Partial<ReadyManifest>;
+  let rawManifest: string;
+  try {
+    rawManifest = await readFile(join(targetDirectory, 'READY.json'), 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new ModelFileMissingError('READY.json');
+    }
+    throw error;
+  }
+
+  let manifest: Partial<ReadyManifest>;
+  try {
+    manifest = JSON.parse(rawManifest) as Partial<ReadyManifest>;
+  } catch {
+    throw new ModelHashMismatchError('READY.json');
+  }
   if (manifest.modelCode !== model.code || manifest.revision !== model.revision) {
-    throw new Error('READY manifest does not match the pinned model');
+    throw new ModelHashMismatchError('READY.json');
   }
   if (!Array.isArray(manifest.files) || manifest.files.length !== model.files.length) {
-    throw new Error('READY manifest file list does not match the pinned model');
+    throw new ModelHashMismatchError('READY.json');
   }
 
   for (const file of model.files) {
     assertSafeManifestPath(file.localPath);
     const path = join(targetDirectory, file.localPath);
-    const metadata = await stat(path);
+    let metadata;
+    try {
+      metadata = await stat(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new ModelFileMissingError(file.localPath);
+      }
+      throw error;
+    }
     if (!metadata.isFile() || metadata.size !== file.bytes) {
-      throw new Error(`Model file size mismatch: ${file.localPath}`);
+      throw new ModelSizeMismatchError(file.localPath);
     }
     if ((await hashFile(path)) !== file.sha256) {
-      throw new Error(`Model file checksum mismatch: ${file.localPath}`);
+      throw new ModelHashMismatchError(file.localPath);
     }
     const readyFile = manifest.files.find((entry) => entry.path === file.localPath);
     if (!readyFile || readyFile.bytes !== file.bytes || readyFile.sha256 !== file.sha256) {
-      throw new Error(`READY manifest entry mismatch: ${file.localPath}`);
+      throw new ModelHashMismatchError('READY.json');
     }
   }
 }
@@ -108,11 +165,22 @@ export async function verifyReadyModel(
 ): Promise<boolean> {
   try {
     assertPinnedTarget(model, targetDirectory);
-    await assertReadyModel(model, targetDirectory);
+    await validateReadyModel(model, targetDirectory);
     return true;
   } catch {
     return false;
   }
+}
+
+export async function removeModelVersion(
+  model: SemanticModelDefinition,
+  targetDirectory: string,
+): Promise<void> {
+  const modelsDirectory = assertPinnedTarget(model, targetDirectory);
+  await Promise.all([
+    rm(targetDirectory, { recursive: true, force: true }),
+    rm(join(modelsDirectory, '.partial', model.code), { recursive: true, force: true }),
+  ]);
 }
 
 async function publishDirectory(partialDirectory: string, targetDirectory: string): Promise<void> {
@@ -192,7 +260,7 @@ export class PinnedModelDownloader implements ModelDownloader {
         const refreshIdleTimeout = () => {
           if (idleTimeout) clearTimeout(idleTimeout);
           idleTimeout = setTimeout(() => {
-            controller.abort(new Error(`Model download stalled: ${file.remotePath}`));
+            controller.abort(new ModelDownloadTimeoutError());
           }, this.requestIdleTimeoutMilliseconds);
           idleTimeout.unref();
         };
@@ -203,7 +271,9 @@ export class PinnedModelDownloader implements ModelDownloader {
             signal: controller.signal,
           });
           if (!response.ok || !response.body) {
-            throw new Error(`Model download failed (${response.status}): ${file.remotePath}`);
+            throw new ModelDownloadNetworkError(
+              `Model download failed (${response.status}): ${file.remotePath}`,
+            );
           }
 
           const handle = await open(destination, 'wx');
@@ -216,7 +286,7 @@ export class PinnedModelDownloader implements ModelDownloader {
               fileBytes += bytes.byteLength;
               loadedBytes += bytes.byteLength;
               if (fileBytes > file.bytes || loadedBytes > model.expectedDownloadBytes) {
-                throw new Error(`Model file size mismatch: ${file.localPath}`);
+                throw new ModelSizeMismatchError(file.localPath);
               }
               hash.update(bytes);
               await handle.write(bytes);
@@ -227,10 +297,10 @@ export class PinnedModelDownloader implements ModelDownloader {
           }
 
           if (fileBytes !== file.bytes) {
-            throw new Error(`Model file size mismatch: ${file.localPath}`);
+            throw new ModelSizeMismatchError(file.localPath);
           }
           if (hash.digest('hex') !== file.sha256) {
-            throw new Error(`Model file checksum mismatch: ${file.localPath}`);
+            throw new ModelHashMismatchError(file.localPath);
           }
         } finally {
           if (idleTimeout) clearTimeout(idleTimeout);
@@ -238,7 +308,7 @@ export class PinnedModelDownloader implements ModelDownloader {
       }
 
       if (loadedBytes !== model.expectedDownloadBytes) {
-        throw new Error('Model download total size mismatch');
+        throw new ModelSizeMismatchError('download manifest total');
       }
       const readyManifest: ReadyManifest = {
         modelCode: model.code,
@@ -254,7 +324,7 @@ export class PinnedModelDownloader implements ModelDownloader {
         `${JSON.stringify(readyManifest, null, 2)}\n`,
         { encoding: 'utf8', flag: 'wx' },
       );
-      await assertReadyModel(model, partialModelDirectory);
+      await validateReadyModel(model, partialModelDirectory);
       await publishDirectory(partialModelDirectory, targetDirectory);
       await rm(partialCodeDirectory, { recursive: true, force: true });
       await onProgress(model.expectedDownloadBytes, model.expectedDownloadBytes);
