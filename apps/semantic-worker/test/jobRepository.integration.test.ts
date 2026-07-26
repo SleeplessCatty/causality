@@ -25,7 +25,7 @@ describe.sequential('PostgresDownloadJobRepository', () => {
     await pool!.query(`delete from semantic_jobs; delete from semantic_embeddings`);
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'not_downloaded',
+       set file_status = 'not_downloaded',
            downloaded_at = null,
            error = null,
            updated_at = clock_timestamp()`,
@@ -157,19 +157,19 @@ describe.sequential('PostgresDownloadJobRepository', () => {
 
     await expect(restartedRunner.runOnce()).resolves.toBe(true);
     expect(builtJobs).toEqual([id]);
-    const result = await pool!.query<{ attempts: number; status: string }>(
-      `select attempts, status
+    const result = await pool!.query<{ jobs: number }>(
+      `select count(*)::int as jobs
        from semantic_jobs
        where id = $1`,
       [id],
     );
-    expect(result.rows).toEqual([{ attempts: 2, status: 'succeeded' }]);
+    expect(result.rows).toEqual([{ jobs: 0 }]);
   });
 
   it('restores the active model when the worker restarts during incremental updates', async () => {
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = $1`,
       [model.code],
@@ -190,7 +190,7 @@ describe.sequential('PostgresDownloadJobRepository', () => {
   it('loads a lightweight model adapter after restarting during incremental updates', async () => {
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = $1`,
       [model.code],
@@ -237,19 +237,13 @@ describe.sequential('PostgresDownloadJobRepository', () => {
     await repository!.claimNextIndex('full-worker', 60_000);
     await repository!.completeIndex(fullId, 'full-worker');
 
-    const full = await pool!.query<{
-      completed: boolean;
-      lease_owner: string | null;
-      status: string;
-    }>(
-      `select status,
-              lease_owner,
-              completed_at is not null as completed
+    const full = await pool!.query<{ jobs: number }>(
+      `select count(*)::int as jobs
        from semantic_jobs
        where id = $1`,
       [fullId],
     );
-    expect(full.rows).toEqual([{ status: 'succeeded', lease_owner: null, completed: true }]);
+    expect(full.rows).toEqual([{ jobs: 0 }]);
 
     await pool!.query(
       `update semantic_index_state
@@ -323,7 +317,7 @@ describe.sequential('PostgresDownloadJobRepository', () => {
   it('keeps the existing index usable when one incremental job reaches terminal failure', async () => {
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = $1`,
       [model.code],
@@ -427,14 +421,18 @@ describe.sequential('PostgresDownloadJobRepository', () => {
     await repository!.completeDownload(id, 'worker-a');
 
     const settings = await pool!.query<{
-      download_status: string;
+      file_status: string;
       state_status: string;
-      download_job_status: string;
+      download_jobs: number;
       full_index_jobs: number;
     }>(
-      `select settings.download_status,
+      `select settings.file_status,
               state.status as state_status,
-              download_job.status as download_job_status,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where id = $1
+              ) as download_jobs,
               (
                 select count(*)::int
                 from semantic_jobs
@@ -444,16 +442,14 @@ describe.sequential('PostgresDownloadJobRepository', () => {
        from semantic_model_settings as settings
        join semantic_index_state as state
          on state.active_model_code = settings.model_code
-       join semantic_jobs as download_job
-         on download_job.id = $1
        where settings.model_code = $2`,
       [id, model.code],
     );
     expect(settings.rows).toEqual([
       {
-        download_status: 'downloaded',
+        file_status: 'downloaded',
         state_status: 'loading',
-        download_job_status: 'succeeded',
+        download_jobs: 0,
         full_index_jobs: 1,
       },
     ]);
@@ -476,7 +472,7 @@ describe.sequential('PostgresDownloadJobRepository', () => {
     }>(
       `select job.attempts,
               job.status as job_status,
-              settings.download_status as model_status,
+              settings.file_status as model_status,
               state.status as state_status,
               length(job.error)::int as error_length
        from semantic_jobs as job

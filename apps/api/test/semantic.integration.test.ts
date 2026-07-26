@@ -46,7 +46,7 @@ describe.sequential('semantic configuration API', () => {
              when model_code = 'granite-embedding-97m-multilingual-r2' then $3::smallint
              when model_code = 'bge-m3' then $4::smallint
            end,
-           download_status = 'not_downloaded',
+           file_status = 'not_downloaded',
            downloaded_at = null,
            error = null,
            updated_at = clock_timestamp()`,
@@ -201,7 +201,7 @@ describe.sequential('semantic configuration API', () => {
   it('switches to a downloaded model, clears old vectors, and queues a full index', async () => {
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = 'bge-m3';
        update semantic_index_state
@@ -262,7 +262,7 @@ describe.sequential('semantic configuration API', () => {
   it('rebuilds the active index without deleting events, relations, or cases', async () => {
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = 'multilingual-e5-small'`,
     );
@@ -369,7 +369,7 @@ describe.sequential('semantic configuration API', () => {
            error = '下载失败'
        where singleton_key = true;
        update semantic_model_settings
-       set download_status = 'failed',
+       set file_status = 'failed',
            error = '下载失败'
        where model_code = 'multilingual-e5-small';
        insert into semantic_jobs (
@@ -416,7 +416,7 @@ describe.sequential('semantic configuration API', () => {
   it('exposes a current incremental failure without making the existing index unavailable', async () => {
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = 'multilingual-e5-small';
        update semantic_index_state
@@ -469,7 +469,7 @@ describe.sequential('semantic configuration API', () => {
   it('requeues a failed incremental task without clearing the usable index', async () => {
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = 'multilingual-e5-small';
        update semantic_index_state
@@ -659,7 +659,7 @@ describe.sequential('semantic configuration API', () => {
     ] as const;
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = 'multilingual-e5-small'`,
     );

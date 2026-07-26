@@ -339,7 +339,7 @@ phase, next_attempt_at, failure_kind, failure_code
 
 - Job type adds `load`; status adds `retry_wait`; new code no longer persists `succeeded`.
 
-- [ ] **Step 1: Write a migration preservation test**
+- [x] **Step 1: Write a migration preservation test**
 
 Prepare old-style rows before running migration 0013:
 
@@ -374,17 +374,19 @@ expect(await embeddingCount(pool)).toBe(beforeEmbeddingCount);
 
 Also assert succeeded jobs are deleted, running jobs are reset to queued with empty leases, and stale-version jobs are deleted.
 
-- [ ] **Step 2: Run the migration test and verify failure**
+- [x] **Step 2: Run the migration test and verify failure**
 
 Run:
 
 ```bash
-pnpm --filter @causality/api test:integration -- semantic-lifecycle-migration.integration.test.ts
+pnpm --filter @causality/api exec vitest run \
+  --config vitest.integration.config.ts \
+  test/semantic-lifecycle-migration.integration.test.ts
 ```
 
 Expected: FAIL because migration 0013 and new columns do not exist.
 
-- [ ] **Step 3: Update Drizzle schemas and generate migration metadata**
+- [x] **Step 3: Update Drizzle schemas and generate migration metadata**
 
 Use `fileStatus` instead of `downloadStatus` in the application schema. Add checks:
 
@@ -409,7 +411,7 @@ Mechanically update every existing raw SQL reference from `download_status` to `
 
 Use `pnpm db:generate` to produce metadata, then review and edit the generated SQL only to implement deterministic data migration.
 
-- [ ] **Step 4: Implement safe data mapping**
+- [x] **Step 4: Implement safe data mapping**
 
 In migration 0013:
 
@@ -426,12 +428,15 @@ In migration 0013:
 
 Do not truncate `semantic_embeddings` or any business table.
 
-- [ ] **Step 5: Run migration and schema verification**
+- [x] **Step 5: Run migration and schema verification**
 
 Run:
 
 ```bash
-pnpm --filter @causality/api test:integration -- semantic-lifecycle-migration.integration.test.ts core-model.integration.test.ts
+pnpm --filter @causality/api exec vitest run \
+  --config vitest.integration.config.ts \
+  test/semantic-lifecycle-migration.integration.test.ts \
+  test/core-model.integration.test.ts
 pnpm --filter @causality/api typecheck
 pnpm --filter @causality/semantic-worker typecheck
 pnpm db:verify
@@ -439,7 +444,7 @@ pnpm db:verify
 
 Expected: migration is repeatably applied to test databases, business counts remain valid, and schema verification passes.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/api/src/database/schema apps/api/src/features/semantic apps/semantic-worker/src database/migrations apps/api/test/core-model.integration.test.ts apps/api/test/semantic-lifecycle-migration.integration.test.ts

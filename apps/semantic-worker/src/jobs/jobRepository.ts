@@ -162,6 +162,7 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
        )
        update semantic_jobs as job
        set status = 'running',
+           phase = 'waiting',
            attempts = job.attempts + 1,
            lease_owner = $1,
            lease_expires_at = clock_timestamp() + ($2::integer * interval '1 millisecond'),
@@ -206,6 +207,7 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
        )
        update semantic_jobs as job
        set status = 'running',
+           phase = 'indexing',
            attempts = job.attempts + 1,
            lease_owner = $1,
            lease_expires_at = clock_timestamp() + ($2::integer * interval '1 millisecond'),
@@ -252,12 +254,21 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       const job = await lockOwnedJob(client, jobId, workerId);
       await client.query(
         `update semantic_model_settings
-         set download_status = 'downloading',
+         set file_status = 'downloading',
              downloaded_at = null,
+             failure_kind = null,
+             failure_code = null,
              error = null,
              updated_at = clock_timestamp()
          where model_code = $1`,
         [job.model_code],
+      );
+      await client.query(
+        `update semantic_jobs
+         set phase = 'downloading',
+             updated_at = clock_timestamp()
+         where id = $1`,
+        [job.id],
       );
     });
   }
@@ -285,11 +296,18 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       const job = await lockOwnedJob(client, jobId, workerId);
       await client.query(
         `update semantic_model_settings
-         set download_status = 'verifying',
+         set file_status = 'verifying',
              error = null,
              updated_at = clock_timestamp()
          where model_code = $1`,
         [job.model_code],
+      );
+      await client.query(
+        `update semantic_jobs
+         set phase = 'verifying',
+             updated_at = clock_timestamp()
+         where id = $1`,
+        [job.id],
       );
     });
   }
@@ -300,24 +318,21 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       const job = await lockOwnedJob(client, jobId, workerId);
       await client.query(
         `update semantic_model_settings
-         set download_status = 'downloaded',
+         set file_status = 'downloaded',
              downloaded_at = clock_timestamp(),
+             failure_kind = null,
+             failure_code = null,
              error = null,
              updated_at = clock_timestamp()
          where model_code = $1`,
         [job.model_code],
       );
       await client.query(
-        `update semantic_jobs
-         set status = 'succeeded',
-             downloaded_bytes = total_bytes,
-             lease_owner = null,
-             lease_expires_at = null,
-             error = null,
-             completed_at = clock_timestamp(),
-             updated_at = clock_timestamp()
-         where id = $1`,
-        [job.id],
+        `delete from semantic_jobs
+         where id = $1
+           and status = 'running'
+           and lease_owner = $2`,
+        [job.id, workerId],
       );
 
       const activeState = await client.query(
@@ -326,6 +341,10 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
              processed_items = 0,
              total_items = 0,
              pending_items = 0,
+             failed_items = 0,
+             failure_stage = null,
+             failure_kind = null,
+             failure_code = null,
              error = null,
              updated_at = clock_timestamp()
          where singleton_key = true
@@ -369,8 +388,15 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       await client.query(
         `update semantic_jobs
          set status = $3::varchar(20),
+             phase = case
+               when $3::varchar(20) = 'failed' then phase
+               else 'waiting'
+             end,
              lease_owner = null,
              lease_expires_at = null,
+             next_attempt_at = null,
+             failure_kind = null,
+             failure_code = null,
              started_at = case
                when $3::varchar(20) = 'failed' then started_at
                else null
@@ -387,8 +413,10 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       );
       await client.query(
         `update semantic_model_settings
-         set download_status = $2::varchar(20),
+         set file_status = $2::varchar(20),
              downloaded_at = null,
+             failure_kind = null,
+             failure_code = null,
              error = $3,
              updated_at = clock_timestamp()
          where model_code = $1`,
@@ -397,6 +425,10 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       await client.query(
         `update semantic_index_state
          set status = $3::varchar(20),
+             failed_items = 0,
+             failure_stage = null,
+             failure_kind = null,
+             failure_code = null,
              error = $4,
              updated_at = clock_timestamp()
          where singleton_key = true
@@ -462,14 +494,7 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       }
 
       await client.query(
-        `update semantic_jobs
-         set status = 'succeeded',
-             processed_items = total_items,
-             lease_owner = null,
-             lease_expires_at = null,
-             error = null,
-             completed_at = clock_timestamp(),
-             updated_at = clock_timestamp()
+        `delete from semantic_jobs
          where id = $1
            and status = 'running'
            and lease_owner = $2`,
@@ -550,7 +575,7 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
          on settings.model_code = state.active_model_code
        where state.singleton_key = true
          and state.status in ('ready', 'updating')
-         and settings.download_status = 'downloaded'`,
+         and settings.file_status = 'downloaded'`,
     );
     const row = result.rows[0];
     return row ? { modelCode: row.model_code, revision: row.revision } : null;
@@ -565,7 +590,7 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       await lockIndexState(client);
       await client.query(
         `update semantic_model_settings
-         set download_status = 'failed',
+         set file_status = 'failed',
              downloaded_at = null,
              error = $2,
              updated_at = clock_timestamp()

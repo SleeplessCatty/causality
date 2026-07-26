@@ -472,7 +472,7 @@ describe('EventListPage', () => {
     expect(screen.getByRole('link', { name: '前往参数配置' }).getAttribute('href')).toBe(
       '/settings',
     );
-    expect(screen.getByRole('link', { name: '原油价格上涨' })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: '原油价格上涨' })).toBeTruthy();
     expect(screen.queryByText('无法加载事件')).toBeNull();
   });
 });

@@ -4,6 +4,7 @@ import type {
   SemanticEntityType,
   SemanticIndexStatus,
   SemanticModelCode,
+  SemanticModelFileStatus,
 } from '@causality/contracts';
 import { MODEL_CATALOG } from '@causality/semantic-core';
 import type { Pool } from 'pg';
@@ -63,7 +64,15 @@ interface ContextRow {
   model_code: SemanticModelCode | null;
   status: SemanticIndexStatus;
   threshold: number | null;
-  download_status: SemanticDownloadStatus | null;
+  file_status: SemanticModelFileStatus | null;
+}
+
+function toLegacyDownloadStatus(
+  fileStatus: SemanticModelFileStatus | null,
+): SemanticDownloadStatus | null {
+  if (fileStatus === 'download_queued') return 'not_downloaded';
+  if (fileStatus === 'invalid') return 'failed';
+  return fileStatus;
 }
 
 export class PostgresSemanticQueryContextRepository implements SemanticQueryContextRepository {
@@ -74,7 +83,7 @@ export class PostgresSemanticQueryContextRepository implements SemanticQueryCont
       `select state.active_model_code as model_code,
               state.status,
               settings.threshold,
-              settings.download_status
+              settings.file_status
        from semantic_index_state as state
        left join semantic_model_settings as settings
          on settings.model_code = state.active_model_code
@@ -86,7 +95,7 @@ export class PostgresSemanticQueryContextRepository implements SemanticQueryCont
       modelCode: row.model_code,
       status: row.status,
       threshold: row.threshold,
-      downloadStatus: row.download_status,
+      downloadStatus: toLegacyDownloadStatus(row.file_status),
     };
   }
 }

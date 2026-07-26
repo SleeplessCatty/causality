@@ -4,6 +4,7 @@ import type {
   SemanticDownloadStatus,
   SemanticIndexStatus,
   SemanticModelCode,
+  SemanticModelFileStatus,
   SemanticSettingsResponse,
   SemanticUseModelResponse,
 } from '@causality/contracts';
@@ -16,7 +17,7 @@ interface ModelRow {
   model_code: SemanticModelCode;
   revision: string;
   threshold: number;
-  download_status: SemanticDownloadStatus;
+  file_status: SemanticModelFileStatus;
   downloaded_at: Date | null;
   error: string | null;
 }
@@ -49,7 +50,7 @@ interface TaskRow {
 }
 
 interface TargetModelRow {
-  download_status: SemanticDownloadStatus;
+  file_status: SemanticModelFileStatus;
 }
 
 interface FailedTaskRow {
@@ -61,6 +62,12 @@ interface FailedTaskRow {
 
 function toIso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
+}
+
+function toLegacyDownloadStatus(fileStatus: SemanticModelFileStatus): SemanticDownloadStatus {
+  if (fileStatus === 'download_queued') return 'not_downloaded';
+  if (fileStatus === 'invalid') return 'failed';
+  return fileStatus;
 }
 
 function mapTask(row: TaskRow | undefined): SemanticSettingsResponse['activeTask'] {
@@ -105,8 +112,8 @@ async function assertNoActiveHighLevelTask(client: PoolClient): Promise<void> {
   const result = await client.query<{ id: string }>(
     `select id
      from semantic_jobs
-     where job_type in ('download', 'full_index')
-       and status in ('queued', 'running')
+     where job_type in ('download', 'load', 'full_index')
+       and status in ('queued', 'running', 'retry_wait')
      order by created_at, id
      limit 1
      for update`,
@@ -183,6 +190,10 @@ async function updateRequestedState(
              and model_code = $1::varchar(64)
              and state_version = $3::integer
          ),
+         failed_items = 0,
+         failure_stage = null,
+         failure_kind = null,
+         failure_code = null,
          error = null,
          last_ready_at = null,
          updated_at = clock_timestamp()
@@ -204,7 +215,7 @@ export class PostgresSemanticRepository implements SemanticRepository {
         `select model_code,
                 revision,
                 threshold,
-                download_status,
+                file_status,
                 downloaded_at,
                 error
          from semantic_model_settings`,
@@ -283,7 +294,7 @@ export class PostgresSemanticRepository implements SemanticRepository {
           dimensions: definition.dimensions,
           expectedDownloadBytes: definition.expectedDownloadBytes,
           threshold: row.threshold,
-          downloadStatus: row.download_status,
+          downloadStatus: toLegacyDownloadStatus(row.file_status),
           downloadedAt: toIso(row.downloaded_at),
           isActive: index.active_model_code === modelCode,
           error: row.error,
@@ -311,7 +322,7 @@ export class PostgresSemanticRepository implements SemanticRepository {
       const state = await lockIndexState(client);
       await assertNoActiveHighLevelTask(client);
       const targetResult = await client.query<TargetModelRow>(
-        `select download_status
+        `select file_status
          from semantic_model_settings
          where model_code = $1
          for update`,
@@ -322,19 +333,21 @@ export class PostgresSemanticRepository implements SemanticRepository {
         throw new SemanticRepositoryError('SEMANTIC_MODEL_UNAVAILABLE', '语义模型配置不存在');
       }
 
-      const jobType = target.download_status === 'downloaded' ? 'full_index' : 'download';
+      const jobType = target.file_status === 'downloaded' ? 'full_index' : 'download';
       const stateVersion = state.state_version + 1;
       await clearCurrentIndex(client);
       await client.query(
         `update semantic_model_settings
-         set download_status = case
-               when download_status = 'failed' then 'not_downloaded'
-               else download_status
+         set file_status = case
+               when file_status in ('failed', 'invalid') then 'not_downloaded'
+               else file_status
              end,
              downloaded_at = case
-               when download_status = 'failed' then null
+               when file_status in ('failed', 'invalid') then null
                else downloaded_at
              end,
+             failure_kind = null,
+             failure_code = null,
              error = null,
              updated_at = clock_timestamp()
          where model_code = $1`,
@@ -358,13 +371,13 @@ export class PostgresSemanticRepository implements SemanticRepository {
       }
 
       const targetResult = await client.query<TargetModelRow>(
-        `select download_status
+        `select file_status
          from semantic_model_settings
          where model_code = $1
          for update`,
         [state.active_model_code],
       );
-      if (targetResult.rows[0]?.download_status !== 'downloaded') {
+      if (targetResult.rows[0]?.file_status !== 'downloaded') {
         throw new SemanticRepositoryError('SEMANTIC_MODEL_UNAVAILABLE', '当前语义模型尚未下载完成');
       }
 
@@ -372,7 +385,9 @@ export class PostgresSemanticRepository implements SemanticRepository {
       await clearCurrentIndex(client);
       await client.query(
         `update semantic_model_settings
-         set error = null,
+         set failure_kind = null,
+             failure_code = null,
+             error = null,
              updated_at = clock_timestamp()
          where model_code = $1`,
         [state.active_model_code],
@@ -454,9 +469,13 @@ export class PostgresSemanticRepository implements SemanticRepository {
           await client.query(
             `update semantic_jobs
              set status = 'queued',
+                 phase = 'waiting',
                  attempts = 0,
                  lease_owner = null,
                  lease_expires_at = null,
+                 next_attempt_at = null,
+                 failure_kind = null,
+                 failure_code = null,
                  error = null,
                  started_at = null,
                  completed_at = null,
@@ -476,6 +495,17 @@ export class PostgresSemanticRepository implements SemanticRepository {
                    and model_code = $1
                    and state_version = $2
                ),
+               failed_items = (
+                 select count(*)::int
+                 from semantic_jobs
+                 where job_type = 'incremental'
+                   and status = 'failed'
+                   and model_code = $1
+                   and state_version = $2
+               ),
+               failure_stage = null,
+               failure_kind = null,
+               failure_code = null,
                error = null,
                updated_at = clock_timestamp()
            where singleton_key = true
@@ -493,14 +523,16 @@ export class PostgresSemanticRepository implements SemanticRepository {
       await clearCurrentIndex(client);
       await client.query(
         `update semantic_model_settings
-         set download_status = case
+         set file_status = case
                when $2::varchar(20) = 'download' then 'not_downloaded'
-               else download_status
+               else file_status
              end,
              downloaded_at = case
                when $2::varchar(20) = 'download' then null
                else downloaded_at
              end,
+             failure_kind = null,
+             failure_code = null,
              error = null,
              updated_at = clock_timestamp()
          where model_code = $1`,

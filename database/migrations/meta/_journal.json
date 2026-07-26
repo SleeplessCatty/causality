@@ -92,6 +92,13 @@
       "when": 1785043600000,
       "tag": "0012_semantic_general_thresholds",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785072362596,
+      "tag": "0013_semantic_lifecycle_state_machine",
+      "breakpoints": true
     }
   ]
 }

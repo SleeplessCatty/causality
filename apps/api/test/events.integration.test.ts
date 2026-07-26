@@ -571,7 +571,7 @@ describe.sequential('event REST API', () => {
 
     await pool!.query(
       `update semantic_model_settings
-       set download_status = 'downloaded',
+       set file_status = 'downloaded',
            downloaded_at = clock_timestamp()
        where model_code = 'multilingual-e5-small';
        update semantic_index_state

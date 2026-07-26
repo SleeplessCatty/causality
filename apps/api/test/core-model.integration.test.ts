@@ -735,6 +735,67 @@ describe.sequential('core PostgreSQL model', () => {
       ),
       '23514',
     );
+    await expectPgError(
+      pool!.query(
+        `insert into semantic_jobs (
+           job_type,
+           model_code,
+           status,
+           state_version,
+           started_at,
+           completed_at
+         )
+         values (
+           'full_index',
+           'multilingual-e5-small',
+           'succeeded',
+           0,
+           clock_timestamp() - interval '1 minute',
+           clock_timestamp()
+         )`,
+      ),
+      '23514',
+    );
+    await expectPgError(
+      pool!.query(
+        `insert into semantic_jobs (
+           job_type,
+           model_code,
+           status,
+           state_version,
+           started_at
+         )
+         values (
+           'load',
+           'multilingual-e5-small',
+           'retry_wait',
+           0,
+           clock_timestamp()
+         )`,
+      ),
+      '23514',
+    );
+    await expectPgError(
+      pool!.query(
+        `insert into semantic_jobs (
+           job_type,
+           model_code,
+           entity_type,
+           entity_id,
+           status,
+           state_version
+         )
+         values (
+           'load',
+           'multilingual-e5-small',
+           'event',
+           '10000000-0000-4000-8000-000000000001',
+           'queued',
+           0
+         )`,
+      ),
+      '23514',
+    );
   });
 
   it('transactionally invalidates and deduplicates incremental semantic jobs', async () => {

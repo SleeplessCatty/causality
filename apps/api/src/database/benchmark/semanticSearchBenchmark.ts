@@ -96,7 +96,7 @@ async function activateModel(
   const model = MODEL_CATALOG[modelCode];
   await pool.query(
     `update semantic_model_settings
-     set download_status = 'downloaded',
+     set file_status = 'downloaded',
          downloaded_at = coalesce(downloaded_at, clock_timestamp()),
          error = null
      where model_code = $1`,

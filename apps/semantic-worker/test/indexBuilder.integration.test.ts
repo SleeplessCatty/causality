@@ -213,7 +213,7 @@ describe.sequential('PostgresIndexBuilder', () => {
     );
     await pool!.query(
       `update semantic_model_settings
-       set download_status = case
+       set file_status = case
              when model_code = 'multilingual-e5-small' then 'downloaded'
              else 'not_downloaded'
            end,

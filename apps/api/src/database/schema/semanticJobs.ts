@@ -24,6 +24,7 @@ export const semanticJobs = pgTable(
     entityType: varchar('entity_type', { length: 20 }),
     entityId: uuid('entity_id'),
     status: varchar('status', { length: 20 }).notNull().default('queued'),
+    phase: varchar('phase', { length: 20 }).notNull().default('waiting'),
     stateVersion: integer('state_version').notNull(),
     processedItems: integer('processed_items').notNull().default(0),
     totalItems: integer('total_items').notNull().default(0),
@@ -32,6 +33,9 @@ export const semanticJobs = pgTable(
     attempts: integer('attempts').notNull().default(0),
     leaseOwner: varchar('lease_owner', { length: 100 }),
     leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    failureKind: varchar('failure_kind', { length: 20 }),
+    failureCode: varchar('failure_code', { length: 100 }),
     error: text('error'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -43,12 +47,12 @@ export const semanticJobs = pgTable(
       .on(table.entityType, table.entityId)
       .where(sql`${table.jobType} = 'incremental' and ${table.status} = 'queued'`),
     index('semantic_jobs_queue_claim_idx')
-      .on(table.status, table.createdAt, table.id)
-      .where(sql`${table.status} in ('queued', 'running')`),
+      .on(table.status, table.nextAttemptAt, table.createdAt, table.id)
+      .where(sql`${table.status} in ('queued', 'running', 'retry_wait')`),
     index('semantic_jobs_model_status_idx').on(table.modelCode, table.status, table.createdAt),
     check(
       'semantic_jobs_job_type_check',
-      sql`${table.jobType} in ('download', 'full_index', 'incremental')`,
+      sql`${table.jobType} in ('download', 'load', 'full_index', 'incremental')`,
     ),
     check(
       'semantic_jobs_entity_type_check',
@@ -56,14 +60,18 @@ export const semanticJobs = pgTable(
     ),
     check(
       'semantic_jobs_status_check',
-      sql`${table.status} in ('queued', 'running', 'succeeded', 'failed')`,
+      sql`${table.status} in ('queued', 'running', 'retry_wait', 'failed')`,
+    ),
+    check(
+      'semantic_jobs_phase_check',
+      sql`${table.phase} in ('waiting', 'downloading', 'verifying', 'loading', 'indexing')`,
     ),
     check(
       'semantic_jobs_entity_target_check',
       sql`(${table.jobType} = 'incremental'
           and ${table.entityType} is not null
           and ${table.entityId} is not null)
-        or (${table.jobType} in ('download', 'full_index')
+        or (${table.jobType} in ('download', 'load', 'full_index')
           and ${table.entityType} is null
           and ${table.entityId} is null)`,
     ),
@@ -83,19 +91,37 @@ export const semanticJobs = pgTable(
       sql`(${table.status} = 'running'
           and ${table.leaseOwner} is not null
           and ${table.leaseExpiresAt} is not null)
-        or (${table.status} <> 'running')`,
+        or (${table.status} <> 'running'
+          and ${table.leaseOwner} is null
+          and ${table.leaseExpiresAt} is null)`,
     ),
     check(
       'semantic_jobs_terminal_timestamp_check',
       sql`(${table.status} = 'queued'
           and ${table.startedAt} is null
-          and ${table.completedAt} is null)
+          and ${table.completedAt} is null
+          and ${table.nextAttemptAt} is null)
         or (${table.status} = 'running'
           and ${table.startedAt} is not null
-          and ${table.completedAt} is null)
-        or (${table.status} in ('succeeded', 'failed')
+          and ${table.completedAt} is null
+          and ${table.nextAttemptAt} is null)
+        or (${table.status} = 'retry_wait'
           and ${table.startedAt} is not null
-          and ${table.completedAt} is not null)`,
+          and ${table.completedAt} is null
+          and ${table.nextAttemptAt} is not null)
+        or (${table.status} = 'failed'
+          and ${table.startedAt} is not null
+          and ${table.completedAt} is not null
+          and ${table.nextAttemptAt} is null)`,
+    ),
+    check(
+      'semantic_jobs_failure_kind_check',
+      sql`${table.failureKind} is null or ${table.failureKind} in ('retryable', 'manual')`,
+    ),
+    check(
+      'semantic_jobs_failure_metadata_check',
+      sql`(${table.failureKind} is null and ${table.failureCode} is null)
+        or (${table.failureKind} is not null and ${table.failureCode} is not null)`,
     ),
   ],
 );

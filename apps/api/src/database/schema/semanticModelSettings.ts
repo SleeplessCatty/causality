@@ -7,8 +7,10 @@ export const semanticModelSettings = pgTable(
     modelCode: varchar('model_code', { length: 64 }).primaryKey(),
     revision: varchar('revision', { length: 64 }).notNull(),
     threshold: smallint('threshold').notNull(),
-    downloadStatus: varchar('download_status', { length: 20 }).notNull().default('not_downloaded'),
+    fileStatus: varchar('file_status', { length: 20 }).notNull().default('not_downloaded'),
     downloadedAt: timestamp('downloaded_at', { withTimezone: true }),
+    failureKind: varchar('failure_kind', { length: 20 }),
+    failureCode: varchar('failure_code', { length: 100 }),
     error: text('error'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -24,19 +26,30 @@ export const semanticModelSettings = pgTable(
     ),
     check('semantic_model_settings_threshold_check', sql`${table.threshold} between 0 and 100`),
     check(
-      'semantic_model_settings_download_status_check',
-      sql`${table.downloadStatus} in (
+      'semantic_model_settings_file_status_check',
+      sql`${table.fileStatus} in (
         'not_downloaded',
+        'download_queued',
         'downloading',
         'verifying',
         'downloaded',
+        'invalid',
         'failed'
       )`,
     ),
     check(
       'semantic_model_settings_downloaded_at_check',
-      sql`(${table.downloadStatus} = 'downloaded' and ${table.downloadedAt} is not null)
-        or (${table.downloadStatus} <> 'downloaded' and ${table.downloadedAt} is null)`,
+      sql`(${table.fileStatus} = 'downloaded' and ${table.downloadedAt} is not null)
+        or (${table.fileStatus} <> 'downloaded' and ${table.downloadedAt} is null)`,
+    ),
+    check(
+      'semantic_model_settings_failure_kind_check',
+      sql`${table.failureKind} is null or ${table.failureKind} in ('retryable', 'manual')`,
+    ),
+    check(
+      'semantic_model_settings_failure_metadata_check',
+      sql`(${table.failureKind} is null and ${table.failureCode} is null)
+        or (${table.failureKind} is not null and ${table.failureCode} is not null)`,
     ),
   ],
 );

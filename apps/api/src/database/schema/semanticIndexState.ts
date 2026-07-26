@@ -16,6 +16,10 @@ export const semanticIndexState = pgTable(
     processedItems: integer('processed_items').notNull().default(0),
     totalItems: integer('total_items').notNull().default(0),
     pendingItems: integer('pending_items').notNull().default(0),
+    failedItems: integer('failed_items').notNull().default(0),
+    failureStage: varchar('failure_stage', { length: 20 }),
+    failureKind: varchar('failure_kind', { length: 20 }),
+    failureCode: varchar('failure_code', { length: 100 }),
     error: text('error'),
     lastReadyAt: timestamp('last_ready_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -28,9 +32,11 @@ export const semanticIndexState = pgTable(
         'empty',
         'waiting_model',
         'loading',
+        'index_queued',
         'building',
-        'updating',
         'ready',
+        'updating',
+        'incomplete',
         'failed'
       )`,
     ),
@@ -40,12 +46,36 @@ export const semanticIndexState = pgTable(
         and ${table.processedItems} >= 0
         and ${table.totalItems} >= 0
         and ${table.pendingItems} >= 0
+        and ${table.failedItems} >= 0
         and ${table.processedItems} <= ${table.totalItems}`,
     ),
     check(
       'semantic_index_state_active_model_check',
       sql`(${table.activeModelCode} is null and ${table.status} = 'empty')
         or ${table.activeModelCode} is not null`,
+    ),
+    check(
+      'semantic_index_state_failure_stage_check',
+      sql`${table.failureStage} is null or ${table.failureStage} in (
+        'download',
+        'verify',
+        'load',
+        'full_index',
+        'incremental'
+      )`,
+    ),
+    check(
+      'semantic_index_state_failure_kind_check',
+      sql`${table.failureKind} is null or ${table.failureKind} in ('retryable', 'manual')`,
+    ),
+    check(
+      'semantic_index_state_failure_metadata_check',
+      sql`(${table.failureStage} is null
+          and ${table.failureKind} is null
+          and ${table.failureCode} is null)
+        or (${table.failureStage} is not null
+          and ${table.failureKind} is not null
+          and ${table.failureCode} is not null)`,
     ),
   ],
 );
