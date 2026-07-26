@@ -1,8 +1,20 @@
+import type { SearchMode } from '@causality/contracts';
 import { act, renderHook } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiClientError } from '../api/httpClient';
 import { useEnhancedListSearch } from './useEnhancedListSearch';
+
+function useEnhancedSearchHarness(normalizedQuery: string, initialMode: SearchMode = 'standard') {
+  const [mode, setMode] = useState<SearchMode>(initialMode);
+  return useEnhancedListSearch({
+    normalizedQuery,
+    mode,
+    activateEnhanced: () => setMode('enhanced'),
+    deactivateEnhanced: () => setMode('standard'),
+  });
+}
 
 describe('useEnhancedListSearch', () => {
   afterEach(() => {
@@ -10,37 +22,31 @@ describe('useEnhancedListSearch', () => {
   });
 
   it('rejects a blank query without starting a request', () => {
-    const resetPage = vi.fn();
-    const { result } = renderHook(() => useEnhancedListSearch({ normalizedQuery: '', resetPage }));
+    const { result } = renderHook(() => useEnhancedSearchHarness(''));
 
     act(() => result.current.requestEnhanced());
 
     expect(result.current.mode).toBe('standard');
     expect(result.current.isEnhancing).toBe(false);
     expect(result.current.notice?.message).toBe('请先输入搜索内容');
-    expect(resetPage).not.toHaveBeenCalled();
   });
 
-  it('enters enhanced mode, resets page one, and keeps the mode across pagination', () => {
-    const resetPage = vi.fn();
-    const { result, rerender } = renderHook(
-      ({ query }) => useEnhancedListSearch({ normalizedQuery: query, resetPage }),
-      { initialProps: { query: '政策收紧' } },
-    );
+  it('enters enhanced mode and keeps the mode while the query is unchanged', () => {
+    const { result, rerender } = renderHook(({ query }) => useEnhancedSearchHarness(query), {
+      initialProps: { query: '政策收紧' },
+    });
 
     act(() => result.current.requestEnhanced());
     expect(result.current.mode).toBe('enhanced');
     expect(result.current.isEnhancing).toBe(true);
-    expect(resetPage).toHaveBeenCalledWith(1);
 
     rerender({ query: '政策收紧' });
     expect(result.current.mode).toBe('enhanced');
   });
 
   it('returns to standard mode when the query changes or the hook remounts', () => {
-    const resetPage = vi.fn();
     const { result, rerender, unmount } = renderHook(
-      ({ query }) => useEnhancedListSearch({ normalizedQuery: query, resetPage }),
+      ({ query }) => useEnhancedSearchHarness(query),
       { initialProps: { query: '政策收紧' } },
     );
 
@@ -50,17 +56,13 @@ describe('useEnhancedListSearch', () => {
     expect(result.current.isEnhancing).toBe(false);
 
     unmount();
-    const remounted = renderHook(() =>
-      useEnhancedListSearch({ normalizedQuery: '利率上升', resetPage }),
-    );
+    const remounted = renderHook(() => useEnhancedSearchHarness('利率上升'));
     expect(remounted.result.current.mode).toBe('standard');
   });
 
   it('maps semantic failures, resets the mode, links index failures, and auto dismisses errors', () => {
     vi.useFakeTimers();
-    const { result } = renderHook(() =>
-      useEnhancedListSearch({ normalizedQuery: '政策收紧', resetPage: vi.fn() }),
-    );
+    const { result } = renderHook(() => useEnhancedSearchHarness('政策收紧'));
 
     act(() => result.current.requestEnhanced());
     act(() =>
@@ -89,9 +91,7 @@ describe('useEnhancedListSearch', () => {
     ['SEMANTIC_INDEX_BUILDING', '语义索引正在生成，增强查询暂不可用'],
     ['SEMANTIC_WORKER_UNAVAILABLE', '语义服务暂不可用'],
   ] as const)('maps %s to its concise unavailable reason', (code, message) => {
-    const { result } = renderHook(() =>
-      useEnhancedListSearch({ normalizedQuery: '政策收紧', resetPage: vi.fn() }),
-    );
+    const { result } = renderHook(() => useEnhancedSearchHarness('政策收紧'));
 
     act(() => result.current.requestEnhanced());
     act(() =>
@@ -102,9 +102,7 @@ describe('useEnhancedListSearch', () => {
   });
 
   it('reports a non-blocking notice when a successful result uses an updating index', () => {
-    const { result } = renderHook(() =>
-      useEnhancedListSearch({ normalizedQuery: '政策收紧', resetPage: vi.fn() }),
-    );
+    const { result } = renderHook(() => useEnhancedSearchHarness('政策收紧'));
 
     act(() => result.current.requestEnhanced());
     act(() => result.current.reportEnhancedSuccess(true));

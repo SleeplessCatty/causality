@@ -32,7 +32,7 @@ export function CaseListPage() {
   const hasActiveFilter = Boolean(query || relationId) || orphan;
   const enhancedSearch = useEnhancedListSearch({
     normalizedQuery: query,
-    resetPage: listState.changePage,
+    ...listState.enhancedSearchController,
   });
 
   const cases = useQuery({

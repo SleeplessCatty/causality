@@ -427,7 +427,7 @@ describe('case pages', () => {
       });
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderRoute('/cases?q=%E5%85%B3%E7%A8%8E', <CaseListPage />);
+    const router = renderRoute('/cases?q=%E5%85%B3%E7%A8%8E', <CaseListPage />);
     await screen.findByText('第 1 页案例');
 
     fireEvent.click(screen.getByRole('button', { name: '增强查询' }));
@@ -436,6 +436,7 @@ describe('case pages', () => {
         fetchMock.mock.calls.some(([input]) => String(input).includes('searchMode=enhanced')),
       ).toBe(true),
     );
+    expect(new URLSearchParams(router.state.location.search).get('searchMode')).toBe('enhanced');
     await waitFor(() =>
       expect(screen.getByRole('button', { name: '下一页' }).hasAttribute('disabled')).toBe(false),
     );
@@ -463,5 +464,6 @@ describe('case pages', () => {
         }),
       ).toBe(true),
     );
+    expect(new URLSearchParams(router.state.location.search).has('searchMode')).toBe(false);
   });
 });

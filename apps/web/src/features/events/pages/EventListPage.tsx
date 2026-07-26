@@ -46,7 +46,7 @@ export function EventListPage() {
   const hasActiveFilter = Boolean(query) || orphan;
   const enhancedSearch = useEnhancedListSearch({
     normalizedQuery: query,
-    resetPage: listState.changePage,
+    ...listState.enhancedSearchController,
   });
 
   const events = useQuery({

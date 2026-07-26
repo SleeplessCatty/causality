@@ -12,13 +12,14 @@ export interface EnhancedSearchNotice {
 
 interface UseEnhancedListSearchOptions {
   normalizedQuery: string;
-  resetPage(page: number): void;
+  mode: SearchMode;
+  activateEnhanced(): void;
+  deactivateEnhanced(): void;
 }
 
 export interface EnhancedListSearchState {
   mode: SearchMode;
   requestEnhanced(): void;
-  resetToStandard(): void;
   isEnhancing: boolean;
   notice: EnhancedSearchNotice | null;
   requestId: number;
@@ -53,27 +54,24 @@ export function isSemanticSearchError(error: unknown): boolean {
 
 export function useEnhancedListSearch({
   normalizedQuery,
-  resetPage,
+  mode,
+  activateEnhanced,
+  deactivateEnhanced,
 }: UseEnhancedListSearchOptions): EnhancedListSearchState {
   const [activeQuery, setActiveQuery] = useState(normalizedQuery);
-  const [mode, setMode] = useState<SearchMode>('standard');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [notice, setNotice] = useState<EnhancedSearchNotice | null>(null);
   const [errorRevision, setErrorRevision] = useState(0);
   const [requestId, setRequestId] = useState(0);
   const queryChanged = activeQuery !== normalizedQuery;
 
-  const resetToStandard = useCallback(() => {
-    setMode('standard');
-    setIsEnhancing(false);
-    setNotice(null);
-  }, []);
-
   useEffect(() => {
     if (activeQuery === normalizedQuery) return;
     setActiveQuery(normalizedQuery);
-    resetToStandard();
-  }, [activeQuery, normalizedQuery, resetToStandard]);
+    if (mode === 'enhanced') deactivateEnhanced();
+    setIsEnhancing(false);
+    setNotice(null);
+  }, [activeQuery, deactivateEnhanced, mode, normalizedQuery]);
 
   const dismissError = useCallback(() => {
     setNotice((current) => (current?.tone === 'error' ? null : current));
@@ -91,25 +89,24 @@ export function useEnhancedListSearch({
       return;
     }
     setNotice(null);
-    setMode('enhanced');
     setIsEnhancing(true);
     setRequestId((current) => current + 1);
-    resetPage(1);
-  }, [normalizedQuery, resetPage, showError]);
+    activateEnhanced();
+  }, [activateEnhanced, normalizedQuery, showError]);
 
   const reportEnhancedError = useCallback(
     (error: unknown): boolean => {
       const message = semanticErrorMessage(error);
       setIsEnhancing(false);
       if (!message) return false;
-      setMode('standard');
+      deactivateEnhanced();
       showError(
         message,
         error instanceof ApiClientError && error.details.code === 'SEMANTIC_INDEX_FAILED',
       );
       return true;
     },
-    [showError],
+    [deactivateEnhanced, showError],
   );
 
   const reportEnhancedSuccess = useCallback((semanticIndexUpdating: boolean) => {
@@ -127,7 +124,6 @@ export function useEnhancedListSearch({
   return {
     mode: queryChanged ? 'standard' : mode,
     requestEnhanced,
-    resetToStandard,
     isEnhancing: queryChanged ? false : isEnhancing,
     notice: queryChanged ? null : notice,
     requestId,

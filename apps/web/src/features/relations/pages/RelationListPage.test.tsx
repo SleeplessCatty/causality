@@ -300,7 +300,7 @@ describe('RelationListPage', () => {
       });
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderList('/relations?q=%E6%94%BF%E7%AD%96');
+    const router = renderList('/relations?q=%E6%94%BF%E7%AD%96');
     await screen.findByText('原油价格上涨');
 
     fireEvent.click(screen.getByRole('button', { name: '增强查询' }));
@@ -309,5 +309,6 @@ describe('RelationListPage', () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).includes('searchMode=enhanced')),
     ).toBe(true);
+    expect(new URLSearchParams(router.state.location.search).get('searchMode')).toBe('enhanced');
   });
 });

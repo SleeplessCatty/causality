@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -54,6 +54,7 @@ function renderList(
 
 describe('EventListPage', () => {
   afterEach(() => {
+    cleanup();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -397,7 +398,7 @@ describe('EventListPage', () => {
     );
   });
 
-  it('runs enhanced search from page one without storing the mode in the URL', async () => {
+  it('stores enhanced search in the list URL', async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = new URL(String(input), 'http://localhost');
       return jsonResponse({
@@ -425,7 +426,33 @@ describe('EventListPage', () => {
         }),
       ).toBe(true),
     );
-    expect(new URLSearchParams(router.state.location.search).has('searchMode')).toBe(false);
+    expect(new URLSearchParams(router.state.location.search).get('searchMode')).toBe('enhanced');
+    expect(new URLSearchParams(router.state.location.search).get('page')).toBe('1');
+  });
+
+  it('restores enhanced search when the saved list URL is mounted again', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = new URL(String(input), 'http://localhost');
+      return jsonResponse({
+        ...firstPage,
+        page: Number(url.searchParams.get('page') ?? '1'),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderList('/events?q=%E6%94%BF%E7%AD%96&searchMode=enhanced&page=1');
+
+    expect(await screen.findByRole('link', { name: '原油价格上涨' })).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([input]) => {
+        const url = new URL(String(input), 'http://localhost');
+        return (
+          url.pathname === '/api/events' &&
+          url.searchParams.get('q') === '政策' &&
+          url.searchParams.get('searchMode') === 'enhanced'
+        );
+      }),
+    ).toBe(true);
   });
 
   it('keeps normal event rows and links settings when enhanced search is unavailable', async () => {

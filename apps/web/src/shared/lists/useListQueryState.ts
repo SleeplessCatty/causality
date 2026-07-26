@@ -1,3 +1,4 @@
+import type { SearchMode } from '@causality/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
@@ -15,6 +16,8 @@ export function useListQueryState({
   const [searchParameters, setSearchParameters] = useSearchParams();
   const query = searchParameters.get('q') ?? '';
   const page = readListPage(searchParameters.get('page'));
+  const searchMode: SearchMode =
+    query && searchParameters.get('searchMode') === 'enhanced' ? 'enhanced' : 'standard';
   const [searchInput, setSearchInput] = useState(query);
 
   useEffect(() => setSearchInput(query), [query]);
@@ -29,6 +32,7 @@ export function useListQueryState({
           if (normalized) next.set('q', normalized);
           else next.delete('q');
           next.delete('page');
+          next.delete('searchMode');
           if (clearOnQueryChange) next.delete(clearOnQueryChange);
           return next;
         },
@@ -50,6 +54,31 @@ export function useListQueryState({
     [clearOnPageChange, setSearchParameters],
   );
 
+  const activateEnhancedSearch = useCallback(() => {
+    setSearchParameters((current) => {
+      const next = new URLSearchParams(current);
+      if (!next.get('q')?.trim()) {
+        next.delete('searchMode');
+        return next;
+      }
+      next.set('searchMode', 'enhanced');
+      next.set('page', '1');
+      if (clearOnPageChange) next.delete(clearOnPageChange);
+      return next;
+    });
+  }, [clearOnPageChange, setSearchParameters]);
+
+  const deactivateEnhancedSearch = useCallback(() => {
+    setSearchParameters(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete('searchMode');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParameters]);
+
   return {
     searchParameters,
     setSearchParameters,
@@ -58,6 +87,11 @@ export function useListQueryState({
     searchInput,
     setSearchInput,
     changePage,
+    enhancedSearchController: {
+      mode: searchMode,
+      activateEnhanced: activateEnhancedSearch,
+      deactivateEnhanced: deactivateEnhancedSearch,
+    },
   };
 }
 

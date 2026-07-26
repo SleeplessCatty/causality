@@ -42,7 +42,7 @@ export function RelationListPage() {
   const expandedId = searchParameters.get('expanded') ?? '';
   const enhancedSearch = useEnhancedListSearch({
     normalizedQuery: query,
-    resetPage: listState.changePage,
+    ...listState.enhancedSearchController,
   });
 
   const relations = useQuery({
