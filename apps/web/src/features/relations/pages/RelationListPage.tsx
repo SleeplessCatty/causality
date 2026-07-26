@@ -1,18 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Fragment, useEffect, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router';
+import { Fragment } from 'react';
+import { Link, useLocation } from 'react-router';
 
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
 import { DeleteRecordDialog } from '../../../shared/deletion/DeleteRecordDialog';
 import { usePermanentDeletion } from '../../../shared/deletion/usePermanentDeletion';
+import { ListSearchControls } from '../../../shared/lists/ListSearchControls';
+import { useListPageCorrection, useListQueryState } from '../../../shared/lists/useListQueryState';
 import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
-import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
-import {
-  EnhancedSearchButton,
-  EnhancedSearchNotice,
-} from '../../../shared/search/EnhancedSearchButton';
+import { ListPagination } from '../../../shared/pagination/ListPagination';
 import {
   isSemanticSearchError,
   useEnhancedListSearch,
@@ -33,41 +31,19 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
 export function RelationListPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [searchParameters, setSearchParameters] = useSearchParams();
-  const query = searchParameters.get('q') ?? '';
+  const listState = useListQueryState({
+    clearOnQueryChange: 'expanded',
+    clearOnPageChange: 'expanded',
+  });
+  const { searchParameters, setSearchParameters, query, page } = listState;
   const orphan = searchParameters.get('orphan') === 'true';
   const eventId = searchParameters.get('eventId') ?? '';
   const hasActiveFilter = Boolean(query || eventId) || orphan;
   const expandedId = searchParameters.get('expanded') ?? '';
-  const page = readListPage(searchParameters.get('page'));
-  const [searchInput, setSearchInput] = useState(query);
   const enhancedSearch = useEnhancedListSearch({
     normalizedQuery: query,
-    resetPage: changePage,
+    resetPage: listState.changePage,
   });
-
-  useEffect(() => {
-    setSearchInput(query);
-  }, [query]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const normalized = searchInput.trim();
-      if (normalized === query) return;
-      setSearchParameters(
-        (current) => {
-          const next = new URLSearchParams(current);
-          if (normalized) next.set('q', normalized);
-          else next.delete('q');
-          next.delete('expanded');
-          next.delete('page');
-          return next;
-        },
-        { replace: true },
-      );
-    }, 300);
-    return () => window.clearTimeout(timeout);
-  }, [query, searchInput, setSearchParameters]);
 
   const relations = useQuery({
     queryKey: [
@@ -125,18 +101,12 @@ export function RelationListPage() {
       ? [expanded.data, ...items]
       : items;
   useListRecordFocus(relations.data?.items.map((relation) => relation.id) ?? []);
-
-  useEffect(() => {
-    if (!relations.data || relations.isPlaceholderData || relations.data.page === page) return;
-    setSearchParameters(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.set('page', String(relations.data!.page));
-        return next;
-      },
-      { replace: true },
-    );
-  }, [page, relations.data, relations.isPlaceholderData, setSearchParameters]);
+  useListPageCorrection({
+    requestedPage: page,
+    responsePage: relations.data?.page,
+    isPlaceholderData: relations.isPlaceholderData,
+    setSearchParameters,
+  });
 
   function toggleDetail(id: string): void {
     setSearchParameters(
@@ -148,15 +118,6 @@ export function RelationListPage() {
       },
       { replace: true },
     );
-  }
-
-  function changePage(nextPage: number): void {
-    setSearchParameters((current) => {
-      const next = new URLSearchParams(current);
-      next.delete('expanded');
-      next.set('page', String(nextPage));
-      return next;
-    });
   }
 
   return (
@@ -175,26 +136,15 @@ export function RelationListPage() {
         </Link>
       </div>
 
-      <div className="list-search-controls">
-        <div className="event-search">
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="6.5" />
-            <path d="m16 16 4 4" />
-          </svg>
-          <input
-            aria-label="搜索因果关系"
-            type="search"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="搜索原因事件、结果事件或关系说明"
-          />
-        </div>
-        <EnhancedSearchButton
-          isEnhancing={enhancedSearch.isEnhancing}
-          onClick={enhancedSearch.requestEnhanced}
-        />
-      </div>
-      <EnhancedSearchNotice notice={enhancedSearch.notice} />
+      <ListSearchControls
+        label="搜索因果关系"
+        placeholder="搜索原因事件、结果事件或关系说明"
+        value={listState.searchInput}
+        isEnhancing={enhancedSearch.isEnhancing}
+        notice={enhancedSearch.notice}
+        onChange={listState.setSearchInput}
+        onEnhance={enhancedSearch.requestEnhanced}
+      />
 
       {deletion.pageError ? (
         <div className="form-alert list-action-error" role="alert">
@@ -380,7 +330,7 @@ export function RelationListPage() {
           totalPages={relations.data.totalPages}
           totalItems={relations.data.totalItems}
           disabled={relations.isFetching}
-          onPageChange={changePage}
+          onPageChange={listState.changePage}
           onNavigate={scrollMainContentToTop}
         />
       ) : null}

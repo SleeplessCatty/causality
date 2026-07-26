@@ -1,189 +1,21 @@
 import { join } from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
 
 import type { SemanticEntityType } from '@causality/contracts';
-import {
-  MODEL_CATALOG,
-  buildSemanticDocument,
-  hashSemanticDocument,
-} from '@causality/semantic-core';
+import { MODEL_CATALOG } from '@causality/semantic-core';
 import type { Pool, PoolClient } from 'pg';
 import { toSql } from 'pgvector';
 
+import { PostgresIncrementalIndexDrain } from './incrementalIndexDrain.js';
 import type { SemanticIndexJob } from './jobRepository.js';
+import type { SemanticSourceRecord, SemanticSourceRepository } from './semanticSourceRepository.js';
 import type { EmbeddingRuntime } from '../model/modelRuntime.js';
-
-export interface SemanticSourceRecord {
-  entityType: SemanticEntityType;
-  entityId: string;
-  document: string;
-  sourceHash: string;
-}
-
-export interface SemanticSourceRepository {
-  load(entityType: SemanticEntityType, entityId: string): Promise<SemanticSourceRecord | null>;
-  loadBatch(
-    entityType: SemanticEntityType,
-    afterId: string | null,
-    limit: number,
-  ): Promise<SemanticSourceRecord[]>;
-}
 
 export interface IndexBuilder {
   buildFull(job: SemanticIndexJob): Promise<void>;
   buildIncremental(job: SemanticIndexJob): Promise<void>;
 }
 
-interface EventSourceRow {
-  id: string;
-  name: string;
-  description: string | null;
-  aliases: string[];
-  keywords: string[];
-}
-
-interface RelationSourceRow {
-  id: string;
-  cause_event_name: string;
-  effect_event_name: string;
-  description: string | null;
-}
-
-interface CaseSourceRow {
-  id: string;
-  content: string;
-}
-
-function sourceRecord(
-  entityType: SemanticEntityType,
-  entityId: string,
-  document: string,
-): SemanticSourceRecord {
-  return {
-    entityType,
-    entityId,
-    document,
-    sourceHash: hashSemanticDocument(document),
-  };
-}
-
-export class PostgresSemanticSourceRepository implements SemanticSourceRepository {
-  public constructor(private readonly pool: Pool) {}
-
-  public async load(
-    entityType: SemanticEntityType,
-    entityId: string,
-  ): Promise<SemanticSourceRecord | null> {
-    const records = await this.query(entityType, null, 1, entityId);
-    return records[0] ?? null;
-  }
-
-  public loadBatch(
-    entityType: SemanticEntityType,
-    afterId: string | null,
-    limit: number,
-  ): Promise<SemanticSourceRecord[]> {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
-      throw new Error('Semantic source batch limit must be between 1 and 1000');
-    }
-    return this.query(entityType, afterId, limit, null);
-  }
-
-  private async query(
-    entityType: SemanticEntityType,
-    afterId: string | null,
-    limit: number,
-    entityId: string | null,
-  ): Promise<SemanticSourceRecord[]> {
-    if (entityType === 'event') {
-      const result = await this.pool.query<EventSourceRow>(
-        `select event.id,
-                event.name,
-                event.description,
-                coalesce(
-                  (
-                    select array_agg(alias.alias order by alias.normalized_alias, alias.id)
-                    from event_aliases as alias
-                    where alias.event_id = event.id
-                  ),
-                  array[]::varchar[]
-                ) as aliases,
-                coalesce(
-                  (
-                    select array_agg(keyword.keyword order by keyword.position, keyword.id)
-                    from event_keywords as keyword
-                    where keyword.event_id = event.id
-                  ),
-                  array[]::varchar[]
-                ) as keywords
-         from abstract_events as event
-         where ($1::uuid is null or event.id > $1::uuid)
-           and ($3::uuid is null or event.id = $3::uuid)
-         order by event.id
-         limit $2`,
-        [afterId, limit, entityId],
-      );
-      return result.rows.map((row) => {
-        const document = buildSemanticDocument({
-          type: 'event',
-          name: row.name,
-          aliases: row.aliases,
-          keywords: row.keywords,
-          description: row.description,
-        });
-        return sourceRecord('event', row.id, document);
-      });
-    }
-
-    if (entityType === 'relation') {
-      const result = await this.pool.query<RelationSourceRow>(
-        `select relation.id,
-                cause.name as cause_event_name,
-                effect.name as effect_event_name,
-                relation.description
-         from causal_relations as relation
-         join abstract_events as cause
-           on cause.id = relation.cause_event_id
-         join abstract_events as effect
-           on effect.id = relation.effect_event_id
-         where ($1::uuid is null or relation.id > $1::uuid)
-           and ($3::uuid is null or relation.id = $3::uuid)
-         order by relation.id
-         limit $2`,
-        [afterId, limit, entityId],
-      );
-      return result.rows.map((row) => {
-        const document = buildSemanticDocument({
-          type: 'relation',
-          causeEventName: row.cause_event_name,
-          effectEventName: row.effect_event_name,
-          description: row.description,
-        });
-        return sourceRecord('relation', row.id, document);
-      });
-    }
-
-    const result = await this.pool.query<CaseSourceRow>(
-      `select concrete_case.id,
-              concrete_case.content
-       from concrete_cases as concrete_case
-       where ($1::uuid is null or concrete_case.id > $1::uuid)
-         and ($3::uuid is null or concrete_case.id = $3::uuid)
-       order by concrete_case.id
-       limit $2`,
-      [afterId, limit, entityId],
-    );
-    return result.rows.map((row) => {
-      const document = buildSemanticDocument({
-        type: 'case',
-        content: row.content,
-      });
-      return sourceRecord('case', row.id, document);
-    });
-  }
-}
-
-interface PostgresIndexBuilderOptions {
+export interface PostgresIndexBuilderOptions {
   pool: Pool;
   sourceRepository: SemanticSourceRepository;
   runtime: EmbeddingRuntime;
@@ -197,15 +29,6 @@ interface IndexStateRow {
   active_model_code: SemanticIndexJob['modelCode'] | null;
   state_version: number;
   status: string;
-}
-
-interface ClaimedIncrementalRow {
-  id: string;
-  model_code: SemanticIndexJob['modelCode'];
-  state_version: number;
-  attempts: number;
-  entity_type: SemanticEntityType;
-  entity_id: string;
 }
 
 type StableWriteResult = 'written' | 'deleted' | 'changed' | 'stale';
@@ -283,17 +106,13 @@ async function lockBusinessSource(
 }
 
 export class PostgresIndexBuilder implements IndexBuilder {
-  private readonly drainedIncrementalLeaseMilliseconds: number;
+  private readonly incrementalDrain: PostgresIncrementalIndexDrain;
 
   public constructor(private readonly options: PostgresIndexBuilderOptions) {
-    this.drainedIncrementalLeaseMilliseconds =
-      options.drainedIncrementalLeaseMilliseconds ?? 60_000;
-    if (
-      !Number.isInteger(this.drainedIncrementalLeaseMilliseconds) ||
-      this.drainedIncrementalLeaseMilliseconds < 30
-    ) {
-      throw new Error('Drained incremental lease must be at least 30 milliseconds');
-    }
+    this.incrementalDrain = new PostgresIncrementalIndexDrain(
+      options.pool,
+      options.drainedIncrementalLeaseMilliseconds,
+    );
   }
 
   public async buildFull(job: SemanticIndexJob): Promise<void> {
@@ -396,7 +215,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
     }
 
     for (let publishAttempt = 0; publishAttempt < 10; publishAttempt += 1) {
-      await this.drainIncrementalJobs(job);
+      await this.incrementalDrain.drain(job, (incremental) => this.buildIncremental(incremental));
       const validatedItems = await this.validateCompleteIndex(job);
       await this.updateFullProgress(job, validatedItems, validatedItems);
       const published = await this.options.pool.query(
@@ -729,134 +548,6 @@ export class PostgresIndexBuilder implements IndexBuilder {
          and state_version = $2`,
       [job.modelCode, job.stateVersion],
     );
-  }
-
-  private async claimIncremental(job: SemanticIndexJob): Promise<SemanticIndexJob | null> {
-    const leaseOwner = `full-index-${job.id}`;
-    const result = await this.options.pool.query<ClaimedIncrementalRow>(
-      `with candidate as (
-         select id
-         from semantic_jobs
-         where job_type = 'incremental'
-           and model_code = $1
-           and state_version = $2
-           and (
-             status = 'queued'
-             or (status = 'running' and lease_expires_at <= clock_timestamp())
-           )
-         order by created_at, id
-         limit 1
-         for update skip locked
-       )
-       update semantic_jobs as incremental
-       set status = 'running',
-           attempts = attempts + 1,
-           lease_owner = $3,
-           lease_expires_at = clock_timestamp() + ($4::integer * interval '1 millisecond'),
-           started_at = case
-             when incremental.status = 'queued' then clock_timestamp()
-             else incremental.started_at
-           end,
-           completed_at = null,
-           error = null,
-           updated_at = clock_timestamp()
-       from candidate
-       where incremental.id = candidate.id
-       returning incremental.id,
-                 incremental.model_code,
-                 incremental.state_version,
-                 incremental.attempts,
-                 incremental.entity_type,
-                 incremental.entity_id`,
-      [job.modelCode, job.stateVersion, leaseOwner, this.drainedIncrementalLeaseMilliseconds],
-    );
-    const row = result.rows[0];
-    return row
-      ? {
-          id: row.id,
-          jobType: 'incremental',
-          modelCode: row.model_code,
-          stateVersion: row.state_version,
-          attempts: row.attempts,
-          entityType: row.entity_type,
-          entityId: row.entity_id,
-        }
-      : null;
-  }
-
-  private async drainIncrementalJobs(job: SemanticIndexJob): Promise<void> {
-    const deadline = Date.now() + 65_000;
-    const leaseOwner = `full-index-${job.id}`;
-    while (true) {
-      const incremental = await this.claimIncremental(job);
-      if (incremental) {
-        let leaseFailure: unknown;
-        let renewalTail = Promise.resolve();
-        const heartbeat = setInterval(
-          () => {
-            renewalTail = renewalTail
-              .then(async () => {
-                const renewed = await this.options.pool.query(
-                  `update semantic_jobs
-                   set lease_expires_at = clock_timestamp()
-                         + ($3::integer * interval '1 millisecond'),
-                       updated_at = clock_timestamp()
-                   where id = $1
-                     and job_type = 'incremental'
-                     and status = 'running'
-                     and lease_owner = $2`,
-                  [incremental.id, leaseOwner, this.drainedIncrementalLeaseMilliseconds],
-                );
-                if (renewed.rowCount !== 1) {
-                  throw new Error('Lost drained incremental index lease');
-                }
-              })
-              .catch((error: unknown) => {
-                leaseFailure ??= error;
-              });
-          },
-          Math.max(10, Math.floor(this.drainedIncrementalLeaseMilliseconds / 3)),
-        );
-        heartbeat.unref();
-        try {
-          await this.buildIncremental(incremental);
-          await renewalTail;
-          if (leaseFailure) throw leaseFailure;
-          const completed = await this.options.pool.query(
-            `delete from semantic_jobs
-             where id = $1
-               and job_type = 'incremental'
-               and status = 'running'
-               and lease_owner = $2`,
-            [incremental.id, leaseOwner],
-          );
-          if (completed.rowCount !== 1) {
-            throw new Error('Lost drained incremental index lease');
-          }
-        } finally {
-          clearInterval(heartbeat);
-          await renewalTail;
-        }
-        continue;
-      }
-
-      const pending = await this.options.pool.query<{ pending: boolean }>(
-        `select exists (
-           select 1
-           from semantic_jobs
-           where job_type = 'incremental'
-             and status in ('queued', 'running')
-             and model_code = $1
-             and state_version = $2
-         ) as pending`,
-        [job.modelCode, job.stateVersion],
-      );
-      if (!pending.rows[0]?.pending) return;
-      if (Date.now() >= deadline) {
-        throw new Error('Timed out waiting for active incremental index jobs');
-      }
-      await delay(250);
-    }
   }
 
   private async validateCompleteIndex(job: SemanticIndexJob): Promise<number> {

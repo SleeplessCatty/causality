@@ -1,18 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
 import { DeleteRecordDialog } from '../../../shared/deletion/DeleteRecordDialog';
 import { usePermanentDeletion } from '../../../shared/deletion/usePermanentDeletion';
+import { ListSearchControls } from '../../../shared/lists/ListSearchControls';
+import { useListPageCorrection, useListQueryState } from '../../../shared/lists/useListQueryState';
 import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
-import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
-import {
-  EnhancedSearchButton,
-  EnhancedSearchNotice,
-} from '../../../shared/search/EnhancedSearchButton';
+import { ListPagination } from '../../../shared/pagination/ListPagination';
 import {
   isSemanticSearchError,
   useEnhancedListSearch,
@@ -43,36 +40,14 @@ function MetadataCell({ values }: { values: string[] }) {
 export function EventListPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [searchParameters, setSearchParameters] = useSearchParams();
-  const query = searchParameters.get('q') ?? '';
+  const listState = useListQueryState();
+  const { searchParameters, setSearchParameters, query, page } = listState;
   const orphan = searchParameters.get('orphan') === 'true';
   const hasActiveFilter = Boolean(query) || orphan;
-  const page = readListPage(searchParameters.get('page'));
-  const [searchInput, setSearchInput] = useState(query);
   const enhancedSearch = useEnhancedListSearch({
     normalizedQuery: query,
-    resetPage: changePage,
+    resetPage: listState.changePage,
   });
-
-  useEffect(() => setSearchInput(query), [query]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const normalized = searchInput.trim();
-      if (normalized === query) return;
-      setSearchParameters(
-        (current) => {
-          const next = new URLSearchParams(current);
-          if (normalized) next.set('q', normalized);
-          else next.delete('q');
-          next.delete('page');
-          return next;
-        },
-        { replace: true },
-      );
-    }, 300);
-    return () => window.clearTimeout(timeout);
-  }, [query, searchInput, setSearchParameters]);
 
   const events = useQuery({
     queryKey: [
@@ -104,26 +79,12 @@ export function EventListPage() {
         : null,
   });
   useListRecordFocus(events.data?.items.map((event) => event.id) ?? []);
-
-  useEffect(() => {
-    if (!events.data || events.isPlaceholderData || events.data.page === page) return;
-    setSearchParameters(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.set('page', String(events.data!.page));
-        return next;
-      },
-      { replace: true },
-    );
-  }, [events.data, events.isPlaceholderData, page, setSearchParameters]);
-
-  function changePage(nextPage: number): void {
-    setSearchParameters((current) => {
-      const next = new URLSearchParams(current);
-      next.set('page', String(nextPage));
-      return next;
-    });
-  }
+  useListPageCorrection({
+    requestedPage: page,
+    responsePage: events.data?.page,
+    isPlaceholderData: events.isPlaceholderData,
+    setSearchParameters,
+  });
 
   return (
     <section className="event-list-page" aria-labelledby="event-list-title">
@@ -141,26 +102,15 @@ export function EventListPage() {
         </Link>
       </div>
 
-      <div className="list-search-controls">
-        <div className="event-search">
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="6.5" />
-            <path d="m16 16 4 4" />
-          </svg>
-          <input
-            aria-label="搜索事件"
-            type="search"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="搜索名称、别名或关键词"
-          />
-        </div>
-        <EnhancedSearchButton
-          isEnhancing={enhancedSearch.isEnhancing}
-          onClick={enhancedSearch.requestEnhanced}
-        />
-      </div>
-      <EnhancedSearchNotice notice={enhancedSearch.notice} />
+      <ListSearchControls
+        label="搜索事件"
+        placeholder="搜索名称、别名或关键词"
+        value={listState.searchInput}
+        isEnhancing={enhancedSearch.isEnhancing}
+        notice={enhancedSearch.notice}
+        onChange={listState.setSearchInput}
+        onEnhance={enhancedSearch.requestEnhanced}
+      />
 
       {deletion.pageError ? (
         <div className="form-alert list-action-error" role="alert">
@@ -265,7 +215,7 @@ export function EventListPage() {
           totalPages={eventData.totalPages}
           totalItems={eventData.totalItems}
           disabled={events.isFetching}
-          onPageChange={changePage}
+          onPageChange={listState.changePage}
           onNavigate={scrollMainContentToTop}
         />
       ) : null}

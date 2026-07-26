@@ -1,18 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
 import { DeleteRecordDialog } from '../../../shared/deletion/DeleteRecordDialog';
 import { usePermanentDeletion } from '../../../shared/deletion/usePermanentDeletion';
+import { ListSearchControls } from '../../../shared/lists/ListSearchControls';
+import { useListPageCorrection, useListQueryState } from '../../../shared/lists/useListQueryState';
 import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
-import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
-import {
-  EnhancedSearchButton,
-  EnhancedSearchNotice,
-} from '../../../shared/search/EnhancedSearchButton';
+import { ListPagination } from '../../../shared/pagination/ListPagination';
 import {
   isSemanticSearchError,
   useEnhancedListSearch,
@@ -28,37 +25,15 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
 export function CaseListPage() {
   const queryClient = useQueryClient();
   const location = useLocation();
-  const [searchParameters, setSearchParameters] = useSearchParams();
-  const query = searchParameters.get('q') ?? '';
+  const listState = useListQueryState();
+  const { searchParameters, setSearchParameters, query, page } = listState;
   const relationId = searchParameters.get('relationId') ?? '';
   const orphan = searchParameters.get('orphan') === 'true';
   const hasActiveFilter = Boolean(query || relationId) || orphan;
-  const page = readListPage(searchParameters.get('page'));
-  const [searchInput, setSearchInput] = useState(query);
   const enhancedSearch = useEnhancedListSearch({
     normalizedQuery: query,
-    resetPage: changePage,
+    resetPage: listState.changePage,
   });
-
-  useEffect(() => setSearchInput(query), [query]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      const normalized = searchInput.trim();
-      if (normalized === query) return;
-      setSearchParameters(
-        (current) => {
-          const next = new URLSearchParams(current);
-          if (normalized) next.set('q', normalized);
-          else next.delete('q');
-          next.delete('page');
-          return next;
-        },
-        { replace: true },
-      );
-    }, 300);
-    return () => window.clearTimeout(timeout);
-  }, [query, searchInput, setSearchParameters]);
 
   const cases = useQuery({
     queryKey: [
@@ -96,32 +71,19 @@ export function CaseListPage() {
     },
   });
   useListRecordFocus(cases.data?.items.map((item) => item.id) ?? []);
-
-  useEffect(() => {
-    if (!cases.data || cases.isPlaceholderData || cases.data.page === page) return;
-    setSearchParameters(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.set('page', String(cases.data!.page));
-        return next;
-      },
-      { replace: true },
-    );
-  }, [cases.data, cases.isPlaceholderData, page, setSearchParameters]);
+  useListPageCorrection({
+    requestedPage: page,
+    responsePage: cases.data?.page,
+    isPlaceholderData: cases.isPlaceholderData,
+    setSearchParameters,
+  });
 
   function clearRelationFilter(): void {
     const next = new URLSearchParams();
-    if (query) next.set('q', query);
+    const currentQuery = listState.searchInput.trim();
+    if (currentQuery) next.set('q', currentQuery);
     if (orphan) next.set('orphan', 'true');
     setSearchParameters(next);
-  }
-
-  function changePage(nextPage: number): void {
-    setSearchParameters((current) => {
-      const next = new URLSearchParams(current);
-      next.set('page', String(nextPage));
-      return next;
-    });
   }
 
   return (
@@ -149,26 +111,15 @@ export function CaseListPage() {
         </div>
       ) : null}
 
-      <div className="list-search-controls">
-        <div className="event-search">
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="6.5" />
-            <path d="m16 16 4 4" />
-          </svg>
-          <input
-            aria-label="搜索案例"
-            type="search"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="搜索案例内容"
-          />
-        </div>
-        <EnhancedSearchButton
-          isEnhancing={enhancedSearch.isEnhancing}
-          onClick={enhancedSearch.requestEnhanced}
-        />
-      </div>
-      <EnhancedSearchNotice notice={enhancedSearch.notice} />
+      <ListSearchControls
+        label="搜索案例"
+        placeholder="搜索案例内容"
+        value={listState.searchInput}
+        isEnhancing={enhancedSearch.isEnhancing}
+        notice={enhancedSearch.notice}
+        onChange={listState.setSearchInput}
+        onEnhance={enhancedSearch.requestEnhanced}
+      />
 
       {deletion.pageError ? (
         <div className="form-alert list-action-error" role="alert">
@@ -265,7 +216,7 @@ export function CaseListPage() {
           totalPages={caseData.totalPages}
           totalItems={caseData.totalItems}
           disabled={cases.isFetching}
-          onPageChange={changePage}
+          onPageChange={listState.changePage}
           onNavigate={scrollMainContentToTop}
         />
       ) : null}

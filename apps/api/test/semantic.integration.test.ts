@@ -1,3 +1,4 @@
+import { MODEL_CATALOG } from '@causality/semantic-core';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -40,14 +41,24 @@ describe.sequential('semantic configuration API', () => {
     await pool!.query(
       `update semantic_model_settings
        set threshold = case
-             when model_code = 'multilingual-e5-small' then 70
-             else 55
+             when model_code = 'bge-small-zh-v1.5' then $1::smallint
+             when model_code = 'multilingual-e5-small' then $2::smallint
+             when model_code = 'granite-embedding-97m-multilingual-r2' then $3::smallint
+             when model_code = 'bge-m3' then $4::smallint
            end,
            download_status = 'not_downloaded',
            downloaded_at = null,
            error = null,
-           updated_at = clock_timestamp();
-       update semantic_index_state
+           updated_at = clock_timestamp()`,
+      [
+        MODEL_CATALOG['bge-small-zh-v1.5'].defaultThreshold,
+        MODEL_CATALOG['multilingual-e5-small'].defaultThreshold,
+        MODEL_CATALOG['granite-embedding-97m-multilingual-r2'].defaultThreshold,
+        MODEL_CATALOG['bge-m3'].defaultThreshold,
+      ],
+    );
+    await pool!.query(
+      `update semantic_index_state
        set active_model_code = null,
            status = 'empty',
            state_version = 0,
@@ -77,18 +88,24 @@ describe.sequential('semantic configuration API', () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: 'bge-small-zh-v1.5',
+          threshold: MODEL_CATALOG['bge-small-zh-v1.5'].defaultThreshold,
           isActive: false,
         }),
         expect.objectContaining({
           code: 'multilingual-e5-small',
-          threshold: 70,
+          threshold: MODEL_CATALOG['multilingual-e5-small'].defaultThreshold,
           isActive: false,
         }),
         expect.objectContaining({
           code: 'granite-embedding-97m-multilingual-r2',
+          threshold: MODEL_CATALOG['granite-embedding-97m-multilingual-r2'].defaultThreshold,
           isActive: false,
         }),
-        expect.objectContaining({ code: 'bge-m3', threshold: 55, isActive: false }),
+        expect.objectContaining({
+          code: 'bge-m3',
+          threshold: MODEL_CATALOG['bge-m3'].defaultThreshold,
+          isActive: false,
+        }),
       ]),
     );
 

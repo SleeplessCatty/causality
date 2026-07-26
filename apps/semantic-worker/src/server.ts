@@ -6,9 +6,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { parseWorkerEnv } from './config/env.js';
 import { createWorkerDatabasePool } from './database.js';
-import { PostgresIndexBuilder, PostgresSemanticSourceRepository } from './jobs/indexBuilder.js';
+import { PostgresIndexBuilder } from './jobs/indexBuilder.js';
 import { PostgresDownloadJobRepository } from './jobs/jobRepository.js';
 import { DownloadJobRunner, IndexJobRunner } from './jobs/jobRunner.js';
+import { PostgresSemanticSourceRepository } from './jobs/semanticSourceRepository.js';
 import { buildInternalServer, SemanticWorkerService } from './internalServer.js';
 import { PinnedModelDownloader } from './model/modelDownloader.js';
 import { TransformersEmbeddingRuntime } from './model/transformersRuntime.js';

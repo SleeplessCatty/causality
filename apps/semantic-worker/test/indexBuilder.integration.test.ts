@@ -2,11 +2,9 @@ import { hashSemanticDocument } from '@causality/semantic-core';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  PostgresIndexBuilder,
-  PostgresSemanticSourceRepository,
-} from '../src/jobs/indexBuilder.js';
+import { PostgresIndexBuilder } from '../src/jobs/indexBuilder.js';
 import type { SemanticIndexJob } from '../src/jobs/jobRepository.js';
+import { PostgresSemanticSourceRepository } from '../src/jobs/semanticSourceRepository.js';
 import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
 import { startWorkerPostgresTestContext } from './support/workerPostgresTestContext.js';
 
@@ -510,7 +508,7 @@ describe.sequential('PostgresIndexBuilder', () => {
       runtime: slowRuntime,
       modelsDirectory: '/models',
       drainedIncrementalLeaseMilliseconds: 30,
-    } as unknown as ConstructorParameters<typeof PostgresIndexBuilder>[0]);
+    });
     const originalQuery = pool!.query.bind(pool!);
     let renewals = 0;
     const querySpy = vi.spyOn(pool!, 'query');

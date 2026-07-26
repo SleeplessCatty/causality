@@ -1,6 +1,8 @@
 import type { SemanticModel } from '@causality/contracts';
 import { useEffect, useRef } from 'react';
 
+import { formatMegabytes } from './semanticPresentation';
+
 export interface SemanticModelAction {
   type: 'switch' | 'reindex';
   model: SemanticModel;
@@ -12,10 +14,6 @@ interface SemanticModelActionDialogProps {
   error?: string | undefined;
   onCancel(): void;
   onConfirm(): void;
-}
-
-function formatMegabytes(bytes: number): string {
-  return `约 ${Math.round(bytes / 1024 / 1024)} MB`;
 }
 
 export function SemanticModelActionDialog({
