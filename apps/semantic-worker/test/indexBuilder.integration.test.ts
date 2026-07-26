@@ -3,7 +3,8 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PostgresIndexBuilder } from '../src/jobs/indexBuilder.js';
-import type { SemanticIndexJob } from '../src/jobs/jobRepository.js';
+import { PostgresIndexJobRepository } from '../src/jobs/indexJobRepository.js';
+import type { SemanticIndexJob } from '../src/jobs/jobTypes.js';
 import { PostgresSemanticSourceRepository } from '../src/jobs/semanticSourceRepository.js';
 import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
 import { startWorkerPostgresTestContext } from './support/workerPostgresTestContext.js';
@@ -235,6 +236,7 @@ describe.sequential('PostgresIndexBuilder', () => {
     runtime = new FakeEmbeddingRuntime();
     builder = new PostgresIndexBuilder({
       pool: pool!,
+      stateRepository: new PostgresIndexJobRepository(pool!),
       sourceRepository,
       runtime,
       modelsDirectory: '/models',
@@ -504,6 +506,7 @@ describe.sequential('PostgresIndexBuilder', () => {
     };
     const heartbeatBuilder = new PostgresIndexBuilder({
       pool: pool!,
+      stateRepository: new PostgresIndexJobRepository(pool!),
       sourceRepository: sourceRepository!,
       runtime: slowRuntime,
       modelsDirectory: '/models',

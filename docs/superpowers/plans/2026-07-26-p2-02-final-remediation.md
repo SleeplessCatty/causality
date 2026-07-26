@@ -731,7 +731,7 @@ function startLeaseHeartbeat(options: {
 }): LeaseHeartbeat;
 ```
 
-- [ ] **Step 1: Write the heartbeat serialization test**
+- [x] **Step 1: Write the heartbeat serialization test**
 
 Use fake timers and a controlled renewal Promise:
 
@@ -747,7 +747,7 @@ expect(renew).toHaveBeenCalledTimes(2);
 
 Reject the second renewal and assert `heartbeat.assertValid()` throws the same error.
 
-- [ ] **Step 2: Run the test and verify failure**
+- [x] **Step 2: Run the test and verify failure**
 
 Run:
 
@@ -757,7 +757,7 @@ pnpm --filter @causality/semantic-worker test -- leaseHeartbeat.test.ts
 
 Expected: FAIL because the shared heartbeat does not exist.
 
-- [ ] **Step 3: Implement a serialized heartbeat**
+- [x] **Step 3: Implement a serialized heartbeat**
 
 Keep one renewal tail:
 
@@ -771,7 +771,7 @@ renewalTail = renewalTail
 
 Do not allow overlapping renewals. `stop()` clears the timer and awaits the tail. Both runners call `assertValid()` before progress publication and final completion.
 
-- [ ] **Step 4: Split Worker types and repositories**
+- [x] **Step 4: Split Worker types and repositories**
 
 Move shared types to `jobTypes.ts`; move `lockOwnedJob`, `lockIndexState`, `WorkerLeaseLostError`, and transaction helpers to `postgresJobSupport.ts`.
 
@@ -788,15 +788,15 @@ interface IndexStateRepository {
 }
 ```
 
-- [ ] **Step 5: Remove state-machine SQL from the builder**
+- [x] **Step 5: Remove state-machine SQL from the builder**
 
 Move loading, building, progress, publication, failure, and retry-wait SQL from `indexBuilder.ts` to `PostgresIndexJobRepository`. Keep business source locking and `semantic_embeddings` writes in the builder.
 
-- [ ] **Step 6: Update composition**
+- [x] **Step 6: Update composition**
 
 `server.ts` creates independent download and index repositories and injects the index state repository into the builder. `SemanticWorkerService` receives only the file/load repository methods it needs.
 
-- [ ] **Step 7: Run Worker regression tests**
+- [x] **Step 7: Run Worker regression tests**
 
 Run:
 
@@ -808,7 +808,7 @@ pnpm --filter @causality/semantic-worker typecheck
 
 Expected: existing behavior is preserved under focused repository boundaries; heartbeat tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/semantic-worker/src apps/semantic-worker/test

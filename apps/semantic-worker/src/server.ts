@@ -6,8 +6,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { parseWorkerEnv } from './config/env.js';
 import { createWorkerDatabasePool } from './database.js';
+import { PostgresDownloadJobRepository } from './jobs/downloadJobRepository.js';
 import { PostgresIndexBuilder } from './jobs/indexBuilder.js';
-import { PostgresDownloadJobRepository } from './jobs/jobRepository.js';
+import { PostgresIndexJobRepository } from './jobs/indexJobRepository.js';
 import { DownloadJobRunner, IndexJobRunner } from './jobs/jobRunner.js';
 import { PostgresSemanticSourceRepository } from './jobs/semanticSourceRepository.js';
 import { buildInternalServer, SemanticWorkerService } from './internalServer.js';
@@ -16,24 +17,26 @@ import { TransformersEmbeddingRuntime } from './model/transformersRuntime.js';
 
 const env = parseWorkerEnv(process.env);
 const pool = createWorkerDatabasePool(env.DATABASE_URL);
-const repository = new PostgresDownloadJobRepository(pool);
+const downloadRepository = new PostgresDownloadJobRepository(pool);
+const indexRepository = new PostgresIndexJobRepository(pool);
 const runtime = new TransformersEmbeddingRuntime({
   modelsDirectory: env.MODEL_DIRECTORY,
 });
 const service = new SemanticWorkerService({
-  repository,
+  repository: downloadRepository,
   runtime,
   modelsDirectory: env.MODEL_DIRECTORY,
 });
 const workerId = `${hostname()}-${process.pid}-${randomUUID()}`;
 const runner = new DownloadJobRunner({
-  repository,
+  repository: downloadRepository,
   downloader: new PinnedModelDownloader(),
   modelsDirectory: env.MODEL_DIRECTORY,
   workerId,
 });
 const indexBuilder = new PostgresIndexBuilder({
   pool,
+  stateRepository: indexRepository,
   sourceRepository: new PostgresSemanticSourceRepository(pool),
   runtime,
   modelsDirectory: env.MODEL_DIRECTORY,
@@ -41,7 +44,7 @@ const indexBuilder = new PostgresIndexBuilder({
   onModelReady: (modelCode) => service.markLoadedModel(modelCode),
 });
 const indexRunner = new IndexJobRunner({
-  repository,
+  repository: indexRepository,
   builder: indexBuilder,
   workerId,
 });

@@ -7,7 +7,7 @@ import {
   buildInternalServer,
   type SemanticWorkerQueryService,
 } from '../src/internalServer.js';
-import type { DownloadJobRepository } from '../src/jobs/jobRepository.js';
+import type { DownloadJobRepository } from '../src/jobs/jobTypes.js';
 import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
 
 function queryService(activeModelCode: SemanticModelCode | null): SemanticWorkerQueryService {

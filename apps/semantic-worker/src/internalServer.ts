@@ -9,7 +9,7 @@ import {
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { z } from 'zod';
 
-import type { DownloadJobRepository } from './jobs/jobRepository.js';
+import type { ModelFileRepository } from './jobs/jobTypes.js';
 import type { EmbeddingRuntime } from './model/modelRuntime.js';
 import { verifyReadyModel } from './model/modelDownloader.js';
 
@@ -45,7 +45,7 @@ export class ActiveModelMismatchError extends Error {
 }
 
 interface SemanticWorkerServiceOptions {
-  repository: DownloadJobRepository;
+  repository: ModelFileRepository;
   runtime: EmbeddingRuntime;
   modelsDirectory: string;
   verifyModel?: typeof verifyReadyModel;

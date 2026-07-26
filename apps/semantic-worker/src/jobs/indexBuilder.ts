@@ -6,17 +6,18 @@ import type { Pool, PoolClient } from 'pg';
 import { toSql } from 'pgvector';
 
 import { PostgresIncrementalIndexDrain } from './incrementalIndexDrain.js';
-import type { SemanticIndexJob } from './jobRepository.js';
+import type { IndexStateRepository, SemanticIndexJob } from './jobTypes.js';
 import type { SemanticSourceRecord, SemanticSourceRepository } from './semanticSourceRepository.js';
 import type { EmbeddingRuntime } from '../model/modelRuntime.js';
 
 export interface IndexBuilder {
-  buildFull(job: SemanticIndexJob): Promise<void>;
-  buildIncremental(job: SemanticIndexJob): Promise<void>;
+  buildFull(job: SemanticIndexJob, assertLeaseValid: () => void): Promise<void>;
+  buildIncremental(job: SemanticIndexJob, assertLeaseValid: () => void): Promise<void>;
 }
 
 export interface PostgresIndexBuilderOptions {
   pool: Pool;
+  stateRepository: IndexStateRepository;
   sourceRepository: SemanticSourceRepository;
   runtime: EmbeddingRuntime;
   modelsDirectory: string;
@@ -115,61 +116,25 @@ export class PostgresIndexBuilder implements IndexBuilder {
     );
   }
 
-  public async buildFull(job: SemanticIndexJob): Promise<void> {
+  public async buildFull(
+    job: SemanticIndexJob,
+    assertLeaseValid: () => void = () => undefined,
+  ): Promise<void> {
     if (job.jobType !== 'full_index') throw new Error('Expected a full-index job');
-    if (!(await this.isCurrent(job))) return;
+    assertLeaseValid();
+    if (!(await this.options.stateRepository.isCurrent(job))) return;
 
     const model = MODEL_CATALOG[job.modelCode];
     const target = join(this.options.modelsDirectory, model.code, model.revision);
-    await this.options.pool.query(
-      `update semantic_index_state
-       set status = 'loading',
-           processed_items = 0,
-           total_items = 0,
-           pending_items = 0,
-           error = null,
-           updated_at = clock_timestamp()
-       where singleton_key = true
-         and active_model_code = $1
-         and state_version = $2`,
-      [job.modelCode, job.stateVersion],
-    );
     await this.options.onModelLoading?.();
     await this.options.runtime.load(model, target);
-    if (!(await this.isCurrent(job))) return;
+    assertLeaseValid();
+    if (!(await this.options.stateRepository.isCurrent(job))) return;
 
-    if (!(await this.resetCurrentIndex(job))) return;
     let totalItems = await this.countSources();
-    await this.options.pool.query(
-      `update semantic_index_state
-       set status = 'building',
-           processed_items = 0,
-           total_items = $3,
-           pending_items = (
-             select count(*)::int
-             from semantic_jobs
-             where job_type = 'incremental'
-               and status in ('queued', 'running')
-               and model_code = $1
-               and state_version = $2
-           ),
-           error = null,
-           updated_at = clock_timestamp()
-       where singleton_key = true
-         and active_model_code = $1
-         and state_version = $2`,
-      [job.modelCode, job.stateVersion, totalItems],
-    );
-    await this.options.pool.query(
-      `update semantic_jobs
-       set processed_items = 0,
-           total_items = $2,
-           updated_at = clock_timestamp()
-       where id = $1
-         and job_type = 'full_index'
-         and status = 'running'`,
-      [job.id, totalItems],
-    );
+    assertLeaseValid();
+    await this.options.stateRepository.beginFullBuild(job, totalItems);
+    if (!(await this.options.stateRepository.isCurrent(job))) return;
 
     let processedItems = 0;
     let lastReportedItems = 0;
@@ -177,7 +142,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
     for (const entityType of entityTypes) {
       let afterId: string | null = null;
       while (true) {
-        if (!(await this.isCurrent(job))) return;
+        if (!(await this.options.stateRepository.isCurrent(job))) return;
         const batch = await this.options.sourceRepository.loadBatch(
           entityType,
           afterId,
@@ -185,7 +150,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
         );
         if (batch.length === 0) {
           if (processedItems !== lastReportedItems) {
-            await this.updateFullProgress(job, processedItems, totalItems);
+            await this.updateFullProgress(job, processedItems, totalItems, assertLeaseValid);
             lastReportedItems = processedItems;
             lastProgressUpdateAt = Date.now();
           }
@@ -207,7 +172,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
         afterId = batch.at(-1)!.entityId;
         const now = Date.now();
         if (now - lastProgressUpdateAt >= 500) {
-          await this.updateFullProgress(job, processedItems, totalItems);
+          await this.updateFullProgress(job, processedItems, totalItems, assertLeaseValid);
           lastReportedItems = processedItems;
           lastProgressUpdateAt = now;
         }
@@ -215,32 +180,14 @@ export class PostgresIndexBuilder implements IndexBuilder {
     }
 
     for (let publishAttempt = 0; publishAttempt < 10; publishAttempt += 1) {
-      await this.incrementalDrain.drain(job, (incremental) => this.buildIncremental(incremental));
-      const validatedItems = await this.validateCompleteIndex(job);
-      await this.updateFullProgress(job, validatedItems, validatedItems);
-      const published = await this.options.pool.query(
-        `update semantic_index_state
-         set status = 'ready',
-             processed_items = $3,
-             total_items = $3,
-             pending_items = 0,
-             error = null,
-             last_ready_at = clock_timestamp(),
-             updated_at = clock_timestamp()
-         where singleton_key = true
-           and active_model_code = $1
-           and state_version = $2
-           and not exists (
-             select 1
-             from semantic_jobs
-             where job_type = 'incremental'
-               and status in ('queued', 'running')
-               and model_code = $1
-               and state_version = $2
-           )`,
-        [job.modelCode, job.stateVersion, validatedItems],
+      await this.incrementalDrain.drain(job, (incremental) =>
+        this.buildIncremental(incremental, assertLeaseValid),
       );
-      if (published.rowCount === 1) {
+      const validatedItems = await this.validateCompleteIndex(job);
+      await this.updateFullProgress(job, validatedItems, validatedItems, assertLeaseValid);
+      assertLeaseValid();
+      const published = await this.options.stateRepository.publishIndex(job, validatedItems, 0);
+      if (published) {
         await this.options.onModelReady?.(job.modelCode);
         return;
       }
@@ -248,11 +195,15 @@ export class PostgresIndexBuilder implements IndexBuilder {
     throw new Error('Semantic index kept changing during final publication');
   }
 
-  public async buildIncremental(job: SemanticIndexJob): Promise<void> {
+  public async buildIncremental(
+    job: SemanticIndexJob,
+    assertLeaseValid: () => void = () => undefined,
+  ): Promise<void> {
     if (job.jobType !== 'incremental' || !job.entityType || !job.entityId) {
       throw new Error('Expected a targeted incremental-index job');
     }
-    if (!(await this.isCurrent(job))) return;
+    assertLeaseValid();
+    if (!(await this.options.stateRepository.isCurrent(job))) return;
 
     const model = MODEL_CATALOG[job.modelCode];
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -267,23 +218,12 @@ export class PostgresIndexBuilder implements IndexBuilder {
       vectorDimensions(vector, model.dimensions);
       const result = await this.writeStableRecord(job, source, vector);
       if (result === 'written' || result === 'deleted' || result === 'stale') {
-        await this.refreshIncrementalState(job);
+        assertLeaseValid();
+        await this.options.stateRepository.refreshIncrementalState(job);
         return;
       }
     }
     throw new Error('Semantic source changed repeatedly during incremental indexing');
-  }
-
-  private async isCurrent(job: SemanticIndexJob): Promise<boolean> {
-    const result = await this.options.pool.query<IndexStateRow>(
-      `select active_model_code,
-              state_version,
-              status
-       from semantic_index_state
-       where singleton_key = true`,
-    );
-    const state = result.rows[0];
-    return state?.active_model_code === job.modelCode && state.state_version === job.stateVersion;
   }
 
   private async countSources(): Promise<number> {
@@ -297,71 +237,14 @@ export class PostgresIndexBuilder implements IndexBuilder {
     return result.rows[0]?.count ?? 0;
   }
 
-  private async resetCurrentIndex(job: SemanticIndexJob): Promise<boolean> {
-    const client = await this.options.pool.connect();
-    try {
-      await client.query('begin');
-      const state = await client.query<IndexStateRow>(
-        `select active_model_code,
-                state_version,
-                status
-         from semantic_index_state
-         where singleton_key = true
-         for update`,
-      );
-      if (
-        state.rows[0]?.active_model_code !== job.modelCode ||
-        state.rows[0]?.state_version !== job.stateVersion
-      ) {
-        await client.query('rollback');
-        return false;
-      }
-      await client.query(`delete from semantic_embeddings`);
-      await client.query(
-        `delete from semantic_jobs
-         where job_type = 'incremental'
-           and status = 'queued'
-           and (
-             model_code <> $1
-             or state_version <> $2
-           )`,
-        [job.modelCode, job.stateVersion],
-      );
-      await client.query('commit');
-      return true;
-    } catch (error) {
-      await client.query('rollback');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
   private async updateFullProgress(
     job: SemanticIndexJob,
     processedItems: number,
     totalItems: number,
+    assertLeaseValid: () => void,
   ): Promise<void> {
-    await this.options.pool.query(
-      `update semantic_index_state
-       set processed_items = $3,
-           total_items = $4,
-           updated_at = clock_timestamp()
-       where singleton_key = true
-         and active_model_code = $1
-         and state_version = $2`,
-      [job.modelCode, job.stateVersion, processedItems, totalItems],
-    );
-    await this.options.pool.query(
-      `update semantic_jobs
-       set processed_items = $2,
-           total_items = $3,
-           updated_at = clock_timestamp()
-       where id = $1
-         and job_type = 'full_index'
-         and status = 'running'`,
-      [job.id, processedItems, totalItems],
-    );
+    assertLeaseValid();
+    await this.options.stateRepository.updateFullProgress(job, processedItems, totalItems);
   }
 
   private async writeStableRecord(
@@ -517,7 +400,6 @@ export class PostgresIndexBuilder implements IndexBuilder {
         [job.entityType, job.entityId],
       );
       await client.query('commit');
-      await this.refreshIncrementalState(job);
       return 'deleted';
     } catch (error) {
       await client.query('rollback');
@@ -525,29 +407,6 @@ export class PostgresIndexBuilder implements IndexBuilder {
     } finally {
       client.release();
     }
-  }
-
-  private async refreshIncrementalState(job: SemanticIndexJob): Promise<void> {
-    await this.options.pool.query(
-      `update semantic_index_state
-       set pending_items = (
-             select count(*)::int
-             from semantic_jobs
-             where job_type = 'incremental'
-               and status in ('queued', 'running')
-               and model_code = $1
-               and state_version = $2
-           ),
-           status = case
-             when status in ('ready', 'updating') then 'updating'
-             else status
-           end,
-           updated_at = clock_timestamp()
-       where singleton_key = true
-         and active_model_code = $1
-         and state_version = $2`,
-      [job.modelCode, job.stateVersion],
-    );
   }
 
   private async validateCompleteIndex(job: SemanticIndexJob): Promise<number> {

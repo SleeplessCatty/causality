@@ -3,22 +3,25 @@ import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { SemanticWorkerService } from '../src/internalServer.js';
-import { PostgresDownloadJobRepository } from '../src/jobs/jobRepository.js';
+import { PostgresDownloadJobRepository } from '../src/jobs/downloadJobRepository.js';
+import { PostgresIndexJobRepository } from '../src/jobs/indexJobRepository.js';
 import { IndexJobRunner } from '../src/jobs/jobRunner.js';
 import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
 import { startWorkerPostgresTestContext } from './support/workerPostgresTestContext.js';
 
 const model = MODEL_CATALOG['multilingual-e5-small'];
 
-describe.sequential('PostgresDownloadJobRepository', () => {
+describe.sequential('semantic job repositories', () => {
   let context: Awaited<ReturnType<typeof startWorkerPostgresTestContext>> | undefined;
   let pool: Pool | undefined;
-  let repository: PostgresDownloadJobRepository | undefined;
+  let downloadRepository: PostgresDownloadJobRepository | undefined;
+  let indexRepository: PostgresIndexJobRepository | undefined;
 
   beforeAll(async () => {
     context = await startWorkerPostgresTestContext();
     pool = context.pool;
-    repository = new PostgresDownloadJobRepository(pool);
+    downloadRepository = new PostgresDownloadJobRepository(pool);
+    indexRepository = new PostgresIndexJobRepository(pool);
   }, 120_000);
 
   beforeEach(async () => {
@@ -94,8 +97,8 @@ describe.sequential('PostgresDownloadJobRepository', () => {
   it('claims exclusively, renews an expired lease, and increments attempts', async () => {
     const id = await enqueueDownload();
 
-    const first = await repository!.claimNextDownload('worker-a', 60_000);
-    const blocked = await repository!.claimNextDownload('worker-b', 60_000);
+    const first = await downloadRepository!.claimNextDownload('worker-a', 60_000);
+    const blocked = await downloadRepository!.claimNextDownload('worker-b', 60_000);
     expect(first).toMatchObject({ id, attempts: 1 });
     expect(blocked).toBeNull();
 
@@ -105,15 +108,15 @@ describe.sequential('PostgresDownloadJobRepository', () => {
        where id = $1`,
       [id],
     );
-    const reclaimed = await repository!.claimNextDownload('worker-b', 60_000);
+    const reclaimed = await downloadRepository!.claimNextDownload('worker-b', 60_000);
     expect(reclaimed).toMatchObject({ id, attempts: 2 });
   });
 
   it('does not reclaim a live index lease and reclaims it after expiration', async () => {
     const id = await enqueueIndex('full_index');
 
-    const first = await repository!.claimNextIndex('worker-a', 60_000);
-    const blocked = await repository!.claimNextIndex('worker-b', 60_000);
+    const first = await indexRepository!.claimNextIndex('worker-a', 60_000);
+    const blocked = await indexRepository!.claimNextIndex('worker-b', 60_000);
     expect(first).toMatchObject({ id, jobType: 'full_index', attempts: 1 });
     expect(blocked).toBeNull();
 
@@ -123,17 +126,17 @@ describe.sequential('PostgresDownloadJobRepository', () => {
        where id = $1`,
       [id],
     );
-    const reclaimed = await repository!.claimNextIndex('worker-b', 60_000);
+    const reclaimed = await indexRepository!.claimNextIndex('worker-b', 60_000);
     expect(reclaimed).toMatchObject({ id, jobType: 'full_index', attempts: 2 });
   });
 
   it('lets a restarted runner process only after the previous index lease expires', async () => {
     const id = await enqueueIndex('full_index');
-    await repository!.claimNextIndex('stopped-worker', 60_000);
+    await indexRepository!.claimNextIndex('stopped-worker', 60_000);
 
     const builtJobs: string[] = [];
     const restartedRunner = new IndexJobRunner({
-      repository: repository!,
+      repository: indexRepository!,
       builder: {
         buildFull: async (job) => {
           builtJobs.push(job.id);
@@ -181,7 +184,7 @@ describe.sequential('PostgresDownloadJobRepository', () => {
        where singleton_key = true`,
     );
 
-    await expect(repository!.findReadyActiveModel()).resolves.toEqual({
+    await expect(downloadRepository!.findReadyActiveModel()).resolves.toEqual({
       modelCode: model.code,
       revision: model.revision,
     });
@@ -212,7 +215,7 @@ describe.sequential('PostgresDownloadJobRepository', () => {
       dispose: async () => undefined,
     };
     const service = new SemanticWorkerService({
-      repository: repository!,
+      repository: downloadRepository!,
       runtime,
       modelsDirectory: '/models',
       verifyModel: async () => true,
@@ -234,8 +237,8 @@ describe.sequential('PostgresDownloadJobRepository', () => {
 
   it('completes full and incremental index jobs with consistent state', async () => {
     const fullId = await enqueueIndex('full_index');
-    await repository!.claimNextIndex('full-worker', 60_000);
-    await repository!.completeIndex(fullId, 'full-worker');
+    await indexRepository!.claimNextIndex('full-worker', 60_000);
+    await indexRepository!.completeIndex(fullId, 'full-worker');
 
     const full = await pool!.query<{ jobs: number }>(
       `select count(*)::int as jobs
@@ -252,8 +255,8 @@ describe.sequential('PostgresDownloadJobRepository', () => {
        where singleton_key = true`,
     );
     const incrementalId = await enqueueIndex('incremental', '10000000-0000-4000-8000-000000000090');
-    await repository!.claimNextIndex('incremental-worker', 60_000);
-    await repository!.completeIndex(incrementalId, 'incremental-worker');
+    await indexRepository!.claimNextIndex('incremental-worker', 60_000);
+    await indexRepository!.completeIndex(incrementalId, 'incremental-worker');
 
     const incremental = await pool!.query<{
       jobs: number;
@@ -278,8 +281,8 @@ describe.sequential('PostgresDownloadJobRepository', () => {
     const id = await enqueueIndex('full_index');
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await repository!.claimNextIndex(`index-worker-${attempt}`, 60_000);
-      await repository!.failIndex(id, `index-worker-${attempt}`, '索引失败'.repeat(200));
+      await indexRepository!.claimNextIndex(`index-worker-${attempt}`, 60_000);
+      await indexRepository!.failIndex(id, `index-worker-${attempt}`, '索引失败'.repeat(200));
     }
 
     const result = await pool!.query<{
@@ -331,8 +334,8 @@ describe.sequential('PostgresDownloadJobRepository', () => {
     const id = await enqueueIndex('incremental', '10000000-0000-4000-8000-000000000090');
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await repository!.claimNextIndex(`incremental-worker-${attempt}`, 60_000);
-      await repository!.failIndex(id, `incremental-worker-${attempt}`, '单条增量索引失败');
+      await indexRepository!.claimNextIndex(`incremental-worker-${attempt}`, 60_000);
+      await indexRepository!.failIndex(id, `incremental-worker-${attempt}`, '单条增量索引失败');
     }
 
     const result = await pool!.query<{
@@ -392,9 +395,9 @@ describe.sequential('PostgresDownloadJobRepository', () => {
        )`,
     );
     const currentId = await enqueueIndex('incremental', '10000000-0000-4000-8000-000000000090');
-    await repository!.claimNextIndex('incremental-worker', 60_000);
+    await indexRepository!.claimNextIndex('incremental-worker', 60_000);
 
-    await repository!.completeIndex(currentId, 'incremental-worker');
+    await indexRepository!.completeIndex(currentId, 'incremental-worker');
 
     const result = await pool!.query<{ jobs: number; status: string }>(
       `select state.status,
@@ -413,12 +416,12 @@ describe.sequential('PostgresDownloadJobRepository', () => {
 
   it('publishes a verified download and queues exactly one full index', async () => {
     const id = await enqueueDownload();
-    await repository!.claimNextDownload('worker-a', 60_000);
+    await downloadRepository!.claimNextDownload('worker-a', 60_000);
 
-    await repository!.markDownloading(id, 'worker-a');
-    await repository!.updateDownloadProgress(id, 'worker-a', model.expectedDownloadBytes);
-    await repository!.markVerifying(id, 'worker-a');
-    await repository!.completeDownload(id, 'worker-a');
+    await downloadRepository!.markDownloading(id, 'worker-a');
+    await downloadRepository!.updateDownloadProgress(id, 'worker-a', model.expectedDownloadBytes);
+    await downloadRepository!.markVerifying(id, 'worker-a');
+    await downloadRepository!.completeDownload(id, 'worker-a');
 
     const settings = await pool!.query<{
       file_status: string;
@@ -459,8 +462,8 @@ describe.sequential('PostgresDownloadJobRepository', () => {
     const id = await enqueueDownload();
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await repository!.claimNextDownload(`worker-${attempt}`, 60_000);
-      await repository!.failDownload(id, `worker-${attempt}`, '失败'.repeat(400));
+      await downloadRepository!.claimNextDownload(`worker-${attempt}`, 60_000);
+      await downloadRepository!.failDownload(id, `worker-${attempt}`, '失败'.repeat(400));
     }
 
     const result = await pool!.query<{

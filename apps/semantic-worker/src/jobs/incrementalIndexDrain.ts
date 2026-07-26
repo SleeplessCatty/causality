@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { SemanticEntityType } from '@causality/contracts';
 import type { Pool } from 'pg';
 
-import type { SemanticIndexJob } from './jobRepository.js';
+import type { SemanticIndexJob } from './jobTypes.js';
 
 interface ClaimedIncrementalRow {
   id: string;

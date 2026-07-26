@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { MODEL_CATALOG } from '@causality/semantic-core';
 
 import type { IndexBuilder } from './indexBuilder.js';
-import type { DownloadJobRepository, IndexJobRepository } from './jobRepository.js';
+import type { DownloadJobRepository, IndexJobRepository } from './jobTypes.js';
+import { startLeaseHeartbeat } from './leaseHeartbeat.js';
 import type { ModelDownloader } from '../model/modelDownloader.js';
 import { verifyReadyModel } from '../model/modelDownloader.js';
 
@@ -40,28 +41,22 @@ export class DownloadJobRunner {
     );
     if (!job) return false;
 
-    let leaseFailure: unknown;
-    const heartbeat = setInterval(
-      () => {
-        void this.options.repository
-          .renewLease(job.id, this.options.workerId, this.leaseMilliseconds)
-          .catch((error: unknown) => {
-            leaseFailure = error;
-          });
-      },
-      Math.max(1_000, Math.floor(this.leaseMilliseconds / 3)),
-    );
-    heartbeat.unref();
+    const heartbeat = startLeaseHeartbeat({
+      leaseMilliseconds: this.leaseMilliseconds,
+      renew: () =>
+        this.options.repository.renewLease(job.id, this.options.workerId, this.leaseMilliseconds),
+    });
 
     try {
       const model = MODEL_CATALOG[job.modelCode];
       const target = join(this.options.modelsDirectory, model.code, model.revision);
+      heartbeat.assertValid();
       await this.options.repository.markDownloading(job.id, this.options.workerId);
 
       let lastProgressAt = Number.NEGATIVE_INFINITY;
       let lastLoadedBytes = -1;
       await this.options.downloader.download(model, target, async (loadedBytes, totalBytes) => {
-        if (leaseFailure) throw leaseFailure;
+        heartbeat.assertValid();
         if (totalBytes !== model.expectedDownloadBytes) {
           throw new Error('Model download total does not match the pinned manifest');
         }
@@ -69,6 +64,7 @@ export class DownloadJobRunner {
         const isComplete = loadedBytes === totalBytes;
         if (isComplete || now - lastProgressAt >= 250) {
           if (loadedBytes !== lastLoadedBytes) {
+            heartbeat.assertValid();
             await this.options.repository.updateDownloadProgress(
               job.id,
               this.options.workerId,
@@ -80,20 +76,29 @@ export class DownloadJobRunner {
         }
       });
 
-      if (leaseFailure) throw leaseFailure;
+      heartbeat.assertValid();
       await this.options.repository.markVerifying(job.id, this.options.workerId);
       if (!(await this.verifyModel(model, target))) {
         throw new Error('Downloaded model failed final manifest verification');
       }
+      await heartbeat.stop();
+      heartbeat.assertValid();
       await this.options.repository.completeDownload(job.id, this.options.workerId);
     } catch (error) {
+      await heartbeat.stop();
+      let failure = error;
+      try {
+        heartbeat.assertValid();
+      } catch (leaseError) {
+        failure = leaseError;
+      }
       await this.options.repository.failDownload(
         job.id,
         this.options.workerId,
-        errorMessage(error),
+        errorMessage(failure),
       );
     } finally {
-      clearInterval(heartbeat);
+      await heartbeat.stop();
     }
     return true;
   }
@@ -120,31 +125,33 @@ export class IndexJobRunner {
     );
     if (!job) return false;
 
-    let leaseFailure: unknown;
-    const heartbeat = setInterval(
-      () => {
-        void this.options.repository
-          .renewLease(job.id, this.options.workerId, this.leaseMilliseconds)
-          .catch((error: unknown) => {
-            leaseFailure = error;
-          });
-      },
-      Math.max(1_000, Math.floor(this.leaseMilliseconds / 3)),
-    );
-    heartbeat.unref();
+    const heartbeat = startLeaseHeartbeat({
+      leaseMilliseconds: this.leaseMilliseconds,
+      renew: () =>
+        this.options.repository.renewLease(job.id, this.options.workerId, this.leaseMilliseconds),
+    });
 
     try {
+      const assertLeaseValid = () => heartbeat.assertValid();
       if (job.jobType === 'full_index') {
-        await this.options.builder.buildFull(job);
+        await this.options.builder.buildFull(job, assertLeaseValid);
       } else {
-        await this.options.builder.buildIncremental(job);
+        await this.options.builder.buildIncremental(job, assertLeaseValid);
       }
-      if (leaseFailure) throw leaseFailure;
+      await heartbeat.stop();
+      heartbeat.assertValid();
       await this.options.repository.completeIndex(job.id, this.options.workerId);
     } catch (error) {
-      await this.options.repository.failIndex(job.id, this.options.workerId, errorMessage(error));
+      await heartbeat.stop();
+      let failure = error;
+      try {
+        heartbeat.assertValid();
+      } catch (leaseError) {
+        failure = leaseError;
+      }
+      await this.options.repository.failIndex(job.id, this.options.workerId, errorMessage(failure));
     } finally {
-      clearInterval(heartbeat);
+      await heartbeat.stop();
     }
     return true;
   }

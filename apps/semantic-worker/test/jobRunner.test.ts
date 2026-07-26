@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { IndexBuilder } from '../src/jobs/indexBuilder.js';
 import type {
@@ -10,7 +10,7 @@ import type {
   DownloadJobRepository,
   IndexJobRepository,
   SemanticIndexJob,
-} from '../src/jobs/jobRepository.js';
+} from '../src/jobs/jobTypes.js';
 import { DownloadJobRunner, IndexJobRunner } from '../src/jobs/jobRunner.js';
 import type { ModelDownloader } from '../src/model/modelDownloader.js';
 
@@ -68,6 +68,7 @@ function fakeRepository(nextJob: DownloadJob | null = job) {
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -143,6 +144,56 @@ describe('DownloadJobRunner', () => {
 
     await expect(runner.runOnce()).resolves.toBe(false);
     expect(fake.transitions).toEqual(['claimed']);
+  });
+
+  it('waits for an in-flight lease renewal before final download completion', async () => {
+    vi.useFakeTimers();
+    let releaseRenewal!: () => void;
+    const renewal = new Promise<void>((resolve) => {
+      releaseRenewal = resolve;
+    });
+    let downloadStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      downloadStarted = resolve;
+    });
+    let finishDownload!: () => void;
+    const downloadFinished = new Promise<void>((resolve) => {
+      finishDownload = resolve;
+    });
+    const fake = fakeRepository();
+    fake.repository.renewLease = async () => renewal;
+    let markVerifying!: () => void;
+    const verifying = new Promise<void>((resolve) => {
+      markVerifying = resolve;
+    });
+    fake.repository.markVerifying = async () => {
+      fake.transitions.push('verifying');
+      markVerifying();
+    };
+    const runner = new DownloadJobRunner({
+      repository: fake.repository,
+      downloader: {
+        download: async () => {
+          downloadStarted();
+          await downloadFinished;
+        },
+      },
+      modelsDirectory: await temporaryModelDirectory(),
+      workerId: 'worker-test',
+      leaseMilliseconds: 3_000,
+      verifyModel: async () => true,
+    });
+
+    const running = runner.runOnce();
+    await started;
+    await vi.advanceTimersByTimeAsync(1_000);
+    finishDownload();
+    await verifying;
+
+    expect(fake.transitions).toEqual(['claimed', 'downloading', 'verifying']);
+    releaseRenewal();
+    await expect(running).resolves.toBe(true);
+    expect(fake.transitions).toEqual(['claimed', 'downloading', 'verifying', 'completed']);
   });
 });
 
@@ -248,5 +299,47 @@ describe('IndexJobRunner', () => {
     });
 
     await expect(runner.runOnce()).resolves.toBe(false);
+  });
+
+  it('passes a live lease guard into the index builder before state publication', async () => {
+    vi.useFakeTimers();
+    const leaseFailure = new Error('index lease renewal failed');
+    let buildStarted!: () => void;
+    let releaseBuild!: () => void;
+    const started = new Promise<void>((resolve) => {
+      buildStarted = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseBuild = resolve;
+    });
+    const fake = fakeIndexRepository(fullIndexJob);
+    fake.repository.renewLease = async () => {
+      throw leaseFailure;
+    };
+    let receivedLeaseGuard = false;
+    const runner = new IndexJobRunner({
+      repository: fake.repository,
+      builder: {
+        buildFull: async (_job, assertLeaseValid?: () => void) => {
+          receivedLeaseGuard = assertLeaseValid !== undefined;
+          buildStarted();
+          await release;
+          assertLeaseValid?.();
+        },
+        buildIncremental: async () => undefined,
+      },
+      workerId: 'worker-test',
+      leaseMilliseconds: 3_000,
+    });
+
+    const running = runner.runOnce();
+    await started;
+    await vi.advanceTimersByTimeAsync(1_000);
+    releaseBuild();
+    await expect(running).resolves.toBe(true);
+
+    expect(receivedLeaseGuard).toBe(true);
+    expect(fake.completed).toEqual([]);
+    expect(fake.failures).toEqual([leaseFailure.message]);
   });
 });
