@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import { PostgresIndexBuilder } from '../src/jobs/indexBuilder.js';
 import { PostgresIndexJobRepository } from '../src/jobs/indexJobRepository.js';
+import { IndexJobRunner } from '../src/jobs/jobRunner.js';
 import type { SemanticIndexJob } from '../src/jobs/jobTypes.js';
 import { PostgresSemanticSourceRepository } from '../src/jobs/semanticSourceRepository.js';
 import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
@@ -107,6 +108,7 @@ const incrementalJobId = '40000000-0000-4000-8000-000000000093';
 class FakeEmbeddingRuntime implements EmbeddingRuntime {
   public readonly loadedPaths: string[] = [];
   public embeddedDocuments: string[] = [];
+  public failingDocumentText: string | undefined;
   public onFirstEmbedding: (() => Promise<void>) | undefined;
   private embeddingCalls = 0;
 
@@ -122,6 +124,12 @@ class FakeEmbeddingRuntime implements EmbeddingRuntime {
     this.embeddingCalls += 1;
     this.embeddedDocuments.push(...documents);
     if (this.embeddingCalls === 1) await this.onFirstEmbedding?.();
+    if (
+      this.failingDocumentText &&
+      documents.some((document) => document.includes(this.failingDocumentText!))
+    ) {
+      throw new Error(`Cannot embed document containing ${this.failingDocumentText}`);
+    }
     return documents.map((_document, documentIndex) =>
       Array.from({ length: 384 }, (_unused, dimension) =>
         dimension === documentIndex % 384 ? 1 : 0,
@@ -178,6 +186,10 @@ describe.sequential('PostgresIndexBuilder', () => {
            processed_items = 0,
            total_items = 0,
            pending_items = 0,
+           failed_items = 0,
+           failure_stage = null,
+           failure_kind = null,
+           failure_code = null,
            error = null,
            last_ready_at = null;
        delete from semantic_jobs;
@@ -230,6 +242,10 @@ describe.sequential('PostgresIndexBuilder', () => {
            processed_items = 0,
            total_items = 0,
            pending_items = 0,
+           failed_items = 0,
+           failure_stage = null,
+           failure_kind = null,
+           failure_code = null,
            error = null`,
     );
     sourceRepository = new PostgresSemanticSourceRepository(pool!);
@@ -272,6 +288,152 @@ describe.sequential('PostgresIndexBuilder', () => {
       },
     ]);
     expect(runtime!.loadedPaths).toEqual([]);
+  });
+
+  async function runQueuedFullIndex(): Promise<void> {
+    await pool!.query(
+      `insert into semantic_jobs (
+         id,
+         job_type,
+         model_code,
+         status,
+         state_version
+       )
+       values ($1, 'full_index', 'multilingual-e5-small', 'queued', 11)`,
+      [fullJobId],
+    );
+    const repository = new PostgresIndexJobRepository(pool!);
+    const runner = new IndexJobRunner({
+      repository,
+      builder: builder!,
+      workerId: 'full-index-test-worker',
+    });
+    await expect(runner.runOnce()).resolves.toBe(true);
+  }
+
+  it('isolates one failed source and publishes the remaining full index as incomplete', async () => {
+    runtime!.failingDocumentText = '中央银行提高政策利率';
+
+    await runQueuedFullIndex();
+
+    const result = await pool!.query<{
+      embeddings: number;
+      failed_incrementals: number;
+      failed_items: number;
+      full_jobs: number;
+      processed_items: number;
+      status: string;
+      total_items: number;
+    }>(
+      `select state.status,
+              state.processed_items,
+              state.total_items,
+              state.failed_items,
+              (
+                select count(*)::int
+                from semantic_embeddings
+              ) as embeddings,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'incremental'
+                  and status = 'failed'
+                  and model_code = 'multilingual-e5-small'
+                  and state_version = 11
+                  and entity_type = 'event'
+                  and entity_id = $1
+                  and failure_code = 'SOURCE_EMBEDDING_FAILED'
+              ) as failed_incrementals,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where id = $2
+              ) as full_jobs
+       from semantic_index_state as state
+       where state.singleton_key = true`,
+      [fullCauseId, fullJobId],
+    );
+
+    expect(result.rows).toEqual([
+      {
+        status: 'incomplete',
+        processed_items: 3,
+        total_items: 4,
+        failed_items: 1,
+        embeddings: 3,
+        failed_incrementals: 1,
+        full_jobs: 0,
+      },
+    ]);
+  });
+
+  it('returns an incomplete index to ready after editing and reindexing its failed source', async () => {
+    runtime!.failingDocumentText = '中央银行提高政策利率';
+    await runQueuedFullIndex();
+    const incomplete = await pool!.query<{
+      full_jobs: number;
+      status: string;
+    }>(
+      `select state.status,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where id = $1
+              ) as full_jobs
+       from semantic_index_state as state
+       where state.singleton_key = true`,
+      [fullJobId],
+    );
+    expect(incomplete.rows).toEqual([{ status: 'incomplete', full_jobs: 0 }]);
+
+    runtime!.failingDocumentText = undefined;
+    await pool!.query(
+      `update abstract_events
+       set description = '中央银行调整并提高基准政策利率'
+       where id = $1`,
+      [fullCauseId],
+    );
+
+    const repository = new PostgresIndexJobRepository(pool!);
+    const runner = new IndexJobRunner({
+      repository,
+      builder: builder!,
+      workerId: 'incremental-recovery-test-worker',
+    });
+    await expect(runner.runOnce()).resolves.toBe(true);
+
+    const result = await pool!.query<{
+      failed_incrementals: number;
+      failed_items: number;
+      pending_items: number;
+      status: string;
+    }>(
+      `select state.status,
+              state.pending_items,
+              state.failed_items,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'incremental'
+                  and status = 'failed'
+                  and model_code = 'multilingual-e5-small'
+                  and state_version = 11
+                  and entity_type = 'event'
+                  and entity_id = $1
+              ) as failed_incrementals
+       from semantic_index_state as state
+       where state.singleton_key = true`,
+      [fullCauseId],
+    );
+
+    expect(result.rows).toEqual([
+      {
+        status: 'ready',
+        pending_items: 0,
+        failed_items: 0,
+        failed_incrementals: 0,
+      },
+    ]);
   });
 
   it('writes each inference batch in one database transaction', async () => {
@@ -324,6 +486,41 @@ describe.sequential('PostgresIndexBuilder', () => {
       await expect(builder!.buildFull(fullJob())).resolves.toBeUndefined();
     } finally {
       querySpy.mockRestore();
+    }
+  });
+
+  it('refuses publication when a vector disappears after validation', async () => {
+    const repository = new PostgresIndexJobRepository(pool!);
+    const guardedBuilder = new PostgresIndexBuilder({
+      pool: pool!,
+      stateRepository: repository,
+      sourceRepository: sourceRepository!,
+      runtime: runtime!,
+    });
+    const publishIndex = repository.publishIndex.bind(repository);
+    const publishSpy = vi.spyOn(repository, 'publishIndex');
+    publishSpy.mockImplementationOnce(async (...arguments_) => {
+      await pool!.query(
+        `delete from semantic_embeddings
+         where entity_type = 'event'
+           and entity_id = $1`,
+        [fullCauseId],
+      );
+      return publishIndex(...arguments_);
+    });
+
+    try {
+      await expect(guardedBuilder.buildFull(fullJob())).rejects.toThrow(
+        'Semantic index validation failed',
+      );
+      const state = await pool!.query<{ status: string }>(
+        `select status
+         from semantic_index_state
+         where singleton_key = true`,
+      );
+      expect(state.rows).toEqual([{ status: 'building' }]);
+    } finally {
+      publishSpy.mockRestore();
     }
   });
 

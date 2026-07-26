@@ -37,12 +37,13 @@ describe.sequential('semantic job repositories', () => {
     );
     await pool!.query(
       `update semantic_index_state
-       set active_model_code = $1,
+      set active_model_code = $1,
            status = 'waiting_model',
            state_version = 7,
            processed_items = 0,
            total_items = 0,
            pending_items = 0,
+           failed_items = 0,
            failure_stage = null,
            failure_kind = null,
            failure_code = null,
@@ -394,6 +395,7 @@ describe.sequential('semantic job repositories', () => {
     }
 
     const result = await pool!.query<{
+      failed_items: number;
       job_status: string;
       pending_items: number;
       state_error: string | null;
@@ -402,6 +404,7 @@ describe.sequential('semantic job repositories', () => {
       `select job.status as job_status,
               state.status as state_status,
               state.pending_items,
+              state.failed_items,
               state.error as state_error
        from semantic_jobs as job
        join semantic_index_state as state on state.singleton_key = true
@@ -411,8 +414,9 @@ describe.sequential('semantic job repositories', () => {
     expect(result.rows).toEqual([
       {
         job_status: 'failed',
-        state_status: 'ready',
+        state_status: 'incomplete',
         pending_items: 0,
+        failed_items: 1,
         state_error: '单条增量索引失败',
       },
     ]);
@@ -454,8 +458,15 @@ describe.sequential('semantic job repositories', () => {
 
     await indexRepository!.completeIndex(currentId, 'incremental-worker');
 
-    const result = await pool!.query<{ jobs: number; status: string }>(
+    const result = await pool!.query<{
+      failed_items: number;
+      jobs: number;
+      pending_items: number;
+      status: string;
+    }>(
       `select state.status,
+              state.pending_items,
+              state.failed_items,
               (
                 select count(*)::int
                 from semantic_jobs
@@ -466,7 +477,78 @@ describe.sequential('semantic job repositories', () => {
        from semantic_index_state as state
        where singleton_key = true`,
     );
-    expect(result.rows).toEqual([{ status: 'ready', jobs: 0 }]);
+    expect(result.rows).toEqual([{ status: 'ready', pending_items: 0, failed_items: 0, jobs: 0 }]);
+  });
+
+  it('replaces an older failed incremental record when its newer update also fails', async () => {
+    const entityId = '10000000-0000-4000-8000-000000000090';
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'incomplete',
+           failed_items = 1
+       where singleton_key = true`,
+    );
+    await pool!.query(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         entity_type,
+         entity_id,
+         status,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         error
+       )
+       values (
+         'incremental',
+         $1,
+         'event',
+         $2,
+         'failed',
+         7,
+         3,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         '旧增量任务失败'
+      )`,
+      [model.code, entityId],
+    );
+    const currentId = await enqueueIndex('incremental', entityId);
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const workerId = `replacement-worker-${attempt}`;
+      await indexRepository!.claimNextIndex(workerId, 60_000);
+      await indexRepository!.failIndex(currentId, workerId, '更新后的记录仍无法建立索引');
+    }
+
+    const result = await pool!.query<{
+      failed_items: number;
+      failures: number;
+      pending_items: number;
+      status: string;
+    }>(
+      `select state.status,
+              state.pending_items,
+              state.failed_items,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'incremental'
+                  and status = 'failed'
+                  and model_code = $1
+                  and state_version = 7
+                  and entity_type = 'event'
+                  and entity_id = $2
+              ) as failures
+       from semantic_index_state as state
+       where state.singleton_key = true`,
+      [model.code, entityId],
+    );
+    expect(result.rows).toEqual([
+      { status: 'incomplete', pending_items: 0, failed_items: 1, failures: 1 },
+    ]);
   });
 
   it('publishes a verified download and queues exactly one load job', async () => {

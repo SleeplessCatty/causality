@@ -138,15 +138,33 @@ export class PostgresIncrementalIndexDrain {
       await buildIncremental(incremental);
       await renewalTail;
       if (leaseFailure) throw leaseFailure;
-      const completed = await this.pool.query(
+      const completed = await this.pool.query<{ id: string }>(
         `delete from semantic_jobs
-         where id = $1
-           and job_type = 'incremental'
-           and status = 'running'
-           and lease_owner = $2`,
-        [incremental.id, leaseOwner],
+         where (
+             id = $1
+             and job_type = 'incremental'
+             and status = 'running'
+             and lease_owner = $2
+           )
+           or (
+             job_type = 'incremental'
+             and status = 'failed'
+             and model_code = $3
+             and state_version = $4
+             and entity_type = $5
+             and entity_id = $6
+           )
+         returning id`,
+        [
+          incremental.id,
+          leaseOwner,
+          incremental.modelCode,
+          incremental.stateVersion,
+          incremental.entityType,
+          incremental.entityId,
+        ],
       );
-      if (completed.rowCount !== 1) {
+      if (!completed.rows.some((row) => row.id === incremental.id)) {
         throw new Error('Lost drained incremental index lease');
       }
     } finally {
@@ -161,7 +179,7 @@ export class PostgresIncrementalIndexDrain {
          select 1
          from semantic_jobs
          where job_type = 'incremental'
-           and status in ('queued', 'running')
+           and status in ('queued', 'running', 'retry_wait')
            and model_code = $1
            and state_version = $2
        ) as pending`,

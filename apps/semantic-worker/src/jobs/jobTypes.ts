@@ -24,6 +24,13 @@ export interface SemanticIndexJob extends SemanticJob {
   entityId: string | null;
 }
 
+export interface RecordFailure {
+  entityType: SemanticEntityType;
+  entityId: string;
+  code: 'SOURCE_EMBEDDING_FAILED';
+  message: string;
+}
+
 export interface ReadyActiveModel {
   modelCode: SemanticModelCode;
   revision: string;
@@ -86,5 +93,6 @@ export interface IndexStateRepository {
     totalItems: number,
   ): Promise<void>;
   publishIndex(job: SemanticIndexJob, indexedItems: number, failedItems: number): Promise<boolean>;
+  recordSourceFailure(job: SemanticIndexJob, failure: RecordFailure): Promise<void>;
   refreshIncrementalState(job: SemanticIndexJob): Promise<void>;
 }

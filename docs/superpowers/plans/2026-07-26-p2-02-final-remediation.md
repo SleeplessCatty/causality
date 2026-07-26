@@ -986,7 +986,7 @@ interface RecordFailure {
 }
 ```
 
-- [ ] **Step 1: Write full-build record isolation test**
+- [x] **Step 1: Write full-build record isolation test**
 
 Configure the fake runtime to fail one known document while embedding every other record. After full build:
 
@@ -1003,7 +1003,7 @@ expect(currentFailedIncrementalCount).toBe(1);
 
 Assert the full-index job completes and is deleted.
 
-- [ ] **Step 2: Write incomplete-to-ready recovery test**
+- [x] **Step 2: Write incomplete-to-ready recovery test**
 
 Modify the failed business record so the normal write trigger supersedes its old failure. Run the resulting incremental job successfully and assert:
 
@@ -1017,17 +1017,17 @@ expect(indexState).toMatchObject({
 
 The UI still offers no manual single-record retry; normal business editing may naturally resolve the record.
 
-- [ ] **Step 3: Run integration tests and verify failure**
+- [x] **Step 3: Run integration tests and verify failure**
 
 Run:
 
 ```bash
-pnpm --filter @causality/semantic-worker test:integration -- indexBuilder.integration.test.ts jobRepository.integration.test.ts
+pnpm --filter @causality/semantic-worker test:integration
 ```
 
 Expected: FAIL because one record currently fails the whole batch/full job and incomplete status does not exist.
 
-- [ ] **Step 4: Implement batch fallback**
+- [x] **Step 4: Implement batch fallback**
 
 Try the normal batch first. If batch inference fails, process each record independently:
 
@@ -1048,7 +1048,7 @@ for (const record of records) {
 
 Do not reduce normal-path batch efficiency.
 
-- [ ] **Step 5: Publish ready or incomplete atomically**
+- [x] **Step 5: Publish ready or incomplete atomically**
 
 Validation accepts a missing vector only when a current model/version failed incremental record explains the same entity. Any unexplained missing vector, stale hash, wrong model, invalid dimension, or extra vector fails publication.
 
@@ -1060,7 +1060,7 @@ processedItems = indexedItems;
 totalItems = indexedItems + failedItems;
 ```
 
-- [ ] **Step 6: Fix incremental aggregation**
+- [x] **Step 6: Fix incremental aggregation**
 
 After an incremental finishes:
 
@@ -1072,7 +1072,7 @@ else status = 'ready';
 
 A new queued job for the same entity deletes or supersedes its older failed record. A successful job removes current failure state for that entity.
 
-- [ ] **Step 7: Run index tests**
+- [x] **Step 7: Run index tests**
 
 Run:
 
@@ -1083,7 +1083,7 @@ pnpm --filter @causality/semantic-worker test:integration
 
 Expected: full publication, concurrent writes, incomplete index, natural recovery, reindex, and stale-version tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/semantic-worker/src/jobs apps/semantic-worker/test
