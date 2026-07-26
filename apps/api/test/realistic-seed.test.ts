@@ -6,13 +6,13 @@ import {
 } from '../src/database/test-data/realisticSeedData.js';
 
 describe('realistic seed data', () => {
-  it('contains 200 unique, bounded, non-stress events', () => {
+  it('contains 600 unique, bounded, realistic events', () => {
     const events = realisticSeedChains.flatMap((chain) => chain.events);
     const names = events.map(([name]) => name);
 
-    expect(realisticSeedChains).toHaveLength(40);
-    expect(events).toHaveLength(200);
-    expect(new Set(names).size).toBe(200);
+    expect(realisticSeedChains).toHaveLength(120);
+    expect(events).toHaveLength(600);
+    expect(new Set(names).size).toBe(600);
     expect(events.every(([name, alias]) => name.length <= 50 && alias.length <= 80)).toBe(true);
     expect(events.every(([name, alias]) => !name.includes('SIM-') && !alias.includes('SIM-'))).toBe(
       true,
@@ -29,8 +29,8 @@ describe('realistic seed data', () => {
     directions.push(...realisticSeedBridges.map((bridge) => `${bridge.cause}→${bridge.effect}`));
 
     expect(realisticSeedBridges).toHaveLength(20);
-    expect(directions).toHaveLength(180);
-    expect(new Set(directions).size).toBe(180);
+    expect(directions).toHaveLength(500);
+    expect(new Set(directions).size).toBe(500);
     expect(
       realisticSeedBridges.every(
         (bridge) =>

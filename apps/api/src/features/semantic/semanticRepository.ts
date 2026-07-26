@@ -113,6 +113,15 @@ async function assertNoActiveHighLevelTask(client: PoolClient): Promise<void> {
   }
 }
 
+async function clearCurrentIndex(client: PoolClient): Promise<void> {
+  await client.query(`truncate table semantic_embeddings`);
+  await client.query(
+    `delete from semantic_jobs
+     where job_type = 'incremental'
+       and status = 'queued'`,
+  );
+}
+
 async function enqueueHighLevelTask(
   client: PoolClient,
   input: {
@@ -306,12 +315,7 @@ export class PostgresSemanticRepository implements SemanticRepository {
 
       const jobType = target.download_status === 'downloaded' ? 'full_index' : 'download';
       const stateVersion = state.state_version + 1;
-      await client.query(`delete from semantic_embeddings`);
-      await client.query(
-        `delete from semantic_jobs
-         where job_type = 'incremental'
-           and status = 'queued'`,
-      );
+      await clearCurrentIndex(client);
       await client.query(
         `update semantic_model_settings
          set download_status = case
@@ -330,6 +334,51 @@ export class PostgresSemanticRepository implements SemanticRepository {
       await updateRequestedState(client, { jobType, modelCode, stateVersion });
       const taskId = await enqueueHighLevelTask(client, { jobType, modelCode, stateVersion });
       return { accepted: true, taskId, activeModelCode: modelCode };
+    });
+  }
+
+  public requestReindex(): Promise<SemanticUseModelResponse> {
+    return this.withTransaction(async (client) => {
+      const state = await lockIndexState(client);
+      await assertNoActiveHighLevelTask(client);
+      if (!state.active_model_code) {
+        throw new SemanticRepositoryError(
+          'SEMANTIC_MODEL_UNAVAILABLE',
+          '当前没有正在使用的语义模型',
+        );
+      }
+
+      const targetResult = await client.query<TargetModelRow>(
+        `select download_status
+         from semantic_model_settings
+         where model_code = $1
+         for update`,
+        [state.active_model_code],
+      );
+      if (targetResult.rows[0]?.download_status !== 'downloaded') {
+        throw new SemanticRepositoryError('SEMANTIC_MODEL_UNAVAILABLE', '当前语义模型尚未下载完成');
+      }
+
+      const stateVersion = state.state_version + 1;
+      await clearCurrentIndex(client);
+      await client.query(
+        `update semantic_model_settings
+         set error = null,
+             updated_at = clock_timestamp()
+         where model_code = $1`,
+        [state.active_model_code],
+      );
+      await updateRequestedState(client, {
+        jobType: 'full_index',
+        modelCode: state.active_model_code,
+        stateVersion,
+      });
+      const taskId = await enqueueHighLevelTask(client, {
+        jobType: 'full_index',
+        modelCode: state.active_model_code,
+        stateVersion,
+      });
+      return { accepted: true, taskId, activeModelCode: state.active_model_code };
     });
   }
 
@@ -357,7 +406,7 @@ export class PostgresSemanticRepository implements SemanticRepository {
         throw new SemanticRepositoryError('SEMANTIC_INDEX_FAILED', '没有可重试的失败任务');
       }
 
-      await client.query(`delete from semantic_embeddings`);
+      await clearCurrentIndex(client);
       await client.query(
         `update semantic_model_settings
          set download_status = case

@@ -1109,27 +1109,33 @@ body {
 
 .semantic-model-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .semantic-model-card {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  padding: 17px;
+  padding: 12px;
   border: 1px solid #d7e0d9;
   border-radius: 7px;
   background: #fbfcfb;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.semantic-model-card--active {
+  border-color: #183d30;
+  background: #183d30;
+  color: #f4fbf7;
 }
 
 .semantic-model-card__heading {
-  display: flex;
   min-width: 0;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
 }
 
 .semantic-model-card__heading > div:first-child {
@@ -1139,34 +1145,34 @@ body {
 .semantic-model-card__heading h2 {
   margin: 0;
   color: #1e3f32;
-  font-size: 17px;
+  font-size: 15px;
   letter-spacing: -0.015em;
 }
 
 .semantic-model-card__heading p {
-  margin: 5px 0 0;
+  min-height: 34px;
+  margin: 4px 0 0;
   color: #6b786f;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .semantic-model-card__badges {
   display: flex;
-  flex: none;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px;
+  gap: 4px;
+  margin-top: 9px;
 }
 
 .semantic-badge {
   display: inline-flex;
-  min-height: 24px;
+  min-height: 21px;
   align-items: center;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: var(--neutral-soft);
   color: var(--neutral);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 720;
   white-space: nowrap;
 }
@@ -1189,12 +1195,16 @@ body {
 
 .semantic-model-card__metadata {
   display: grid;
-  grid-template-columns: 1.5fr 0.8fr 1fr;
-  gap: 12px;
-  margin: 16px 0 0;
-  padding: 12px 0;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 8px 10px;
+  margin: 11px 0 0;
+  padding: 9px 0;
   border-top: 1px solid #e5eae6;
   border-bottom: 1px solid #e5eae6;
+}
+
+.semantic-model-card__metadata > div:last-child {
+  grid-column: 1 / -1;
 }
 
 .semantic-model-card__metadata div {
@@ -1209,7 +1219,7 @@ body {
 
 .semantic-model-card__metadata dd {
   min-width: 0;
-  margin: 5px 0 0;
+  margin: 3px 0 0;
   color: #30483d;
   font-size: 11px;
   line-height: 1.45;
@@ -1217,7 +1227,7 @@ body {
 }
 
 .semantic-model-card .confidence-field {
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .semantic-model-card .confidence-field > label {
@@ -1225,18 +1235,18 @@ body {
 }
 
 .semantic-model-card .confidence-control {
-  grid-template-columns: minmax(0, 1fr) 100px;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 80px;
+  gap: 8px;
 }
 
 .semantic-model-card .confidence-control > div {
-  height: 36px;
+  height: 32px;
 }
 
 .semantic-model-card .confidence-control input[type='number'] {
-  width: 68px;
-  padding-left: 11px;
-  font-size: 12px;
+  width: 55px;
+  padding-left: 8px;
+  font-size: 11px;
 }
 
 .semantic-model-card .field-help {
@@ -1258,12 +1268,54 @@ body {
   display: flex;
   justify-content: flex-end;
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: 10px;
 }
 
 .semantic-model-card__actions .button {
-  min-height: 34px;
-  font-size: 12px;
+  min-height: 31px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.semantic-model-card--active .semantic-model-card__heading h2,
+.semantic-model-card--active .semantic-model-card__metadata dd,
+.semantic-model-card--active .confidence-field > label {
+  color: #f4fbf7;
+}
+
+.semantic-model-card--active .semantic-model-card__heading p,
+.semantic-model-card--active .semantic-model-card__metadata dt,
+.semantic-model-card--active .field-help {
+  color: #c6d9cf;
+}
+
+.semantic-model-card--active .semantic-model-card__metadata {
+  border-color: rgb(221 239 229 / 20%);
+}
+
+.semantic-model-card--active .semantic-badge--positive {
+  background: #d7efe2;
+  color: #174532;
+}
+
+.semantic-model-card--active .semantic-badge--neutral {
+  background: rgb(255 255 255 / 12%);
+  color: #edf7f1;
+}
+
+.semantic-model-card--active .semantic-badge--working {
+  background: #e7edc9;
+  color: #475813;
+}
+
+.semantic-model-card--active .button--secondary {
+  border-color: rgb(255 255 255 / 32%);
+  background: rgb(255 255 255 / 10%);
+  color: #fff;
+}
+
+.semantic-model-card--active .button--secondary:hover:not(:disabled) {
+  background: rgb(255 255 255 / 18%);
 }
 
 .semantic-task-panel {

@@ -174,16 +174,67 @@ describe('ParameterSettings', () => {
     );
     renderPage();
 
-    expect(await screen.findByText('当前使用')).toBeTruthy();
-    expect(screen.getByText('正在生成索引')).toBeTruthy();
+    const activeModel = await screen.findByRole('article', { name: '轻量快速' });
+    expect(activeModel.className).toContain('semantic-model-card--active');
+    expect(within(activeModel).getByText('已下载')).toBeTruthy();
+    expect(within(activeModel).getByText('暂不可用')).toBeTruthy();
+    expect(within(activeModel).getByText('索引生成中')).toBeTruthy();
     expect(screen.getByText('120 / 1000')).toBeTruthy();
     const progress = screen.getByRole('progressbar', { name: '索引生成进度' });
     expect((progress as HTMLProgressElement).value).toBe(120);
     expect(
-      within(screen.getByRole('article', { name: '轻量快速' })).queryByRole('button', {
-        name: /使用/u,
-      }),
-    ).toBeNull();
+      (within(activeModel).getByRole('button', { name: '重新索引' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it('shows independent download, availability, and index badges and requests a full reindex', async () => {
+    const activeReady: SemanticSettingsResponse = {
+      ...settings,
+      activeModelCode: 'multilingual-e5-small',
+      index: {
+        status: 'ready',
+        processedItems: 600,
+        totalItems: 600,
+        pendingItems: 0,
+        updatedAt: '2026-07-23T11:00:00.000Z',
+        error: null,
+      },
+      models: settings.models.map((model) =>
+        model.code === 'multilingual-e5-small'
+          ? { ...model, isActive: true, downloadStatus: 'downloaded' as const }
+          : model,
+      ),
+    };
+    const fetchMock = vi.fn((input: string | URL | Request) =>
+      String(input).endsWith('/reindex')
+        ? jsonResponse(
+            {
+              accepted: true,
+              taskId: '44444444-4444-4444-8444-444444444444',
+              activeModelCode: 'multilingual-e5-small',
+            },
+            202,
+          )
+        : jsonResponse(activeReady),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    const activeModel = await screen.findByRole('article', { name: '轻量快速' });
+    expect(within(activeModel).getByText('已下载')).toBeTruthy();
+    expect(within(activeModel).getByText('可用')).toBeTruthy();
+    expect(within(activeModel).getByText('索引就绪')).toBeTruthy();
+    fireEvent.click(within(activeModel).getByRole('button', { name: '重新索引' }));
+    const dialog = screen.getByRole('dialog', { name: '确认重新索引' });
+    expect(dialog.textContent).toContain('不会删除原子事件、因果关系和具体案例');
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认重新索引' }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/semantic/reindex',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
   });
 
   it('starts the first model directly, confirms a switch, saves thresholds, and retries failures', async () => {

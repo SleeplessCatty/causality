@@ -6,6 +6,9 @@ import { SemanticWorkerClientError } from '../src/features/semantic/semanticWork
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 const eventId = '10000000-0000-4000-8000-000000000080';
+const reindexEffectEventId = '10000000-0000-4000-8000-000000000083';
+const reindexRelationId = '20000000-0000-4000-8000-000000000083';
+const reindexCaseId = '30000000-0000-4000-8000-000000000083';
 
 describe.sequential('semantic configuration API', () => {
   let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
@@ -25,7 +28,15 @@ describe.sequential('semantic configuration API', () => {
   beforeEach(async () => {
     await pool!.query(`delete from semantic_jobs`);
     await pool!.query(`delete from semantic_embeddings`);
-    await pool!.query(`delete from abstract_events where id = $1`, [eventId]);
+    await pool!.query(
+      `delete from causal_relation_cases where causal_relation_id = $1 or concrete_case_id = $2`,
+      [reindexRelationId, reindexCaseId],
+    );
+    await pool!.query(`delete from causal_relations where id = $1`, [reindexRelationId]);
+    await pool!.query(`delete from concrete_cases where id = $1`, [reindexCaseId]);
+    await pool!.query(`delete from abstract_events where id = any($1::uuid[])`, [
+      [eventId, reindexEffectEventId],
+    ]);
     await pool!.query(
       `update semantic_model_settings
        set threshold = case
@@ -229,6 +240,107 @@ describe.sequential('semantic configuration API', () => {
        from semantic_jobs`,
     );
     expect(jobs.rows).toEqual([{ job_type: 'full_index', model_code: 'bge-m3', status: 'queued' }]);
+  });
+
+  it('rebuilds the active index without deleting events, relations, or cases', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'multilingual-e5-small'`,
+    );
+    await pool!.query(
+      `update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 7,
+           processed_items = 4,
+           total_items = 4
+       where singleton_key = true`,
+    );
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values ($1, '重新索引原因事件'), ($2, '重新索引结果事件')`,
+      [eventId, reindexEffectEventId],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       values ($3, $1, $2, 72)`,
+      [eventId, reindexEffectEventId, reindexRelationId],
+    );
+    await pool!.query(
+      `insert into concrete_cases (id, content)
+       values ($1, '2026年7月，测试地区记录到重新索引验证案例。')`,
+      [reindexCaseId],
+    );
+    await pool!.query(
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+       values ($1, $2)`,
+      [reindexRelationId, reindexCaseId],
+    );
+    await pool!.query(
+      `insert into semantic_embeddings
+         (entity_type, entity_id, model_code, source_hash, embedding)
+       values (
+         'event',
+         $1,
+         'multilingual-e5-small',
+         repeat('a', 64),
+         array_fill(0.1, array[384])::vector
+       )`,
+      [eventId],
+    );
+
+    const response = await context!.app.inject({
+      method: 'POST',
+      url: '/api/semantic/reindex',
+    });
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      activeModelCode: 'multilingual-e5-small',
+    });
+
+    const result = await pool!.query<{
+      cases: number;
+      embeddings: number;
+      events: number;
+      relations: number;
+      state_version: number;
+      status: string;
+    }>(
+      `select
+         (select count(*)::int from abstract_events where id = any($1::uuid[])) as events,
+         (select count(*)::int from causal_relations where id = $2) as relations,
+         (select count(*)::int from concrete_cases where id = $3) as cases,
+         (select count(*)::int from semantic_embeddings) as embeddings,
+         state_version,
+         status
+       from semantic_index_state
+       where singleton_key = true`,
+      [[eventId, reindexEffectEventId], reindexRelationId, reindexCaseId],
+    );
+    expect(result.rows).toEqual([
+      {
+        events: 2,
+        relations: 1,
+        cases: 1,
+        embeddings: 0,
+        state_version: 8,
+        status: 'loading',
+      },
+    ]);
+    const jobs = await pool!.query<{ job_type: string; model_code: string; status: string }>(
+      `select job_type, model_code, status
+       from semantic_jobs`,
+    );
+    expect(jobs.rows).toEqual([
+      {
+        job_type: 'full_index',
+        model_code: 'multilingual-e5-small',
+        status: 'queued',
+      },
+    ]);
   });
 
   it('retries the latest failed high-level task and validates fixed model parameters', async () => {

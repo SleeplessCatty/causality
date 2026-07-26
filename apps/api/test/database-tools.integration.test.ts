@@ -49,12 +49,12 @@ describe.sequential('database data tools', () => {
          (select count(*) from causal_relation_cases) as "caseLinks"`,
     );
     expect(counts.rows[0]).toEqual({
-      events: '200',
-      aliases: '200',
-      keywords: '400',
-      relations: '180',
-      cases: '220',
-      caseLinks: '220',
+      events: '600',
+      aliases: '600',
+      keywords: '1200',
+      relations: '500',
+      cases: '620',
+      caseLinks: '620',
     });
 
     const event = await pool!.query<{ description: string }>(
@@ -76,16 +76,58 @@ describe.sequential('database data tools', () => {
     ]);
   });
 
+  it('adds the expanded seed to an existing 200-event seed without replacing prior records', async () => {
+    await pool!.query(
+      `delete from causal_relation_cases
+       where split_part(concrete_case_id::text, '-', 5)::bigint > 220;
+       delete from concrete_cases
+       where id::text like '00000000-0000-4000-8200-%'
+         and split_part(id::text, '-', 5)::bigint > 220;
+       delete from causal_relations
+       where id::text like '00000000-0000-4000-8100-%'
+         and split_part(id::text, '-', 5)::bigint > 180;
+       delete from event_keywords
+       where event_id::text like '00000000-0000-4000-8000-%'
+         and split_part(event_id::text, '-', 5)::bigint > 200;
+       delete from event_aliases
+       where event_id::text like '00000000-0000-4000-8000-%'
+         and split_part(event_id::text, '-', 5)::bigint > 200;
+       delete from abstract_events
+       where id::text like '00000000-0000-4000-8000-%'
+         and split_part(id::text, '-', 5)::bigint > 200`,
+    );
+
+    await runFixedSeed(pool!);
+
+    const counts = await pool!.query<{
+      cases: number;
+      events: number;
+      relations: number;
+    }>(
+      `select
+         (select count(*)::int from abstract_events) as events,
+         (select count(*)::int from causal_relations) as relations,
+         (select count(*)::int from concrete_cases) as cases`,
+    );
+    expect(counts.rows[0]).toEqual({ events: 600, relations: 500, cases: 620 });
+    const priorBridge = await pool!.query<{ description: string | null }>(
+      `select description
+       from causal_relations
+       where id = '00000000-0000-4000-8100-000000000161'`,
+    );
+    expect(priorBridge.rows[0]?.description).toBe('融资支出增加会削弱企业的盈利预期');
+  });
+
   it('reports migration state, counts, and zero integrity violations', async () => {
     const report = await verifyDatabase(pool!);
 
     expect(report.migrationApplied).toBe(true);
     expect(report.counts).toEqual({
-      abstractEvents: 200,
-      eventAliases: 200,
-      causalRelations: 180,
-      concreteCases: 220,
-      causalRelationCaseLinks: 220,
+      abstractEvents: 600,
+      eventAliases: 600,
+      causalRelations: 500,
+      concreteCases: 620,
+      causalRelationCaseLinks: 620,
     });
     expect(report.integrity).toEqual({
       selfLoops: 0,
@@ -137,17 +179,17 @@ describe.sequential('database data tools', () => {
 
     const report = await verifyDatabase(pool!);
     expect(report.counts).toEqual({
-      abstractEvents: 220,
-      eventAliases: 220,
-      causalRelations: 230,
-      concreteCases: 300,
-      causalRelationCaseLinks: 295,
+      abstractEvents: 620,
+      eventAliases: 620,
+      causalRelations: 550,
+      concreteCases: 700,
+      causalRelationCaseLinks: 695,
     });
     expect(report.valid).toBe(true);
 
     const keywordCount = await pool!.query<{ count: string }>(
       'select count(*) from event_keywords',
     );
-    expect(keywordCount.rows[0]?.count).toBe('440');
+    expect(keywordCount.rows[0]?.count).toBe('1240');
   });
 });

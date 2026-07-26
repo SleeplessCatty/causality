@@ -88,7 +88,15 @@ const bridgeRelationDefinitions = realisticSeedBridges.map((bridge) => {
   };
 });
 
-const relationDefinitions = [...chainRelationDefinitions, ...bridgeRelationDefinitions];
+// Keep the original 200-event seed at the front so existing relation and case IDs remain stable.
+const legacySeedChainCount = 40;
+const legacySeedChainRelationCount = legacySeedChainCount * 4;
+const legacySeedRelationCount = legacySeedChainRelationCount + bridgeRelationDefinitions.length;
+const relationDefinitions = [
+  ...chainRelationDefinitions.slice(0, legacySeedChainRelationCount),
+  ...bridgeRelationDefinitions,
+  ...chainRelationDefinitions.slice(legacySeedChainRelationCount),
+];
 
 const fixedRelations = relationDefinitions.map((relation, index) => ({
   id: stableId(8100, index + 1),
@@ -114,17 +122,37 @@ const primaryCaseTemplates = [
     `${year}年${month}月，${location}先出现${cause}，一段时间后又记录到${effect}。`,
 ] as const;
 
-const primaryCases = relationDefinitions.map((relation, index) => ({
-  id: stableId(8200, index + 1),
-  relationIndex: index,
-  content: primaryCaseTemplates[index % primaryCaseTemplates.length]!(
-    2024 + (index % 2),
-    (index % 12) + 1,
-    relation.location,
-    eventNamesById.get(relation.causeEventId)!,
-    eventNamesById.get(relation.effectEventId)!,
-  ),
-}));
+function primaryCase(
+  relation: (typeof relationDefinitions)[number],
+  relationIndex: number,
+  caseSequence: number,
+) {
+  return {
+    id: stableId(8200, caseSequence),
+    relationIndex,
+    content: primaryCaseTemplates[relationIndex % primaryCaseTemplates.length]!(
+      2024 + (relationIndex % 2),
+      (relationIndex % 12) + 1,
+      relation.location,
+      eventNamesById.get(relation.causeEventId)!,
+      eventNamesById.get(relation.effectEventId)!,
+    ),
+  };
+}
+
+const legacyPrimaryCases = relationDefinitions
+  .slice(0, legacySeedRelationCount)
+  .map((relation, relationIndex) => primaryCase(relation, relationIndex, relationIndex + 1));
+
+const additionalPrimaryCases = relationDefinitions
+  .slice(legacySeedRelationCount)
+  .map((relation, additionalIndex) =>
+    primaryCase(
+      relation,
+      legacySeedRelationCount + additionalIndex,
+      legacySeedRelationCount + legacySeedChainCount + additionalIndex + 1,
+    ),
+  );
 
 const verificationCaseTemplates = [
   (month: number, location: string, cause: string, effect: string) =>
@@ -137,17 +165,48 @@ const verificationCaseTemplates = [
     `${location}于2025年${month}月补充案例：${cause}发生后出现了${effect}。`,
 ] as const;
 
-const verificationCases = realisticSeedChains.map((chain, chainIndex) => ({
-  id: stableId(8200, primaryCases.length + chainIndex + 1),
-  relationIndex: chainIndex * 4,
-  content: verificationCaseTemplates[chainIndex % verificationCaseTemplates.length]!(
-    (chainIndex % 12) + 1,
-    realisticCaseLocations[chainIndex % realisticCaseLocations.length]!,
-    chain.events[0][0],
-    chain.events[1][0],
-  ),
-}));
-const caseDefinitions = [...primaryCases, ...verificationCases];
+function verificationCase(
+  chain: (typeof realisticSeedChains)[number],
+  chainIndex: number,
+  relationIndex: number,
+  caseSequence: number,
+) {
+  return {
+    id: stableId(8200, caseSequence),
+    relationIndex,
+    content: verificationCaseTemplates[chainIndex % verificationCaseTemplates.length]!(
+      (chainIndex % 12) + 1,
+      realisticCaseLocations[chainIndex % realisticCaseLocations.length]!,
+      chain.events[0][0],
+      chain.events[1][0],
+    ),
+  };
+}
+
+const legacyVerificationCases = realisticSeedChains
+  .slice(0, legacySeedChainCount)
+  .map((chain, chainIndex) =>
+    verificationCase(chain, chainIndex, chainIndex * 4, legacySeedRelationCount + chainIndex + 1),
+  );
+
+const additionalVerificationCases = realisticSeedChains
+  .slice(legacySeedChainCount)
+  .map((chain, additionalChainIndex) => {
+    const chainIndex = legacySeedChainCount + additionalChainIndex;
+    return verificationCase(
+      chain,
+      chainIndex,
+      legacySeedRelationCount + additionalChainIndex * 4,
+      relationDefinitions.length + legacySeedChainCount + additionalChainIndex + 1,
+    );
+  });
+
+const caseDefinitions = [
+  ...legacyPrimaryCases,
+  ...legacyVerificationCases,
+  ...additionalPrimaryCases,
+  ...additionalVerificationCases,
+];
 const fixedCases = caseDefinitions.map(({ id, content }) => ({ id, content }));
 const fixedCaseLinks = caseDefinitions.map((concreteCase) => ({
   causalRelationId: fixedRelations[concreteCase.relationIndex]!.id,

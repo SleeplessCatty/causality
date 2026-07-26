@@ -212,7 +212,7 @@ test('parameter settings confirms model switching and reports index progress', a
   await expect(dialog).toContainText('立即删除当前语义索引');
   await dialog.getByRole('button', { name: '确认切换' }).click();
 
-  await expect(page.getByText('正在生成索引')).toBeVisible();
+  await expect(page.getByText('索引生成中')).toBeVisible();
   await expect(page.getByText('120 / 1000')).toBeVisible();
   await expect(page.getByRole('progressbar', { name: '索引生成进度' })).toBeVisible();
 });

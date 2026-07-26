@@ -25,6 +25,10 @@ export class SemanticService {
     return this.repository.requestUseModel(modelCode);
   }
 
+  public reindex(): Promise<SemanticUseModelResponse> {
+    return this.repository.requestReindex();
+  }
+
   public retry(): Promise<SemanticUseModelResponse> {
     return this.repository.retryLatestFailure();
   }

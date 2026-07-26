@@ -11,9 +11,10 @@ import { useEffect, useState } from 'react';
 import { ApiClientError } from '../../shared/api/httpClient';
 import { PercentageControl } from '../../shared/controls/PercentageControl';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
-import { ModelSwitchDialog } from './ModelSwitchDialog';
+import { SemanticModelActionDialog, type SemanticModelAction } from './SemanticModelActionDialog';
 import {
   getSemanticSettings,
+  reindexSemanticModel,
   retrySemanticTask,
   updateSemanticThreshold,
   useSemanticModel,
@@ -44,25 +45,35 @@ function isActiveTask(task: SemanticTask | null): boolean {
   return task?.status === 'queued' || task?.status === 'running';
 }
 
-function modelStatus(
-  model: SemanticModel,
-  indexStatus: SemanticIndexStatus,
-): { label: string; tone: 'neutral' | 'positive' | 'negative' | 'working' } {
+type SemanticBadge = {
+  label: string;
+  tone: 'neutral' | 'positive' | 'negative' | 'working';
+};
+
+function downloadStatus(model: SemanticModel): SemanticBadge {
   if (model.downloadStatus === 'downloading') return { label: '下载中', tone: 'working' };
   if (model.downloadStatus === 'verifying') return { label: '正在校验', tone: 'working' };
   if (model.downloadStatus === 'failed') return { label: '下载失败', tone: 'negative' };
-  if (!model.isActive) {
-    return model.downloadStatus === 'downloaded'
-      ? { label: '已下载', tone: 'positive' }
-      : { label: '未下载', tone: 'neutral' };
-  }
-  if (indexStatus === 'waiting_model') return { label: '等待模型', tone: 'working' };
-  if (indexStatus === 'loading') return { label: '正在加载', tone: 'working' };
-  if (indexStatus === 'building') return { label: '正在生成索引', tone: 'working' };
-  if (indexStatus === 'updating') return { label: '可用 · 更新中', tone: 'working' };
-  if (indexStatus === 'ready') return { label: '可用', tone: 'positive' };
+  return model.downloadStatus === 'downloaded'
+    ? { label: '已下载', tone: 'positive' }
+    : { label: '未下载', tone: 'neutral' };
+}
+
+function availabilityStatus(model: SemanticModel, indexStatus: SemanticIndexStatus): SemanticBadge {
+  return model.isActive && (indexStatus === 'ready' || indexStatus === 'updating')
+    ? { label: '可用', tone: 'positive' }
+    : { label: '暂不可用', tone: 'neutral' };
+}
+
+function modelIndexStatus(model: SemanticModel, indexStatus: SemanticIndexStatus): SemanticBadge {
+  if (!model.isActive) return { label: '无当前索引', tone: 'neutral' };
+  if (indexStatus === 'waiting_model') return { label: '等待索引', tone: 'working' };
+  if (indexStatus === 'loading') return { label: '索引加载中', tone: 'working' };
+  if (indexStatus === 'building') return { label: '索引生成中', tone: 'working' };
+  if (indexStatus === 'updating') return { label: '索引更新中', tone: 'working' };
+  if (indexStatus === 'ready') return { label: '索引就绪', tone: 'positive' };
   if (indexStatus === 'failed') return { label: '索引失败', tone: 'negative' };
-  return { label: '尚未就绪', tone: 'neutral' };
+  return { label: '索引为空', tone: 'neutral' };
 }
 
 interface ModelCardProps {
@@ -70,7 +81,9 @@ interface ModelCardProps {
   settings: SemanticSettingsResponse;
   busy: boolean;
   thresholdPending: boolean;
+  reindexPending: boolean;
   onUse(model: SemanticModel): void;
+  onReindex(): void;
   onThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void>;
 }
 
@@ -79,11 +92,17 @@ function ModelCard({
   settings,
   busy,
   thresholdPending,
+  reindexPending,
   onUse,
+  onReindex,
   onThreshold,
 }: ModelCardProps) {
   const [threshold, setThreshold] = useState<number | null>(model.threshold);
-  const status = modelStatus(model, settings.index.status);
+  const statuses = [
+    downloadStatus(model),
+    availabilityStatus(model, settings.index.status),
+    modelIndexStatus(model, settings.index.status),
+  ];
 
   useEffect(() => setThreshold(model.threshold), [model.threshold]);
 
@@ -103,18 +122,22 @@ function ModelCard({
   const actionLabel = model.downloadStatus === 'downloaded' ? '切换到此模型' : '下载并使用';
 
   return (
-    <article className="semantic-model-card" aria-label={model.label}>
+    <article
+      className={`semantic-model-card${model.isActive ? ' semantic-model-card--active' : ''}`}
+      aria-label={model.label}
+    >
       <div className="semantic-model-card__heading">
         <div>
           <h2>{model.label}</h2>
           <p>{model.description}</p>
         </div>
-        <div className="semantic-model-card__badges">
-          {model.isActive ? (
-            <span className="semantic-badge semantic-badge--active">当前使用</span>
-          ) : null}
-          <span className={`semantic-badge semantic-badge--${status.tone}`}>{status.label}</span>
-        </div>
+      </div>
+      <div className="semantic-model-card__badges" aria-label="模型状态">
+        {statuses.map((status) => (
+          <span key={status.label} className={`semantic-badge semantic-badge--${status.tone}`}>
+            {status.label}
+          </span>
+        ))}
       </div>
 
       <dl className="semantic-model-card__metadata">
@@ -150,8 +173,17 @@ function ModelCard({
         </div>
       ) : null}
 
-      {!model.isActive ? (
-        <div className="semantic-model-card__actions">
+      <div className="semantic-model-card__actions">
+        {model.isActive ? (
+          <button
+            className="button button--secondary"
+            type="button"
+            disabled={busy || model.downloadStatus !== 'downloaded'}
+            onClick={onReindex}
+          >
+            {reindexPending ? '重新索引中…' : '重新索引'}
+          </button>
+        ) : (
           <button
             className="button button--secondary"
             type="button"
@@ -160,8 +192,8 @@ function ModelCard({
           >
             {actionLabel}
           </button>
-        </div>
-      ) : null}
+        )}
+      </div>
     </article>
   );
 }
@@ -199,7 +231,7 @@ function TaskProgress({ task }: { task: SemanticTask }) {
 
 export function ParameterSettings() {
   const queryClient = useQueryClient();
-  const [switchTarget, setSwitchTarget] = useState<SemanticModel | null>(null);
+  const [modelAction, setModelAction] = useState<SemanticModelAction | null>(null);
   const [actionError, setActionError] = useState<string>();
   const [errorRevision, setErrorRevision] = useState(0);
 
@@ -220,7 +252,7 @@ export function ParameterSettings() {
   const useModel = useMutation({
     mutationFn: useSemanticModel,
     onSuccess: async () => {
-      setSwitchTarget(null);
+      setModelAction(null);
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     },
     onError: reportError,
@@ -236,6 +268,14 @@ export function ParameterSettings() {
   const retryTask = useMutation({
     mutationFn: retrySemanticTask,
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    },
+    onError: reportError,
+  });
+  const reindexModel = useMutation({
+    mutationFn: reindexSemanticModel,
+    onSuccess: async () => {
+      setModelAction(null);
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     },
     onError: reportError,
@@ -261,7 +301,7 @@ export function ParameterSettings() {
 
   const current = settings.data;
   const taskActive = isActiveTask(current.activeTask);
-  const busy = taskActive || useModel.isPending || retryTask.isPending;
+  const busy = taskActive || useModel.isPending || retryTask.isPending || reindexModel.isPending;
 
   function requestUse(model: SemanticModel): void {
     setActionError(undefined);
@@ -269,7 +309,7 @@ export function ParameterSettings() {
       useModel.mutate(model.code);
       return;
     }
-    setSwitchTarget(model);
+    setModelAction({ type: 'switch', model });
   }
 
   return (
@@ -281,7 +321,7 @@ export function ParameterSettings() {
         </div>
       </div>
 
-      {actionError && !switchTarget ? (
+      {actionError && !modelAction ? (
         <div className="form-alert parameter-settings-alert" role="alert">
           {actionError}
         </div>
@@ -310,7 +350,9 @@ export function ParameterSettings() {
               thresholdPending={
                 updateThreshold.isPending && updateThreshold.variables?.modelCode === model.code
               }
+              reindexPending={reindexModel.isPending && model.isActive}
               onUse={requestUse}
+              onReindex={() => setModelAction({ type: 'reindex', model })}
               onThreshold={(modelCode, threshold) =>
                 updateThreshold.mutateAsync({ modelCode, threshold }).then(() => undefined)
               }
@@ -336,16 +378,20 @@ export function ParameterSettings() {
         ) : null}
       </section>
 
-      <ModelSwitchDialog
-        model={switchTarget}
-        pending={useModel.isPending}
+      <SemanticModelActionDialog
+        action={modelAction}
+        pending={modelAction?.type === 'reindex' ? reindexModel.isPending : useModel.isPending}
         error={actionError}
         onCancel={() => {
-          setSwitchTarget(null);
+          setModelAction(null);
           setActionError(undefined);
         }}
         onConfirm={() => {
-          if (switchTarget) useModel.mutate(switchTarget.code);
+          if (modelAction?.type === 'reindex') {
+            reindexModel.mutate();
+          } else if (modelAction) {
+            useModel.mutate(modelAction.model.code);
+          }
         }}
       />
     </section>

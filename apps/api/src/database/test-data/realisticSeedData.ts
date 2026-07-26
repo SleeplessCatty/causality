@@ -1,3 +1,5 @@
+import { additionalRealisticSeedChains } from './realisticSeedExpansionData.js';
+
 export type RealisticSeedEventDefinition = readonly [name: string, alias: string];
 
 export interface RealisticSeedChainDefinition {
@@ -20,7 +22,7 @@ export interface RealisticSeedBridgeDefinition {
   description: string;
 }
 
-export const realisticSeedChains: readonly RealisticSeedChainDefinition[] = [
+const initialRealisticSeedChains: readonly RealisticSeedChainDefinition[] = [
   {
     domain: '经济与经营',
     topic: '融资与投资',
@@ -502,6 +504,11 @@ export const realisticSeedChains: readonly RealisticSeedChainDefinition[] = [
     ],
   },
 ] as const;
+
+export const realisticSeedChains: readonly RealisticSeedChainDefinition[] = [
+  ...initialRealisticSeedChains,
+  ...additionalRealisticSeedChains,
+];
 
 export const realisticSeedBridges: readonly RealisticSeedBridgeDefinition[] = [
   {

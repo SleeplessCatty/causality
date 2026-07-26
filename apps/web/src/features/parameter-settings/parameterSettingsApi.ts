@@ -46,13 +46,18 @@ export async function updateSemanticThreshold(
   );
 }
 
-export async function retrySemanticTask(): Promise<SemanticUseModelResponse> {
+async function postSemanticAction(
+  path: '/api/semantic/retry' | '/api/semantic/reindex',
+): Promise<SemanticUseModelResponse> {
   return semanticUseModelResponseSchema.parse(
-    await requestJson(
-      '/api/semantic/retry',
-      { method: 'POST' },
-      undefined,
-      actionTimeoutMilliseconds,
-    ),
+    await requestJson(path, { method: 'POST' }, undefined, actionTimeoutMilliseconds),
   );
+}
+
+export async function retrySemanticTask(): Promise<SemanticUseModelResponse> {
+  return postSemanticAction('/api/semantic/retry');
+}
+
+export async function reindexSemanticModel(): Promise<SemanticUseModelResponse> {
+  return postSemanticAction('/api/semantic/reindex');
 }

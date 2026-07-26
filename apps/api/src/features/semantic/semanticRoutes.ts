@@ -93,6 +93,28 @@ export function registerSemanticRoutes(app: FastifyInstance, pool: Pool): void {
   );
 
   routes.post(
+    '/api/semantic/reindex',
+    {
+      schema: {
+        tags: ['semantic'],
+        response: {
+          202: semanticUseModelResponseSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (_request, reply) => {
+      try {
+        const result = await service.reindex();
+        return reply.status(202).send(result);
+      } catch (error) {
+        return sendSemanticError(error, reply);
+      }
+    },
+  );
+
+  routes.post(
     '/api/semantic/retry',
     {
       schema: {

@@ -75,6 +75,7 @@ function repository(overrides: Partial<SemanticRepository> = {}): SemanticReposi
       };
     }),
     requestUseModel: vi.fn(async (modelCode) => accepted(modelCode)),
+    requestReindex: vi.fn(async () => accepted('multilingual-e5-small')),
     retryLatestFailure: vi.fn(async () => accepted('multilingual-e5-small')),
     ...overrides,
   };
@@ -88,6 +89,7 @@ describe('SemanticService', () => {
     await expect(service.useModel('multilingual-e5-small')).resolves.toEqual(
       accepted('multilingual-e5-small'),
     );
+    await expect(service.reindex()).resolves.toEqual(accepted('multilingual-e5-small'));
   });
 
   it('returns refreshed settings after changing one model threshold', async () => {

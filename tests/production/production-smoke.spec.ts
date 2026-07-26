@@ -115,9 +115,9 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   compose(['run', '--rm', 'seed']);
   const afterFirstSeed = verifyDatabase();
   expect(afterFirstSeed.counts).toMatchObject({
-    abstractEvents: 200,
-    causalRelations: 180,
-    concreteCases: 220,
+    abstractEvents: 600,
+    causalRelations: 500,
+    concreteCases: 620,
   });
   compose(['run', '--rm', 'seed']);
   expect(verifyDatabase().counts).toEqual(afterFirstSeed.counts);

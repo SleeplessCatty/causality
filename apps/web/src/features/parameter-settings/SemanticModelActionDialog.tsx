@@ -1,8 +1,13 @@
 import type { SemanticModel } from '@causality/contracts';
 import { useEffect, useRef } from 'react';
 
-interface ModelSwitchDialogProps {
-  model: SemanticModel | null;
+export interface SemanticModelAction {
+  type: 'switch' | 'reindex';
+  model: SemanticModel;
+}
+
+interface SemanticModelActionDialogProps {
+  action: SemanticModelAction | null;
   pending: boolean;
   error?: string | undefined;
   onCancel(): void;
@@ -13,26 +18,26 @@ function formatMegabytes(bytes: number): string {
   return `约 ${Math.round(bytes / 1024 / 1024)} MB`;
 }
 
-export function ModelSwitchDialog({
-  model,
+export function SemanticModelActionDialog({
+  action,
   pending,
   error,
   onCancel,
   onConfirm,
-}: ModelSwitchDialogProps) {
+}: SemanticModelActionDialogProps) {
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!model) return;
+    if (!action) return;
     const previousFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     cancelButtonRef.current?.focus();
     return () => previousFocus?.focus();
-  }, [model]);
+  }, [action]);
 
   useEffect(() => {
-    if (!model) return;
+    if (!action) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !pending) {
         event.preventDefault();
@@ -55,11 +60,13 @@ export function ModelSwitchDialog({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [model, onCancel, pending]);
+  }, [action, onCancel, pending]);
 
-  if (!model) return null;
+  if (!action) return null;
 
-  const requiresDownload = model.downloadStatus !== 'downloaded';
+  const reindexing = action.type === 'reindex';
+  const requiresDownload = !reindexing && action.model.downloadStatus !== 'downloaded';
+  const title = reindexing ? '确认重新索引' : '确认切换模型';
   return (
     <div
       className="delete-dialog-backdrop"
@@ -72,17 +79,20 @@ export function ModelSwitchDialog({
         className="delete-dialog model-switch-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="model-switch-title"
-        aria-describedby="model-switch-description"
+        aria-labelledby="semantic-action-title"
+        aria-describedby="semantic-action-description"
         tabIndex={-1}
       >
-        <h2 id="model-switch-title">确认切换模型</h2>
-        <p id="model-switch-description">
-          切换后将立即删除当前语义索引。在新模型下载并完成索引前，增强查询暂不可用。
+        <h2 id="semantic-action-title">{title}</h2>
+        <p id="semantic-action-description">
+          {reindexing
+            ? '重新索引会删除当前语义向量并从头生成，期间增强查询暂不可用；不会删除原子事件、因果关系和具体案例。'
+            : '切换后将立即删除当前语义索引。在新模型下载并完成索引前，增强查询暂不可用。'}
         </p>
         {requiresDownload ? (
           <p className="model-switch-dialog__download">
-            {model.label}尚未下载，预计需要下载 {formatMegabytes(model.expectedDownloadBytes)}。
+            {action.model.label}尚未下载，预计需要下载{' '}
+            {formatMegabytes(action.model.expectedDownloadBytes)}。
           </p>
         ) : null}
         {error ? (
@@ -106,7 +116,13 @@ export function ModelSwitchDialog({
             disabled={pending}
             onClick={onConfirm}
           >
-            {pending ? '切换中…' : '确认切换'}
+            {pending
+              ? reindexing
+                ? '重新索引中…'
+                : '切换中…'
+              : reindexing
+                ? '确认重新索引'
+                : '确认切换'}
           </button>
         </div>
       </div>
