@@ -15,10 +15,6 @@ export const semanticModelParamsSchema = z
   })
   .strict();
 export const semanticEntityTypeSchema = z.enum(['event', 'relation', 'case']);
-/** @deprecated Used only by the legacy settings response until Task 9. */
-export const legacySemanticTaskTypeSchema = z.enum(['download', 'full_index', 'incremental']);
-/** @deprecated Used only by the legacy settings response until Task 9. */
-export const legacySemanticTaskStatusSchema = z.enum(['queued', 'running', 'succeeded', 'failed']);
 export const semanticTaskTypeSchema = z.enum(['download', 'load', 'full_index', 'incremental']);
 export const semanticTaskStatusSchema = z.enum(['queued', 'running', 'retry_wait', 'failed']);
 export const semanticTaskPhaseSchema = z.enum([
@@ -27,13 +23,6 @@ export const semanticTaskPhaseSchema = z.enum([
   'verifying',
   'loading',
   'indexing',
-]);
-export const semanticDownloadStatusSchema = z.enum([
-  'not_downloaded',
-  'downloading',
-  'verifying',
-  'downloaded',
-  'failed',
 ]);
 export const semanticModelFileStatusSchema = z.enum([
   'not_downloaded',
@@ -193,60 +182,6 @@ export const semanticThresholdInputSchema = z
   })
   .strict();
 
-export const semanticModelSchema = z
-  .object({
-    code: semanticModelCodeSchema,
-    label: z.string().min(1),
-    description: z.string().min(1),
-    languageLabel: z.string().min(1),
-    dimensions: z.number().int().positive(),
-    expectedDownloadBytes: z.number().int().nonnegative(),
-    threshold: z.number().int().min(0).max(100),
-    downloadStatus: semanticDownloadStatusSchema,
-    downloadedAt: timestampSchema.nullable(),
-    isActive: z.boolean(),
-    error: z.string().min(1).nullable(),
-  })
-  .strict();
-
-export const semanticIndexSchema = z
-  .object({
-    status: semanticIndexStatusSchema,
-    processedItems: z.number().int().nonnegative(),
-    totalItems: z.number().int().nonnegative(),
-    pendingItems: z.number().int().nonnegative(),
-    updatedAt: timestampSchema.nullable(),
-    error: z.string().min(1).nullable(),
-  })
-  .strict();
-
-export const semanticTaskSchema = z
-  .object({
-    id: z.uuid(),
-    type: legacySemanticTaskTypeSchema,
-    status: legacySemanticTaskStatusSchema,
-    modelCode: semanticModelCodeSchema,
-    processedItems: z.number().int().nonnegative(),
-    totalItems: z.number().int().nonnegative(),
-    downloadedBytes: z.number().int().nonnegative(),
-    totalBytes: z.number().int().nonnegative(),
-    createdAt: timestampSchema,
-    startedAt: timestampSchema.nullable(),
-    updatedAt: timestampSchema,
-    completedAt: timestampSchema.nullable(),
-    error: z.string().min(1).nullable(),
-  })
-  .strict();
-
-export const semanticSettingsResponseSchema = z
-  .object({
-    activeModelCode: semanticModelCodeSchema.nullable(),
-    index: semanticIndexSchema,
-    models: z.array(semanticModelSchema),
-    activeTask: semanticTaskSchema.nullable(),
-  })
-  .strict();
-
 export const semanticActionAcceptedSchema = z
   .object({
     accepted: z.literal(true),
@@ -254,8 +189,6 @@ export const semanticActionAcceptedSchema = z
     activeModelCode: semanticModelCodeSchema,
   })
   .strict();
-/** @deprecated Use semanticActionAcceptedSchema. */
-export const semanticUseModelResponseSchema = semanticActionAcceptedSchema;
 
 export type SearchMode = z.infer<typeof searchModeSchema>;
 export type SemanticModelCode = z.infer<typeof semanticModelCodeSchema>;
@@ -263,10 +196,7 @@ export type SemanticModelParams = z.infer<typeof semanticModelParamsSchema>;
 export type SemanticEntityType = z.infer<typeof semanticEntityTypeSchema>;
 export type SemanticTaskType = z.infer<typeof semanticTaskTypeSchema>;
 export type SemanticTaskStatus = z.infer<typeof semanticTaskStatusSchema>;
-export type LegacySemanticTaskType = z.infer<typeof legacySemanticTaskTypeSchema>;
-export type LegacySemanticTaskStatus = z.infer<typeof legacySemanticTaskStatusSchema>;
 export type SemanticTaskPhase = z.infer<typeof semanticTaskPhaseSchema>;
-export type SemanticDownloadStatus = z.infer<typeof semanticDownloadStatusSchema>;
 export type SemanticModelFileStatus = z.infer<typeof semanticModelFileStatusSchema>;
 export type SemanticIndexStatus = z.infer<typeof semanticIndexStatusSchema>;
 export type SemanticFailureStage = z.infer<typeof semanticFailureStageSchema>;
@@ -284,10 +214,4 @@ export type SemanticModelLifecycle = z.infer<typeof semanticModelLifecycleSchema
 export type SemanticPollAfterMs = z.infer<typeof semanticPollAfterMsSchema>;
 export type SemanticLifecycleSnapshot = z.infer<typeof semanticLifecycleSnapshotSchema>;
 export type SemanticThresholdInput = z.infer<typeof semanticThresholdInputSchema>;
-export type SemanticModel = z.infer<typeof semanticModelSchema>;
-export type SemanticIndex = z.infer<typeof semanticIndexSchema>;
-export type SemanticTask = z.infer<typeof semanticTaskSchema>;
-export type SemanticSettingsResponse = z.infer<typeof semanticSettingsResponseSchema>;
 export type SemanticActionAccepted = z.infer<typeof semanticActionAcceptedSchema>;
-/** @deprecated Use SemanticActionAccepted. */
-export type SemanticUseModelResponse = z.infer<typeof semanticUseModelResponseSchema>;

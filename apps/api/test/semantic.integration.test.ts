@@ -241,35 +241,35 @@ describe.sequential('semantic configuration API', () => {
     expect(afterUnavailable.rows).toEqual(beforeFacts.rows);
   });
 
-  it('returns pinned settings and changes one threshold without queuing work', async () => {
-    const initial = await context!.app.inject({ method: 'GET', url: '/api/semantic/settings' });
+  it('returns the lifecycle catalog and changes one threshold without queuing work', async () => {
+    const initial = await context!.app.inject({ method: 'GET', url: '/api/semantic/lifecycle' });
     expect(initial.statusCode).toBe(200);
     expect(initial.json()).toMatchObject({
-      activeModelCode: null,
+      currentModelCode: null,
       index: { status: 'empty', pendingItems: 0 },
-      activeTask: null,
+      operation: null,
     });
     expect(initial.json().models).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          code: 'bge-small-zh-v1.5',
+          modelCode: 'bge-small-zh-v1.5',
           threshold: MODEL_CATALOG['bge-small-zh-v1.5'].defaultThreshold,
-          isActive: false,
+          role: 'inactive',
         }),
         expect.objectContaining({
-          code: 'multilingual-e5-small',
+          modelCode: 'multilingual-e5-small',
           threshold: MODEL_CATALOG['multilingual-e5-small'].defaultThreshold,
-          isActive: false,
+          role: 'inactive',
         }),
         expect.objectContaining({
-          code: 'granite-embedding-97m-multilingual-r2',
+          modelCode: 'granite-embedding-97m-multilingual-r2',
           threshold: MODEL_CATALOG['granite-embedding-97m-multilingual-r2'].defaultThreshold,
-          isActive: false,
+          role: 'inactive',
         }),
         expect.objectContaining({
-          code: 'bge-m3',
+          modelCode: 'bge-m3',
           threshold: MODEL_CATALOG['bge-m3'].defaultThreshold,
-          isActive: false,
+          role: 'inactive',
         }),
       ]),
     );
@@ -961,7 +961,7 @@ describe.sequential('semantic configuration API', () => {
     expect(invalidModel.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
-  it('exposes a current incremental failure without making the existing index unavailable', async () => {
+  it('exposes an incomplete current index without making it unavailable', async () => {
     await pool!.query(
       `update semantic_model_settings
        set file_status = 'downloaded',
@@ -969,10 +969,11 @@ describe.sequential('semantic configuration API', () => {
        where model_code = 'multilingual-e5-small';
        update semantic_index_state
        set active_model_code = 'multilingual-e5-small',
-           status = 'ready',
+           status = 'incomplete',
            state_version = 5,
-           processed_items = 12,
+           processed_items = 11,
            total_items = 12,
+           failed_items = 1,
            error = '单条增量索引失败'
        where singleton_key = true;
        insert into semantic_jobs (
@@ -1000,17 +1001,22 @@ describe.sequential('semantic configuration API', () => {
          '单条增量索引失败'
        )`,
     );
+    workerHealth = {
+      status: 'ok',
+      modelLoaded: true,
+      activeModelCode: 'multilingual-e5-small',
+    };
 
-    const settings = await context!.app.inject({ method: 'GET', url: '/api/semantic/settings' });
+    const lifecycle = await context!.app.inject({ method: 'GET', url: '/api/semantic/lifecycle' });
 
-    expect(settings.statusCode).toBe(200);
-    expect(settings.json()).toMatchObject({
-      index: { status: 'ready', error: '单条增量索引失败' },
-      activeTask: {
-        type: 'incremental',
-        status: 'failed',
-        error: '单条增量索引失败',
+    expect(lifecycle.statusCode).toBe(200);
+    expect(lifecycle.json()).toMatchObject({
+      index: {
+        status: 'incomplete',
+        failedItems: 1,
+        availableForEnhancedSearch: true,
       },
+      operation: null,
     });
   });
 
@@ -1124,16 +1130,25 @@ describe.sequential('semantic configuration API', () => {
        )`,
     );
 
-    const settings = await context!.app.inject({
+    const lifecycle = await context!.app.inject({
+      method: 'GET',
+      url: '/api/semantic/lifecycle',
+    });
+
+    expect(lifecycle.statusCode).toBe(200);
+    expect(lifecycle.json()).toMatchObject({
+      index: { status: 'ready', processedItems: 12, totalItems: 12 },
+      operation: null,
+    });
+  });
+
+  it('does not expose the removed legacy settings endpoint', async () => {
+    const response = await context!.app.inject({
       method: 'GET',
       url: '/api/semantic/settings',
     });
 
-    expect(settings.statusCode).toBe(200);
-    expect(settings.json()).toMatchObject({
-      index: { status: 'ready', processedItems: 12, totalItems: 12 },
-      activeTask: null,
-    });
+    expect(response.statusCode).toBe(404);
   });
 
   it('retrieves only same-type vectors above the configured cosine threshold', async () => {

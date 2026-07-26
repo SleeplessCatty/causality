@@ -3,7 +3,6 @@ import {
   semanticActionAcceptedSchema,
   semanticLifecycleSnapshotSchema,
   semanticModelParamsSchema,
-  semanticSettingsResponseSchema,
   semanticThresholdInputSchema,
 } from '@causality/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -16,7 +15,6 @@ import type { Pool } from 'pg';
 
 import { PostgresSemanticCommandRepository } from './semanticCommandRepository.js';
 import { PostgresSemanticLifecycleRepository } from './semanticLifecycleRepository.js';
-import { PostgresSemanticRepository } from './semanticRepository.js';
 import { SemanticLifecycleService, SemanticService } from './semanticService.js';
 import { SemanticRepositoryError } from './semanticTypes.js';
 import type { SemanticWorkerClient } from './semanticWorkerClient.js';
@@ -36,10 +34,7 @@ export function registerSemanticRoutes(
   const routes = app.withTypeProvider<ZodTypeProvider>();
   routes.setValidatorCompiler(validatorCompiler);
   routes.setSerializerCompiler(serializerCompiler);
-  const service = new SemanticService(
-    new PostgresSemanticRepository(pool),
-    new PostgresSemanticCommandRepository(pool),
-  );
+  const service = new SemanticService(new PostgresSemanticCommandRepository(pool));
   const lifecycleService = new SemanticLifecycleService(
     new PostgresSemanticLifecycleRepository(pool),
     workerClient,
@@ -57,20 +52,6 @@ export function registerSemanticRoutes(
       },
     },
     async () => lifecycleService.lifecycle(),
-  );
-
-  routes.get(
-    '/api/semantic/settings',
-    {
-      schema: {
-        tags: ['semantic'],
-        response: {
-          200: semanticSettingsResponseSchema,
-          500: apiErrorSchema,
-        },
-      },
-    },
-    async () => service.settings(),
   );
 
   routes.patch(

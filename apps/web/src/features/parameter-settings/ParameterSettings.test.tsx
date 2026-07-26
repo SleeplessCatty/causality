@@ -1,103 +1,81 @@
-import type { SemanticLifecycleSnapshot, SemanticSettingsResponse } from '@causality/contracts';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type {
+  SemanticAction,
+  SemanticFailure,
+  SemanticLifecycleSnapshot,
+  SemanticModelLifecycle,
+  SemanticModelStage,
+  SemanticOperation,
+} from '@causality/contracts';
+import { focusManager } from '@tanstack/react-query';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AppProviders } from '../../app/AppProviders';
 import { ParameterSettings } from './ParameterSettings';
 
-const settings: SemanticSettingsResponse = {
-  activeModelCode: null,
-  index: {
-    status: 'empty',
-    processedItems: 0,
-    totalItems: 0,
-    pendingItems: 0,
-    updatedAt: null,
-    error: null,
-  },
-  models: [
-    {
-      code: 'bge-small-zh-v1.5',
-      label: '中文轻量',
-      description: '体积小、索引快，适合以中文内容为主的数据',
-      languageLabel: '中文',
-      dimensions: 512,
-      expectedDownloadBytes: 24_451_175,
-      threshold: 62,
-      downloadStatus: 'downloaded',
-      downloadedAt: '2026-07-23T09:00:00.000Z',
-      isActive: false,
-      error: null,
-    },
-    {
-      code: 'multilingual-e5-small',
-      label: '轻量快速',
-      description: '适合普通 CPU 的快速语义检索',
-      languageLabel: '中文、英文及中英混排',
-      dimensions: 384,
-      expectedDownloadBytes: 135_392_857,
-      threshold: 90,
-      downloadStatus: 'not_downloaded',
-      downloadedAt: null,
-      isActive: false,
-      error: null,
-    },
-    {
-      code: 'granite-embedding-97m-multilingual-r2',
-      label: '均衡多语言',
-      description: '在模型体积、跨语言能力和检索质量之间保持平衡',
-      languageLabel: '中文、英文及多语言',
-      dimensions: 384,
-      expectedDownloadBytes: 123_174_716,
-      threshold: 80,
-      downloadStatus: 'not_downloaded',
-      downloadedAt: null,
-      isActive: false,
-      error: null,
-    },
-    {
-      code: 'bge-m3',
-      label: '质量优先',
-      description: '适合更高质量的多语言语义检索',
-      languageLabel: '中文、英文及中英混排',
-      dimensions: 1024,
-      expectedDownloadBytes: 608_174_424,
-      threshold: 55,
-      downloadStatus: 'downloaded',
-      downloadedAt: '2026-07-23T10:00:00.000Z',
-      isActive: false,
-      error: null,
-    },
-  ],
-  activeTask: null,
+const timestamp = '2026-07-26T10:00:00.000Z';
+const acceptedAction = {
+  accepted: true as const,
+  taskId: '11111111-1111-4111-8111-111111111111',
+  activeModelCode: 'bge-small-zh-v1.5' as const,
 };
 
-function lifecycleWithThreshold(
-  modelCode: SemanticLifecycleSnapshot['models'][number]['modelCode'],
-  threshold: number,
-): SemanticLifecycleSnapshot {
+const retryableFailure: SemanticFailure = {
+  stage: 'full_index',
+  kind: 'retryable',
+  code: 'DATABASE_TEMPORARILY_UNAVAILABLE',
+  message: '数据库暂时不可用',
+  attempts: 3,
+  occurredAt: timestamp,
+};
+
+function model(
+  overrides: Partial<SemanticModelLifecycle> & Pick<SemanticModelLifecycle, 'modelCode' | 'label'>,
+): SemanticModelLifecycle {
+  const { modelCode, label, ...rest } = overrides;
+  return {
+    modelCode,
+    label,
+    description: '用于测试生命周期显示',
+    languageLabel: '中文',
+    dimensions: 512,
+    expectedDownloadBytes: 25_200_000,
+    threshold: 65,
+    downloadedAt: null,
+    fileState: 'not_downloaded',
+    role: 'inactive',
+    stage: 'not_downloaded',
+    availableForEnhancedSearch: false,
+    allowedActions: ['download_and_use'],
+    failure: null,
+    ...rest,
+  };
+}
+
+function lifecycle(overrides: Partial<SemanticLifecycleSnapshot> = {}): SemanticLifecycleSnapshot {
   return {
     currentModelCode: null,
-    models: settings.models.map((model) => {
-      const fileState = model.downloadStatus;
-      return {
-        modelCode: model.code,
-        label: model.label,
-        description: model.description,
-        languageLabel: model.languageLabel,
-        dimensions: model.dimensions,
-        expectedDownloadBytes: model.expectedDownloadBytes,
-        threshold: model.code === modelCode ? threshold : model.threshold,
-        downloadedAt: model.downloadedAt,
-        fileState,
-        role: 'inactive' as const,
-        stage: fileState,
-        availableForEnhancedSearch: false,
-        allowedActions:
-          fileState === 'downloaded' ? (['use'] as const) : (['download_and_use'] as const),
-        failure: null,
-      };
-    }),
+    models: [
+      model({ modelCode: 'bge-small-zh-v1.5', label: '中文轻量' }),
+      model({
+        modelCode: 'multilingual-e5-small',
+        label: '轻量快速',
+        fileState: 'downloaded',
+        stage: 'downloaded',
+        downloadedAt: timestamp,
+        allowedActions: ['use'],
+      }),
+      model({
+        modelCode: 'granite-embedding-97m-multilingual-r2',
+        label: '均衡多语言',
+      }),
+      model({
+        modelCode: 'bge-m3',
+        label: '质量优先',
+        dimensions: 1024,
+        expectedDownloadBytes: 608_174_424,
+      }),
+    ],
     index: {
       status: 'empty',
       processedItems: 0,
@@ -113,10 +91,56 @@ function lifecycleWithThreshold(
       status: 'online',
       modelState: 'idle',
       loadedModelCode: null,
-      checkedAt: '2026-07-26T10:00:00.000Z',
+      checkedAt: timestamp,
     },
     pollAfterMs: null,
-    updatedAt: '2026-07-26T10:00:00.000Z',
+    updatedAt: timestamp,
+    ...overrides,
+  };
+}
+
+function currentLifecycle(options: {
+  stage: SemanticModelStage;
+  allowedActions: SemanticAction[];
+  failure?: SemanticFailure | null;
+  failedItems?: number;
+  operation?: SemanticOperation | null;
+  pollAfterMs?: 1_000 | 5_000 | null;
+}): SemanticLifecycleSnapshot {
+  const base = lifecycle();
+  return {
+    ...base,
+    currentModelCode: 'bge-small-zh-v1.5',
+    models: base.models.map((item) =>
+      item.modelCode === 'bge-small-zh-v1.5'
+        ? {
+            ...item,
+            fileState: options.stage === 'invalid' ? 'invalid' : 'downloaded',
+            downloadedAt: options.stage === 'invalid' ? null : timestamp,
+            role: 'current',
+            stage: options.stage,
+            allowedActions: options.allowedActions,
+            failure: options.failure ?? null,
+          }
+        : item,
+    ),
+    index: {
+      ...base.index,
+      status:
+        options.stage === 'incomplete'
+          ? 'incomplete'
+          : options.stage === 'ready'
+            ? 'ready'
+            : options.stage === 'building'
+              ? 'building'
+              : options.stage === 'failed'
+                ? 'failed'
+                : 'loading',
+      failedItems: options.failedItems ?? 0,
+      failure: options.failure ?? null,
+    },
+    operation: options.operation ?? null,
+    pollAfterMs: options.pollAfterMs ?? null,
   };
 }
 
@@ -138,322 +162,206 @@ function renderPage() {
 }
 
 describe('ParameterSettings', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
-  it('shows all built-in models, independent thresholds, and no enable switch', async () => {
+  it('renders model actions only from the lifecycle snapshot', async () => {
+    const snapshot = currentLifecycle({
+      stage: 'invalid',
+      allowedActions: ['redownload_and_use'],
+    });
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse(settings)),
+      vi.fn(() => jsonResponse(snapshot)),
+    );
+
+    renderPage();
+
+    const current = await screen.findByRole('article', { name: '中文轻量' });
+    expect(within(current).getByRole('button', { name: '重新下载并使用' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('article', { name: '轻量快速' })).getByRole('button', {
+        name: '使用此模型',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByRole('article', { name: '均衡多语言' })).getByRole('button', {
+        name: '下载并使用',
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '重试任务' })).toBeNull();
+    expect(
+      within(screen.getByRole('article', { name: '质量优先' })).getByText('约 608 MB'),
+    ).toBeTruthy();
+  });
+
+  it.each([
+    ['load', '重试加载', 'retry_load'],
+    ['full_index', '重试全量索引', 'retry_full_index'],
+  ] as const)(
+    'renders the %s failure action and calls its dedicated endpoint',
+    async (failureStage, buttonLabel, action) => {
+      const failure = { ...retryableFailure, stage: failureStage };
+      const snapshot = currentLifecycle({
+        stage: 'failed',
+        allowedActions: [action],
+        failure,
+      });
+      const fetchMock = vi.fn((input: string | URL | Request) =>
+        String(input).endsWith(failureStage === 'load' ? '/retry-load' : '/retry-full-index')
+          ? jsonResponse(acceptedAction, 202)
+          : jsonResponse(snapshot),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: buttonLabel }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: `确认${buttonLabel}` }));
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith(
+          `/api/semantic/models/bge-small-zh-v1.5/${
+            failureStage === 'load' ? 'retry-load' : 'retry-full-index'
+          }`,
+          expect.objectContaining({ method: 'POST' }),
+        ),
+      );
+    },
+  );
+
+  it('shows incomplete index failures and offers a full reindex', async () => {
+    const snapshot = currentLifecycle({
+      stage: 'incomplete',
+      allowedActions: ['reindex'],
+      failedItems: 3,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse(snapshot)),
     );
     renderPage();
 
-    expect(await screen.findByRole('heading', { name: '参数配置' })).toBeTruthy();
-    const lightweight = screen.getByRole('article', { name: '轻量快速' });
-    expect(screen.getByRole('article', { name: '中文轻量' })).toBeTruthy();
-    expect(screen.getByRole('article', { name: '均衡多语言' })).toBeTruthy();
-    const quality = screen.getByRole('article', { name: '质量优先' });
-
-    expect(within(lightweight).getByText('中文、英文及中英混排')).toBeTruthy();
-    expect(within(lightweight).getByText('约 129 MB')).toBeTruthy();
-    expect(
-      (
-        within(lightweight).getByRole('spinbutton', {
-          name: '相似度门槛数值',
-        }) as HTMLInputElement
-      ).valueAsNumber,
-    ).toBe(90);
-    expect(
-      (
-        within(quality).getByRole('spinbutton', {
-          name: '相似度门槛数值',
-        }) as HTMLInputElement
-      ).valueAsNumber,
-    ).toBe(55);
-    expect(within(lightweight).getByRole('button', { name: '下载并使用' })).toBeTruthy();
-    expect(within(quality).getByRole('button', { name: '切换到此模型' })).toBeTruthy();
-    expect(screen.queryByRole('switch')).toBeNull();
+    expect(await screen.findByText('语义索引不完整')).toBeTruthy();
+    expect(screen.getByText('失败 3 项')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新索引' })).toBeTruthy();
   });
 
-  it('shows the active ready model and index build progress', async () => {
-    const activeReady: SemanticSettingsResponse = {
-      ...settings,
-      activeModelCode: 'multilingual-e5-small',
-      index: {
-        status: 'ready',
-        processedItems: 1_000,
-        totalItems: 1_000,
-        pendingItems: 0,
-        updatedAt: '2026-07-23T11:00:00.000Z',
-        error: null,
-      },
-      models: settings.models.map((model) =>
-        model.code === 'multilingual-e5-small'
-          ? { ...model, isActive: true, downloadStatus: 'downloaded' as const }
-          : model,
-      ),
+  it('renders the active operation once and exposes no model actions while it runs', async () => {
+    const operation: SemanticOperation = {
+      type: 'full_index',
+      phase: 'indexing',
+      status: 'running',
+      modelCode: 'bge-small-zh-v1.5',
+      attempt: 1,
+      maxAttempts: 3,
+      progress: { unit: 'items', completed: 120, total: 600 },
+      nextRetryAt: null,
+      failure: null,
     };
-    const building: SemanticSettingsResponse = {
-      ...activeReady,
-      index: {
-        ...activeReady.index,
-        status: 'building',
-        processedItems: 120,
-        totalItems: 1_000,
-      },
-      activeTask: {
-        id: '11111111-1111-4111-8111-111111111111',
+    const snapshot = currentLifecycle({
+      stage: 'building',
+      allowedActions: [],
+      operation,
+      pollAfterMs: 1_000,
+    });
+    snapshot.models = snapshot.models.map((item) => ({ ...item, allowedActions: [] }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse(snapshot)),
+    );
+    renderPage();
+
+    expect(await screen.findByText('120 / 600')).toBeTruthy();
+    expect(screen.getAllByRole('progressbar', { name: '索引生成进度' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: '下载并使用' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '使用此模型' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '重新索引' })).toBeNull();
+  });
+
+  it('polls at the server-directed interval and stops after a stable response', async () => {
+    vi.useFakeTimers();
+    const building = currentLifecycle({
+      stage: 'building',
+      allowedActions: [],
+      operation: {
         type: 'full_index',
+        phase: 'indexing',
         status: 'running',
-        modelCode: 'multilingual-e5-small',
-        processedItems: 120,
-        totalItems: 1_000,
-        downloadedBytes: 0,
-        totalBytes: 0,
-        createdAt: '2026-07-23T10:00:00.000Z',
-        startedAt: '2026-07-23T10:01:00.000Z',
-        updatedAt: '2026-07-23T10:02:00.000Z',
-        completedAt: null,
-        error: null,
+        modelCode: 'bge-small-zh-v1.5',
+        attempt: 1,
+        maxAttempts: 3,
+        progress: { unit: 'items', completed: 120, total: 600 },
+        nextRetryAt: null,
+        failure: null,
       },
-    };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => jsonResponse(building)),
-    );
-    renderPage();
-
-    const activeModel = await screen.findByRole('article', { name: '轻量快速' });
-    expect(activeModel.className).toContain('semantic-model-card--active');
-    expect(within(activeModel).getByText('已下载')).toBeTruthy();
-    expect(within(activeModel).getByText('暂不可用')).toBeTruthy();
-    expect(within(activeModel).getByText('索引生成中')).toBeTruthy();
-    expect(screen.getByText('120 / 1000')).toBeTruthy();
-    const progress = screen.getByRole('progressbar', { name: '索引生成进度' });
-    expect((progress as HTMLProgressElement).value).toBe(120);
-    expect(
-      (within(activeModel).getByRole('button', { name: '重新索引' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-  });
-
-  it('shows independent download, availability, and index badges and requests a full reindex', async () => {
-    const activeReady: SemanticSettingsResponse = {
-      ...settings,
-      activeModelCode: 'multilingual-e5-small',
-      index: {
-        status: 'ready',
-        processedItems: 600,
-        totalItems: 600,
-        pendingItems: 0,
-        updatedAt: '2026-07-23T11:00:00.000Z',
-        error: null,
-      },
-      models: settings.models.map((model) =>
-        model.code === 'multilingual-e5-small'
-          ? { ...model, isActive: true, downloadStatus: 'downloaded' as const }
-          : model,
-      ),
-    };
-    const fetchMock = vi.fn((input: string | URL | Request) =>
-      String(input).endsWith('/reindex')
-        ? jsonResponse(
-            {
-              accepted: true,
-              taskId: '44444444-4444-4444-8444-444444444444',
-              activeModelCode: 'multilingual-e5-small',
-            },
-            202,
-          )
-        : jsonResponse(activeReady),
+      pollAfterMs: 1_000,
+    });
+    const ready = currentLifecycle({ stage: 'ready', allowedActions: ['reindex'] });
+    const responses = [building, building, ready];
+    const fetchMock = vi.fn(() =>
+      jsonResponse(responses[Math.min(fetchMock.mock.calls.length - 1, responses.length - 1)]),
     );
     vi.stubGlobal('fetch', fetchMock);
+
     renderPage();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const activeModel = await screen.findByRole('article', { name: '轻量快速' });
-    expect(within(activeModel).getByText('已下载')).toBeTruthy();
-    expect(within(activeModel).getByText('可用')).toBeTruthy();
-    expect(within(activeModel).getByText('索引就绪')).toBeTruthy();
-    fireEvent.click(within(activeModel).getByRole('button', { name: '重新索引' }));
-    const dialog = screen.getByRole('dialog', { name: '确认重新索引' });
-    expect(dialog.textContent).toContain('不会删除原子事件、因果关系和具体案例');
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认重新索引' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/semantic/reindex',
-        expect.objectContaining({ method: 'POST' }),
-      ),
-    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it('starts the first model directly, confirms a switch, saves thresholds, and retries failures', async () => {
-    const failed: SemanticSettingsResponse = {
-      ...settings,
-      activeModelCode: 'multilingual-e5-small',
-      index: {
-        ...settings.index,
-        status: 'failed',
-        error: '索引任务中断',
-      },
-      models: settings.models.map((model) =>
-        model.code === 'multilingual-e5-small'
-          ? {
-              ...model,
-              isActive: true,
-              downloadStatus: 'downloaded' as const,
-              error: '索引任务中断',
-            }
-          : model,
-      ),
-      activeTask: {
-        id: '22222222-2222-4222-8222-222222222222',
-        type: 'full_index',
-        status: 'failed',
-        modelCode: 'multilingual-e5-small',
-        processedItems: 12,
-        totalItems: 100,
-        downloadedBytes: 0,
-        totalBytes: 0,
-        createdAt: '2026-07-23T10:00:00.000Z',
-        startedAt: '2026-07-23T10:01:00.000Z',
-        updatedAt: '2026-07-23T10:02:00.000Z',
-        completedAt: '2026-07-23T10:03:00.000Z',
-        error: '索引任务中断',
-      },
-    };
-    const fetchMock = vi.fn((input: string | URL | Request) => {
-      const url = String(input);
-      if (url.endsWith('/threshold')) return jsonResponse(failed);
-      if (url.endsWith('/retry') || url.endsWith('/use')) {
-        return jsonResponse(
-          {
-            accepted: true,
-            taskId: '33333333-3333-4333-8333-333333333333',
-            activeModelCode: url.includes('bge-m3') ? 'bge-m3' : 'multilingual-e5-small',
-          },
-          202,
-        );
-      }
-      return jsonResponse(failed);
+  it('uses the five-second server interval when the Worker is unreachable', async () => {
+    vi.useFakeTimers();
+    const snapshot = currentLifecycle({
+      stage: 'building',
+      allowedActions: [],
+      pollAfterMs: 5_000,
     });
+    snapshot.worker = {
+      status: 'unreachable',
+      modelState: 'missing',
+      loadedModelCode: null,
+      checkedAt: timestamp,
+    };
+    const fetchMock = vi.fn(() => jsonResponse(snapshot));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(4_999);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes the lifecycle snapshot when the window regains focus', async () => {
+    const fetchMock = vi.fn(() => jsonResponse(lifecycle()));
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
     await screen.findByRole('heading', { name: '参数配置' });
-    const quality = screen.getByRole('article', { name: '质量优先' });
-    fireEvent.click(within(quality).getByRole('button', { name: '切换到此模型' }));
-    const dialog = screen.getByRole('dialog', { name: '确认切换模型' });
-    expect(dialog.textContent).toContain('将立即删除当前语义索引');
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认切换' }));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/semantic/models/bge-m3/use',
-        expect.objectContaining({ method: 'POST' }),
-      ),
-    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const light = screen.getByRole('article', { name: '轻量快速' });
-    const threshold = within(light).getByRole('spinbutton', { name: '相似度门槛数值' });
-    fireEvent.change(threshold, { target: { value: '66' } });
-    fireEvent.blur(threshold);
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/semantic/models/multilingual-e5-small/threshold',
-        expect.objectContaining({
-          method: 'PATCH',
-          body: JSON.stringify({ threshold: 66 }),
-        }),
-      ),
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: '重试任务' }));
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/semantic/retry',
-        expect.objectContaining({ method: 'POST' }),
-      ),
-    );
-  });
-
-  it('keeps the threshold slider appearance stable while its value is being saved', async () => {
-    let resolveThreshold!: (response: Response) => void;
-    const thresholdResponse = new Promise<Response>((resolve) => {
-      resolveThreshold = resolve;
-    });
-    let settingsRequests = 0;
-    const updatedSettings: SemanticSettingsResponse = {
-      ...settings,
-      models: settings.models.map((item) =>
-        item.code === 'bge-small-zh-v1.5' ? { ...item, threshold: 64 } : item,
-      ),
-    };
-    const fetchMock = vi.fn((input: string | URL | Request) => {
-      if (String(input).endsWith('/threshold')) return thresholdResponse;
-      settingsRequests += 1;
-      return jsonResponse(settingsRequests === 1 ? settings : updatedSettings);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    renderPage();
-
-    const model = await screen.findByRole('article', { name: '中文轻量' });
-    const slider = within(model).getByRole('slider', {
-      name: '相似度门槛滑块',
-    }) as HTMLInputElement;
-
-    fireEvent.change(slider, { target: { value: '64' } });
-    fireEvent.pointerUp(slider);
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/semantic/models/bge-small-zh-v1.5/threshold',
-        expect.objectContaining({ method: 'PATCH' }),
-      ),
-    );
-    expect(slider.disabled).toBe(true);
-    expect(slider.classList.contains('range-control--stable-disabled')).toBe(true);
-
-    resolveThreshold(await jsonResponse(lifecycleWithThreshold('bge-small-zh-v1.5', 64)));
-    await waitFor(() => expect(slider.disabled).toBe(false));
-    await waitFor(() => expect(slider.value).toBe('64'));
-  });
-
-  it('shows a failed switch action inside the still-open confirmation dialog', async () => {
-    const activeReady: SemanticSettingsResponse = {
-      ...settings,
-      activeModelCode: 'multilingual-e5-small',
-      index: {
-        ...settings.index,
-        status: 'ready',
-        processedItems: 1_000,
-        totalItems: 1_000,
-      },
-      models: settings.models.map((model) =>
-        model.code === 'multilingual-e5-small'
-          ? { ...model, isActive: true, downloadStatus: 'downloaded' as const }
-          : model,
-      ),
-    };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((input: string | URL | Request) =>
-        String(input).endsWith('/use')
-          ? jsonResponse(
-              {
-                code: 'SEMANTIC_SWITCH_CONFLICT',
-                message: '已有模型任务正在执行',
-              },
-              409,
-            )
-          : jsonResponse(activeReady),
-      ),
-    );
-    renderPage();
-
-    const quality = await screen.findByRole('article', { name: '质量优先' });
-    fireEvent.click(within(quality).getByRole('button', { name: '切换到此模型' }));
-    const dialog = screen.getByRole('dialog', { name: '确认切换模型' });
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认切换' }));
-
-    const alert = await within(dialog).findByRole('alert');
-    expect(alert.textContent).toContain('已有模型任务正在执行');
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 });

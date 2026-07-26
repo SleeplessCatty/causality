@@ -1,6 +1,5 @@
 import type {
   ApiErrorCode,
-  SemanticDownloadStatus,
   SemanticEntityType,
   SemanticIndexStatus,
   SemanticIndexNotice,
@@ -17,7 +16,7 @@ export interface SemanticQueryContext {
   modelCode: SemanticModelCode | null;
   status: SemanticIndexStatus;
   threshold: number | null;
-  downloadStatus: SemanticDownloadStatus | null;
+  fileState: SemanticModelFileStatus | null;
 }
 
 export interface SemanticQueryContextRepository {
@@ -68,14 +67,6 @@ interface ContextRow {
   file_status: SemanticModelFileStatus | null;
 }
 
-function toLegacyDownloadStatus(
-  fileStatus: SemanticModelFileStatus | null,
-): SemanticDownloadStatus | null {
-  if (fileStatus === 'download_queued') return 'not_downloaded';
-  if (fileStatus === 'invalid') return 'failed';
-  return fileStatus;
-}
-
 export class PostgresSemanticQueryContextRepository implements SemanticQueryContextRepository {
   public constructor(private readonly pool: Pool) {}
 
@@ -96,7 +87,7 @@ export class PostgresSemanticQueryContextRepository implements SemanticQueryCont
       modelCode: row.model_code,
       status: row.status,
       threshold: row.threshold,
-      downloadStatus: toLegacyDownloadStatus(row.file_status),
+      fileState: row.file_status,
     };
   }
 }
@@ -169,7 +160,7 @@ export class SemanticQueryService {
     if (context.status === 'failed') {
       throw new SemanticQueryError('SEMANTIC_INDEX_FAILED');
     }
-    if (context.downloadStatus !== 'downloaded' || context.threshold === null) {
+    if (context.fileState !== 'downloaded' || context.threshold === null) {
       throw new SemanticQueryError('SEMANTIC_MODEL_UNAVAILABLE');
     }
   }

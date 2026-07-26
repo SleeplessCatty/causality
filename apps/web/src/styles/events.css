@@ -1350,6 +1350,11 @@ body {
   white-space: nowrap;
 }
 
+.semantic-task-panel__waiting {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .semantic-task-panel progress {
   width: 100%;
   height: 7px;

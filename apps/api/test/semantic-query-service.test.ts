@@ -17,7 +17,7 @@ function contextRepository(status: SemanticIndexStatus): SemanticQueryContextRep
       modelCode: status === 'empty' ? null : 'multilingual-e5-small',
       status,
       threshold: status === 'empty' ? null : 70,
-      downloadStatus: status === 'empty' ? null : 'downloaded',
+      fileState: status === 'empty' ? null : 'downloaded',
     }),
   };
 }

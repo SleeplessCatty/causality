@@ -8,44 +8,14 @@ import {
   eventListResponseSchema,
   relationListQuerySchema,
   relationListResponseSchema,
+  semanticActionAcceptedSchema,
   semanticLifecycleSnapshotSchema,
-  semanticSettingsResponseSchema,
   semanticModelParamsSchema,
   semanticThresholdInputSchema,
-  semanticUseModelResponseSchema,
 } from '../src/index.js';
 
 const timestamp = '2026-07-23T15:00:00.000Z';
 const taskId = '11111111-1111-4111-8111-111111111111';
-
-const modelFixtures = [
-  {
-    code: 'multilingual-e5-small',
-    label: '轻量快速',
-    description: '适合普通 CPU 的快速中英文语义查询',
-    languageLabel: '中文、英文及中英混排',
-    dimensions: 384,
-    expectedDownloadBytes: 135_392_857,
-    threshold: 70,
-    downloadStatus: 'not_downloaded',
-    downloadedAt: null,
-    isActive: false,
-    error: null,
-  },
-  {
-    code: 'bge-m3',
-    label: '质量优先',
-    description: '适合更高质量的中英文语义查询',
-    languageLabel: '中文、英文及中英混排',
-    dimensions: 1024,
-    expectedDownloadBytes: 585_565_019,
-    threshold: 55,
-    downloadStatus: 'downloaded',
-    downloadedAt: timestamp,
-    isActive: false,
-    error: null,
-  },
-] as const;
 
 describe('semantic search contracts', () => {
   it('adds a strict enhanced search mode to all main list queries', () => {
@@ -218,32 +188,9 @@ describe('semantic search contracts', () => {
     ).toBe(false);
   });
 
-  it('accepts complete settings without an active model', () => {
+  it('accepts semantic actions and rejects extra progress fields', () => {
     expect(
-      semanticSettingsResponseSchema.parse({
-        activeModelCode: null,
-        index: {
-          status: 'empty',
-          processedItems: 0,
-          totalItems: 0,
-          pendingItems: 0,
-          updatedAt: null,
-          error: null,
-        },
-        models: modelFixtures,
-        activeTask: null,
-      }),
-    ).toMatchObject({
-      activeModelCode: null,
-      index: { status: 'empty' },
-      models: [{ code: 'multilingual-e5-small' }, { code: 'bge-m3' }],
-      activeTask: null,
-    });
-  });
-
-  it('accepts model-use jobs and rejects extra progress fields', () => {
-    expect(
-      semanticUseModelResponseSchema.parse({
+      semanticActionAcceptedSchema.parse({
         accepted: true,
         taskId,
         activeModelCode: 'multilingual-e5-small',
@@ -254,7 +201,7 @@ describe('semantic search contracts', () => {
       activeModelCode: 'multilingual-e5-small',
     });
     expect(() =>
-      semanticUseModelResponseSchema.parse({
+      semanticActionAcceptedSchema.parse({
         accepted: true,
         taskId,
         activeModelCode: 'multilingual-e5-small',

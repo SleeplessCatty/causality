@@ -1,4 +1,8 @@
-import type { SemanticModel, SemanticModelCode } from '@causality/contracts';
+import type {
+  SemanticAction,
+  SemanticModelCode,
+  SemanticModelLifecycle,
+} from '@causality/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -8,20 +12,37 @@ import { SemanticModelCard } from './SemanticModelCard';
 import { SemanticModelActionDialog, type SemanticModelAction } from './SemanticModelActionDialog';
 import { SemanticTaskProgress } from './SemanticTaskProgress';
 import {
-  getSemanticSettings,
+  getSemanticLifecycle,
+  redownloadSemanticModel,
   reindexSemanticModel,
-  retrySemanticTask,
+  retrySemanticDownload,
+  retrySemanticFullIndex,
+  retrySemanticLoad,
   updateSemanticThreshold,
   useSemanticModel,
 } from './parameterSettingsApi';
-import { formatSemanticDate, isActiveSemanticTask } from './semanticPresentation';
+import { formatSemanticDate } from './semanticPresentation';
 
-const settingsQueryKey = ['semantic', 'settings'] as const;
+const lifecycleQueryKey = ['semantic', 'lifecycle'] as const;
 
 function actionErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError) return error.details.message;
   if (error instanceof Error) return error.message;
   return '操作失败，请稍后重试';
+}
+
+async function runSemanticAction(
+  action: SemanticAction,
+  modelCode: SemanticModelCode,
+): Promise<unknown> {
+  if (action === 'download_and_use' || action === 'use') {
+    return useSemanticModel(modelCode);
+  }
+  if (action === 'retry_download') return retrySemanticDownload(modelCode);
+  if (action === 'redownload_and_use') return redownloadSemanticModel(modelCode);
+  if (action === 'retry_load') return retrySemanticLoad(modelCode);
+  if (action === 'retry_full_index') return retrySemanticFullIndex(modelCode);
+  return reindexSemanticModel();
 }
 
 export function ParameterSettings() {
@@ -32,11 +53,11 @@ export function ParameterSettings() {
 
   useAutoDismissError(Boolean(actionError), errorRevision, () => setActionError(undefined));
 
-  const settings = useQuery({
-    queryKey: settingsQueryKey,
-    queryFn: ({ signal }) => getSemanticSettings(signal),
-    refetchInterval: (query) =>
-      isActiveSemanticTask(query.state.data?.activeTask ?? null) ? 1_000 : false,
+  const lifecycle = useQuery({
+    queryKey: lifecycleQueryKey,
+    queryFn: ({ signal }) => getSemanticLifecycle(signal),
+    refetchInterval: (query) => query.state.data?.pollAfterMs ?? false,
+    refetchOnWindowFocus: true,
   });
 
   function reportError(error: unknown): void {
@@ -44,11 +65,12 @@ export function ParameterSettings() {
     setErrorRevision((revision) => revision + 1);
   }
 
-  const useModel = useMutation({
-    mutationFn: useSemanticModel,
+  const executeAction = useMutation({
+    mutationFn: ({ action, modelCode }: { action: SemanticAction; modelCode: SemanticModelCode }) =>
+      runSemanticAction(action, modelCode),
     onSuccess: async () => {
       setModelAction(null);
-      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+      await queryClient.invalidateQueries({ queryKey: lifecycleQueryKey });
     },
     onError: reportError,
   });
@@ -56,37 +78,22 @@ export function ParameterSettings() {
     mutationFn: ({ modelCode, threshold }: { modelCode: SemanticModelCode; threshold: number }) =>
       updateSemanticThreshold(modelCode, threshold),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
-    },
-    onError: reportError,
-  });
-  const retryTask = useMutation({
-    mutationFn: retrySemanticTask,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
-    },
-    onError: reportError,
-  });
-  const reindexModel = useMutation({
-    mutationFn: reindexSemanticModel,
-    onSuccess: async () => {
-      setModelAction(null);
-      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+      await queryClient.invalidateQueries({ queryKey: lifecycleQueryKey });
     },
     onError: reportError,
   });
 
-  if (settings.isPending) {
+  if (lifecycle.isPending) {
     return <div className="page-state">正在加载参数配置…</div>;
   }
-  if (settings.isError || !settings.data) {
+  if (lifecycle.isError || !lifecycle.data) {
     return (
       <div className="page-state page-state--error">
         <span>参数配置加载失败</span>
         <button
           className="button button--secondary"
           type="button"
-          onClick={() => void settings.refetch()}
+          onClick={() => void lifecycle.refetch()}
         >
           重新加载
         </button>
@@ -94,17 +101,11 @@ export function ParameterSettings() {
     );
   }
 
-  const current = settings.data;
-  const taskActive = isActiveSemanticTask(current.activeTask);
-  const busy = taskActive || useModel.isPending || retryTask.isPending || reindexModel.isPending;
+  const current = lifecycle.data;
 
-  function requestUse(model: SemanticModel): void {
+  function requestAction(action: SemanticAction, model: SemanticModelLifecycle): void {
     setActionError(undefined);
-    if (current.activeModelCode === null) {
-      useModel.mutate(model.code);
-      return;
-    }
-    setModelAction({ type: 'switch', model });
+    setModelAction({ type: action, model });
   }
 
   return (
@@ -128,65 +129,58 @@ export function ParameterSettings() {
             <h2 id="semantic-settings-title">语义增强查询</h2>
             <p>模型下载完成后会自动加载并生成当前业务数据的语义索引。</p>
           </div>
-          {current.index.updatedAt ? (
-            <span>最近更新 {formatSemanticDate(current.index.updatedAt)}</span>
-          ) : null}
+          <span>最近检查 {formatSemanticDate(current.updatedAt)}</span>
         </div>
 
-        {current.activeTask ? <SemanticTaskProgress task={current.activeTask} /> : null}
+        {current.operation ? <SemanticTaskProgress operation={current.operation} /> : null}
+
+        {current.index.status === 'incomplete' ? (
+          <div className="semantic-retry" role="status">
+            <div>
+              <strong>语义索引不完整</strong>
+              <span>失败 {current.index.failedItems} 项</span>
+            </div>
+          </div>
+        ) : null}
 
         <div className="semantic-model-grid">
           {current.models.map((model) => (
             <SemanticModelCard
-              key={model.code}
+              key={model.modelCode}
               model={model}
-              indexStatus={current.index.status}
-              busy={busy}
-              thresholdPending={
-                updateThreshold.isPending && updateThreshold.variables?.modelCode === model.code
+              actionsDisabled={executeAction.isPending}
+              pendingAction={
+                executeAction.isPending && executeAction.variables?.modelCode === model.modelCode
+                  ? executeAction.variables.action
+                  : null
               }
-              reindexPending={reindexModel.isPending && model.isActive}
-              onUse={requestUse}
-              onReindex={() => setModelAction({ type: 'reindex', model })}
+              thresholdPending={
+                updateThreshold.isPending &&
+                updateThreshold.variables?.modelCode === model.modelCode
+              }
+              onAction={requestAction}
               onThreshold={(modelCode, threshold) =>
                 updateThreshold.mutateAsync({ modelCode, threshold }).then(() => undefined)
               }
             />
           ))}
         </div>
-
-        {current.index.status === 'failed' || current.activeTask?.status === 'failed' ? (
-          <div className="semantic-retry">
-            <div>
-              <strong>语义任务未完成</strong>
-              <span>{current.index.error ?? current.activeTask?.error ?? '请重试当前任务。'}</span>
-            </div>
-            <button
-              className="button button--secondary"
-              type="button"
-              disabled={busy}
-              onClick={() => retryTask.mutate()}
-            >
-              {retryTask.isPending ? '重试中…' : '重试任务'}
-            </button>
-          </div>
-        ) : null}
       </section>
 
       <SemanticModelActionDialog
         action={modelAction}
-        pending={modelAction?.type === 'reindex' ? reindexModel.isPending : useModel.isPending}
+        pending={executeAction.isPending}
         error={actionError}
         onCancel={() => {
           setModelAction(null);
           setActionError(undefined);
         }}
         onConfirm={() => {
-          if (modelAction?.type === 'reindex') {
-            reindexModel.mutate();
-          } else if (modelAction) {
-            useModel.mutate(modelAction.model.code);
-          }
+          if (!modelAction) return;
+          executeAction.mutate({
+            action: modelAction.type,
+            modelCode: modelAction.model.modelCode,
+          });
         }}
       />
     </section>

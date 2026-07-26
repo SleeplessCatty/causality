@@ -1,9 +1,4 @@
-import type {
-  ApiErrorCode,
-  SemanticActionAccepted,
-  SemanticModelCode,
-  SemanticSettingsResponse,
-} from '@causality/contracts';
+import type { ApiErrorCode, SemanticActionAccepted, SemanticModelCode } from '@causality/contracts';
 
 export type SemanticRepositoryErrorCode = Extract<
   ApiErrorCode,
@@ -21,10 +16,6 @@ export class SemanticRepositoryError extends Error {
     super(message);
     this.name = 'SemanticRepositoryError';
   }
-}
-
-export interface SemanticRepository {
-  getSettings(): Promise<SemanticSettingsResponse>;
 }
 
 export interface SemanticCommandRepository {

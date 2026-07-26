@@ -1,6 +1,11 @@
-import type { SemanticIndexStatus, SemanticModel, SemanticTask } from '@causality/contracts';
+import type {
+  SemanticAction,
+  SemanticModelFileStatus,
+  SemanticModelLifecycle,
+  SemanticModelStage,
+} from '@causality/contracts';
 
-interface SemanticBadge {
+export interface SemanticBadge {
   label: string;
   tone: 'neutral' | 'positive' | 'negative' | 'working';
 }
@@ -13,7 +18,43 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
 const megabyteFormatter = new Intl.NumberFormat('zh-CN', {
   maximumFractionDigits: 1,
 });
-const BYTES_PER_MEGABYTE = 1024 * 1024;
+const BYTES_PER_MEGABYTE = 1_000_000;
+
+const actionLabels: Record<SemanticAction, string> = {
+  download_and_use: '下载并使用',
+  use: '使用此模型',
+  retry_download: '重试下载',
+  redownload_and_use: '重新下载并使用',
+  retry_load: '重试加载',
+  retry_full_index: '重试全量索引',
+  reindex: '重新索引',
+};
+
+const stageLabels: Record<SemanticModelStage, SemanticBadge> = {
+  not_downloaded: { label: '尚未下载', tone: 'neutral' },
+  download_queued: { label: '等待下载', tone: 'working' },
+  downloading: { label: '下载中', tone: 'working' },
+  verifying: { label: '正在校验', tone: 'working' },
+  downloaded: { label: '已下载', tone: 'positive' },
+  invalid: { label: '文件失效', tone: 'negative' },
+  loading: { label: '正在加载', tone: 'working' },
+  index_queued: { label: '等待索引', tone: 'working' },
+  building: { label: '索引生成中', tone: 'working' },
+  ready: { label: '索引就绪', tone: 'positive' },
+  updating: { label: '索引同步中', tone: 'working' },
+  incomplete: { label: '索引不完整', tone: 'negative' },
+  failed: { label: '任务失败', tone: 'negative' },
+};
+
+const fileLabels: Record<SemanticModelFileStatus, SemanticBadge> = {
+  not_downloaded: { label: '未下载', tone: 'neutral' },
+  download_queued: { label: '等待下载', tone: 'working' },
+  downloading: { label: '下载中', tone: 'working' },
+  verifying: { label: '正在校验', tone: 'working' },
+  downloaded: { label: '已下载', tone: 'positive' },
+  invalid: { label: '文件失效', tone: 'negative' },
+  failed: { label: '下载失败', tone: 'negative' },
+};
 
 function toMegabytes(bytes: number): number {
   return bytes / BYTES_PER_MEGABYTE;
@@ -31,38 +72,20 @@ export function formatSemanticDate(value: string | null): string {
   return value ? dateFormatter.format(new Date(value)) : '—';
 }
 
-export function isActiveSemanticTask(task: SemanticTask | null): boolean {
-  return task?.status === 'queued' || task?.status === 'running';
+export function semanticActionLabel(action: SemanticAction): string {
+  return actionLabels[action];
 }
 
-export function downloadStatus(model: SemanticModel): SemanticBadge {
-  if (model.downloadStatus === 'downloading') return { label: '下载中', tone: 'working' };
-  if (model.downloadStatus === 'verifying') return { label: '正在校验', tone: 'working' };
-  if (model.downloadStatus === 'failed') return { label: '下载失败', tone: 'negative' };
-  return model.downloadStatus === 'downloaded'
-    ? { label: '已下载', tone: 'positive' }
-    : { label: '未下载', tone: 'neutral' };
+export function semanticFileBadge(model: SemanticModelLifecycle): SemanticBadge {
+  return fileLabels[model.fileState];
 }
 
-export function availabilityStatus(
-  model: SemanticModel,
-  indexStatus: SemanticIndexStatus,
-): SemanticBadge {
-  return model.isActive && (indexStatus === 'ready' || indexStatus === 'updating')
-    ? { label: '可用', tone: 'positive' }
-    : { label: '暂不可用', tone: 'neutral' };
+export function semanticRoleBadge(model: SemanticModelLifecycle): SemanticBadge {
+  return model.role === 'current'
+    ? { label: '当前模型', tone: 'positive' }
+    : { label: '候选模型', tone: 'neutral' };
 }
 
-export function modelIndexStatus(
-  model: SemanticModel,
-  indexStatus: SemanticIndexStatus,
-): SemanticBadge {
-  if (!model.isActive) return { label: '无当前索引', tone: 'neutral' };
-  if (indexStatus === 'waiting_model') return { label: '等待索引', tone: 'working' };
-  if (indexStatus === 'loading') return { label: '索引加载中', tone: 'working' };
-  if (indexStatus === 'building') return { label: '索引生成中', tone: 'working' };
-  if (indexStatus === 'updating') return { label: '索引更新中', tone: 'working' };
-  if (indexStatus === 'ready') return { label: '索引就绪', tone: 'positive' };
-  if (indexStatus === 'failed') return { label: '索引失败', tone: 'negative' };
-  return { label: '索引为空', tone: 'neutral' };
+export function semanticStageBadge(model: SemanticModelLifecycle): SemanticBadge {
+  return stageLabels[model.stage];
 }

@@ -1220,7 +1220,7 @@ retrySemanticFullIndex(modelCode)
 reindexSemanticModel()
 ```
 
-- [ ] **Step 1: Write lifecycle card tests**
+- [x] **Step 1: Write lifecycle card tests**
 
 Render snapshots for:
 
@@ -1234,7 +1234,7 @@ Render snapshots for:
 
 Assert the generic “重试任务” button is absent.
 
-- [ ] **Step 2: Write server-directed polling tests**
+- [x] **Step 2: Write server-directed polling tests**
 
 Use fake timers and sequential lifecycle responses:
 
@@ -1248,7 +1248,7 @@ const responses = [
 
 Advance time and assert exactly three requests, then no more. Add a 5-second unreachable case and focus-refetch case.
 
-- [ ] **Step 3: Update decimal MB tests**
+- [x] **Step 3: Update decimal MB tests**
 
 Assert:
 
@@ -1257,7 +1257,7 @@ expect(screen.getByText('13.1 MB / 25.2 MB')).toBeTruthy();
 expect(within(bgeM3Card).getByText('约 608 MB')).toBeTruthy();
 ```
 
-- [ ] **Step 4: Run Web tests and verify failure**
+- [x] **Step 4: Run Web tests and verify failure**
 
 Run:
 
@@ -1267,11 +1267,11 @@ pnpm --filter @causality/web test -- ParameterSettings.test.tsx SemanticTaskProg
 
 Expected: FAIL because the page consumes settings, derives actions locally, polls only activeTask, and uses binary MB.
 
-- [ ] **Step 5: Replace settings with lifecycle snapshot**
+- [x] **Step 5: Replace settings with lifecycle snapshot**
 
 Fetch `/api/semantic/lifecycle`. Render file, role, and index badges from the snapshot. Render current operation once above the four cards. Use `allowedActions` as the only source for buttons.
 
-- [ ] **Step 6: Implement dynamic polling**
+- [x] **Step 6: Implement dynamic polling**
 
 Use TanStack Query:
 
@@ -1282,11 +1282,11 @@ refetchOnWindowFocus: true,
 
 Do not duplicate activity rules in React.
 
-- [ ] **Step 7: Implement stage-specific mutations**
+- [x] **Step 7: Implement stage-specific mutations**
 
 Map each action to one endpoint and confirmation dialog. On success invalidate only the lifecycle query. Preserve the existing 3-second error display style.
 
-- [ ] **Step 8: Convert MB**
+- [x] **Step 8: Convert MB**
 
 Set:
 
@@ -1296,11 +1296,11 @@ const BYTES_PER_MEGABYTE = 1_000_000;
 
 Keep download progress at one decimal and expected size rounded to an integer.
 
-- [ ] **Step 9: Remove legacy settings API**
+- [x] **Step 9: Remove legacy settings API**
 
 After Web tests use lifecycle, delete `/api/semantic/settings`, old response schemas that are no longer used, `retrySemanticTask`, generic retry UI, and the remaining legacy `semanticRepository.ts`. Verify no imports or routes remain before deleting the file.
 
-- [ ] **Step 10: Run Web and E2E tests**
+- [x] **Step 10: Run Web and E2E tests**
 
 Run:
 
@@ -1311,7 +1311,7 @@ pnpm test:e2e -- tests/e2e/semantic-settings.spec.ts
 
 Expected: lifecycle cards, stage actions, dynamic polling, and MB display pass.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add apps/web/src apps/api/src/features/semantic packages/contracts tests/e2e/semantic-settings.spec.ts

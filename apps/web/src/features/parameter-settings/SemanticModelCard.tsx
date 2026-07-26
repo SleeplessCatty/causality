@@ -1,42 +1,39 @@
-import type { SemanticIndexStatus, SemanticModel, SemanticModelCode } from '@causality/contracts';
+import type {
+  SemanticAction,
+  SemanticModelCode,
+  SemanticModelLifecycle,
+} from '@causality/contracts';
 import { useEffect, useState } from 'react';
 
 import { PercentageControl } from '../../shared/controls/PercentageControl';
 import {
-  availabilityStatus,
-  downloadStatus,
   formatApproximateMegabytes,
   formatSemanticDate,
-  modelIndexStatus,
+  semanticActionLabel,
+  semanticFileBadge,
+  semanticRoleBadge,
+  semanticStageBadge,
 } from './semanticPresentation';
 
 interface SemanticModelCardProps {
-  model: SemanticModel;
-  indexStatus: SemanticIndexStatus;
-  busy: boolean;
+  model: SemanticModelLifecycle;
+  actionsDisabled: boolean;
+  pendingAction: SemanticAction | null;
   thresholdPending: boolean;
-  reindexPending: boolean;
-  onUse(model: SemanticModel): void;
-  onReindex(): void;
+  onAction(action: SemanticAction, model: SemanticModelLifecycle): void;
   onThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void>;
 }
 
 export function SemanticModelCard({
   model,
-  indexStatus,
-  busy,
+  actionsDisabled,
+  pendingAction,
   thresholdPending,
-  reindexPending,
-  onUse,
-  onReindex,
+  onAction,
   onThreshold,
 }: SemanticModelCardProps) {
   const [threshold, setThreshold] = useState<number | null>(model.threshold);
-  const statuses = [
-    downloadStatus(model),
-    availabilityStatus(model, indexStatus),
-    modelIndexStatus(model, indexStatus),
-  ];
+  const statuses = [semanticFileBadge(model), semanticRoleBadge(model), semanticStageBadge(model)];
 
   useEffect(() => setThreshold(model.threshold), [model.threshold]);
 
@@ -47,17 +44,17 @@ export function SemanticModelCard({
     }
     if (threshold === model.threshold) return;
     try {
-      await onThreshold(model.code, threshold);
+      await onThreshold(model.modelCode, threshold);
     } catch {
       setThreshold(model.threshold);
     }
   }
 
-  const actionLabel = model.downloadStatus === 'downloaded' ? '切换到此模型' : '下载并使用';
-
   return (
     <article
-      className={`semantic-model-card${model.isActive ? ' semantic-model-card--active' : ''}`}
+      className={`semantic-model-card${
+        model.role === 'current' ? ' semantic-model-card--active' : ''
+      }`}
       aria-label={model.label}
     >
       <div className="semantic-model-card__heading">
@@ -67,8 +64,11 @@ export function SemanticModelCard({
         </div>
       </div>
       <div className="semantic-model-card__badges" aria-label="模型状态">
-        {statuses.map((status) => (
-          <span key={status.label} className={`semantic-badge semantic-badge--${status.tone}`}>
+        {statuses.map((status, index) => (
+          <span
+            key={`${index}-${status.label}`}
+            className={`semantic-badge semantic-badge--${status.tone}`}
+          >
             {status.label}
           </span>
         ))}
@@ -90,7 +90,7 @@ export function SemanticModelCard({
       </dl>
 
       <PercentageControl
-        id={`semantic-threshold-${model.code}`}
+        id={`semantic-threshold-${model.modelCode}`}
         label="相似度门槛"
         value={threshold}
         sliderLabel="相似度门槛滑块"
@@ -102,33 +102,29 @@ export function SemanticModelCard({
         onCommit={() => void saveThreshold()}
       />
 
-      {model.error ? (
+      {model.failure ? (
         <div className="semantic-model-card__error" role="status">
-          {model.error}
+          {model.failure.message}
         </div>
       ) : null}
 
-      <div className="semantic-model-card__actions">
-        {model.isActive ? (
-          <button
-            className="button button--secondary"
-            type="button"
-            disabled={busy || model.downloadStatus !== 'downloaded'}
-            onClick={onReindex}
-          >
-            {reindexPending ? '重新索引中…' : '重新索引'}
-          </button>
-        ) : (
-          <button
-            className="button button--secondary"
-            type="button"
-            disabled={busy}
-            onClick={() => onUse(model)}
-          >
-            {actionLabel}
-          </button>
-        )}
-      </div>
+      {model.allowedActions.length > 0 ? (
+        <div className="semantic-model-card__actions">
+          {model.allowedActions.map((action) => (
+            <button
+              key={action}
+              className="button button--secondary"
+              type="button"
+              disabled={actionsDisabled}
+              onClick={() => onAction(action, model)}
+            >
+              {pendingAction === action
+                ? `${semanticActionLabel(action)}中…`
+                : semanticActionLabel(action)}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }

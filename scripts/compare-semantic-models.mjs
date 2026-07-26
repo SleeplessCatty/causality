@@ -101,12 +101,14 @@ async function requestJson(path, options = {}) {
 async function waitUntilReady(modelCode) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const settings = await requestJson('/api/semantic/settings');
-    if (settings.activeModelCode === modelCode && settings.index.status === 'ready') {
-      return { settings, elapsedMs: Date.now() - startedAt };
+    const lifecycle = await requestJson('/api/semantic/lifecycle');
+    if (lifecycle.currentModelCode === modelCode && lifecycle.index.status === 'ready') {
+      return { lifecycle, elapsedMs: Date.now() - startedAt };
     }
-    if (settings.activeModelCode === modelCode && settings.index.status === 'failed') {
-      throw new Error(`${modelCode} indexing failed: ${settings.index.error ?? 'unknown error'}`);
+    if (lifecycle.currentModelCode === modelCode && lifecycle.index.status === 'failed') {
+      throw new Error(
+        `${modelCode} indexing failed: ${lifecycle.index.failure?.message ?? 'unknown error'}`,
+      );
     }
     await delay(pollIntervalMs);
   }
@@ -177,8 +179,8 @@ async function main() {
       results.push(await evaluateActiveModel(modelCode, elapsedMs / 1000));
     }
   } finally {
-    const settings = await requestJson('/api/semantic/settings').catch(() => undefined);
-    if (settings?.activeModelCode !== finalModel || settings?.index.status !== 'ready') {
+    const lifecycle = await requestJson('/api/semantic/lifecycle').catch(() => undefined);
+    if (lifecycle?.currentModelCode !== finalModel || lifecycle?.index.status !== 'ready') {
       process.stdout.write(`Restoring ${finalModel} as the active model...\n`);
       await useModel(finalModel);
     }

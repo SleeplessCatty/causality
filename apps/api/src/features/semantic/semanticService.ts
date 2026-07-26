@@ -2,25 +2,17 @@ import type {
   SemanticActionAccepted,
   SemanticLifecycleSnapshot,
   SemanticModelCode,
-  SemanticSettingsResponse,
   SemanticWorkerStatus,
 } from '@causality/contracts';
 
 import type { SemanticLifecycleRepository } from './semanticLifecycleRepository.js';
 import { resolveSemanticLifecycle } from './semanticLifecycleResolver.js';
 import type { SemanticLifecycleFacts } from './semanticLifecycleTypes.js';
-import type { SemanticCommandRepository, SemanticRepository } from './semanticTypes.js';
+import type { SemanticCommandRepository } from './semanticTypes.js';
 import type { SemanticWorkerClient, SemanticWorkerHealth } from './semanticWorkerClient.js';
 
 export class SemanticService {
-  public constructor(
-    private readonly repository: SemanticRepository,
-    private readonly commandRepository: SemanticCommandRepository,
-  ) {}
-
-  public settings(): Promise<SemanticSettingsResponse> {
-    return this.repository.getSettings();
-  }
+  public constructor(private readonly commandRepository: SemanticCommandRepository) {}
 
   public useModel(modelCode: SemanticModelCode): Promise<SemanticActionAccepted> {
     return this.commandRepository.useModel(modelCode);
