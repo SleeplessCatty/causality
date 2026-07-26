@@ -2,8 +2,10 @@ import { MODEL_CATALOG } from '@causality/semantic-core';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { SemanticWorkerService } from '../src/internalServer.js';
 import { PostgresDownloadJobRepository } from '../src/jobs/jobRepository.js';
 import { IndexJobRunner } from '../src/jobs/jobRunner.js';
+import type { EmbeddingRuntime } from '../src/model/modelRuntime.js';
 import { startWorkerPostgresTestContext } from './support/workerPostgresTestContext.js';
 
 const model = MODEL_CATALOG['multilingual-e5-small'];
@@ -164,6 +166,72 @@ describe.sequential('PostgresDownloadJobRepository', () => {
     expect(result.rows).toEqual([{ attempts: 2, status: 'succeeded' }]);
   });
 
+  it('restores the active model when the worker restarts during incremental updates', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = $1`,
+      [model.code],
+    );
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'updating',
+           pending_items = 1
+       where singleton_key = true`,
+    );
+
+    await expect(repository!.findReadyActiveModel()).resolves.toEqual({
+      modelCode: model.code,
+      revision: model.revision,
+    });
+  });
+
+  it('loads a lightweight model adapter after restarting during incremental updates', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = $1`,
+      [model.code],
+    );
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'updating',
+           pending_items = 1
+       where singleton_key = true`,
+    );
+    const loadedPaths: string[] = [];
+    const runtime: EmbeddingRuntime = {
+      load: async (_definition, localPath) => {
+        loadedPaths.push(localPath);
+      },
+      embedQuery: async () => Array.from({ length: model.dimensions }, () => 0),
+      embedDocuments: async (documents) =>
+        documents.map(() => Array.from({ length: model.dimensions }, () => 0)),
+      dispose: async () => undefined,
+    };
+    const service = new SemanticWorkerService({
+      repository: repository!,
+      runtime,
+      modelsDirectory: '/models',
+      verifyModel: async () => true,
+    });
+
+    await service.initialize();
+
+    expect(service.health()).toEqual({
+      status: 'ok',
+      modelLoaded: true,
+      activeModelCode: model.code,
+    });
+    expect(loadedPaths).toEqual([`/models/${model.code}/${model.revision}`]);
+    await expect(service.embedQuery(model.code, '重启恢复查询')).resolves.toMatchObject({
+      modelCode: model.code,
+      dimensions: model.dimensions,
+    });
+  });
+
   it('completes full and incremental index jobs with consistent state', async () => {
     const fullId = await enqueueIndex('full_index');
     await repository!.claimNextIndex('full-worker', 60_000);
@@ -250,6 +318,103 @@ describe.sequential('PostgresDownloadJobRepository', () => {
         completed: true,
       },
     ]);
+  });
+
+  it('keeps the existing index usable when one incremental job reaches terminal failure', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = $1`,
+      [model.code],
+    );
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'updating',
+           pending_items = 1
+       where singleton_key = true`,
+    );
+    const id = await enqueueIndex('incremental', '10000000-0000-4000-8000-000000000090');
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await repository!.claimNextIndex(`incremental-worker-${attempt}`, 60_000);
+      await repository!.failIndex(id, `incremental-worker-${attempt}`, '单条增量索引失败');
+    }
+
+    const result = await pool!.query<{
+      job_status: string;
+      pending_items: number;
+      state_error: string | null;
+      state_status: string;
+    }>(
+      `select job.status as job_status,
+              state.status as state_status,
+              state.pending_items,
+              state.error as state_error
+       from semantic_jobs as job
+       join semantic_index_state as state on state.singleton_key = true
+       where job.id = $1`,
+      [id],
+    );
+    expect(result.rows).toEqual([
+      {
+        job_status: 'failed',
+        state_status: 'ready',
+        pending_items: 0,
+        state_error: '单条增量索引失败',
+      },
+    ]);
+  });
+
+  it('removes an older failed incremental job after a newer update succeeds', async () => {
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'updating',
+           pending_items = 1
+       where singleton_key = true;
+       insert into semantic_jobs (
+         job_type,
+         model_code,
+         entity_type,
+         entity_id,
+         status,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         error
+       )
+       values (
+         'incremental',
+         '${model.code}',
+         'event',
+         '10000000-0000-4000-8000-000000000090',
+         'failed',
+         7,
+         3,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         '旧增量任务失败'
+       )`,
+    );
+    const currentId = await enqueueIndex('incremental', '10000000-0000-4000-8000-000000000090');
+    await repository!.claimNextIndex('incremental-worker', 60_000);
+
+    await repository!.completeIndex(currentId, 'incremental-worker');
+
+    const result = await pool!.query<{ jobs: number; status: string }>(
+      `select state.status,
+              (
+                select count(*)::int
+                from semantic_jobs
+                where job_type = 'incremental'
+                  and entity_type = 'event'
+                  and entity_id = '10000000-0000-4000-8000-000000000090'
+              ) as jobs
+       from semantic_index_state as state
+       where singleton_key = true`,
+    );
+    expect(result.rows).toEqual([{ status: 'ready', jobs: 0 }]);
   });
 
   it('publishes a verified download and queues exactly one full index', async () => {

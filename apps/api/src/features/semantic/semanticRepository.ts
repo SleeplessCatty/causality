@@ -53,7 +53,10 @@ interface TargetModelRow {
 }
 
 interface FailedTaskRow {
-  job_type: Extract<SemanticTaskType, 'download' | 'full_index'>;
+  id: string;
+  job_type: SemanticTaskType;
+  entity_type: 'event' | 'relation' | 'case' | null;
+  entity_id: string | null;
 }
 
 function toIso(value: Date | null): string | null {
@@ -223,10 +226,9 @@ export class PostgresSemanticRepository implements SemanticRepository {
     if (!index) throw new Error('Missing semantic_index_state singleton');
     const modelRows = new Map(modelsResult.rows.map((row) => [row.model_code, row]));
 
-    const activeTaskResult =
-      index.active_model_code && index.status !== 'ready'
-        ? await this.pool.query<TaskRow>(
-            `select id,
+    const activeTaskResult = index.active_model_code
+      ? await this.pool.query<TaskRow>(
+          `select id,
                   job_type,
                   model_code,
                   status,
@@ -241,13 +243,20 @@ export class PostgresSemanticRepository implements SemanticRepository {
                   completed_at
            from semantic_jobs
            where model_code = $1
-             and job_type in ('download', 'full_index')
-             and status in ('queued', 'running', 'failed')
-           order by created_at desc, id desc
+             and state_version = $2
+             and (
+               (job_type in ('download', 'full_index')
+                 and status in ('queued', 'running', 'failed'))
+               or (job_type = 'incremental' and status = 'failed')
+             )
+           order by
+             case when job_type in ('download', 'full_index') then 0 else 1 end,
+             created_at desc,
+             id desc
            limit 1`,
-            [index.active_model_code],
-          )
-        : undefined;
+          [index.active_model_code, index.state_version],
+        )
+      : undefined;
 
     return {
       activeModelCode: index.active_model_code,
@@ -391,19 +400,94 @@ export class PostgresSemanticRepository implements SemanticRepository {
       }
 
       const failedResult = await client.query<FailedTaskRow>(
-        `select job_type
+        `select id,
+                job_type,
+                entity_type,
+                entity_id
          from semantic_jobs
          where model_code = $1
-           and job_type in ('download', 'full_index')
+           and state_version = $2
+           and job_type in ('download', 'full_index', 'incremental')
            and status = 'failed'
-         order by completed_at desc, id desc
+         order by
+           case when job_type in ('download', 'full_index') then 0 else 1 end,
+           completed_at desc,
+           id desc
          limit 1
          for update`,
-        [state.active_model_code],
+        [state.active_model_code, state.state_version],
       );
       const failed = failedResult.rows[0];
       if (!failed) {
         throw new SemanticRepositoryError('SEMANTIC_INDEX_FAILED', '没有可重试的失败任务');
+      }
+
+      if (failed.job_type === 'incremental') {
+        if (!failed.entity_type || !failed.entity_id) {
+          throw new Error('Failed incremental semantic job is missing its target');
+        }
+        const activeResult = await client.query<{ id: string }>(
+          `select id
+           from semantic_jobs
+           where id <> $1
+             and job_type = 'incremental'
+             and model_code = $2
+             and state_version = $3
+             and entity_type = $4
+             and entity_id = $5
+             and status in ('queued', 'running')
+           order by created_at, id
+           limit 1
+           for update`,
+          [
+            failed.id,
+            state.active_model_code,
+            state.state_version,
+            failed.entity_type,
+            failed.entity_id,
+          ],
+        );
+        const activeTaskId = activeResult.rows[0]?.id;
+        if (activeTaskId) {
+          await client.query(`delete from semantic_jobs where id = $1`, [failed.id]);
+        } else {
+          await client.query(
+            `update semantic_jobs
+             set status = 'queued',
+                 attempts = 0,
+                 lease_owner = null,
+                 lease_expires_at = null,
+                 error = null,
+                 started_at = null,
+                 completed_at = null,
+                 updated_at = clock_timestamp()
+             where id = $1`,
+            [failed.id],
+          );
+        }
+        await client.query(
+          `update semantic_index_state
+           set status = 'updating',
+               pending_items = (
+                 select count(*)::int
+                 from semantic_jobs
+                 where job_type = 'incremental'
+                   and status in ('queued', 'running')
+                   and model_code = $1
+                   and state_version = $2
+               ),
+               error = null,
+               updated_at = clock_timestamp()
+           where singleton_key = true
+             and active_model_code = $1
+             and state_version = $2`,
+          [state.active_model_code, state.state_version],
+        );
+        return {
+          accepted: true,
+          taskId: activeTaskId ?? failed.id,
+          activeModelCode: state.active_model_code,
+        };
       }
 
       await clearCurrentIndex(client);

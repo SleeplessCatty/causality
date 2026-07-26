@@ -18,6 +18,7 @@ type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<
 
 interface PinnedModelDownloaderOptions {
   fetch?: FetchLike;
+  requestIdleTimeoutMilliseconds?: number;
 }
 
 export interface ModelDownloader {
@@ -139,9 +140,17 @@ async function publishDirectory(partialDirectory: string, targetDirectory: strin
 
 export class PinnedModelDownloader implements ModelDownloader {
   private readonly fetch: FetchLike;
+  private readonly requestIdleTimeoutMilliseconds: number;
 
   public constructor(options: PinnedModelDownloaderOptions = {}) {
     this.fetch = options.fetch ?? globalThis.fetch;
+    this.requestIdleTimeoutMilliseconds = options.requestIdleTimeoutMilliseconds ?? 120_000;
+    if (
+      !Number.isInteger(this.requestIdleTimeoutMilliseconds) ||
+      this.requestIdleTimeoutMilliseconds < 1
+    ) {
+      throw new Error('Model download idle timeout must be a positive integer');
+    }
   }
 
   public async download(
@@ -178,38 +187,53 @@ export class PinnedModelDownloader implements ModelDownloader {
         }
         await mkdir(dirname(destination), { recursive: true });
 
-        const response = await this.fetch(fileUrl(model, file), {
-          redirect: 'follow',
-          signal: AbortSignal.timeout(120_000),
-        });
-        if (!response.ok || !response.body) {
-          throw new Error(`Model download failed (${response.status}): ${file.remotePath}`);
-        }
-
-        const handle = await open(destination, 'wx');
-        const hash = createHash('sha256');
-        let fileBytes = 0;
+        const controller = new AbortController();
+        let idleTimeout: NodeJS.Timeout | undefined;
+        const refreshIdleTimeout = () => {
+          if (idleTimeout) clearTimeout(idleTimeout);
+          idleTimeout = setTimeout(() => {
+            controller.abort(new Error(`Model download stalled: ${file.remotePath}`));
+          }, this.requestIdleTimeoutMilliseconds);
+          idleTimeout.unref();
+        };
+        refreshIdleTimeout();
         try {
-          for await (const chunk of response.body) {
-            const bytes = Buffer.from(chunk);
-            fileBytes += bytes.byteLength;
-            loadedBytes += bytes.byteLength;
-            if (fileBytes > file.bytes || loadedBytes > model.expectedDownloadBytes) {
-              throw new Error(`Model file size mismatch: ${file.localPath}`);
+          const response = await this.fetch(fileUrl(model, file), {
+            redirect: 'follow',
+            signal: controller.signal,
+          });
+          if (!response.ok || !response.body) {
+            throw new Error(`Model download failed (${response.status}): ${file.remotePath}`);
+          }
+
+          const handle = await open(destination, 'wx');
+          const hash = createHash('sha256');
+          let fileBytes = 0;
+          try {
+            for await (const chunk of response.body) {
+              refreshIdleTimeout();
+              const bytes = Buffer.from(chunk);
+              fileBytes += bytes.byteLength;
+              loadedBytes += bytes.byteLength;
+              if (fileBytes > file.bytes || loadedBytes > model.expectedDownloadBytes) {
+                throw new Error(`Model file size mismatch: ${file.localPath}`);
+              }
+              hash.update(bytes);
+              await handle.write(bytes);
+              await onProgress(loadedBytes, model.expectedDownloadBytes);
             }
-            hash.update(bytes);
-            await handle.write(bytes);
-            await onProgress(loadedBytes, model.expectedDownloadBytes);
+          } finally {
+            await handle.close();
+          }
+
+          if (fileBytes !== file.bytes) {
+            throw new Error(`Model file size mismatch: ${file.localPath}`);
+          }
+          if (hash.digest('hex') !== file.sha256) {
+            throw new Error(`Model file checksum mismatch: ${file.localPath}`);
           }
         } finally {
-          await handle.close();
-        }
-
-        if (fileBytes !== file.bytes) {
-          throw new Error(`Model file size mismatch: ${file.localPath}`);
-        }
-        if (hash.digest('hex') !== file.sha256) {
-          throw new Error(`Model file checksum mismatch: ${file.localPath}`);
+          if (idleTimeout) clearTimeout(idleTimeout);
         }
       }
 

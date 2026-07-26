@@ -1,6 +1,6 @@
 import { hashSemanticDocument } from '@causality/semantic-core';
 import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   PostgresIndexBuilder,
@@ -277,6 +277,83 @@ describe.sequential('PostgresIndexBuilder', () => {
     ]);
   });
 
+  it('writes each inference batch in one database transaction', async () => {
+    await pool!.query(
+      `create table semantic_write_transaction_audit (
+         transaction_id bigint not null
+       );
+       create function audit_semantic_write_transaction()
+       returns trigger
+       language plpgsql
+       as $$
+       begin
+         insert into semantic_write_transaction_audit (transaction_id)
+         values (txid_current());
+         return new;
+       end;
+       $$;
+       create trigger semantic_write_transaction_audit_trigger
+       after insert or update on semantic_embeddings
+       for each row execute function audit_semantic_write_transaction()`,
+    );
+    try {
+      await builder!.buildFull(fullJob());
+      const result = await pool!.query<{ transactions: number }>(
+        `select count(distinct transaction_id)::int as transactions
+         from semantic_write_transaction_audit`,
+      );
+      expect(result.rows[0]?.transactions).toBe(3);
+    } finally {
+      await pool!.query(
+        `drop trigger if exists semantic_write_transaction_audit_trigger on semantic_embeddings;
+         drop function if exists audit_semantic_write_transaction();
+         drop table if exists semantic_write_transaction_audit`,
+      );
+    }
+  });
+
+  it('validates embedding metadata in bounded pages', async () => {
+    const originalQuery = pool!.query.bind(pool!);
+    const querySpy = vi.spyOn(pool!, 'query');
+    querySpy.mockImplementation(((query: string, parameters?: unknown[]) => {
+      const sql = typeof query === 'string' ? query : '';
+      if (sql.includes('vector_dims(embedding)') && !sql.includes('where entity_type =')) {
+        throw new Error('Unbounded semantic embedding validation query');
+      }
+      return originalQuery(query, parameters);
+    }) as Pool['query']);
+
+    try {
+      await expect(builder!.buildFull(fullJob())).resolves.toBeUndefined();
+    } finally {
+      querySpy.mockRestore();
+    }
+  });
+
+  it('throttles full-index progress writes between inference batches', async () => {
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       select
+         ('10000000-0000-4000-8000-' || lpad((100 + item)::text, 12, '0'))::uuid,
+         '批量索引事件' || item
+       from generate_series(1, 12) as generated(item)`,
+    );
+    const originalQuery = pool!.query.bind(pool!);
+    let progressUpdates = 0;
+    const querySpy = vi.spyOn(pool!, 'query');
+    querySpy.mockImplementation(((query: string, parameters?: unknown[]) => {
+      if (query.includes('set processed_items = $3')) progressUpdates += 1;
+      return originalQuery(query, parameters);
+    }) as Pool['query']);
+
+    try {
+      await builder!.buildFull(fullJob());
+      expect(progressUpdates).toBeLessThanOrEqual(5);
+    } finally {
+      querySpy.mockRestore();
+    }
+  });
+
   it('drains a concurrent event update and stores only the latest source hash', async () => {
     runtime!.onFirstEmbedding = async () => {
       await pool!.query(
@@ -389,6 +466,65 @@ describe.sequential('PostgresIndexBuilder', () => {
       [incrementalJobId],
     );
     expect(result.rows).toEqual([{ status: 'ready', jobs: 0 }]);
+  });
+
+  it('renews an incremental lease while draining it before full-index publication', async () => {
+    await pool!.query(
+      `insert into semantic_jobs (
+         id,
+         job_type,
+         model_code,
+         entity_type,
+         entity_id,
+         status,
+         state_version,
+         attempts,
+         lease_owner,
+         lease_expires_at,
+         started_at
+       )
+       values (
+         $1,
+         'incremental',
+         'multilingual-e5-small',
+         'event',
+         $2,
+         'running',
+         11,
+         1,
+         'stopped-worker',
+         clock_timestamp() - interval '1 second',
+         clock_timestamp() - interval '2 minutes'
+       )`,
+      [incrementalJobId, fullCauseId],
+    );
+    const slowRuntime = new FakeEmbeddingRuntime();
+    const embedDocuments = slowRuntime.embedDocuments.bind(slowRuntime);
+    slowRuntime.embedDocuments = async (documents) => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return embedDocuments(documents);
+    };
+    const heartbeatBuilder = new PostgresIndexBuilder({
+      pool: pool!,
+      sourceRepository: sourceRepository!,
+      runtime: slowRuntime,
+      modelsDirectory: '/models',
+      drainedIncrementalLeaseMilliseconds: 30,
+    } as unknown as ConstructorParameters<typeof PostgresIndexBuilder>[0]);
+    const originalQuery = pool!.query.bind(pool!);
+    let renewals = 0;
+    const querySpy = vi.spyOn(pool!, 'query');
+    querySpy.mockImplementation(((query: string, parameters?: unknown[]) => {
+      if (query.includes('set lease_expires_at = clock_timestamp()')) renewals += 1;
+      return originalQuery(query, parameters);
+    }) as Pool['query']);
+
+    try {
+      await heartbeatBuilder.buildFull(fullJob());
+      expect(renewals).toBeGreaterThan(0);
+    } finally {
+      querySpy.mockRestore();
+    }
   });
 
   it('upserts the latest incremental source and removes a deleted source vector', async () => {

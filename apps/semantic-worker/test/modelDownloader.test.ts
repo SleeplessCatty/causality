@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import type { SemanticModelDefinition } from '@causality/semantic-core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PinnedModelDownloader, verifyReadyModel } from '../src/model/modelDownloader.js';
 
@@ -124,5 +124,41 @@ describe('PinnedModelDownloader', () => {
 
     await expect(access(join(modelsDirectory, '.partial', model.code))).rejects.toThrow();
     await expect(readFile(existingReadyMarker, 'utf8')).resolves.toBe('{"ready":true}');
+  });
+
+  it('uses an idle timeout instead of one fixed deadline for the complete response body', async () => {
+    const body = new Uint8Array([1, 2]);
+    const model = testModel([{ path: 'config.json', body }]);
+    const modelsDirectory = await createTemporaryDirectory();
+    const target = join(modelsDirectory, model.code, model.revision);
+    const fixedDeadline = new AbortController();
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(fixedDeadline.signal);
+    const fetchWithLongBody = (async (_input: string | URL | Request, init?: RequestInit) => {
+      const signal = init?.signal;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(body.slice(0, 1));
+            setTimeout(() => {
+              fixedDeadline.abort();
+              if (signal?.aborted) {
+                controller.error(new Error('Fixed response deadline expired'));
+                return;
+              }
+              controller.enqueue(body.slice(1));
+              controller.close();
+            }, 0);
+          },
+        }),
+      );
+    }) as typeof fetch;
+
+    await new PinnedModelDownloader({ fetch: fetchWithLongBody }).download(
+      model,
+      target,
+      async () => undefined,
+    );
+
+    expect(await verifyReadyModel(model, target)).toBe(true);
   });
 });

@@ -188,6 +188,7 @@ interface PostgresIndexBuilderOptions {
   sourceRepository: SemanticSourceRepository;
   runtime: EmbeddingRuntime;
   modelsDirectory: string;
+  drainedIncrementalLeaseMilliseconds?: number;
   onModelLoading?: () => void | Promise<void>;
   onModelReady?: (modelCode: SemanticIndexJob['modelCode']) => void | Promise<void>;
 }
@@ -282,7 +283,18 @@ async function lockBusinessSource(
 }
 
 export class PostgresIndexBuilder implements IndexBuilder {
-  public constructor(private readonly options: PostgresIndexBuilderOptions) {}
+  private readonly drainedIncrementalLeaseMilliseconds: number;
+
+  public constructor(private readonly options: PostgresIndexBuilderOptions) {
+    this.drainedIncrementalLeaseMilliseconds =
+      options.drainedIncrementalLeaseMilliseconds ?? 60_000;
+    if (
+      !Number.isInteger(this.drainedIncrementalLeaseMilliseconds) ||
+      this.drainedIncrementalLeaseMilliseconds < 30
+    ) {
+      throw new Error('Drained incremental lease must be at least 30 milliseconds');
+    }
+  }
 
   public async buildFull(job: SemanticIndexJob): Promise<void> {
     if (job.jobType !== 'full_index') throw new Error('Expected a full-index job');
@@ -341,6 +353,8 @@ export class PostgresIndexBuilder implements IndexBuilder {
     );
 
     let processedItems = 0;
+    let lastReportedItems = 0;
+    let lastProgressUpdateAt = Number.NEGATIVE_INFINITY;
     for (const entityType of entityTypes) {
       let afterId: string | null = null;
       while (true) {
@@ -350,7 +364,14 @@ export class PostgresIndexBuilder implements IndexBuilder {
           afterId,
           semanticIndexBatchSize(job.modelCode),
         );
-        if (batch.length === 0) break;
+        if (batch.length === 0) {
+          if (processedItems !== lastReportedItems) {
+            await this.updateFullProgress(job, processedItems, totalItems);
+            lastReportedItems = processedItems;
+            lastProgressUpdateAt = Date.now();
+          }
+          break;
+        }
         const vectors = await this.options.runtime.embedDocuments(
           batch.map((record) => record.document),
         );
@@ -358,15 +379,19 @@ export class PostgresIndexBuilder implements IndexBuilder {
           throw new Error('Semantic runtime returned an unexpected batch size');
         }
         for (let index = 0; index < batch.length; index += 1) {
-          const record = batch[index]!;
           const vector = vectors[index]!;
           vectorDimensions(vector, model.dimensions);
-          await this.writeStableRecord(job, record, vector);
         }
+        await this.writeStableRecords(job, batch, vectors);
         processedItems += batch.length;
         totalItems = Math.max(totalItems, processedItems);
         afterId = batch.at(-1)!.entityId;
-        await this.updateFullProgress(job, processedItems, totalItems);
+        const now = Date.now();
+        if (now - lastProgressUpdateAt >= 500) {
+          await this.updateFullProgress(job, processedItems, totalItems);
+          lastReportedItems = processedItems;
+          lastProgressUpdateAt = now;
+        }
       }
     }
 
@@ -525,10 +550,26 @@ export class PostgresIndexBuilder implements IndexBuilder {
     source: SemanticSourceRecord,
     vector: readonly number[],
   ): Promise<StableWriteResult> {
+    return (await this.writeStableRecords(job, [source], [vector]))[0]!;
+  }
+
+  private async writeStableRecords(
+    job: SemanticIndexJob,
+    sources: readonly SemanticSourceRecord[],
+    vectors: readonly (readonly number[])[],
+  ): Promise<StableWriteResult[]> {
+    if (sources.length !== vectors.length) {
+      throw new Error('Semantic stable-write batch size does not match its vectors');
+    }
+    if (sources.length === 0) return [];
+
     const client = await this.options.pool.connect();
     try {
       await client.query('begin');
-      const exists = await lockBusinessSource(client, source.entityType, source.entityId);
+      const existence: boolean[] = [];
+      for (const source of sources) {
+        existence.push(await lockBusinessSource(client, source.entityType, source.entityId));
+      }
       const state = await client.query<IndexStateRow>(
         `select active_model_code,
                 state_version,
@@ -542,45 +583,60 @@ export class PostgresIndexBuilder implements IndexBuilder {
         state.rows[0]?.state_version !== job.stateVersion
       ) {
         await client.query('rollback');
-        return 'stale';
-      }
-      if (!exists) {
-        await client.query(
-          `delete from semantic_embeddings
-           where entity_type = $1
-             and entity_id = $2`,
-          [source.entityType, source.entityId],
-        );
-        await client.query('commit');
-        return 'deleted';
+        return sources.map(() => 'stale');
       }
 
-      const current = await this.options.sourceRepository.load(source.entityType, source.entityId);
-      if (!current || current.sourceHash !== source.sourceHash) {
-        await client.query('rollback');
-        return 'changed';
+      const results: StableWriteResult[] = [];
+      for (let index = 0; index < sources.length; index += 1) {
+        const source = sources[index]!;
+        if (!existence[index]) {
+          await client.query(
+            `delete from semantic_embeddings
+             where entity_type = $1
+               and entity_id = $2`,
+            [source.entityType, source.entityId],
+          );
+          results.push('deleted');
+          continue;
+        }
+
+        const current = await this.options.sourceRepository.load(
+          source.entityType,
+          source.entityId,
+        );
+        if (!current || current.sourceHash !== source.sourceHash) {
+          results.push('changed');
+          continue;
+        }
+        await client.query(
+          `insert into semantic_embeddings (
+             entity_type,
+             entity_id,
+             model_code,
+             source_hash,
+             embedding,
+             generated_at
+           )
+           values ($1, $2, $3, $4, $5::vector, clock_timestamp())
+           on conflict (entity_type, entity_id)
+           do update set
+             model_code = excluded.model_code,
+             source_hash = excluded.source_hash,
+             embedding = excluded.embedding,
+             generated_at = excluded.generated_at`,
+          [
+            source.entityType,
+            source.entityId,
+            job.modelCode,
+            source.sourceHash,
+            toSql([...vectors[index]!]),
+          ],
+        );
+        await this.deleteCoveredQueuedJob(client, job, source.entityType, source.entityId);
+        results.push('written');
       }
-      await client.query(
-        `insert into semantic_embeddings (
-           entity_type,
-           entity_id,
-           model_code,
-           source_hash,
-           embedding,
-           generated_at
-         )
-         values ($1, $2, $3, $4, $5::vector, clock_timestamp())
-         on conflict (entity_type, entity_id)
-         do update set
-           model_code = excluded.model_code,
-           source_hash = excluded.source_hash,
-           embedding = excluded.embedding,
-           generated_at = excluded.generated_at`,
-        [source.entityType, source.entityId, job.modelCode, source.sourceHash, toSql([...vector])],
-      );
-      await this.deleteCoveredQueuedJob(client, job, source.entityType, source.entityId);
       await client.query('commit');
-      return 'written';
+      return results;
     } catch (error) {
       await client.query('rollback');
       throw error;
@@ -696,7 +752,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
        set status = 'running',
            attempts = attempts + 1,
            lease_owner = $3,
-           lease_expires_at = clock_timestamp() + interval '1 minute',
+           lease_expires_at = clock_timestamp() + ($4::integer * interval '1 millisecond'),
            started_at = case
              when incremental.status = 'queued' then clock_timestamp()
              else incremental.started_at
@@ -712,7 +768,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
                  incremental.attempts,
                  incremental.entity_type,
                  incremental.entity_id`,
-      [job.modelCode, job.stateVersion, leaseOwner],
+      [job.modelCode, job.stateVersion, leaseOwner, this.drainedIncrementalLeaseMilliseconds],
     );
     const row = result.rows[0];
     return row
@@ -734,15 +790,53 @@ export class PostgresIndexBuilder implements IndexBuilder {
     while (true) {
       const incremental = await this.claimIncremental(job);
       if (incremental) {
-        await this.buildIncremental(incremental);
-        await this.options.pool.query(
-          `delete from semantic_jobs
-           where id = $1
-             and job_type = 'incremental'
-             and status = 'running'
-             and lease_owner = $2`,
-          [incremental.id, leaseOwner],
+        let leaseFailure: unknown;
+        let renewalTail = Promise.resolve();
+        const heartbeat = setInterval(
+          () => {
+            renewalTail = renewalTail
+              .then(async () => {
+                const renewed = await this.options.pool.query(
+                  `update semantic_jobs
+                   set lease_expires_at = clock_timestamp()
+                         + ($3::integer * interval '1 millisecond'),
+                       updated_at = clock_timestamp()
+                   where id = $1
+                     and job_type = 'incremental'
+                     and status = 'running'
+                     and lease_owner = $2`,
+                  [incremental.id, leaseOwner, this.drainedIncrementalLeaseMilliseconds],
+                );
+                if (renewed.rowCount !== 1) {
+                  throw new Error('Lost drained incremental index lease');
+                }
+              })
+              .catch((error: unknown) => {
+                leaseFailure ??= error;
+              });
+          },
+          Math.max(10, Math.floor(this.drainedIncrementalLeaseMilliseconds / 3)),
         );
+        heartbeat.unref();
+        try {
+          await this.buildIncremental(incremental);
+          await renewalTail;
+          if (leaseFailure) throw leaseFailure;
+          const completed = await this.options.pool.query(
+            `delete from semantic_jobs
+             where id = $1
+               and job_type = 'incremental'
+               and status = 'running'
+               and lease_owner = $2`,
+            [incremental.id, leaseOwner],
+          );
+          if (completed.rowCount !== 1) {
+            throw new Error('Lost drained incremental index lease');
+          }
+        } finally {
+          clearInterval(heartbeat);
+          await renewalTail;
+        }
         continue;
       }
 
@@ -765,55 +859,59 @@ export class PostgresIndexBuilder implements IndexBuilder {
     }
   }
 
-  private async allSources(): Promise<SemanticSourceRecord[]> {
-    const records: SemanticSourceRecord[] = [];
+  private async validateCompleteIndex(job: SemanticIndexJob): Promise<number> {
+    const expectedDimensions = MODEL_CATALOG[job.modelCode].dimensions;
+    let sourceCount = 0;
     for (const entityType of entityTypes) {
       let afterId: string | null = null;
       while (true) {
-        const batch = await this.options.sourceRepository.loadBatch(entityType, afterId, 1_000);
-        if (batch.length === 0) break;
-        records.push(...batch);
-        afterId = batch.at(-1)!.entityId;
+        const sources = await this.options.sourceRepository.loadBatch(entityType, afterId, 1_000);
+        if (sources.length === 0) break;
+        const embeddings = await this.options.pool.query<{
+          entity_id: string;
+          model_code: SemanticIndexJob['modelCode'];
+          source_hash: string;
+          dimensions: number;
+        }>(
+          `select entity_id,
+                  model_code,
+                  source_hash,
+                  vector_dims(embedding)::int as dimensions
+           from semantic_embeddings
+           where entity_type = $1
+             and entity_id = any($2::uuid[])`,
+          [entityType, sources.map((source) => source.entityId)],
+        );
+        if (sources.length !== embeddings.rows.length) {
+          throw new Error('Semantic index record count does not match business records');
+        }
+        const embeddingById = new Map(
+          embeddings.rows.map((embedding) => [embedding.entity_id, embedding]),
+        );
+        for (const source of sources) {
+          const embedding = embeddingById.get(source.entityId);
+          if (
+            !embedding ||
+            embedding.model_code !== job.modelCode ||
+            embedding.dimensions !== expectedDimensions ||
+            embedding.source_hash !== source.sourceHash
+          ) {
+            throw new Error(
+              `Semantic index validation failed for ${entityType}:${source.entityId}`,
+            );
+          }
+        }
+        sourceCount += sources.length;
+        afterId = sources.at(-1)!.entityId;
       }
     }
-    return records;
-  }
-
-  private async validateCompleteIndex(job: SemanticIndexJob): Promise<number> {
-    const [sources, embeddings] = await Promise.all([
-      this.allSources(),
-      this.options.pool.query<{
-        entity_type: SemanticEntityType;
-        entity_id: string;
-        model_code: SemanticIndexJob['modelCode'];
-        source_hash: string;
-        dimensions: number;
-      }>(
-        `select entity_type,
-                entity_id,
-                model_code,
-                source_hash,
-                vector_dims(embedding)::int as dimensions
-         from semantic_embeddings`,
-      ),
-    ]);
-    if (sources.length !== embeddings.rows.length) {
+    const embeddingCount = await this.options.pool.query<{ count: number }>(
+      `select count(*)::int as count
+       from semantic_embeddings`,
+    );
+    if (embeddingCount.rows[0]?.count !== sourceCount) {
       throw new Error('Semantic index record count does not match business records');
     }
-    const sourceHashes = new Map(
-      sources.map((source) => [`${source.entityType}:${source.entityId}`, source.sourceHash]),
-    );
-    const expectedDimensions = MODEL_CATALOG[job.modelCode].dimensions;
-    for (const embedding of embeddings.rows) {
-      const key = `${embedding.entity_type}:${embedding.entity_id}`;
-      if (
-        embedding.model_code !== job.modelCode ||
-        embedding.dimensions !== expectedDimensions ||
-        sourceHashes.get(key) !== embedding.source_hash
-      ) {
-        throw new Error(`Semantic index validation failed for ${key}`);
-      }
-    }
-    return sources.length;
+    return sourceCount;
   }
 }

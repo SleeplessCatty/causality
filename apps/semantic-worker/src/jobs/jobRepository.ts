@@ -414,10 +414,20 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       if (job.job_type === 'incremental') {
         await client.query(
           `delete from semantic_jobs
-           where id = $1
-             and status = 'running'
-             and lease_owner = $2`,
-          [job.id, workerId],
+           where (
+               id = $1
+               and status = 'running'
+               and lease_owner = $2
+             )
+             or (
+               job_type = 'incremental'
+               and model_code = $3
+               and state_version = $4
+               and entity_type = $5
+               and entity_id = $6
+               and status = 'failed'
+             )`,
+          [job.id, workerId, job.model_code, job.state_version, job.entity_type, job.entity_id],
         );
         await client.query(
           `update semantic_index_state
@@ -496,8 +506,18 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
       await client.query(
         `update semantic_index_state
          set status = case
-               when $3 then 'failed'
+               when $3 and $4::varchar(20) <> 'incremental' then 'failed'
                when $4::varchar(20) = 'full_index' then 'loading'
+               when $4::varchar(20) = 'incremental'
+                 and not exists (
+                   select 1
+                   from semantic_jobs
+                   where job_type = 'incremental'
+                     and status in ('queued', 'running')
+                     and model_code = $1
+                     and state_version = $2
+                 )
+               then 'ready'
                else 'updating'
              end,
              pending_items = (
@@ -529,7 +549,7 @@ export class PostgresDownloadJobRepository implements DownloadJobRepository, Ind
        join semantic_model_settings as settings
          on settings.model_code = state.active_model_code
        where state.singleton_key = true
-         and state.status = 'ready'
+         and state.status in ('ready', 'updating')
          and settings.download_status = 'downloaded'`,
     );
     const row = result.rows[0];

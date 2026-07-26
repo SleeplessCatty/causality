@@ -396,6 +396,144 @@ describe.sequential('semantic configuration API', () => {
     expect(invalidModel.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
+  it('exposes a current incremental failure without making the existing index unavailable', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'multilingual-e5-small';
+       update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 5,
+           processed_items = 12,
+           total_items = 12,
+           error = '单条增量索引失败'
+       where singleton_key = true;
+       insert into semantic_jobs (
+         job_type,
+         model_code,
+         entity_type,
+         entity_id,
+         status,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         error
+       )
+       values (
+         'incremental',
+         'multilingual-e5-small',
+         'event',
+         '${eventId}',
+         'failed',
+         5,
+         3,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         '单条增量索引失败'
+       )`,
+    );
+
+    const settings = await context!.app.inject({ method: 'GET', url: '/api/semantic/settings' });
+
+    expect(settings.statusCode).toBe(200);
+    expect(settings.json()).toMatchObject({
+      index: { status: 'ready', error: '单条增量索引失败' },
+      activeTask: {
+        type: 'incremental',
+        status: 'failed',
+        error: '单条增量索引失败',
+      },
+    });
+  });
+
+  it('requeues a failed incremental task without clearing the usable index', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set download_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'multilingual-e5-small';
+       update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 5,
+           processed_items = 12,
+           total_items = 12,
+           error = '单条增量索引失败'
+       where singleton_key = true;
+       insert into semantic_embeddings (
+         entity_type,
+         entity_id,
+         model_code,
+         source_hash,
+         embedding
+       )
+       values (
+         'event',
+         '${eventId}',
+         'multilingual-e5-small',
+         repeat('a', 64),
+         array_fill(0.1, array[384])::vector
+       );
+       insert into semantic_jobs (
+         job_type,
+         model_code,
+         entity_type,
+         entity_id,
+         status,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         error
+       )
+       values (
+         'incremental',
+         'multilingual-e5-small',
+         'event',
+         '${eventId}',
+         'failed',
+         5,
+         3,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         '单条增量索引失败'
+       )`,
+    );
+
+    const retried = await context!.app.inject({ method: 'POST', url: '/api/semantic/retry' });
+
+    expect(retried.statusCode).toBe(202);
+    const state = await pool!.query<{
+      attempts: number;
+      embeddings: number;
+      error: string | null;
+      job_status: string;
+      state_status: string;
+    }>(
+      `select job.status as job_status,
+              job.attempts,
+              state.status as state_status,
+              state.error,
+              (select count(*)::int from semantic_embeddings) as embeddings
+       from semantic_jobs as job
+       join semantic_index_state as state on state.singleton_key = true
+       where job.id = $1`,
+      [retried.json().taskId],
+    );
+    expect(state.rows).toEqual([
+      {
+        job_status: 'queued',
+        attempts: 0,
+        state_status: 'updating',
+        error: null,
+        embeddings: 1,
+      },
+    ]);
+  });
+
   it('does not expose a stale failed task after the index has recovered', async () => {
     await pool!.query(
       `update semantic_index_state
