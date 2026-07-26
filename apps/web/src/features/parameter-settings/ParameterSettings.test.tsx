@@ -167,6 +167,23 @@ describe('ParameterSettings', () => {
     vi.unstubAllGlobals();
   });
 
+  it('distinguishes file, model-role, and index badges', async () => {
+    const snapshot = lifecycle();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse(snapshot)),
+    );
+
+    renderPage();
+
+    const downloadedModel = await screen.findByRole('article', { name: '轻量快速' });
+    const statuses = within(downloadedModel).getByLabelText('模型状态');
+    expect(within(statuses).getByText('文件已下载')).toBeTruthy();
+    expect(within(statuses).getByText('候选模型')).toBeTruthy();
+    expect(within(statuses).getByText('索引未建')).toBeTruthy();
+    expect(within(statuses).queryByText('已下载')).toBeNull();
+  });
+
   it('renders model actions only from the lifecycle snapshot', async () => {
     const snapshot = currentLifecycle({
       stage: 'invalid',

@@ -31,29 +31,29 @@ const actionLabels: Record<SemanticAction, string> = {
 };
 
 const stageLabels: Record<SemanticModelStage, SemanticBadge> = {
-  not_downloaded: { label: '尚未下载', tone: 'neutral' },
-  download_queued: { label: '等待下载', tone: 'working' },
-  downloading: { label: '下载中', tone: 'working' },
-  verifying: { label: '正在校验', tone: 'working' },
-  downloaded: { label: '已下载', tone: 'positive' },
-  invalid: { label: '文件失效', tone: 'negative' },
-  loading: { label: '正在加载', tone: 'working' },
-  index_queued: { label: '等待索引', tone: 'working' },
+  not_downloaded: { label: '索引未建', tone: 'neutral' },
+  download_queued: { label: '索引未建', tone: 'neutral' },
+  downloading: { label: '索引未建', tone: 'neutral' },
+  verifying: { label: '索引未建', tone: 'neutral' },
+  downloaded: { label: '索引未建', tone: 'neutral' },
+  invalid: { label: '索引不可用', tone: 'negative' },
+  loading: { label: '索引准备中', tone: 'working' },
+  index_queued: { label: '索引等待中', tone: 'working' },
   building: { label: '索引生成中', tone: 'working' },
   ready: { label: '索引就绪', tone: 'positive' },
   updating: { label: '索引同步中', tone: 'working' },
   incomplete: { label: '索引不完整', tone: 'negative' },
-  failed: { label: '任务失败', tone: 'negative' },
+  failed: { label: '索引不可用', tone: 'negative' },
 };
 
 const fileLabels: Record<SemanticModelFileStatus, SemanticBadge> = {
-  not_downloaded: { label: '未下载', tone: 'neutral' },
-  download_queued: { label: '等待下载', tone: 'working' },
-  downloading: { label: '下载中', tone: 'working' },
-  verifying: { label: '正在校验', tone: 'working' },
-  downloaded: { label: '已下载', tone: 'positive' },
+  not_downloaded: { label: '文件未下载', tone: 'neutral' },
+  download_queued: { label: '文件待下载', tone: 'working' },
+  downloading: { label: '文件下载中', tone: 'working' },
+  verifying: { label: '文件校验中', tone: 'working' },
+  downloaded: { label: '文件已下载', tone: 'positive' },
   invalid: { label: '文件失效', tone: 'negative' },
-  failed: { label: '下载失败', tone: 'negative' },
+  failed: { label: '文件下载失败', tone: 'negative' },
 };
 
 function toMegabytes(bytes: number): number {
