@@ -60,22 +60,23 @@ export function buildApp(options: BuildAppOptions = {}) {
     registerHealthRoute(app);
     registerReadinessRoute(app, options.checkDatabase ?? (async () => false));
     if (options.databasePool) {
+      const semanticWorkerClient =
+        options.semanticWorkerClient ??
+        new HttpSemanticWorkerClient({
+          baseUrl: options.semanticWorkerUrl ?? 'http://127.0.0.1:3100',
+          timeoutMs: options.semanticQueryTimeoutMs ?? 10_000,
+        });
       const semanticQuery = new SemanticQueryService({
         contextRepository: new PostgresSemanticQueryContextRepository(options.databasePool),
         searchRepository: new PostgresSemanticSearchRepository(options.databasePool),
-        workerClient:
-          options.semanticWorkerClient ??
-          new HttpSemanticWorkerClient({
-            baseUrl: options.semanticWorkerUrl ?? 'http://127.0.0.1:3100',
-            timeoutMs: options.semanticQueryTimeoutMs ?? 10_000,
-          }),
+        workerClient: semanticWorkerClient,
       });
       registerEventRoutes(app, options.databasePool, semanticQuery);
       registerRelationRoutes(app, options.databasePool, semanticQuery);
       registerCaseRoutes(app, options.databasePool, semanticQuery);
       registerCausalGraphRoutes(app, options.databasePool);
       registerDataCheckRoutes(app, options.databasePool);
-      registerSemanticRoutes(app, options.databasePool);
+      registerSemanticRoutes(app, options.databasePool, semanticWorkerClient);
     }
 
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());

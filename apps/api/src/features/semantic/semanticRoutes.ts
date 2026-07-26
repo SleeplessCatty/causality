@@ -1,5 +1,6 @@
 import {
   apiErrorSchema,
+  semanticLifecycleSnapshotSchema,
   semanticModelParamsSchema,
   semanticSettingsResponseSchema,
   semanticThresholdInputSchema,
@@ -13,9 +14,11 @@ import {
 } from 'fastify-type-provider-zod';
 import type { Pool } from 'pg';
 
+import { PostgresSemanticLifecycleRepository } from './semanticLifecycleRepository.js';
 import { PostgresSemanticRepository } from './semanticRepository.js';
-import { SemanticService } from './semanticService.js';
+import { SemanticLifecycleService, SemanticService } from './semanticService.js';
 import { SemanticRepositoryError } from './semanticTypes.js';
+import type { SemanticWorkerClient } from './semanticWorkerClient.js';
 
 function sendSemanticError(error: unknown, reply: FastifyReply) {
   if (error instanceof SemanticRepositoryError) {
@@ -24,11 +27,33 @@ function sendSemanticError(error: unknown, reply: FastifyReply) {
   throw error;
 }
 
-export function registerSemanticRoutes(app: FastifyInstance, pool: Pool): void {
+export function registerSemanticRoutes(
+  app: FastifyInstance,
+  pool: Pool,
+  workerClient: SemanticWorkerClient,
+): void {
   const routes = app.withTypeProvider<ZodTypeProvider>();
   routes.setValidatorCompiler(validatorCompiler);
   routes.setSerializerCompiler(serializerCompiler);
   const service = new SemanticService(new PostgresSemanticRepository(pool));
+  const lifecycleService = new SemanticLifecycleService(
+    new PostgresSemanticLifecycleRepository(pool),
+    workerClient,
+  );
+
+  routes.get(
+    '/api/semantic/lifecycle',
+    {
+      schema: {
+        tags: ['semantic'],
+        response: {
+          200: semanticLifecycleSnapshotSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async () => lifecycleService.lifecycle(),
+  );
 
   routes.get(
     '/api/semantic/settings',
@@ -52,7 +77,7 @@ export function registerSemanticRoutes(app: FastifyInstance, pool: Pool): void {
         params: semanticModelParamsSchema,
         body: semanticThresholdInputSchema,
         response: {
-          200: semanticSettingsResponseSchema,
+          200: semanticLifecycleSnapshotSchema,
           400: apiErrorSchema,
           409: apiErrorSchema,
           500: apiErrorSchema,
@@ -61,7 +86,10 @@ export function registerSemanticRoutes(app: FastifyInstance, pool: Pool): void {
     },
     async (request, reply) => {
       try {
-        return await service.updateThreshold(request.params.modelCode, request.body.threshold);
+        return await lifecycleService.updateThreshold(
+          request.params.modelCode,
+          request.body.threshold,
+        );
       } catch (error) {
         return sendSemanticError(error, reply);
       }

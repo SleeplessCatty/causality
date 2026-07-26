@@ -32,17 +32,15 @@ export async function useSemanticModel(
 export async function updateSemanticThreshold(
   modelCode: SemanticModelCode,
   threshold: number,
-): Promise<SemanticSettingsResponse> {
-  return semanticSettingsResponseSchema.parse(
-    await requestJson(
-      `/api/semantic/models/${modelCode}/threshold`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify({ threshold }),
-      },
-      undefined,
-      actionTimeoutMilliseconds,
-    ),
+): Promise<void> {
+  await requestJson(
+    `/api/semantic/models/${modelCode}/threshold`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ threshold }),
+    },
+    undefined,
+    actionTimeoutMilliseconds,
   );
 }
 

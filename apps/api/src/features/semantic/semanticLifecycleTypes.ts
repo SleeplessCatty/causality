@@ -58,3 +58,9 @@ export interface SemanticLifecycleResolverInput {
   worker: SemanticWorkerStatus;
   now: string;
 }
+
+export interface SemanticLifecycleFacts {
+  models: SemanticModelState[];
+  index: SemanticIndexState;
+  jobs: SemanticJobState[];
+}

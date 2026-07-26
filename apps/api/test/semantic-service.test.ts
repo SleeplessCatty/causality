@@ -63,17 +63,9 @@ function accepted(modelCode: SemanticModelCode): SemanticUseModelResponse {
 }
 
 function repository(overrides: Partial<SemanticRepository> = {}): SemanticRepository {
-  let current = settings();
+  const current = settings();
   return {
     getSettings: vi.fn(async () => current),
-    setThreshold: vi.fn(async (modelCode, threshold) => {
-      current = {
-        ...current,
-        models: current.models.map((model) =>
-          model.code === modelCode ? { ...model, threshold } : model,
-        ),
-      };
-    }),
     requestUseModel: vi.fn(async (modelCode) => accepted(modelCode)),
     requestReindex: vi.fn(async () => accepted('multilingual-e5-small')),
     retryLatestFailure: vi.fn(async () => accepted('multilingual-e5-small')),
@@ -90,14 +82,6 @@ describe('SemanticService', () => {
       accepted('multilingual-e5-small'),
     );
     await expect(service.reindex()).resolves.toEqual(accepted('multilingual-e5-small'));
-  });
-
-  it('returns refreshed settings after changing one model threshold', async () => {
-    const service = new SemanticService(repository());
-
-    await expect(service.updateThreshold('bge-m3', 60)).resolves.toMatchObject({
-      models: expect.arrayContaining([expect.objectContaining({ code: 'bge-m3', threshold: 60 })]),
-    });
   });
 
   it('preserves stable repository conflicts and retry responses', async () => {

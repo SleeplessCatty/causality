@@ -304,19 +304,6 @@ export class PostgresSemanticRepository implements SemanticRepository {
     };
   }
 
-  public async setThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void> {
-    const result = await this.pool.query(
-      `update semantic_model_settings
-       set threshold = $2,
-           updated_at = clock_timestamp()
-       where model_code = $1`,
-      [modelCode, threshold],
-    );
-    if (result.rowCount !== 1) {
-      throw new SemanticRepositoryError('SEMANTIC_MODEL_UNAVAILABLE', '语义模型配置不存在');
-    }
-  }
-
   public requestUseModel(modelCode: SemanticModelCode): Promise<SemanticUseModelResponse> {
     return this.withTransaction(async (client) => {
       const state = await lockIndexState(client);

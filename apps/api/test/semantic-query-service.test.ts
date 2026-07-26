@@ -21,6 +21,11 @@ function contextRepository(status: SemanticIndexStatus): SemanticQueryContextRep
 
 function workerClient(): SemanticWorkerClient {
   return {
+    health: vi.fn().mockResolvedValue({
+      status: 'ok',
+      modelLoaded: true,
+      activeModelCode: 'multilingual-e5-small',
+    }),
     embedQuery: vi.fn().mockResolvedValue(Array.from({ length: 384 }, () => 0.1)),
   };
 }

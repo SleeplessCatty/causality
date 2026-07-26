@@ -15,6 +15,61 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('HttpSemanticWorkerClient', () => {
+  it('returns strictly validated Worker health', async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        status: 'ok',
+        modelLoaded: true,
+        activeModelCode: 'bge-small-zh-v1.5',
+      }),
+    );
+    const client = new HttpSemanticWorkerClient({
+      baseUrl: 'http://127.0.0.1:3100',
+      timeoutMs: 1_000,
+      fetchFn,
+    });
+
+    await expect(client.health()).resolves.toEqual({
+      status: 'ok',
+      modelLoaded: true,
+      activeModelCode: 'bge-small-zh-v1.5',
+    });
+    expect(fetchFn).toHaveBeenCalledWith(
+      'http://127.0.0.1:3100/internal/health',
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+
+  it('maps invalid, failed, timed-out, and unreachable health checks to unavailable', async () => {
+    const timeoutFetch = vi.fn<typeof fetch>().mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {
+            once: true,
+          });
+        }),
+    );
+    const fetchResponses = [
+      vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ status: 'unknown' })),
+      vi.fn<typeof fetch>().mockResolvedValue(new Response('not-json')),
+      vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ message: 'failed' }, 503)),
+      timeoutFetch,
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('connection refused')),
+    ];
+
+    for (const fetchFn of fetchResponses) {
+      const client = new HttpSemanticWorkerClient({
+        baseUrl: 'http://127.0.0.1:3100',
+        timeoutMs: fetchFn === timeoutFetch ? 5 : 1_000,
+        fetchFn,
+      });
+
+      await expect(client.health()).rejects.toMatchObject({
+        code: 'SEMANTIC_WORKER_UNAVAILABLE',
+      });
+    }
+  });
+
   it('returns a strictly validated vector for the requested model', async () => {
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({

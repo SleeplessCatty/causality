@@ -487,7 +487,7 @@ interface SemanticWorkerClient {
 GET /api/semantic/lifecycle
 ```
 
-- [ ] **Step 1: Add Worker health client failure tests**
+- [x] **Step 1: Add Worker health client failure tests**
 
 Test valid health, timeout, invalid JSON, and non-2xx:
 
@@ -503,24 +503,26 @@ await expect(unreachableClient.health()).rejects.toMatchObject({
 });
 ```
 
-- [ ] **Step 2: Add lifecycle route integration test**
+- [x] **Step 2: Add lifecycle route integration test**
 
 Prepare a current ready model and mock Worker health. Assert `/api/semantic/lifecycle` returns `stage: ready`, `allowedActions: ['reindex']`, `pollAfterMs: null`, and `worker.modelState: loaded`.
 
 Prepare a mismatched Worker response and assert facts remain ready while Worker is `mismatch`.
 
-- [ ] **Step 3: Run tests and verify failure**
+- [x] **Step 3: Run tests and verify failure**
 
 Run:
 
 ```bash
-pnpm --filter @causality/api test -- semantic-worker-client.test.ts
-pnpm --filter @causality/api test:integration -- semantic.integration.test.ts
+pnpm --filter @causality/api exec vitest run test/semantic-worker-client.test.ts
+pnpm --filter @causality/api exec vitest run \
+  --config vitest.integration.config.ts \
+  test/semantic.integration.test.ts
 ```
 
 Expected: FAIL because `health()` and lifecycle route do not exist.
 
-- [ ] **Step 4: Implement transactional fact reads**
+- [x] **Step 4: Implement transactional fact reads**
 
 `readFacts()` uses one read-only transaction to read:
 
@@ -530,7 +532,7 @@ Expected: FAIL because `health()` and lifecycle route do not exist.
 
 It returns facts, not UI stages. Do not select obsolete tasks and do not prefer failed tasks over current stable state.
 
-- [ ] **Step 5: Compose Worker health**
+- [x] **Step 5: Compose Worker health**
 
 Call `/internal/health` with the existing short timeout. Convert connection failure to:
 
@@ -545,22 +547,26 @@ Call `/internal/health` with the existing short timeout. Convert connection fail
 
 The lifecycle service passes database facts and Worker facts to `resolveSemanticLifecycle`. It must not mutate state after a health failure.
 
-- [ ] **Step 6: Replace settings reads**
+- [x] **Step 6: Replace settings reads**
 
 Expose lifecycle from the route and return lifecycle snapshots after threshold changes. Keep `/api/semantic/settings` only until the Web task migrates, with a temporary adapter in the API test scope; remove it in Task 9.
 
-- [ ] **Step 7: Run focused tests**
+- [x] **Step 7: Run focused tests**
 
 Run:
 
 ```bash
-pnpm --filter @causality/api test -- semantic-worker-client.test.ts semantic-lifecycle-resolver.test.ts
-pnpm --filter @causality/api test:integration -- semantic.integration.test.ts
+pnpm --filter @causality/api exec vitest run \
+  test/semantic-worker-client.test.ts \
+  test/semantic-lifecycle-resolver.test.ts
+pnpm --filter @causality/api exec vitest run \
+  --config vitest.integration.config.ts \
+  test/semantic.integration.test.ts
 ```
 
 Expected: health composition and lifecycle reads pass without changing model/index facts.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/api/src/features/semantic apps/api/src/app.ts apps/api/test

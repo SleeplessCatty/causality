@@ -148,6 +148,11 @@ async function measureServiceQuery(
   const service = new SemanticQueryService({
     contextRepository: new PostgresSemanticQueryContextRepository(pool),
     workerClient: {
+      health: async () => ({
+        status: 'ok',
+        modelLoaded: true,
+        activeModelCode: model.code,
+      }),
       embedQuery: async () => queryVector(model.dimensions),
     },
     searchRepository: new PostgresSemanticSearchRepository(pool),

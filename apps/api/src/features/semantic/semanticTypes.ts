@@ -22,7 +22,6 @@ export class SemanticRepositoryError extends Error {
 
 export interface SemanticRepository {
   getSettings(): Promise<SemanticSettingsResponse>;
-  setThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void>;
   requestUseModel(modelCode: SemanticModelCode): Promise<SemanticUseModelResponse>;
   requestReindex(): Promise<SemanticUseModelResponse>;
   retryLatestFailure(): Promise<SemanticUseModelResponse>;

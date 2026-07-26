@@ -21,6 +21,11 @@ describe.sequential('relation REST API', () => {
   beforeAll(async () => {
     context = await startPostgresTestContext('causality_relations_test', {
       semanticWorkerClient: {
+        health: async () => ({
+          status: 'ok',
+          modelLoaded: true,
+          activeModelCode: 'multilingual-e5-small',
+        }),
         embedQuery: async () => [1, ...Array.from({ length: 383 }, () => 0)],
       },
     });

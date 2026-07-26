@@ -55,8 +55,8 @@ export function ParameterSettings() {
   const updateThreshold = useMutation({
     mutationFn: ({ modelCode, threshold }: { modelCode: SemanticModelCode; threshold: number }) =>
       updateSemanticThreshold(modelCode, threshold),
-    onSuccess: (nextSettings) => {
-      queryClient.setQueryData(settingsQueryKey, nextSettings);
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     },
     onError: reportError,
   });

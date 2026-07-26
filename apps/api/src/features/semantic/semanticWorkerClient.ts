@@ -14,7 +14,26 @@ const embeddingResponseSchema = z
   })
   .strict();
 
+const healthResponseSchema = z
+  .object({
+    status: z.literal('ok'),
+    modelLoaded: z.boolean(),
+    activeModelCode: semanticModelCodeSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.modelLoaded !== (value.activeModelCode !== null)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Worker model state is inconsistent',
+      });
+    }
+  });
+
+export type SemanticWorkerHealth = z.infer<typeof healthResponseSchema>;
+
 export interface SemanticWorkerClient {
+  health(): Promise<SemanticWorkerHealth>;
   embedQuery(modelCode: SemanticModelCode, text: string): Promise<number[]>;
 }
 
@@ -36,16 +55,35 @@ interface HttpSemanticWorkerClientOptions {
 
 export class HttpSemanticWorkerClient implements SemanticWorkerClient {
   private readonly fetchFn: typeof fetch;
-  private readonly endpoint: string;
+  private readonly embeddingEndpoint: string;
+  private readonly healthEndpoint: string;
 
   public constructor(private readonly options: HttpSemanticWorkerClientOptions) {
     this.fetchFn = options.fetchFn ?? fetch;
-    this.endpoint = new URL('/internal/embed-query', options.baseUrl).toString();
+    this.embeddingEndpoint = new URL('/internal/embed-query', options.baseUrl).toString();
+    this.healthEndpoint = new URL('/internal/health', options.baseUrl).toString();
+  }
+
+  public async health(): Promise<SemanticWorkerHealth> {
+    try {
+      const response = await this.fetchFn(this.healthEndpoint, {
+        method: 'GET',
+        signal: AbortSignal.timeout(this.options.timeoutMs),
+      });
+      if (!response.ok) throw new SemanticWorkerClientError();
+
+      const parsed = healthResponseSchema.safeParse(await response.json());
+      if (!parsed.success) throw new SemanticWorkerClientError();
+      return parsed.data;
+    } catch (error) {
+      if (error instanceof SemanticWorkerClientError) throw error;
+      throw new SemanticWorkerClientError();
+    }
   }
 
   public async embedQuery(modelCode: SemanticModelCode, text: string): Promise<number[]> {
     try {
-      const response = await this.fetchFn(this.endpoint, {
+      const response = await this.fetchFn(this.embeddingEndpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ modelCode, text }),

@@ -1,4 +1,4 @@
-import type { SemanticSettingsResponse } from '@causality/contracts';
+import type { SemanticLifecycleSnapshot, SemanticSettingsResponse } from '@causality/contracts';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -71,6 +71,54 @@ const settings: SemanticSettingsResponse = {
   ],
   activeTask: null,
 };
+
+function lifecycleWithThreshold(
+  modelCode: SemanticLifecycleSnapshot['models'][number]['modelCode'],
+  threshold: number,
+): SemanticLifecycleSnapshot {
+  return {
+    currentModelCode: null,
+    models: settings.models.map((model) => {
+      const fileState = model.downloadStatus;
+      return {
+        modelCode: model.code,
+        label: model.label,
+        description: model.description,
+        languageLabel: model.languageLabel,
+        dimensions: model.dimensions,
+        expectedDownloadBytes: model.expectedDownloadBytes,
+        threshold: model.code === modelCode ? threshold : model.threshold,
+        downloadedAt: model.downloadedAt,
+        fileState,
+        role: 'inactive' as const,
+        stage: fileState,
+        availableForEnhancedSearch: false,
+        allowedActions:
+          fileState === 'downloaded' ? (['use'] as const) : (['download_and_use'] as const),
+        failure: null,
+      };
+    }),
+    index: {
+      status: 'empty',
+      processedItems: 0,
+      totalItems: 0,
+      pendingItems: 0,
+      failedItems: 0,
+      availableForEnhancedSearch: false,
+      failure: null,
+      updatedAt: null,
+    },
+    operation: null,
+    worker: {
+      status: 'online',
+      modelState: 'idle',
+      loadedModelCode: null,
+      checkedAt: '2026-07-26T10:00:00.000Z',
+    },
+    pollAfterMs: null,
+    updatedAt: '2026-07-26T10:00:00.000Z',
+  };
+}
 
 function jsonResponse(body: unknown, status = 200): Promise<Response> {
   return Promise.resolve(
@@ -331,9 +379,18 @@ describe('ParameterSettings', () => {
     const thresholdResponse = new Promise<Response>((resolve) => {
       resolveThreshold = resolve;
     });
-    const fetchMock = vi.fn((input: string | URL | Request) =>
-      String(input).endsWith('/threshold') ? thresholdResponse : jsonResponse(settings),
-    );
+    let settingsRequests = 0;
+    const updatedSettings: SemanticSettingsResponse = {
+      ...settings,
+      models: settings.models.map((item) =>
+        item.code === 'bge-small-zh-v1.5' ? { ...item, threshold: 64 } : item,
+      ),
+    };
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      if (String(input).endsWith('/threshold')) return thresholdResponse;
+      settingsRequests += 1;
+      return jsonResponse(settingsRequests === 1 ? settings : updatedSettings);
+    });
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
@@ -354,15 +411,9 @@ describe('ParameterSettings', () => {
     expect(slider.disabled).toBe(true);
     expect(slider.classList.contains('range-control--stable-disabled')).toBe(true);
 
-    resolveThreshold(
-      await jsonResponse({
-        ...settings,
-        models: settings.models.map((item) =>
-          item.code === 'bge-small-zh-v1.5' ? { ...item, threshold: 64 } : item,
-        ),
-      }),
-    );
+    resolveThreshold(await jsonResponse(lifecycleWithThreshold('bge-small-zh-v1.5', 64)));
     await waitFor(() => expect(slider.disabled).toBe(false));
+    await waitFor(() => expect(slider.value).toBe('64'));
   });
 
   it('shows a failed switch action inside the still-open confirmation dialog', async () => {

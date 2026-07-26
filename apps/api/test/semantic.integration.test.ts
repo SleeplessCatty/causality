@@ -1,7 +1,9 @@
 import { MODEL_CATALOG } from '@causality/semantic-core';
+import type { SemanticModelCode } from '@causality/contracts';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { PostgresSemanticLifecycleRepository } from '../src/features/semantic/semanticLifecycleRepository.js';
 import { PostgresSemanticSearchRepository } from '../src/features/semantic/semanticSearchRepository.js';
 import { SemanticWorkerClientError } from '../src/features/semantic/semanticWorkerClient.js';
 import { startPostgresTestContext } from './support/postgresTestContext.js';
@@ -14,10 +16,20 @@ const reindexCaseId = '30000000-0000-4000-8000-000000000083';
 describe.sequential('semantic configuration API', () => {
   let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
   let pool: Pool | undefined;
+  let workerHealth: {
+    status: 'ok';
+    modelLoaded: boolean;
+    activeModelCode: SemanticModelCode | null;
+  };
+  let workerHealthUnavailable: boolean;
 
   beforeAll(async () => {
     context = await startPostgresTestContext('causality_semantic_test', {
       semanticWorkerClient: {
+        health: async () => {
+          if (workerHealthUnavailable) throw new SemanticWorkerClientError();
+          return workerHealth;
+        },
         embedQuery: async () => {
           throw new SemanticWorkerClientError();
         },
@@ -27,6 +39,12 @@ describe.sequential('semantic configuration API', () => {
   }, 120_000);
 
   beforeEach(async () => {
+    workerHealth = {
+      status: 'ok',
+      modelLoaded: false,
+      activeModelCode: null,
+    };
+    workerHealthUnavailable = false;
     await pool!.query(`delete from semantic_jobs`);
     await pool!.query(`delete from semantic_embeddings`);
     await pool!.query(
@@ -48,6 +66,8 @@ describe.sequential('semantic configuration API', () => {
            end,
            file_status = 'not_downloaded',
            downloaded_at = null,
+           failure_kind = null,
+           failure_code = null,
            error = null,
            updated_at = clock_timestamp()`,
       [
@@ -65,6 +85,10 @@ describe.sequential('semantic configuration API', () => {
            processed_items = 0,
            total_items = 0,
            pending_items = 0,
+           failed_items = 0,
+           failure_stage = null,
+           failure_kind = null,
+           failure_code = null,
            error = null,
            last_ready_at = null,
            updated_at = clock_timestamp()
@@ -74,6 +98,147 @@ describe.sequential('semantic configuration API', () => {
 
   afterAll(async () => {
     await context?.close();
+  });
+
+  it('returns a ready lifecycle snapshot and reports a loaded-model mismatch without changing facts', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set file_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'bge-small-zh-v1.5';
+       update semantic_index_state
+       set active_model_code = 'bge-small-zh-v1.5',
+           status = 'ready',
+           state_version = 4,
+           processed_items = 600,
+           total_items = 600,
+           updated_at = clock_timestamp()
+       where singleton_key = true`,
+    );
+    await pool!.query(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         error
+       )
+       values (
+         'full_index',
+         'bge-small-zh-v1.5',
+         'failed',
+         3,
+         3,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         '已被当前索引取代的旧失败'
+       )`,
+    );
+    workerHealth = {
+      status: 'ok',
+      modelLoaded: true,
+      activeModelCode: 'bge-small-zh-v1.5',
+    };
+    await expect(new PostgresSemanticLifecycleRepository(pool!).readFacts()).resolves.toMatchObject(
+      {
+        jobs: [],
+      },
+    );
+
+    const ready = await context!.app.inject({
+      method: 'GET',
+      url: '/api/semantic/lifecycle',
+    });
+
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json()).toMatchObject({
+      currentModelCode: 'bge-small-zh-v1.5',
+      index: {
+        status: 'ready',
+        processedItems: 600,
+        totalItems: 600,
+        availableForEnhancedSearch: true,
+      },
+      worker: {
+        status: 'online',
+        modelState: 'loaded',
+        loadedModelCode: 'bge-small-zh-v1.5',
+      },
+      pollAfterMs: null,
+      operation: null,
+    });
+    expect(
+      ready
+        .json()
+        .models.find((model: { modelCode: string }) => model.modelCode === 'bge-small-zh-v1.5'),
+    ).toMatchObject({
+      role: 'current',
+      stage: 'ready',
+      allowedActions: ['reindex'],
+    });
+
+    const beforeFacts = await pool!.query(
+      `select active_model_code, status, state_version, processed_items, total_items
+       from semantic_index_state
+       where singleton_key = true`,
+    );
+    workerHealth = {
+      status: 'ok',
+      modelLoaded: true,
+      activeModelCode: 'bge-m3',
+    };
+
+    const mismatch = await context!.app.inject({
+      method: 'GET',
+      url: '/api/semantic/lifecycle',
+    });
+
+    expect(mismatch.statusCode).toBe(200);
+    expect(mismatch.json()).toMatchObject({
+      index: {
+        status: 'ready',
+        availableForEnhancedSearch: false,
+      },
+      worker: {
+        status: 'online',
+        modelState: 'mismatch',
+        loadedModelCode: 'bge-m3',
+      },
+    });
+    const afterFacts = await pool!.query(
+      `select active_model_code, status, state_version, processed_items, total_items
+       from semantic_index_state
+       where singleton_key = true`,
+    );
+    expect(afterFacts.rows).toEqual(beforeFacts.rows);
+
+    workerHealthUnavailable = true;
+    const unreachable = await context!.app.inject({
+      method: 'GET',
+      url: '/api/semantic/lifecycle',
+    });
+    expect(unreachable.statusCode).toBe(200);
+    expect(unreachable.json()).toMatchObject({
+      index: {
+        status: 'ready',
+        availableForEnhancedSearch: false,
+      },
+      worker: {
+        status: 'unreachable',
+        modelState: 'missing',
+        loadedModelCode: null,
+      },
+      operation: null,
+    });
+    const afterUnavailable = await pool!.query(
+      `select active_model_code, status, state_version, processed_items, total_items
+       from semantic_index_state
+       where singleton_key = true`,
+    );
+    expect(afterUnavailable.rows).toEqual(beforeFacts.rows);
   });
 
   it('returns pinned settings and changes one threshold without queuing work', async () => {
@@ -115,9 +280,13 @@ describe.sequential('semantic configuration API', () => {
       payload: { threshold: 60 },
     });
     expect(updated.statusCode).toBe(200);
-    expect(updated.json().models).toEqual(
-      expect.arrayContaining([expect.objectContaining({ code: 'bge-m3', threshold: 60 })]),
-    );
+    expect(updated.json()).toMatchObject({
+      currentModelCode: null,
+      worker: { status: 'online', modelState: 'idle' },
+    });
+    expect(
+      updated.json().models.find((model: { modelCode: string }) => model.modelCode === 'bge-m3'),
+    ).toMatchObject({ threshold: 60 });
     const jobs = await pool!.query<{ count: number }>(
       `select count(*)::int as count from semantic_jobs`,
     );
