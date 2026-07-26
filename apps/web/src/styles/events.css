@@ -1669,12 +1669,97 @@ body {
 }
 
 .confidence-control > input[type='range'] {
+  height: 5px;
   width: 100%;
-  accent-color: #176348;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  outline: 0;
+  background: linear-gradient(
+    to right,
+    var(--range-control) 0,
+    var(--range-control) var(--percentage-value),
+    #d8dfda var(--percentage-value),
+    #d8dfda 100%
+  );
+  cursor: pointer;
+  transition: none;
+}
+
+.confidence-control > input[type='range']::-webkit-slider-runnable-track {
+  height: 5px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.confidence-control > input[type='range']::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5.5px;
+  appearance: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--range-control);
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  transition: none;
+}
+
+.confidence-control > input[type='range']::-moz-range-track {
+  height: 5px;
+  border: 0;
+  border-radius: 999px;
+  background: #d8dfda;
+}
+
+.confidence-control > input[type='range']::-moz-range-progress {
+  height: 5px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--range-control);
+}
+
+.confidence-control > input[type='range']::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--range-control);
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  transition: none;
+}
+
+.confidence-control > input[type='range']:hover,
+.confidence-control > input[type='range']:active {
+  filter: none;
+  transform: none;
+}
+
+.confidence-control > input[type='range']:hover::-webkit-slider-thumb,
+.confidence-control > input[type='range']:active::-webkit-slider-thumb,
+.confidence-control > input[type='range']:hover::-moz-range-thumb,
+.confidence-control > input[type='range']:active::-moz-range-thumb {
+  background: var(--range-control);
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+
+.confidence-control > input[type='range']:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--range-control), transparent 72%);
+  outline-offset: 4px;
 }
 
 .confidence-control > input[type='range']:disabled {
   opacity: 0.38;
+}
+
+.confidence-control > input[type='range'].range-control--stable-disabled:disabled {
+  opacity: 1;
 }
 
 .confidence-control > div {

@@ -163,6 +163,7 @@ function ModelCard({
         numberLabel="相似度门槛数值"
         help="只影响增强查询的候选过滤，不会重新生成索引。"
         disabled={thresholdPending}
+        preserveAppearanceWhenDisabled
         onChange={setThreshold}
         onCommit={() => void saveThreshold()}
       />

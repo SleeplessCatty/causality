@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+
 interface PercentageControlProps {
   id: string;
   label: string;
@@ -10,6 +12,7 @@ interface PercentageControlProps {
   help?: string | undefined;
   error?: string | undefined;
   disabled?: boolean;
+  preserveAppearanceWhenDisabled?: boolean;
 }
 
 export function PercentageControl({
@@ -24,6 +27,7 @@ export function PercentageControl({
   help,
   error,
   disabled = false,
+  preserveAppearanceWhenDisabled = false,
 }: PercentageControlProps) {
   return (
     <div className="form-field confidence-field">
@@ -40,6 +44,8 @@ export function PercentageControl({
           value={value ?? 0}
           aria-label={sliderLabel}
           disabled={disabled || value === null}
+          className={preserveAppearanceWhenDisabled ? 'range-control--stable-disabled' : undefined}
+          style={{ '--percentage-value': `${value ?? 0}%` } as CSSProperties}
           onChange={(event) => onChange(Number(event.target.value))}
           onPointerUp={onCommit}
           onKeyUp={(event) => {

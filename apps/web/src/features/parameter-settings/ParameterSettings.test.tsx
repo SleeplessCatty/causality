@@ -326,6 +326,45 @@ describe('ParameterSettings', () => {
     );
   });
 
+  it('keeps the threshold slider appearance stable while its value is being saved', async () => {
+    let resolveThreshold!: (response: Response) => void;
+    const thresholdResponse = new Promise<Response>((resolve) => {
+      resolveThreshold = resolve;
+    });
+    const fetchMock = vi.fn((input: string | URL | Request) =>
+      String(input).endsWith('/threshold') ? thresholdResponse : jsonResponse(settings),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    const model = await screen.findByRole('article', { name: '中文轻量' });
+    const slider = within(model).getByRole('slider', {
+      name: '相似度门槛滑块',
+    }) as HTMLInputElement;
+
+    fireEvent.change(slider, { target: { value: '64' } });
+    fireEvent.pointerUp(slider);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/semantic/models/bge-small-zh-v1.5/threshold',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+    expect(slider.disabled).toBe(true);
+    expect(slider.classList.contains('range-control--stable-disabled')).toBe(true);
+
+    resolveThreshold(
+      await jsonResponse({
+        ...settings,
+        models: settings.models.map((item) =>
+          item.code === 'bge-small-zh-v1.5' ? { ...item, threshold: 64 } : item,
+        ),
+      }),
+    );
+    await waitFor(() => expect(slider.disabled).toBe(false));
+  });
+
   it('shows a failed switch action inside the still-open confirmation dialog', async () => {
     const activeReady: SemanticSettingsResponse = {
       ...settings,
