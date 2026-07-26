@@ -1,6 +1,6 @@
 # 语义模型生命周期与统一状态处理设计
 
-**状态：** 待书面审核  
+**状态：** 已审核，等待实施
 **日期：** 2026-07-26  
 **适用阶段：** P2-02 语义增强搜索最终整改  
 **关联设计：** `docs/stages/phase-2/P2-02-semantic-enhanced-search-design.md`
@@ -582,6 +582,24 @@ POST /api/semantic/reindex
 - 不保留通用 `/api/semantic/retry`；
 - 操作在事务中锁定生命周期状态；
 - 重复提交同一合法操作返回现有任务，不建立重复任务。
+
+### 25.1 增强查询同步提示
+
+三个列表的增强查询响应使用：
+
+```ts
+type SemanticIndexNotice = 'updating' | 'incomplete' | null;
+```
+
+替换只能表达“正在更新”的 `semanticIndexUpdating: boolean`：
+
+| 当前索引 | `semanticIndexNotice` | 页面提示 |
+|---|---|---|
+| `ready` | `null` | 不显示提示 |
+| `updating` | `updating` | 语义索引尚在同步，结果可能暂不包含最新修改 |
+| `incomplete` | `incomplete` | 语义索引不完整，结果可能缺少部分记录 |
+
+普通搜索响应始终返回 `null`。该字段只表达索引同步完整性，不返回失败记录、匹配原因或相似度。
 
 ## 26. 数据结构调整
 
