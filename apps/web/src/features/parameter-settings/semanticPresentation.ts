@@ -10,8 +10,21 @@ const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   timeStyle: 'short',
 });
 
-export function formatMegabytes(bytes: number): string {
-  return `约 ${Math.round(bytes / 1024 / 1024)} MB`;
+const megabyteFormatter = new Intl.NumberFormat('zh-CN', {
+  maximumFractionDigits: 1,
+});
+const BYTES_PER_MEGABYTE = 1024 * 1024;
+
+function toMegabytes(bytes: number): number {
+  return bytes / BYTES_PER_MEGABYTE;
+}
+
+export function formatMegabytesWithUpToOneDecimal(bytes: number): string {
+  return `${megabyteFormatter.format(toMegabytes(bytes))} MB`;
+}
+
+export function formatApproximateMegabytes(bytes: number): string {
+  return `约 ${Math.round(toMegabytes(bytes))} MB`;
 }
 
 export function formatSemanticDate(value: string | null): string {

@@ -1,7 +1,7 @@
 import type { SemanticModel } from '@causality/contracts';
 import { useEffect, useRef } from 'react';
 
-import { formatMegabytes } from './semanticPresentation';
+import { formatApproximateMegabytes } from './semanticPresentation';
 
 export interface SemanticModelAction {
   type: 'switch' | 'reindex';
@@ -90,7 +90,7 @@ export function SemanticModelActionDialog({
         {requiresDownload ? (
           <p className="model-switch-dialog__download">
             {action.model.label}尚未下载，预计需要下载{' '}
-            {formatMegabytes(action.model.expectedDownloadBytes)}。
+            {formatApproximateMegabytes(action.model.expectedDownloadBytes)}。
           </p>
         ) : null}
         {error ? (

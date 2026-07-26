@@ -1,9 +1,14 @@
 import type { SemanticTask } from '@causality/contracts';
 
+import { formatMegabytesWithUpToOneDecimal } from './semanticPresentation';
+
 export function SemanticTaskProgress({ task }: { task: SemanticTask }) {
   const isDownload = task.type === 'download';
   const value = isDownload ? task.downloadedBytes : task.processedItems;
   const total = isDownload ? task.totalBytes : task.totalItems;
+  const progressText = isDownload
+    ? `${formatMegabytesWithUpToOneDecimal(value)} / ${formatMegabytesWithUpToOneDecimal(total)}`
+    : `${value} / ${total}`;
   const label =
     task.type === 'download'
       ? task.status === 'failed'
@@ -17,9 +22,7 @@ export function SemanticTaskProgress({ task }: { task: SemanticTask }) {
     <section className="semantic-task-panel" aria-labelledby="semantic-task-title">
       <div>
         <span id="semantic-task-title">{label}</span>
-        <strong>
-          {value} / {total}
-        </strong>
+        <strong>{progressText}</strong>
       </div>
       <progress
         aria-label={task.type === 'download' ? '模型下载进度' : '索引生成进度'}

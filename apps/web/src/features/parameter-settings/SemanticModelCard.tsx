@@ -5,7 +5,7 @@ import { PercentageControl } from '../../shared/controls/PercentageControl';
 import {
   availabilityStatus,
   downloadStatus,
-  formatMegabytes,
+  formatApproximateMegabytes,
   formatSemanticDate,
   modelIndexStatus,
 } from './semanticPresentation';
@@ -81,7 +81,7 @@ export function SemanticModelCard({
         </div>
         <div>
           <dt>预计下载</dt>
-          <dd>{formatMegabytes(model.expectedDownloadBytes)}</dd>
+          <dd>{formatApproximateMegabytes(model.expectedDownloadBytes)}</dd>
         </div>
         <div>
           <dt>最近下载</dt>
