@@ -157,6 +157,10 @@ a {
   font-weight: 680;
 }
 
+.status-row--semantic-worker .status-value {
+  min-width: 210px;
+}
+
 .status-dot {
   width: 7px;
   height: 7px;

@@ -1,5 +1,5 @@
 import { MODEL_CATALOG } from '@causality/semantic-core';
-import type { SemanticModelCode } from '@causality/contracts';
+import type { SemanticModelCode, SemanticWorkerStatus } from '@causality/contracts';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -239,6 +239,122 @@ describe.sequential('semantic configuration API', () => {
        where singleton_key = true`,
     );
     expect(afterUnavailable.rows).toEqual(beforeFacts.rows);
+  });
+
+  it('reports every Worker runtime state without changing model or index rows', async () => {
+    const scenarios: Array<{
+      currentModelCode: SemanticModelCode | null;
+      indexStatus: 'empty' | 'waiting_model' | 'ready';
+      workerModelCode: SemanticModelCode | null;
+      unavailable: boolean;
+      expected: Pick<SemanticWorkerStatus, 'status' | 'modelState' | 'loadedModelCode'>;
+    }> = [
+      {
+        currentModelCode: null,
+        indexStatus: 'empty',
+        workerModelCode: null,
+        unavailable: false,
+        expected: { status: 'online', modelState: 'idle', loadedModelCode: null },
+      },
+      {
+        currentModelCode: 'bge-small-zh-v1.5',
+        indexStatus: 'waiting_model',
+        workerModelCode: null,
+        unavailable: false,
+        expected: { status: 'online', modelState: 'preparing', loadedModelCode: null },
+      },
+      {
+        currentModelCode: 'bge-small-zh-v1.5',
+        indexStatus: 'ready',
+        workerModelCode: 'bge-small-zh-v1.5',
+        unavailable: false,
+        expected: {
+          status: 'online',
+          modelState: 'loaded',
+          loadedModelCode: 'bge-small-zh-v1.5',
+        },
+      },
+      {
+        currentModelCode: 'bge-small-zh-v1.5',
+        indexStatus: 'ready',
+        workerModelCode: null,
+        unavailable: false,
+        expected: { status: 'online', modelState: 'missing', loadedModelCode: null },
+      },
+      {
+        currentModelCode: 'bge-small-zh-v1.5',
+        indexStatus: 'ready',
+        workerModelCode: 'bge-m3',
+        unavailable: false,
+        expected: { status: 'online', modelState: 'mismatch', loadedModelCode: 'bge-m3' },
+      },
+      {
+        currentModelCode: 'bge-small-zh-v1.5',
+        indexStatus: 'ready',
+        workerModelCode: null,
+        unavailable: true,
+        expected: { status: 'unreachable', modelState: 'missing', loadedModelCode: null },
+      },
+    ];
+
+    for (const [index, scenario] of scenarios.entries()) {
+      await pool!.query(
+        `update semantic_index_state
+         set active_model_code = $1,
+             status = $2,
+             state_version = $3,
+             processed_items = 0,
+             total_items = 0,
+             pending_items = 0,
+             failed_items = 0,
+             failure_stage = null,
+             failure_kind = null,
+             failure_code = null,
+             error = null
+         where singleton_key = true`,
+        [scenario.currentModelCode, scenario.indexStatus, index + 1],
+      );
+      workerHealth = {
+        status: 'ok',
+        modelLoaded: scenario.workerModelCode !== null,
+        activeModelCode: scenario.workerModelCode,
+      };
+      workerHealthUnavailable = scenario.unavailable;
+
+      const beforeModelState = await pool!.query(
+        `select model_code, threshold, file_status, downloaded_at, failure_kind, failure_code, error
+         from semantic_model_settings
+         order by model_code`,
+      );
+      const beforeIndexState = await pool!.query(
+        `select active_model_code, status, state_version, processed_items, total_items,
+                pending_items, failed_items, failure_stage, failure_kind, failure_code, error
+         from semantic_index_state
+         where singleton_key = true`,
+      );
+
+      const response = await context!.app.inject({
+        method: 'GET',
+        url: '/api/semantic/worker-status',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject(scenario.expected);
+
+      const afterModelState = await pool!.query(
+        `select model_code, threshold, file_status, downloaded_at, failure_kind, failure_code, error
+         from semantic_model_settings
+         order by model_code`,
+      );
+      const afterIndexState = await pool!.query(
+        `select active_model_code, status, state_version, processed_items, total_items,
+                pending_items, failed_items, failure_stage, failure_kind, failure_code, error
+         from semantic_index_state
+         where singleton_key = true`,
+      );
+      expect(afterModelState.rows).toEqual(beforeModelState.rows);
+      expect(afterIndexState.rows).toEqual(beforeIndexState.rows);
+    }
   });
 
   it('returns the lifecycle catalog and changes one threshold without queuing work', async () => {

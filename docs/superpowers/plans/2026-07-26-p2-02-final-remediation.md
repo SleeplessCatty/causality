@@ -1348,7 +1348,7 @@ GET /api/semantic/worker-status
 
 - Returns `SemanticWorkerStatus` from the lifecycle contracts.
 
-- [ ] **Step 1: Write API status tests**
+- [x] **Step 1: Write API status tests**
 
 Mock Worker health for idle, loaded, preparing, missing, mismatch, and unreachable. Assert the endpoint never changes database rows:
 
@@ -1357,7 +1357,7 @@ expect(afterModelState).toEqual(beforeModelState);
 expect(afterIndexState).toEqual(beforeIndexState);
 ```
 
-- [ ] **Step 2: Write System Status component tests**
+- [x] **Step 2: Write System Status component tests**
 
 Assert the third row:
 
@@ -1368,7 +1368,7 @@ expect(screen.getByText('正常·已加载当前模型')).toBeTruthy();
 
 Click “重新检查” and assert API health, readiness, and Worker status each refetch exactly once. Assert no interval polling starts.
 
-- [ ] **Step 3: Run tests and verify failure**
+- [x] **Step 3: Run tests and verify failure**
 
 Run:
 
@@ -1380,7 +1380,7 @@ pnpm --filter @causality/web test -- SystemStatus.test.tsx
 
 Expected: FAIL because Worker status is not exposed or rendered.
 
-- [ ] **Step 4: Implement API proxy**
+- [x] **Step 4: Implement API proxy**
 
 Reuse `SemanticWorkerClient.health()` and current lifecycle facts. Return one of:
 
@@ -1395,11 +1395,11 @@ unreachable
 
 Do not write model or index state.
 
-- [ ] **Step 5: Add the System Status row**
+- [x] **Step 5: Add the System Status row**
 
 Preserve existing API/PostgreSQL rows and visual style. Include Worker status in initial load and manual `Promise.all` refetch. Do not add automatic polling.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -1411,7 +1411,7 @@ pnpm --filter @causality/web test -- SystemStatus.test.tsx
 
 Expected: runtime rows remain independent and all tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/api/src/features/semantic apps/api/test apps/web/src/features/system-status apps/web/src/styles/global.css

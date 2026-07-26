@@ -1,6 +1,7 @@
+import type { SemanticWorkerStatus } from '@causality/contracts';
 import { useQuery } from '@tanstack/react-query';
 
-import { getHealth, getReadiness } from './systemStatusApi';
+import { getHealth, getReadiness, getSemanticWorkerStatus } from './systemStatusApi';
 
 type StatusTone = 'neutral' | 'positive' | 'negative';
 
@@ -18,6 +19,29 @@ function StatusValue({ label, tone }: StatusValueProps) {
   );
 }
 
+function semanticWorkerStatus(worker: {
+  isPending: boolean;
+  data: SemanticWorkerStatus | undefined;
+}): StatusValueProps {
+  if (worker.isPending) return { label: '检查中', tone: 'neutral' };
+  if (!worker.data || worker.data.status === 'unreachable') {
+    return { label: '无法连接', tone: 'negative' };
+  }
+  if (worker.data.modelState === 'idle') {
+    return { label: '正常·未加载模型', tone: 'positive' };
+  }
+  if (worker.data.modelState === 'preparing') {
+    return { label: '正常·正在准备当前模型', tone: 'neutral' };
+  }
+  if (worker.data.modelState === 'loaded') {
+    return { label: '正常·已加载当前模型', tone: 'positive' };
+  }
+  if (worker.data.modelState === 'mismatch') {
+    return { label: '异常·加载模型与当前配置不一致', tone: 'negative' };
+  }
+  return { label: '异常·当前模型未加载', tone: 'negative' };
+}
+
 export function SystemStatus() {
   const health = useQuery({
     queryKey: ['system', 'health'],
@@ -26,6 +50,10 @@ export function SystemStatus() {
   const readiness = useQuery({
     queryKey: ['system', 'readiness'],
     queryFn: ({ signal }) => getReadiness(signal),
+  });
+  const worker = useQuery({
+    queryKey: ['system', 'semantic-worker'],
+    queryFn: ({ signal }) => getSemanticWorkerStatus(signal),
   });
   const apiStatus: StatusValueProps = health.isPending
     ? { label: '检查中', tone: 'neutral' }
@@ -38,11 +66,12 @@ export function SystemStatus() {
     : readiness.data?.status === 'ready'
       ? { label: '就绪', tone: 'positive' }
       : { label: '数据库不可用', tone: 'negative' };
+  const workerStatus = semanticWorkerStatus(worker);
 
-  const isChecking = health.isFetching || readiness.isFetching;
+  const isChecking = health.isFetching || readiness.isFetching || worker.isFetching;
 
   function retry(): void {
-    void Promise.all([health.refetch(), readiness.refetch()]);
+    void Promise.all([health.refetch(), readiness.refetch(), worker.refetch()]);
   }
 
   return (
@@ -71,6 +100,13 @@ export function SystemStatus() {
             <span>数据存储连接</span>
           </div>
           <StatusValue {...databaseStatus} />
+        </div>
+        <div className="status-row status-row--semantic-worker">
+          <div>
+            <strong>Semantic Worker</strong>
+            <span>语义模型运行服务</span>
+          </div>
+          <StatusValue {...workerStatus} />
         </div>
       </div>
     </section>

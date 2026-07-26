@@ -89,11 +89,10 @@ export class SemanticLifecycleService {
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
-  public async lifecycle(): Promise<SemanticLifecycleSnapshot> {
-    const facts = await this.repository.readFacts();
+  private async resolveWorkerStatus(facts: SemanticLifecycleFacts): Promise<SemanticWorkerStatus> {
     const health: SemanticWorkerHealth | null = await this.workerClient.health().catch(() => null);
     const checkedAt = this.clock().toISOString();
-    const worker: SemanticWorkerStatus = health
+    return health
       ? onlineWorkerStatus(facts, health, checkedAt)
       : {
           status: 'unreachable',
@@ -101,10 +100,20 @@ export class SemanticLifecycleService {
           loadedModelCode: null,
           checkedAt,
         };
+  }
+
+  public async workerStatus(): Promise<SemanticWorkerStatus> {
+    const facts = await this.repository.readFacts();
+    return this.resolveWorkerStatus(facts);
+  }
+
+  public async lifecycle(): Promise<SemanticLifecycleSnapshot> {
+    const facts = await this.repository.readFacts();
+    const worker = await this.resolveWorkerStatus(facts);
     return resolveSemanticLifecycle({
       ...facts,
       worker,
-      now: checkedAt,
+      now: worker.checkedAt,
     });
   }
 

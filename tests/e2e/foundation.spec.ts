@@ -30,10 +30,13 @@ test('application shell opens events and reports system readiness', async ({ pag
   await page.getByRole('link', { name: '系统状态' }).click();
   await expect(page.getByText('正常', { exact: true })).toBeVisible();
   await expect(page.getByText('就绪', { exact: true })).toBeVisible();
+  await expect(page.getByText('Semantic Worker')).toBeVisible();
+  await expect(page.getByText('无法连接', { exact: true })).toBeVisible();
 
   await page.reload();
   await expect(page.getByText('正常', { exact: true })).toBeVisible();
   await expect(page.getByText('就绪', { exact: true })).toBeVisible();
+  await expect(page.getByText('无法连接', { exact: true })).toBeVisible();
 
   await page.screenshot({
     path: testInfo.outputPath('foundation-desktop.png'),

@@ -1,8 +1,10 @@
 import {
   healthResponseSchema,
   readinessResponseSchema,
+  semanticWorkerStatusSchema,
   type HealthResponse,
   type ReadinessResponse,
+  type SemanticWorkerStatus,
 } from '@causality/contracts';
 
 const requestTimeoutMilliseconds = 5_000;
@@ -36,4 +38,17 @@ export async function getReadiness(signal: AbortSignal): Promise<ReadinessRespon
   }
 
   return readiness;
+}
+
+export async function getSemanticWorkerStatus(signal: AbortSignal): Promise<SemanticWorkerStatus> {
+  const response = await fetch('/api/semantic/worker-status', {
+    headers: { Accept: 'application/json' },
+    signal: withTimeout(signal),
+  });
+
+  if (!response.ok) {
+    throw new Error('Semantic Worker status endpoint unavailable');
+  }
+
+  return semanticWorkerStatusSchema.parse(await response.json());
 }

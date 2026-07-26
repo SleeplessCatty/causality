@@ -298,6 +298,18 @@ Semantic Worker 负责：
 语义索引不完整，结果可能缺少部分记录
 ```
 
+### 8.4 系统状态页
+
+系统状态页在 API 服务和 PostgreSQL 之后显示 `Semantic Worker`，通过 API 代理检查：
+
+- 在线但没有当前模型：`正常·未加载模型`；
+- 正在下载、加载或建立索引：`正常·正在准备当前模型`；
+- 已加载当前模型：`正常·已加载当前模型`；
+- 当前模型未加载或加载了不同模型：显示对应异常；
+- Worker 不可达：`无法连接`。
+
+初次进入页面检查一次；“重新检查”同时刷新 API、PostgreSQL 和 Worker。系统状态页不自动轮询，也不会触发模型下载、加载或索引任务。
+
 ## 9. 查询和排序
 
 ### 9.1 查询流程
@@ -419,6 +431,7 @@ Worker 写入前必须检查：
 
 ```text
 GET  /api/semantic/lifecycle
+GET  /api/semantic/worker-status
 POST /api/semantic/models/:modelCode/use
 POST /api/semantic/models/:modelCode/retry-download
 POST /api/semantic/models/:modelCode/redownload

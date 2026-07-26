@@ -4,6 +4,7 @@ import {
   semanticLifecycleSnapshotSchema,
   semanticModelParamsSchema,
   semanticThresholdInputSchema,
+  semanticWorkerStatusSchema,
 } from '@causality/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
@@ -52,6 +53,20 @@ export function registerSemanticRoutes(
       },
     },
     async () => lifecycleService.lifecycle(),
+  );
+
+  routes.get(
+    '/api/semantic/worker-status',
+    {
+      schema: {
+        tags: ['semantic'],
+        response: {
+          200: semanticWorkerStatusSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async () => lifecycleService.workerStatus(),
   );
 
   routes.patch(
