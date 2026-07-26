@@ -3,8 +3,22 @@ import { describe, expect, it } from 'vitest';
 import { MODEL_CATALOG, semanticModelCodes } from '../src/index.js';
 
 describe('semantic model catalog', () => {
-  it('contains only the two approved pinned models', () => {
-    expect(semanticModelCodes).toEqual(['multilingual-e5-small', 'bge-m3']);
+  it('contains the four pinned comparison models', () => {
+    expect(semanticModelCodes).toEqual([
+      'bge-small-zh-v1.5',
+      'multilingual-e5-small',
+      'granite-embedding-97m-multilingual-r2',
+      'bge-m3',
+    ]);
+    expect(MODEL_CATALOG['bge-small-zh-v1.5']).toMatchObject({
+      revision: '75c43b069aac4d136ba6bc1122f995fedcfd2781',
+      dimensions: 512,
+      dtype: 'q8',
+      pooling: 'cls',
+      queryPrefix: '',
+      documentPrefix: '',
+      defaultThreshold: 62,
+    });
     expect(MODEL_CATALOG['multilingual-e5-small']).toMatchObject({
       revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
       dimensions: 384,
@@ -12,7 +26,7 @@ describe('semantic model catalog', () => {
       pooling: 'mean',
       queryPrefix: 'query: ',
       documentPrefix: 'passage: ',
-      defaultThreshold: 70,
+      defaultThreshold: 90,
     });
     expect(MODEL_CATALOG['bge-m3']).toMatchObject({
       revision: '25b9af8e87a38eb120cfe87125383677b9cd309e',
@@ -22,6 +36,15 @@ describe('semantic model catalog', () => {
       queryPrefix: '',
       documentPrefix: '',
       defaultThreshold: 55,
+    });
+    expect(MODEL_CATALOG['granite-embedding-97m-multilingual-r2']).toMatchObject({
+      revision: '536a9f241cb3f02a9c5995a1e708c784bd274859',
+      dimensions: 384,
+      dtype: 'q8',
+      pooling: 'cls',
+      queryPrefix: '',
+      documentPrefix: '',
+      defaultThreshold: 80,
     });
   });
 

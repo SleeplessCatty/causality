@@ -28,6 +28,31 @@ test('the root E2E command delegates to the isolated database script', () => {
   assert.equal(existsSync(scriptUrl), true);
 });
 
+test('root scripts include semantic packages and delivery checks', () => {
+  assert.equal(
+    packageJson.scripts['semantic:model-smoke'],
+    'pnpm --filter @causality/semantic-worker smoke:model',
+  );
+  assert.equal(
+    packageJson.scripts['semantic:quality'],
+    'pnpm --filter @causality/semantic-worker quality:model',
+  );
+  assert.match(packageJson.scripts['semantic:benchmark'], /docker context inspect/);
+  assert.match(
+    packageJson.scripts['semantic:benchmark'],
+    /pnpm --filter @causality\/api semantic:benchmark/,
+  );
+  for (const command of ['dev', 'typecheck', 'test', 'build']) {
+    assert.match(packageJson.scripts[command], /@causality\/semantic-core/);
+    assert.match(packageJson.scripts[command], /@causality\/semantic-worker/);
+  }
+  assert.match(packageJson.scripts['test:integration'], /@causality\/api test:integration/);
+  assert.match(
+    packageJson.scripts['test:integration'],
+    /@causality\/semantic-worker test:integration/,
+  );
+});
+
 test('the E2E script creates and always drops only its unique allowlisted test database', () => {
   assert.match(script, /readonly E2E_DATABASE_NAME="causality_e2e_test_\$\$"/);
   assert.match(script, /\^causality_e2e_test_\[0-9\]\+\$/);

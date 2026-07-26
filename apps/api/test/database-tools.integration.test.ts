@@ -49,12 +49,12 @@ describe.sequential('database data tools', () => {
          (select count(*) from causal_relation_cases) as "caseLinks"`,
     );
     expect(counts.rows[0]).toEqual({
-      events: '12',
-      aliases: '12',
-      keywords: '24',
-      relations: '15',
-      cases: '18',
-      caseLinks: '18',
+      events: '200',
+      aliases: '200',
+      keywords: '400',
+      relations: '180',
+      cases: '220',
+      caseLinks: '220',
     });
 
     const event = await pool!.query<{ description: string }>(
@@ -71,8 +71,8 @@ describe.sequential('database data tools', () => {
       [firstFixedEventId],
     );
     expect(keywords.rows).toEqual([
-      { keyword: '政策利率', position: 1 },
-      { keyword: '加息', position: 2 },
+      { keyword: '经济与经营', position: 1 },
+      { keyword: '融资与投资', position: 2 },
     ]);
   });
 
@@ -81,11 +81,11 @@ describe.sequential('database data tools', () => {
 
     expect(report.migrationApplied).toBe(true);
     expect(report.counts).toEqual({
-      abstractEvents: 12,
-      eventAliases: 12,
-      causalRelations: 15,
-      concreteCases: 18,
-      causalRelationCaseLinks: 18,
+      abstractEvents: 200,
+      eventAliases: 200,
+      causalRelations: 180,
+      concreteCases: 220,
+      causalRelationCaseLinks: 220,
     });
     expect(report.integrity).toEqual({
       selfLoops: 0,
@@ -137,17 +137,17 @@ describe.sequential('database data tools', () => {
 
     const report = await verifyDatabase(pool!);
     expect(report.counts).toEqual({
-      abstractEvents: 32,
-      eventAliases: 32,
-      causalRelations: 65,
-      concreteCases: 98,
-      causalRelationCaseLinks: 93,
+      abstractEvents: 220,
+      eventAliases: 220,
+      causalRelations: 230,
+      concreteCases: 300,
+      causalRelationCaseLinks: 295,
     });
     expect(report.valid).toBe(true);
 
     const keywordCount = await pool!.query<{ count: string }>(
       'select count(*) from event_keywords',
     );
-    expect(keywordCount.rows[0]?.count).toBe('64');
+    expect(keywordCount.rows[0]?.count).toBe('440');
   });
 });

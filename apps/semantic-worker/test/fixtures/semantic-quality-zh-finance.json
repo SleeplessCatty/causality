@@ -1,0 +1,693 @@
+{
+  "metadata": {
+    "name": "中文金融事件语义检索困难集",
+    "version": 1,
+    "synthetic": true,
+    "description": "全部内容为贴近真实业务表达的模拟数据，不代表真实公司或真实投资结论。"
+  },
+  "documents": [
+    {
+      "id": "event-rrr-cut",
+      "entityType": "event",
+      "text": "人民银行下调存款准备金率，释放长期流动性"
+    },
+    {
+      "id": "event-policy-rate-cut",
+      "entityType": "event",
+      "text": "人民银行下调公开市场操作利率"
+    },
+    {
+      "id": "event-rrr-hike",
+      "entityType": "event",
+      "text": "人民银行上调存款准备金率，回收银行体系流动性"
+    },
+    {
+      "id": "event-repo-drain",
+      "entityType": "event",
+      "text": "逆回购到期规模超过投放，公开市场实现净回笼"
+    },
+    {
+      "id": "event-yuan-appreciation",
+      "entityType": "event",
+      "text": "人民币兑美元汇率持续升值"
+    },
+    {
+      "id": "event-yuan-depreciation",
+      "entityType": "event",
+      "text": "人民币兑美元汇率持续贬值"
+    },
+    {
+      "id": "event-pmi-expansion",
+      "entityType": "event",
+      "text": "制造业采购经理指数升至荣枯线以上"
+    },
+    {
+      "id": "event-pmi-contraction",
+      "entityType": "event",
+      "text": "制造业采购经理指数跌至荣枯线以下"
+    },
+    {
+      "id": "event-profit-increase",
+      "entityType": "event",
+      "text": "上市公司预计年度归母净利润大幅增长"
+    },
+    {
+      "id": "event-profit-decrease",
+      "entityType": "event",
+      "text": "上市公司预计年度归母净利润大幅下降"
+    },
+    {
+      "id": "event-turnaround",
+      "entityType": "event",
+      "text": "上市公司预计年度业绩扭亏为盈"
+    },
+    {
+      "id": "event-loss-narrowing",
+      "entityType": "event",
+      "text": "上市公司预计年度亏损同比收窄但仍未盈利"
+    },
+    {
+      "id": "event-holder-increase",
+      "entityType": "event",
+      "text": "控股股东在二级市场增持公司股份"
+    },
+    {
+      "id": "event-holder-decrease",
+      "entityType": "event",
+      "text": "控股股东计划通过集中竞价减持股份"
+    },
+    {
+      "id": "event-share-buyback",
+      "entityType": "event",
+      "text": "上市公司使用自有资金回购并注销股份"
+    },
+    {
+      "id": "event-private-placement",
+      "entityType": "event",
+      "text": "上市公司向特定对象增发股份募集资金"
+    },
+    {
+      "id": "event-share-unlock",
+      "entityType": "event",
+      "text": "大规模限售股份达到解禁上市条件"
+    },
+    {
+      "id": "event-dividend-increase",
+      "entityType": "event",
+      "text": "上市公司提高年度现金分红比例"
+    },
+    {
+      "id": "event-regulatory-investigation",
+      "entityType": "event",
+      "text": "上市公司因涉嫌信息披露违法被监管机构立案"
+    },
+    {
+      "id": "event-major-contract",
+      "entityType": "event",
+      "text": "上市公司签订金额较大的长期销售合同"
+    },
+
+    {
+      "id": "relation-rrr-liquidity",
+      "entityType": "relation",
+      "text": "下调存款准备金率导致银行体系可用流动性增加"
+    },
+    {
+      "id": "relation-rate-funding",
+      "entityType": "relation",
+      "text": "政策利率下降导致企业和居民融资成本降低"
+    },
+    {
+      "id": "relation-yuan-export",
+      "entityType": "relation",
+      "text": "人民币贬值导致出口企业外币收入折算价值提高"
+    },
+    {
+      "id": "relation-yuan-import",
+      "entityType": "relation",
+      "text": "人民币升值导致进口原材料的人民币成本下降"
+    },
+    {
+      "id": "relation-pmi-demand",
+      "entityType": "relation",
+      "text": "制造业景气度回升导致周期行业订单预期改善"
+    },
+    {
+      "id": "relation-profit-valuation",
+      "entityType": "relation",
+      "text": "公司盈利超出市场预期导致股票估值预期上升"
+    },
+    {
+      "id": "relation-profit-decline",
+      "entityType": "relation",
+      "text": "公司盈利低于市场预期导致股票价格承受压力"
+    },
+    {
+      "id": "relation-turnaround-valuation",
+      "entityType": "relation",
+      "text": "公司实现扭亏为盈导致持续经营预期改善"
+    },
+    {
+      "id": "relation-loss-narrowing-risk",
+      "entityType": "relation",
+      "text": "公司亏损幅度收窄但尚未消除持续亏损风险"
+    },
+    {
+      "id": "relation-holder-increase-confidence",
+      "entityType": "relation",
+      "text": "控股股东增持股份导致市场对公司信心增强"
+    },
+    {
+      "id": "relation-holder-decrease-pressure",
+      "entityType": "relation",
+      "text": "重要股东减持股份导致股票潜在卖出压力增加"
+    },
+    {
+      "id": "relation-buyback-eps",
+      "entityType": "relation",
+      "text": "注销式股份回购导致总股本减少并提高每股收益"
+    },
+    {
+      "id": "relation-placement-dilution",
+      "entityType": "relation",
+      "text": "向特定对象增发新股导致原股东权益比例被稀释"
+    },
+    {
+      "id": "relation-unlock-pressure",
+      "entityType": "relation",
+      "text": "大量限售股解禁导致二级市场潜在抛售压力上升"
+    },
+    {
+      "id": "relation-dividend-yield",
+      "entityType": "relation",
+      "text": "现金分红比例提高导致股票预期股息率上升"
+    },
+    {
+      "id": "relation-investigation-risk",
+      "entityType": "relation",
+      "text": "监管立案调查导致公司合规风险溢价上升"
+    },
+    {
+      "id": "relation-contract-revenue",
+      "entityType": "relation",
+      "text": "取得重大长期订单导致未来营业收入确定性增强"
+    },
+    {
+      "id": "relation-contract-cancel",
+      "entityType": "relation",
+      "text": "重大合同终止导致未来营业收入预期下降"
+    },
+    {
+      "id": "relation-input-cost-margin",
+      "entityType": "relation",
+      "text": "主要原材料采购价格上涨导致制造企业毛利率下降"
+    },
+    {
+      "id": "relation-product-price-margin",
+      "entityType": "relation",
+      "text": "产品销售价格上涨且成本稳定导致企业毛利率提高"
+    },
+
+    {
+      "id": "case-rrr-cut",
+      "entityType": "case",
+      "text": "2025年5月，人民银行宣布下调金融机构存款准备金率0.5个百分点"
+    },
+    {
+      "id": "case-lpr-cut",
+      "entityType": "case",
+      "text": "2025年6月，一年期贷款市场报价利率由3.1%下调至3.0%"
+    },
+    {
+      "id": "case-yuan-depreciation",
+      "entityType": "case",
+      "text": "2025年第三季度，人民币兑美元中间价连续多个交易日走弱"
+    },
+    {
+      "id": "case-pmi-expansion",
+      "entityType": "case",
+      "text": "2025年9月，制造业采购经理指数录得50.4，重新回到扩张区间"
+    },
+    {
+      "id": "case-profit-increase",
+      "entityType": "case",
+      "text": "某电网设备公司预计2025年净利润同比增长60%至80%"
+    },
+    {
+      "id": "case-profit-decrease",
+      "entityType": "case",
+      "text": "某消费电子公司预计2025年净利润同比下降55%至65%"
+    },
+    {
+      "id": "case-turnaround",
+      "entityType": "case",
+      "text": "某航空公司预计2025年归母净利润为12亿元，上年同期亏损8亿元"
+    },
+    {
+      "id": "case-loss-narrowing",
+      "entityType": "case",
+      "text": "某生物科技公司预计2025年亏损2亿元，较上年亏损5亿元明显收窄"
+    },
+    {
+      "id": "case-holder-increase",
+      "entityType": "case",
+      "text": "2025年8月，某银行控股股东累计增持公司股份金额达到4亿元"
+    },
+    {
+      "id": "case-holder-decrease",
+      "entityType": "case",
+      "text": "某医药公司实际控制人计划三个月内减持不超过总股本的2%"
+    },
+    {
+      "id": "case-share-buyback",
+      "entityType": "case",
+      "text": "某软件公司完成3亿元股份回购，并将全部回购股份依法注销"
+    },
+    {
+      "id": "case-private-placement",
+      "entityType": "case",
+      "text": "某新能源公司定向增发2亿股，募集资金30亿元建设新产线"
+    },
+    {
+      "id": "case-share-unlock",
+      "entityType": "case",
+      "text": "某半导体公司有占总股本18%的首发限售股份于2025年11月解禁"
+    },
+    {
+      "id": "case-dividend-increase",
+      "entityType": "case",
+      "text": "某煤炭公司将年度现金分红比例由可分配利润的40%提高至60%"
+    },
+    {
+      "id": "case-regulatory-investigation",
+      "entityType": "case",
+      "text": "2025年7月，某上市公司收到监管机构立案告知书，事项涉及年报披露"
+    },
+    {
+      "id": "case-major-contract",
+      "entityType": "case",
+      "text": "某储能公司签订金额28亿元的海外设备供货合同，约占上年营收45%"
+    },
+    {
+      "id": "case-contract-cancel",
+      "entityType": "case",
+      "text": "某工程公司公告终止原预计金额20亿元的海外总承包合同"
+    },
+    {
+      "id": "case-input-cost-rise",
+      "entityType": "case",
+      "text": "2025年四季度，碳酸锂采购均价上涨30%，某电池企业成本明显增加"
+    },
+    {
+      "id": "case-product-price-rise",
+      "entityType": "case",
+      "text": "某化工企业将主要产品出厂价上调8%，同期主要原料价格保持稳定"
+    },
+    {
+      "id": "case-rating-downgrade",
+      "entityType": "case",
+      "text": "评级机构将某地产公司主体信用评级由AA下调至AA-并列入观察名单"
+    }
+  ],
+  "cases": [
+    {
+      "entityType": "event",
+      "query": "央行降准释放长期资金",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["event-rrr-cut"],
+      "confusingDocumentIds": ["event-policy-rate-cut", "event-rrr-hike"]
+    },
+    {
+      "entityType": "event",
+      "query": "下调逆回购等政策工具利率",
+      "capability": "near-concept",
+      "relevantDocumentIds": ["event-policy-rate-cut"],
+      "confusingDocumentIds": ["event-rrr-cut"]
+    },
+    {
+      "entityType": "event",
+      "query": "提高法定准备金比例",
+      "capability": "direction",
+      "relevantDocumentIds": ["event-rrr-hike"],
+      "confusingDocumentIds": ["event-rrr-cut"]
+    },
+    {
+      "entityType": "event",
+      "query": "央行从市场净回收流动性",
+      "capability": "paraphrase",
+      "relevantDocumentIds": ["event-repo-drain"],
+      "confusingDocumentIds": ["event-rrr-cut"]
+    },
+    {
+      "entityType": "event",
+      "query": "本币对美元走弱",
+      "capability": "direction",
+      "relevantDocumentIds": ["event-yuan-depreciation"],
+      "confusingDocumentIds": ["event-yuan-appreciation"]
+    },
+    {
+      "entityType": "event",
+      "query": "制造业PMI重返扩张区间",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["event-pmi-expansion"],
+      "confusingDocumentIds": ["event-pmi-contraction"]
+    },
+    {
+      "entityType": "event",
+      "query": "公司发布业绩预减公告",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["event-profit-decrease"],
+      "confusingDocumentIds": ["event-profit-increase"]
+    },
+    {
+      "entityType": "event",
+      "query": "亏损减少但还没有扭亏",
+      "capability": "negation",
+      "relevantDocumentIds": ["event-loss-narrowing"],
+      "confusingDocumentIds": ["event-turnaround"]
+    },
+    {
+      "entityType": "event",
+      "query": "大股东二级市场买入自家公司股票",
+      "capability": "paraphrase",
+      "relevantDocumentIds": ["event-holder-increase"],
+      "confusingDocumentIds": ["event-share-buyback", "event-holder-decrease"]
+    },
+    {
+      "entityType": "event",
+      "query": "重要股东拟卖出部分持股",
+      "capability": "direction",
+      "relevantDocumentIds": ["event-holder-decrease"],
+      "confusingDocumentIds": ["event-holder-increase"]
+    },
+    {
+      "entityType": "event",
+      "query": "公司回购股份后注销",
+      "capability": "near-concept",
+      "relevantDocumentIds": ["event-share-buyback"],
+      "confusingDocumentIds": ["event-holder-increase", "event-private-placement"]
+    },
+    {
+      "entityType": "event",
+      "query": "面向特定投资者发行新股融资",
+      "capability": "paraphrase",
+      "relevantDocumentIds": ["event-private-placement"],
+      "confusingDocumentIds": ["event-share-buyback"]
+    },
+    {
+      "entityType": "event",
+      "query": "首发限售股可以上市流通",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["event-share-unlock"],
+      "confusingDocumentIds": ["event-private-placement"]
+    },
+    {
+      "entityType": "event",
+      "query": "公司提高派息比例",
+      "capability": "paraphrase",
+      "relevantDocumentIds": ["event-dividend-increase"],
+      "confusingDocumentIds": ["event-profit-increase"]
+    },
+    {
+      "entityType": "event",
+      "query": "公司因信披问题收到立案告知书",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["event-regulatory-investigation"],
+      "confusingDocumentIds": ["event-major-contract"]
+    },
+
+    {
+      "entityType": "relation",
+      "query": "降准增加商业银行可以使用的资金",
+      "capability": "causal-paraphrase",
+      "relevantDocumentIds": ["relation-rrr-liquidity"],
+      "confusingDocumentIds": ["relation-rate-funding"]
+    },
+    {
+      "entityType": "relation",
+      "query": "降息使社会融资价格下降",
+      "capability": "causal-paraphrase",
+      "relevantDocumentIds": ["relation-rate-funding"],
+      "confusingDocumentIds": ["relation-rrr-liquidity"]
+    },
+    {
+      "entityType": "relation",
+      "query": "人民币走弱提高出口收入折算金额",
+      "capability": "direction",
+      "relevantDocumentIds": ["relation-yuan-export"],
+      "confusingDocumentIds": ["relation-yuan-import"]
+    },
+    {
+      "entityType": "relation",
+      "query": "本币升值降低进口采购成本",
+      "capability": "direction",
+      "relevantDocumentIds": ["relation-yuan-import"],
+      "confusingDocumentIds": ["relation-yuan-export"]
+    },
+    {
+      "entityType": "relation",
+      "query": "PMI回升改善周期品需求预期",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["relation-pmi-demand"],
+      "confusingDocumentIds": ["relation-profit-valuation"]
+    },
+    {
+      "entityType": "relation",
+      "query": "业绩超预期提升市场估值",
+      "capability": "causal-paraphrase",
+      "relevantDocumentIds": ["relation-profit-valuation"],
+      "confusingDocumentIds": ["relation-profit-decline"]
+    },
+    {
+      "entityType": "relation",
+      "query": "实现盈利改变持续亏损预期",
+      "capability": "near-concept",
+      "relevantDocumentIds": ["relation-turnaround-valuation"],
+      "confusingDocumentIds": ["relation-loss-narrowing-risk"]
+    },
+    {
+      "entityType": "relation",
+      "query": "亏损变少仍不等于消除经营风险",
+      "capability": "negation",
+      "relevantDocumentIds": ["relation-loss-narrowing-risk"],
+      "confusingDocumentIds": ["relation-turnaround-valuation"]
+    },
+    {
+      "entityType": "relation",
+      "query": "控股股东买入股份强化投资者信心",
+      "capability": "causal-paraphrase",
+      "relevantDocumentIds": ["relation-holder-increase-confidence"],
+      "confusingDocumentIds": ["relation-holder-decrease-pressure"]
+    },
+    {
+      "entityType": "relation",
+      "query": "股东减持形成潜在卖盘",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["relation-holder-decrease-pressure"],
+      "confusingDocumentIds": ["relation-holder-increase-confidence"]
+    },
+    {
+      "entityType": "relation",
+      "query": "注销回购股份提升EPS",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["relation-buyback-eps"],
+      "confusingDocumentIds": ["relation-placement-dilution"]
+    },
+    {
+      "entityType": "relation",
+      "query": "定向增发摊薄原股东权益",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["relation-placement-dilution"],
+      "confusingDocumentIds": ["relation-buyback-eps"]
+    },
+    {
+      "entityType": "relation",
+      "query": "限售股份上市增加抛售可能",
+      "capability": "causal-paraphrase",
+      "relevantDocumentIds": ["relation-unlock-pressure"],
+      "confusingDocumentIds": ["relation-placement-dilution"]
+    },
+    {
+      "entityType": "relation",
+      "query": "监管调查提高公司的风险补偿要求",
+      "capability": "causal-paraphrase",
+      "relevantDocumentIds": ["relation-investigation-risk"],
+      "confusingDocumentIds": ["relation-contract-revenue"]
+    },
+    {
+      "entityType": "relation",
+      "query": "原料涨价挤压制造商毛利空间",
+      "capability": "causal-paraphrase",
+      "relevantDocumentIds": ["relation-input-cost-margin"],
+      "confusingDocumentIds": ["relation-product-price-margin"]
+    },
+
+    {
+      "entityType": "case",
+      "query": "2025年5月降准0.5个百分点",
+      "capability": "number-time",
+      "relevantDocumentIds": ["case-rrr-cut"],
+      "confusingDocumentIds": ["case-lpr-cut"]
+    },
+    {
+      "entityType": "case",
+      "query": "一年期LPR从3.1降到3.0",
+      "capability": "financial-terminology",
+      "relevantDocumentIds": ["case-lpr-cut"],
+      "confusingDocumentIds": ["case-rrr-cut"]
+    },
+    {
+      "entityType": "case",
+      "query": "三季度人民币中间价连续走弱",
+      "capability": "time-direction",
+      "relevantDocumentIds": ["case-yuan-depreciation"],
+      "confusingDocumentIds": ["case-pmi-expansion"]
+    },
+    {
+      "entityType": "case",
+      "query": "九月制造业指数为50.4",
+      "capability": "number-time",
+      "relevantDocumentIds": ["case-pmi-expansion"],
+      "confusingDocumentIds": ["case-yuan-depreciation"]
+    },
+    {
+      "entityType": "case",
+      "query": "电网设备企业预告利润增长六成以上",
+      "capability": "number-paraphrase",
+      "relevantDocumentIds": ["case-profit-increase"],
+      "confusingDocumentIds": ["case-profit-decrease"]
+    },
+    {
+      "entityType": "case",
+      "query": "净利润预计下降55%到65%",
+      "capability": "number-direction",
+      "relevantDocumentIds": ["case-profit-decrease"],
+      "confusingDocumentIds": ["case-profit-increase"]
+    },
+    {
+      "entityType": "case",
+      "query": "航空公司从亏损八亿变为盈利十二亿",
+      "capability": "number-direction",
+      "relevantDocumentIds": ["case-turnaround"],
+      "confusingDocumentIds": ["case-loss-narrowing"]
+    },
+    {
+      "entityType": "case",
+      "query": "生物科技公司亏损由五亿缩小到两亿",
+      "capability": "number-direction",
+      "relevantDocumentIds": ["case-loss-narrowing"],
+      "confusingDocumentIds": ["case-turnaround"]
+    },
+    {
+      "entityType": "case",
+      "query": "银行大股东增持金额达到四亿元",
+      "capability": "number-entity",
+      "relevantDocumentIds": ["case-holder-increase"],
+      "confusingDocumentIds": ["case-holder-decrease"]
+    },
+    {
+      "entityType": "case",
+      "query": "软件公司回购三亿元并注销",
+      "capability": "number-near-concept",
+      "relevantDocumentIds": ["case-share-buyback"],
+      "confusingDocumentIds": ["case-holder-increase", "case-private-placement"]
+    },
+    {
+      "entityType": "case",
+      "query": "新能源企业定增募资三十亿元",
+      "capability": "number-near-concept",
+      "relevantDocumentIds": ["case-private-placement"],
+      "confusingDocumentIds": ["case-share-buyback"]
+    },
+    {
+      "entityType": "case",
+      "query": "半导体企业十八个百分点限售股解禁",
+      "capability": "number-financial-terminology",
+      "relevantDocumentIds": ["case-share-unlock"],
+      "confusingDocumentIds": ["case-private-placement"]
+    },
+    {
+      "entityType": "case",
+      "query": "煤炭公司把分红比例从四成提高到六成",
+      "capability": "number-direction",
+      "relevantDocumentIds": ["case-dividend-increase"],
+      "confusingDocumentIds": ["case-profit-increase"]
+    },
+    {
+      "entityType": "case",
+      "query": "储能设备海外合同金额二十八亿元",
+      "capability": "number-entity",
+      "relevantDocumentIds": ["case-major-contract"],
+      "confusingDocumentIds": ["case-contract-cancel"]
+    },
+    {
+      "entityType": "case",
+      "query": "海外二十亿元工程合同被终止",
+      "capability": "number-direction",
+      "relevantDocumentIds": ["case-contract-cancel"],
+      "confusingDocumentIds": ["case-major-contract"]
+    }
+  ],
+  "noMatchCases": [
+    {
+      "entityType": "event",
+      "query": "上市公司董事长参加城市马拉松",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "event",
+      "query": "办公楼完成室内装修",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "event",
+      "query": "某电视剧首播收视率创新高",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "event",
+      "query": "博物馆举办古代书画展览",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "relation",
+      "query": "调整晚餐时间导致睡眠质量改善",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "relation",
+      "query": "持续降雨导致水库水位上升",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "relation",
+      "query": "手机系统更新导致待机耗电下降",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "relation",
+      "query": "主队获胜导致现场球迷庆祝",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "case",
+      "query": "2025年某部电影在暑期档上映",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "case",
+      "query": "周末城市马拉松共有两万人完赛",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "case",
+      "query": "市博物馆新增一个历史文物展厅",
+      "capability": "no-match"
+    },
+    {
+      "entityType": "case",
+      "query": "北方多个城市出现冬季降雪",
+      "capability": "no-match"
+    }
+  ]
+}

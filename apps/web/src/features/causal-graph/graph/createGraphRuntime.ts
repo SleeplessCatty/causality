@@ -42,13 +42,14 @@ export interface GraphRuntime {
   destroy(): void;
 }
 
-function createLayoutRuntime(
+export function createLayoutRuntime(
   elements: GraphElements,
   options: typeof graphLayoutOptions,
   onSuccess: (elements: LaidOutElements) => void,
   onError: (error: unknown) => void,
 ): () => void {
   let disposed = false;
+  let cleaned = false;
   const staging = cytoscape({
     headless: true,
     styleEnabled: true,
@@ -57,6 +58,11 @@ function createLayoutRuntime(
     autoungrabify: true,
     autounselectify: true,
   });
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    staging.destroy();
+  };
   try {
     const layout = staging.layout(options as unknown as LayoutOptions);
     layout.one('layoutstop', () => {
@@ -69,17 +75,22 @@ function createLayoutRuntime(
           }) as unknown as ElementDefinition[],
         );
       }
-      staging.destroy();
+      cleanup();
     });
     layout.run();
+    return () => {
+      if (disposed) return;
+      disposed = true;
+      layout.stop();
+      cleanup();
+    };
   } catch (error) {
-    staging.destroy();
+    cleanup();
     if (!disposed) onError(error);
+    return () => {
+      disposed = true;
+    };
   }
-  return () => {
-    disposed = true;
-    staging.destroy();
-  };
 }
 
 function selectionElement(cy: Core, selection: GraphElementSelection) {

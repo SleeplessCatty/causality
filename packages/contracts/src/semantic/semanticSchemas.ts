@@ -3,7 +3,12 @@ import { z } from 'zod';
 const timestampSchema = z.iso.datetime({ offset: true });
 
 export const searchModeSchema = z.enum(['standard', 'enhanced']).default('standard');
-export const semanticModelCodeSchema = z.enum(['multilingual-e5-small', 'bge-m3']);
+export const semanticModelCodeSchema = z.enum([
+  'bge-small-zh-v1.5',
+  'multilingual-e5-small',
+  'granite-embedding-97m-multilingual-r2',
+  'bge-m3',
+]);
 export const semanticModelParamsSchema = z
   .object({
     modelCode: semanticModelCodeSchema,

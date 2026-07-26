@@ -36,11 +36,12 @@ test('management pages expose concise expansion, editing, and detail navigation'
     });
 
   await page.goto(`/events/${eventId}`);
-  await expect(page.getByRole('heading', { name: '央行提高政策利率' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '政策利率上升' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '关联的因果关系' })).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: /央行提高政策利率.*市场流动性收紧/ }),
-  ).toHaveAttribute('href', `/relations/${relationId}`);
+  await expect(page.getByRole('link', { name: /政策利率上升.*企业融资成本上升/ })).toHaveAttribute(
+    'href',
+    `/relations/${relationId}`,
+  );
   const eventHeading = await readDetailHeading();
 
   await page.goto('/relations');
@@ -66,21 +67,19 @@ test('management pages expose concise expansion, editing, and detail navigation'
   await expect(page).not.toHaveURL(/expanded=/);
 
   await page.goto(`/relations/${relationId}`);
-  await expect(
-    page.getByRole('heading', { name: /央行提高政策利率.*市场流动性收紧/ }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: /政策利率上升.*企业融资成本上升/ })).toBeVisible();
   await expect(page.getByRole('link', { name: '编辑因果关系' })).toHaveAttribute(
     'href',
     `/relations/${relationId}/edit`,
   );
-  await expect(page.getByRole('link', { name: '央行提高政策利率' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: '政策利率上升', exact: true })).toHaveAttribute(
     'href',
     '/events/00000000-0000-4000-8000-000000000001',
   );
   const relationHeading = await readDetailHeading();
 
   await page.goto(`/cases/${caseId}`);
-  const relationLink = page.getByRole('link', { name: /央行提高政策利率.*市场流动性收紧/ });
+  const relationLink = page.getByRole('link', { name: /政策利率上升.*企业融资成本上升/ });
   await expect(relationLink).toHaveAttribute('href', `/relations/${relationId}`);
   const caseHeading = await readDetailHeading();
 

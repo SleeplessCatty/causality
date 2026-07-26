@@ -256,7 +256,7 @@ async function runBenchmark(): Promise<void> {
   let pool: Pool | undefined;
   try {
     process.stdout.write('Starting disposable PostgreSQL benchmark container...\n');
-    container = await new GenericContainer('postgres:18.4-alpine')
+    container = await new GenericContainer('pgvector/pgvector:0.8.2-pg18')
       .withEnvironment({
         POSTGRES_DB: 'causality_graph_benchmark',
         POSTGRES_USER: 'causality',

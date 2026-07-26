@@ -9,7 +9,7 @@ import { z } from 'zod';
 const embeddingResponseSchema = z
   .object({
     modelCode: semanticModelCodeSchema,
-    dimensions: z.union([z.literal(384), z.literal(1024)]),
+    dimensions: z.union([z.literal(384), z.literal(512), z.literal(1024)]),
     vector: z.array(z.number().finite()),
   })
   .strict();

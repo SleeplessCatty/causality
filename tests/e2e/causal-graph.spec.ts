@@ -17,12 +17,12 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   await expect(page.getByText('搜索并选择一个中心事件')).toBeVisible();
 
   const selector = page.getByRole('combobox', { name: '中心事件' });
-  await selector.fill('原油价格上涨');
+  await selector.fill('政策利率上升');
   const initialResponsePromise = page.waitForResponse(
     (response) =>
       response.url().includes('/api/causal-graph?') && response.url().includes('direction=both'),
   );
-  await page.getByRole('option', { name: '原油价格上涨' }).click();
+  await page.getByRole('option', { name: '政策利率上升' }).click();
   const initialResponse = await initialResponsePromise;
   expect(initialResponse.status()).toBe(200);
   const initialGraph = (await initialResponse.json()) as {
@@ -32,7 +32,7 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   await expect(page).toHaveURL(
     /centerEventId=.*&direction=both&limit=20&minConfidence=0&minCaseCount=0/,
   );
-  const canvas = page.getByRole('application', { name: /原油价格上涨的局部因果图/ });
+  const canvas = page.getByRole('application', { name: /政策利率上升的局部因果图/ });
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   await expect(canvas).toHaveAttribute('data-node-count', String(initialGraph.meta.nodeCount));
   await expect(canvas).toHaveAttribute(
@@ -80,7 +80,7 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   }
 
   await page.reload();
-  await expect(selector).toHaveValue('原油价格上涨');
+  await expect(selector).toHaveValue('政策利率上升');
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
 
   const zoomOutput = page.getByLabel('当前缩放比例');

@@ -1,5 +1,5 @@
 import type { SemanticEntityType, SemanticModelCode } from '@causality/contracts';
-import { MODEL_CATALOG } from '@causality/semantic-core';
+import { MODEL_CATALOG, type SemanticVectorDimensions } from '@causality/semantic-core';
 import type { Pool } from 'pg';
 import { toSql } from 'pgvector';
 
@@ -11,7 +11,7 @@ export interface SemanticCandidate {
 export interface SemanticCandidateInput {
   entityType: SemanticEntityType;
   modelCode: SemanticModelCode;
-  dimensions: 384 | 1024;
+  dimensions: SemanticVectorDimensions;
   threshold: number;
   vector: number[];
   limit: number;
@@ -45,7 +45,7 @@ export class PostgresSemanticSearchRepository implements SemanticSearchRepositor
       throw new Error('Semantic threshold must be between 0 and 100');
     }
 
-    const vectorType = definition.dimensions === 384 ? 'vector(384)' : 'vector(1024)';
+    const vectorType = `vector(${definition.dimensions})`;
     const distance = `embedding::${vectorType} <=> $3::${vectorType}`;
     const result = await this.pool.query<CandidateRow>(
       `select entity_id as id,

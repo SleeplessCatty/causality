@@ -9,7 +9,7 @@
     "pnpm": "11.15.1"
   },
   "scripts": {
-    "dev": "pnpm --filter @causality/contracts build && pnpm --parallel --filter @causality/api --filter @causality/web dev",
+    "dev": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && pnpm --parallel --filter @causality/api --filter @causality/semantic-worker --filter @causality/web dev",
     "dev:web": "pnpm --filter @causality/contracts build && pnpm --filter @causality/web dev",
     "dev:api": "pnpm --filter @causality/contracts build && pnpm --filter @causality/api dev",
     "dev:semantic-worker": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && pnpm --filter @causality/semantic-worker dev",
@@ -20,16 +20,20 @@
     "db:verify": "pnpm --filter @causality/api db:verify",
     "data-check:benchmark": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api data-check:benchmark",
     "graph:benchmark": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api graph:benchmark",
+    "semantic:model-smoke": "pnpm --filter @causality/semantic-worker smoke:model",
+    "semantic:quality": "pnpm --filter @causality/semantic-worker quality:model",
+    "semantic:compare": "node scripts/compare-semantic-models.mjs",
+    "semantic:benchmark": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api semantic:benchmark",
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "typecheck": "pnpm --filter @causality/contracts typecheck && pnpm --filter @causality/api typecheck && pnpm --filter @causality/web typecheck",
-    "test": "pnpm --filter @causality/contracts test && pnpm --filter @causality/api test && pnpm --filter @causality/web test",
+    "typecheck": "pnpm --filter @causality/contracts typecheck && pnpm --filter @causality/semantic-core typecheck && pnpm --filter @causality/api typecheck && pnpm --filter @causality/semantic-worker typecheck && pnpm --filter @causality/web typecheck",
+    "test": "pnpm --filter @causality/contracts test && pnpm --filter @causality/semantic-core test && pnpm --filter @causality/api test && pnpm --filter @causality/semantic-worker test && pnpm --filter @causality/web test",
     "test:compose": "node --test tests/production/*.test.mjs",
-    "test:integration": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api test:integration",
+    "test:integration": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" sh -c 'pnpm --filter @causality/api test:integration && pnpm --filter @causality/semantic-worker test:integration'",
     "test:production": "bash scripts/test-production-compose.sh",
     "test:e2e": "bash scripts/test-e2e.sh",
-    "build": "pnpm --filter @causality/contracts build && pnpm --filter @causality/api build && pnpm --filter @causality/web build"
+    "build": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && pnpm --filter @causality/api build && pnpm --filter @causality/semantic-worker build && pnpm --filter @causality/web build"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

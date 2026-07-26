@@ -60,16 +60,26 @@ describe.sequential('semantic configuration API', () => {
     expect(initial.json()).toMatchObject({
       activeModelCode: null,
       index: { status: 'empty', pendingItems: 0 },
-      models: [
+      activeTask: null,
+    });
+    expect(initial.json().models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'bge-small-zh-v1.5',
+          isActive: false,
+        }),
         expect.objectContaining({
           code: 'multilingual-e5-small',
           threshold: 70,
           isActive: false,
         }),
+        expect.objectContaining({
+          code: 'granite-embedding-97m-multilingual-r2',
+          isActive: false,
+        }),
         expect.objectContaining({ code: 'bge-m3', threshold: 55, isActive: false }),
-      ],
-      activeTask: null,
-    });
+      ]),
+    );
 
     const updated = await context!.app.inject({
       method: 'PATCH',
@@ -272,6 +282,48 @@ describe.sequential('semantic configuration API', () => {
     });
     expect(invalidModel.statusCode).toBe(400);
     expect(invalidModel.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('does not expose a stale failed task after the index has recovered', async () => {
+    await pool!.query(
+      `update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = 6,
+           processed_items = 12,
+           total_items = 12,
+           error = null
+       where singleton_key = true;
+       insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         state_version,
+         started_at,
+         completed_at,
+         error
+       )
+       values (
+         'full_index',
+         'multilingual-e5-small',
+         'failed',
+         5,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         '旧任务失败'
+       )`,
+    );
+
+    const settings = await context!.app.inject({
+      method: 'GET',
+      url: '/api/semantic/settings',
+    });
+
+    expect(settings.statusCode).toBe(200);
+    expect(settings.json()).toMatchObject({
+      index: { status: 'ready', processedItems: 12, totalItems: 12 },
+      activeTask: null,
+    });
   });
 
   it('retrieves only same-type vectors above the configured cosine threshold', async () => {

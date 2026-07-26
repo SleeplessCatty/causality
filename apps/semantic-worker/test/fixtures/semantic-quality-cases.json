@@ -1,0 +1,342 @@
+{
+  "documents": [
+    {
+      "id": "event-rate-rise",
+      "entityType": "event",
+      "text": "央行上调政策利率，提高市场融资成本"
+    },
+    { "id": "event-rate-fall", "entityType": "event", "text": "央行下调基准利率，释放宽松信号" },
+    { "id": "event-oil-rise", "entityType": "event", "text": "国际原油价格持续上涨" },
+    { "id": "event-oil-fall", "entityType": "event", "text": "全球原油价格大幅下跌" },
+    {
+      "id": "event-earnings-beat",
+      "entityType": "event",
+      "text": "上市公司季度盈利超过市场预期，quarterly profit beats estimates"
+    },
+    { "id": "event-earnings-miss", "entityType": "event", "text": "公司季度利润低于分析师预期" },
+    {
+      "id": "event-buyback",
+      "entityType": "event",
+      "text": "Company announces a large share repurchase program"
+    },
+    {
+      "id": "event-dilution",
+      "entityType": "event",
+      "text": "Company issues additional shares causing equity dilution"
+    },
+    {
+      "id": "event-tariff",
+      "entityType": "event",
+      "text": "Government raises import tariffs on semiconductor products"
+    },
+    {
+      "id": "event-subsidy",
+      "entityType": "event",
+      "text": "Government grants subsidies to renewable energy producers"
+    },
+    {
+      "id": "event-aapl-launch",
+      "entityType": "event",
+      "text": "AAPL Apple launches a new iPhone product line"
+    },
+    { "id": "event-tsla-recall", "entityType": "event", "text": "TSLA 特斯拉宣布大规模汽车召回" },
+
+    { "id": "relation-rate-bond", "entityType": "relation", "text": "央行加息导致债券价格下降" },
+    {
+      "id": "relation-rate-currency",
+      "entityType": "relation",
+      "text": "政策利率上升推动本币汇率走强"
+    },
+    {
+      "id": "relation-oil-airline",
+      "entityType": "relation",
+      "text": "油价上涨导致航空公司燃料成本增加"
+    },
+    {
+      "id": "relation-oil-producer",
+      "entityType": "relation",
+      "text": "原油上涨改善石油生产企业利润"
+    },
+    {
+      "id": "relation-earnings-stock",
+      "entityType": "relation",
+      "text": "Earnings beat expectations and drives the stock price higher"
+    },
+    {
+      "id": "relation-miss-stock",
+      "entityType": "relation",
+      "text": "Earnings miss triggers a decline in company shares"
+    },
+    {
+      "id": "relation-buyback-eps",
+      "entityType": "relation",
+      "text": "Share buyback reduces share count and increases EPS"
+    },
+    {
+      "id": "relation-dilution-eps",
+      "entityType": "relation",
+      "text": "New share issuance dilutes earnings per share"
+    },
+    {
+      "id": "relation-tariff-cost",
+      "entityType": "relation",
+      "text": "进口关税提高导致企业采购成本上升"
+    },
+    {
+      "id": "relation-subsidy-margin",
+      "entityType": "relation",
+      "text": "产业补贴降低生产成本并改善利润率"
+    },
+    {
+      "id": "relation-aapl-supplier",
+      "entityType": "relation",
+      "text": "AAPL 新机销量增长带动 Apple 供应商订单增加"
+    },
+    {
+      "id": "relation-tsla-reputation",
+      "entityType": "relation",
+      "text": "TSLA vehicle recall damages consumer confidence"
+    },
+
+    {
+      "id": "case-fed-hike",
+      "entityType": "case",
+      "text": "2022年3月美联储启动加息周期并宣布上调联邦基金利率"
+    },
+    { "id": "case-fed-cut", "entityType": "case", "text": "2020年3月美联储紧急降息至接近零利率" },
+    {
+      "id": "case-oil-spike",
+      "entityType": "case",
+      "text": "2022年俄乌冲突后布伦特原油价格快速上涨"
+    },
+    {
+      "id": "case-oil-crash",
+      "entityType": "case",
+      "text": "2020年需求骤降导致WTI原油期货价格暴跌"
+    },
+    {
+      "id": "case-nvda-beat",
+      "entityType": "case",
+      "text": "NVIDIA reported quarterly revenue above Wall Street expectations in 2024"
+    },
+    {
+      "id": "case-retail-miss",
+      "entityType": "case",
+      "text": "A major retailer reported profit below analyst forecasts"
+    },
+    {
+      "id": "case-aapl-buyback",
+      "entityType": "case",
+      "text": "AAPL Apple announced a 110 billion dollar stock buyback in May 2024"
+    },
+    {
+      "id": "case-rights-issue",
+      "entityType": "case",
+      "text": "某上市公司通过配股发行新增股份筹集资金"
+    },
+    {
+      "id": "case-chip-tariff",
+      "entityType": "case",
+      "text": "2024年美国宣布提高部分中国半导体产品进口关税"
+    },
+    {
+      "id": "case-solar-subsidy",
+      "entityType": "case",
+      "text": "政府推出太阳能制造补贴以支持新能源产业"
+    },
+    {
+      "id": "case-tsla-recall",
+      "entityType": "case",
+      "text": "TSLA 特斯拉在美国召回超过两百万辆汽车"
+    },
+    {
+      "id": "case-iphone-launch",
+      "entityType": "case",
+      "text": "Apple held its annual event and released a new iPhone generation"
+    }
+  ],
+  "cases": [
+    {
+      "entityType": "event",
+      "query": "中央银行提高利率",
+      "relevantDocumentIds": ["event-rate-rise"],
+      "confusingDocumentIds": ["event-rate-fall"]
+    },
+    {
+      "entityType": "event",
+      "query": "政策转向降息",
+      "relevantDocumentIds": ["event-rate-fall"],
+      "confusingDocumentIds": ["event-aapl-launch"]
+    },
+    {
+      "entityType": "event",
+      "query": "crude oil price surge",
+      "relevantDocumentIds": ["event-oil-rise"],
+      "confusingDocumentIds": ["event-oil-fall"]
+    },
+    {
+      "entityType": "event",
+      "query": "油价暴跌",
+      "relevantDocumentIds": ["event-oil-fall"],
+      "confusingDocumentIds": ["event-tariff"]
+    },
+    {
+      "entityType": "event",
+      "query": "quarterly profit beats estimates",
+      "relevantDocumentIds": ["event-earnings-beat"],
+      "confusingDocumentIds": ["event-earnings-miss"]
+    },
+    {
+      "entityType": "event",
+      "query": "盈利不及预期",
+      "relevantDocumentIds": ["event-earnings-miss"],
+      "confusingDocumentIds": ["event-buyback"]
+    },
+    {
+      "entityType": "event",
+      "query": "large stock buyback",
+      "relevantDocumentIds": ["event-buyback"],
+      "confusingDocumentIds": ["event-tariff"]
+    },
+    {
+      "entityType": "event",
+      "query": "增发导致股权稀释",
+      "relevantDocumentIds": ["event-dilution"],
+      "confusingDocumentIds": ["event-subsidy"]
+    },
+    {
+      "entityType": "event",
+      "query": "semiconductor import tariff increase",
+      "relevantDocumentIds": ["event-tariff"],
+      "confusingDocumentIds": ["event-earnings-miss"]
+    },
+    {
+      "entityType": "event",
+      "query": "TSLA 汽车召回",
+      "relevantDocumentIds": ["event-tsla-recall"],
+      "confusingDocumentIds": ["event-rate-rise"]
+    },
+
+    {
+      "entityType": "relation",
+      "query": "加息使债券下跌",
+      "relevantDocumentIds": ["relation-rate-bond"],
+      "confusingDocumentIds": ["relation-rate-currency"]
+    },
+    {
+      "entityType": "relation",
+      "query": "higher interest rates strengthen currency",
+      "relevantDocumentIds": ["relation-rate-currency"],
+      "confusingDocumentIds": ["relation-aapl-supplier"]
+    },
+    {
+      "entityType": "relation",
+      "query": "高油价增加航空燃油成本",
+      "relevantDocumentIds": ["relation-oil-airline"],
+      "confusingDocumentIds": ["relation-oil-producer"]
+    },
+    {
+      "entityType": "relation",
+      "query": "oil rally benefits producers",
+      "relevantDocumentIds": ["relation-oil-producer"],
+      "confusingDocumentIds": ["relation-tariff-cost"]
+    },
+    {
+      "entityType": "relation",
+      "query": "业绩超预期推动股价上涨",
+      "relevantDocumentIds": ["relation-earnings-stock"],
+      "confusingDocumentIds": ["relation-miss-stock"]
+    },
+    {
+      "entityType": "relation",
+      "query": "earnings disappointment sends shares lower",
+      "relevantDocumentIds": ["relation-miss-stock"],
+      "confusingDocumentIds": ["relation-buyback-eps"]
+    },
+    {
+      "entityType": "relation",
+      "query": "回购减少股本提升EPS",
+      "relevantDocumentIds": ["relation-buyback-eps"],
+      "confusingDocumentIds": ["relation-tariff-cost"]
+    },
+    {
+      "entityType": "relation",
+      "query": "share issuance dilutes EPS",
+      "relevantDocumentIds": ["relation-dilution-eps"],
+      "confusingDocumentIds": ["relation-subsidy-margin"]
+    },
+    {
+      "entityType": "relation",
+      "query": "关税推高采购成本",
+      "relevantDocumentIds": ["relation-tariff-cost"],
+      "confusingDocumentIds": ["relation-earnings-stock"]
+    },
+    {
+      "entityType": "relation",
+      "query": "TSLA recall hurts brand confidence",
+      "relevantDocumentIds": ["relation-tsla-reputation"],
+      "confusingDocumentIds": ["relation-rate-bond"]
+    },
+
+    {
+      "entityType": "case",
+      "query": "2022 Fed began raising rates",
+      "relevantDocumentIds": ["case-fed-hike"],
+      "confusingDocumentIds": ["case-fed-cut"]
+    },
+    {
+      "entityType": "case",
+      "query": "美联储2020年紧急降息",
+      "relevantDocumentIds": ["case-fed-cut"],
+      "confusingDocumentIds": ["case-iphone-launch"]
+    },
+    {
+      "entityType": "case",
+      "query": "Ukraine conflict Brent oil spike",
+      "relevantDocumentIds": ["case-oil-spike"],
+      "confusingDocumentIds": ["case-oil-crash"]
+    },
+    {
+      "entityType": "case",
+      "query": "2020 WTI price collapse",
+      "relevantDocumentIds": ["case-oil-crash"],
+      "confusingDocumentIds": ["case-chip-tariff"]
+    },
+    {
+      "entityType": "case",
+      "query": "NVIDIA 2024 revenue beat",
+      "relevantDocumentIds": ["case-nvda-beat"],
+      "confusingDocumentIds": ["case-retail-miss"]
+    },
+    {
+      "entityType": "case",
+      "query": "零售商利润低于分析师预测",
+      "relevantDocumentIds": ["case-retail-miss"],
+      "confusingDocumentIds": ["case-rights-issue"]
+    },
+    {
+      "entityType": "case",
+      "query": "AAPL $110B repurchase",
+      "relevantDocumentIds": ["case-aapl-buyback"],
+      "confusingDocumentIds": ["case-oil-crash"]
+    },
+    {
+      "entityType": "case",
+      "query": "上市公司配股融资",
+      "relevantDocumentIds": ["case-rights-issue"],
+      "confusingDocumentIds": ["case-fed-cut"]
+    },
+    {
+      "entityType": "case",
+      "query": "US raised China chip tariffs in 2024",
+      "relevantDocumentIds": ["case-chip-tariff"],
+      "confusingDocumentIds": ["case-retail-miss"]
+    },
+    {
+      "entityType": "case",
+      "query": "TSLA recalled over two million vehicles",
+      "relevantDocumentIds": ["case-tsla-recall"],
+      "confusingDocumentIds": ["case-fed-hike"]
+    }
+  ]
+}

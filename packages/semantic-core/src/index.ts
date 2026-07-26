@@ -9,5 +9,6 @@ export {
   type SemanticModelCode,
   type SemanticModelDefinition,
   type SemanticModelFile,
+  type SemanticVectorDimensions,
 } from './modelCatalog.js';
 export { mergeNormalFirst } from './resultMerge.js';

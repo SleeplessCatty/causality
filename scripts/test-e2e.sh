@@ -40,4 +40,4 @@ drop_test_database
 export DATABASE_URL="postgresql://causality:causality@127.0.0.1:5432/$E2E_DATABASE_NAME"
 corepack pnpm db:migrate
 corepack pnpm db:seed
-corepack pnpm exec playwright test
+corepack pnpm exec playwright test "$@"

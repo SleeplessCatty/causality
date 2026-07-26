@@ -5,6 +5,7 @@ import type {
   FeatureExtractionOptions,
   FeatureExtractionOutput,
   FeatureExtractionPipeline,
+  FeatureExtractionSessionOptions,
   TransformersBackend,
 } from '../src/model/transformersRuntime.js';
 import {
@@ -20,6 +21,7 @@ interface PipelineCall {
 function fakeBackend(dimensions: number) {
   const calls: PipelineCall[] = [];
   let disposed = false;
+  let disposedOutputs = 0;
   let active = 0;
   let maximumActive = 0;
 
@@ -33,20 +35,31 @@ function fakeBackend(dimensions: number) {
     await Promise.resolve();
     const count = typeof text === 'string' ? 1 : text.length;
     active -= 1;
-    return {
-      data: Float32Array.from({ length: count * dimensions }, (_, index) => index + 1),
-      dims: [count, dimensions],
-    };
+    return Object.assign(
+      {
+        data: Float32Array.from({ length: count * dimensions }, (_, index) => index + 1),
+        dims: [count, dimensions],
+      },
+      {
+        dispose: () => {
+          disposedOutputs += 1;
+        },
+      },
+    );
   }) as FeatureExtractionPipeline;
   pipeline.dispose = async () => {
     disposed = true;
   };
 
-  const loaded: Array<{ localPath: string; dtype: 'q8' }> = [];
+  const loaded: Array<{
+    localPath: string;
+    dtype: 'q8';
+    sessionOptions: FeatureExtractionSessionOptions;
+  }> = [];
   const backend: TransformersBackend = {
     configureLocalModels: () => undefined,
-    createFeatureExtractionPipeline: async (localPath, dtype) => {
-      loaded.push({ localPath, dtype });
+    createFeatureExtractionPipeline: async (localPath, dtype, _maxTokens, sessionOptions) => {
+      loaded.push({ localPath, dtype, sessionOptions });
       return pipeline;
     },
   };
@@ -56,6 +69,7 @@ function fakeBackend(dimensions: number) {
     calls,
     loaded,
     wasDisposed: () => disposed,
+    disposedOutputs: () => disposedOutputs,
     maximumActive: () => maximumActive,
   };
 }
@@ -85,7 +99,19 @@ describe('TransformersEmbeddingRuntime', () => {
     const query = await runtime.embedQuery('政策利率提高');
     const documents = await runtime.embedDocuments(['融资成本上升']);
 
-    expect(fake.loaded).toEqual([{ localPath: '/models/e5/revision', dtype: 'q8' }]);
+    expect(fake.loaded).toEqual([
+      {
+        localPath: '/models/e5/revision',
+        dtype: 'q8',
+        sessionOptions: {
+          enableCpuMemArena: false,
+          enableMemPattern: false,
+          executionMode: 'sequential',
+          interOpNumThreads: 1,
+          intraOpNumThreads: 2,
+        },
+      },
+    ]);
     expect(fake.calls[0]).toMatchObject({
       text: 'query: 政策利率提高',
       options: {
@@ -108,6 +134,7 @@ describe('TransformersEmbeddingRuntime', () => {
     expect(Array.isArray(query)).toBe(true);
     expect(documents).toHaveLength(1);
     expect(documents[0]).toHaveLength(384);
+    expect(fake.disposedOutputs()).toBe(2);
 
     await runtime.dispose();
     expect(fake.wasDisposed()).toBe(true);
@@ -160,6 +187,7 @@ describe('TransformersEmbeddingRuntime', () => {
     await expect(first).rejects.toThrow(/dimension/i);
     await expect(second).rejects.toThrow(/dimension/i);
     expect(fake.maximumActive()).toBe(1);
+    expect(fake.disposedOutputs()).toBe(2);
   });
 
   it('rejects inference before a model is loaded', async () => {

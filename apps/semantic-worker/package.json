@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "smoke:model": "tsx src/realModelSmoke.ts"
+    "smoke:model": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && tsx src/realModelSmoke.ts",
+    "quality:model": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && tsx src/qualityBenchmark.ts"
   },
   "dependencies": {
     "@causality/contracts": "workspace:*",

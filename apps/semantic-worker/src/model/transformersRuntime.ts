@@ -14,6 +14,7 @@ export interface FeatureExtractionOptions {
 export interface FeatureExtractionOutput {
   data: ArrayLike<number>;
   dims: readonly number[];
+  dispose(): void;
 }
 
 export interface FeatureExtractionPipeline {
@@ -24,12 +25,21 @@ export interface FeatureExtractionPipeline {
   dispose(): Promise<void>;
 }
 
+export interface FeatureExtractionSessionOptions {
+  enableCpuMemArena: false;
+  enableMemPattern: false;
+  executionMode: 'sequential';
+  interOpNumThreads: 1;
+  intraOpNumThreads: 2;
+}
+
 export interface TransformersBackend {
   configureLocalModels(modelsDirectory: string): void | Promise<void>;
   createFeatureExtractionPipeline(
     localPath: string,
     dtype: 'q8',
     maxTokens: number,
+    sessionOptions: FeatureExtractionSessionOptions,
   ): Promise<FeatureExtractionPipeline>;
 }
 
@@ -57,6 +67,7 @@ class LocalTransformersBackend implements TransformersBackend {
     localPath: string,
     dtype: 'q8',
     maxTokens: number,
+    sessionOptions: FeatureExtractionSessionOptions,
   ): Promise<FeatureExtractionPipeline> {
     if (!this.modelsDirectory) throw new Error('Transformers backend is not configured');
     const relativeModelPath = relative(this.modelsDirectory, resolve(localPath));
@@ -80,6 +91,7 @@ class LocalTransformersBackend implements TransformersBackend {
       {
         dtype,
         local_files_only: true,
+        session_options: sessionOptions,
       },
     );
     configureTokenizerMaximum(extractor.tokenizer, maxTokens);
@@ -116,6 +128,13 @@ export class TransformersEmbeddingRuntime implements EmbeddingRuntime {
       localPath,
       model.dtype,
       model.maxTokens,
+      {
+        enableCpuMemArena: false,
+        enableMemPattern: false,
+        executionMode: 'sequential',
+        interOpNumThreads: 1,
+        intraOpNumThreads: 2,
+      },
     );
     this.model = model;
   }
@@ -124,7 +143,11 @@ export class TransformersEmbeddingRuntime implements EmbeddingRuntime {
     return this.schedule(async () => {
       const { model, pipeline } = this.loaded();
       const output = await pipeline(`${model.queryPrefix}${text}`, this.optionsFor(model));
-      return this.copyVectors(output, 1, model.dimensions)[0]!;
+      try {
+        return this.copyVectors(output, 1, model.dimensions)[0]!;
+      } finally {
+        output.dispose();
+      }
     });
   }
 
@@ -136,7 +159,11 @@ export class TransformersEmbeddingRuntime implements EmbeddingRuntime {
         texts.map((text) => `${model.documentPrefix}${text}`),
         this.optionsFor(model),
       );
-      return this.copyVectors(output, texts.length, model.dimensions);
+      try {
+        return this.copyVectors(output, texts.length, model.dimensions);
+      } finally {
+        output.dispose();
+      }
     });
   }
 

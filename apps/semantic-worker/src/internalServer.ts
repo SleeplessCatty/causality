@@ -1,7 +1,11 @@
 import { join } from 'node:path';
 
 import { semanticModelCodeSchema } from '@causality/contracts';
-import { MODEL_CATALOG, type SemanticModelCode } from '@causality/semantic-core';
+import {
+  MODEL_CATALOG,
+  type SemanticModelCode,
+  type SemanticVectorDimensions,
+} from '@causality/semantic-core';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { z } from 'zod';
 
@@ -24,7 +28,7 @@ export interface SemanticWorkerHealth {
 
 export interface QueryEmbeddingResult {
   modelCode: SemanticModelCode;
-  dimensions: 384 | 1024;
+  dimensions: SemanticVectorDimensions;
   vector: number[];
 }
 

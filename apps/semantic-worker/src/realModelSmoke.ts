@@ -1,6 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { MODEL_CATALOG } from '@causality/semantic-core';
 
@@ -24,7 +22,9 @@ function cosine(left: readonly number[], right: readonly number[]): number {
 
 const modelCode = parseSmokeModelCode(process.argv.slice(2));
 const model = MODEL_CATALOG[modelCode];
-const modelsDirectory = await mkdtemp(join(tmpdir(), 'causality-real-model-'));
+const modelsDirectory = resolve(
+  process.env.CAUSALITY_MODEL_DIRECTORY ?? join(process.cwd(), '.cache', 'semantic-models'),
+);
 const target = join(modelsDirectory, model.code, model.revision);
 const runtime = new TransformersEmbeddingRuntime({ modelsDirectory });
 let downloadedBytes = 0;
@@ -50,5 +50,4 @@ try {
   );
 } finally {
   await runtime.dispose();
-  await rm(modelsDirectory, { recursive: true, force: true });
 }

@@ -30,6 +30,23 @@ function verifyDatabase() {
   };
 }
 
+function verifyWorkerNativeRuntime() {
+  return compose([
+    'exec',
+    '-T',
+    'semantic-worker',
+    'node',
+    '-e',
+    [
+      "const fs=require('node:fs')",
+      "const directory=fs.readdirSync('/workspace/node_modules/.pnpm').find((name)=>name.startsWith('onnxruntime-node@'))",
+      "if(!directory)throw new Error('onnxruntime-node missing')",
+      "require('/workspace/node_modules/.pnpm/'+directory+'/node_modules/onnxruntime-node')",
+      "console.log('onnxruntime_native=ok')",
+    ].join(';'),
+  ]);
+}
+
 test('production stack boots empty, persists data, and seeds explicitly', async ({
   page,
   request,
@@ -50,6 +67,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   await expect(page.getByRole('region', { name: '局部因果图工作台' })).toBeVisible();
 
   await expect.poll(async () => (await request.get('/api/ready')).status()).toBe(200);
+  expect(verifyWorkerNativeRuntime()).toContain('onnxruntime_native=ok');
   expect(verifyDatabase()).toMatchObject({
     migrationApplied: true,
     counts: { abstractEvents: 0, causalRelations: 0, concreteCases: 0 },
@@ -97,9 +115,9 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   compose(['run', '--rm', 'seed']);
   const afterFirstSeed = verifyDatabase();
   expect(afterFirstSeed.counts).toMatchObject({
-    abstractEvents: 12,
-    causalRelations: 15,
-    concreteCases: 18,
+    abstractEvents: 200,
+    causalRelations: 180,
+    concreteCases: 220,
   });
   compose(['run', '--rm', 'seed']);
   expect(verifyDatabase().counts).toEqual(afterFirstSeed.counts);
@@ -118,7 +136,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
         },
     );
   const byService = Object.fromEntries(serviceRows.map((row) => [row.Service, row]));
-  for (const service of ['postgres', 'api', 'web']) {
+  for (const service of ['postgres', 'api', 'semantic-worker', 'web']) {
     expect(byService[service]).toMatchObject({ State: 'running', Health: 'healthy' });
   }
   expect(byService.migrate).toMatchObject({ State: 'exited', ExitCode: 0 });

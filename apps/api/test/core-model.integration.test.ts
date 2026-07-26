@@ -656,7 +656,12 @@ describe.sequential('core PostgreSQL model', () => {
     );
     expect(models.rows).toEqual([
       expect.objectContaining({ model_code: 'bge-m3', threshold: 55 }),
-      expect.objectContaining({ model_code: 'multilingual-e5-small', threshold: 70 }),
+      expect.objectContaining({ model_code: 'bge-small-zh-v1.5', threshold: 62 }),
+      expect.objectContaining({
+        model_code: 'granite-embedding-97m-multilingual-r2',
+        threshold: 80,
+      }),
+      expect.objectContaining({ model_code: 'multilingual-e5-small', threshold: 90 }),
     ]);
 
     const indexState = await pool!.query<{
@@ -686,11 +691,17 @@ describe.sequential('core PostgreSQL model', () => {
     );
     expect(vectorIndexes.rows.map((row) => row.indexname)).toEqual([
       'semantic_embeddings_case_bge_hnsw_idx',
+      'semantic_embeddings_case_bge_small_zh_hnsw_idx',
       'semantic_embeddings_case_e5_hnsw_idx',
+      'semantic_embeddings_case_granite_hnsw_idx',
       'semantic_embeddings_event_bge_hnsw_idx',
+      'semantic_embeddings_event_bge_small_zh_hnsw_idx',
       'semantic_embeddings_event_e5_hnsw_idx',
+      'semantic_embeddings_event_granite_hnsw_idx',
       'semantic_embeddings_relation_bge_hnsw_idx',
+      'semantic_embeddings_relation_bge_small_zh_hnsw_idx',
       'semantic_embeddings_relation_e5_hnsw_idx',
+      'semantic_embeddings_relation_granite_hnsw_idx',
     ]);
   });
 

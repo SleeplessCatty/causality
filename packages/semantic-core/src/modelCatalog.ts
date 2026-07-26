@@ -1,6 +1,12 @@
-export const semanticModelCodes = ['multilingual-e5-small', 'bge-m3'] as const;
+export const semanticModelCodes = [
+  'bge-small-zh-v1.5',
+  'multilingual-e5-small',
+  'granite-embedding-97m-multilingual-r2',
+  'bge-m3',
+] as const;
 
 export type SemanticModelCode = (typeof semanticModelCodes)[number];
+export type SemanticVectorDimensions = 384 | 512 | 1024;
 
 export interface SemanticModelFile {
   remotePath: string;
@@ -11,12 +17,12 @@ export interface SemanticModelFile {
 
 export interface SemanticModelDefinition {
   code: SemanticModelCode;
-  label: '轻量快速' | '质量优先';
+  label: '中文轻量' | '轻量快速' | '均衡多语言' | '质量优先';
   description: string;
   languageLabel: string;
   repository: string;
   revision: string;
-  dimensions: 384 | 1024;
+  dimensions: SemanticVectorDimensions;
   dtype: 'q8';
   pooling: 'mean' | 'cls';
   queryPrefix: string;
@@ -91,7 +97,68 @@ const bgeFiles = createFileManifest([
   ],
 ] as const);
 
+const bgeSmallZhFiles = createFileManifest([
+  ['config.json', 716, 'd4193ead3a810fd694fa8a31d7fc72fbaebc0668b603e398734bf2f6538ff42f'],
+  ['tokenizer.json', 439_125, '48cea5d44424912a6fd1ea647bf4fe50b55ab8b1e5879c3275f80e339e8fae26'],
+  [
+    'tokenizer_config.json',
+    367,
+    'e6f3b96db926a37d4039995fbf5ad17de158dfb8f6343d607e4dbaad18d75f5a',
+  ],
+  [
+    'special_tokens_map.json',
+    125,
+    'b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3',
+  ],
+  [
+    'onnx/model_quantized.onnx',
+    24_010_842,
+    '15b717c382bcb518ba457b93ea6850ede7f4f1cd8937454aa06972366cd19bcc',
+  ],
+] as const);
+
+const graniteFiles = createFileManifest([
+  ['config.json', 1_215, 'ae74d55a56f779774cb9a8e63d3c2da9ae1af83c00229ffdff43d0b38407a0ee'],
+  [
+    'tokenizer.json',
+    25_301_671,
+    '51947676cae1f991fa51c6b9a24e14ee5460e5f0b9f692f13bb3159829d1592a',
+  ],
+  [
+    'tokenizer_config.json',
+    12_860,
+    '6ed69389e30a8ecabfce2f9ebcdf0c908b34056f24d994340f2f216521c057d5',
+  ],
+  [
+    'special_tokens_map.json',
+    871,
+    '013787ee251ff611722479197c00853b62113ad303cb0a36524231783c676c69',
+  ],
+  [
+    'onnx/model_quantized.onnx',
+    97_858_099,
+    '704c1ebca5fbb7cd83ced41827658ac4c9990c64f7f2874d22b78044e5022e22',
+  ],
+] as const);
+
 export const MODEL_CATALOG = {
+  'bge-small-zh-v1.5': {
+    code: 'bge-small-zh-v1.5',
+    label: '中文轻量',
+    description: '体积小、索引快，适合以中文内容为主的数据',
+    languageLabel: '中文',
+    repository: 'Xenova/bge-small-zh-v1.5',
+    revision: '75c43b069aac4d136ba6bc1122f995fedcfd2781',
+    dimensions: 512,
+    dtype: 'q8',
+    pooling: 'cls',
+    queryPrefix: '',
+    documentPrefix: '',
+    maxTokens: 512,
+    defaultThreshold: 62,
+    files: bgeSmallZhFiles,
+    expectedDownloadBytes: totalBytes(bgeSmallZhFiles),
+  },
   'multilingual-e5-small': {
     code: 'multilingual-e5-small',
     label: '轻量快速',
@@ -105,9 +172,26 @@ export const MODEL_CATALOG = {
     queryPrefix: 'query: ',
     documentPrefix: 'passage: ',
     maxTokens: 512,
-    defaultThreshold: 70,
+    defaultThreshold: 90,
     files: e5Files,
     expectedDownloadBytes: totalBytes(e5Files),
+  },
+  'granite-embedding-97m-multilingual-r2': {
+    code: 'granite-embedding-97m-multilingual-r2',
+    label: '均衡多语言',
+    description: '在模型体积、跨语言能力和检索质量之间保持平衡',
+    languageLabel: '中文、英文及多语言',
+    repository: 'onnx-community/granite-embedding-97m-multilingual-r2-ONNX',
+    revision: '536a9f241cb3f02a9c5995a1e708c784bd274859',
+    dimensions: 384,
+    dtype: 'q8',
+    pooling: 'cls',
+    queryPrefix: '',
+    documentPrefix: '',
+    maxTokens: 512,
+    defaultThreshold: 80,
+    files: graniteFiles,
+    expectedDownloadBytes: totalBytes(graniteFiles),
   },
   'bge-m3': {
     code: 'bge-m3',

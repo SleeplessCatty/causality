@@ -214,9 +214,10 @@ export class PostgresSemanticRepository implements SemanticRepository {
     if (!index) throw new Error('Missing semantic_index_state singleton');
     const modelRows = new Map(modelsResult.rows.map((row) => [row.model_code, row]));
 
-    const activeTaskResult = index.active_model_code
-      ? await this.pool.query<TaskRow>(
-          `select id,
+    const activeTaskResult =
+      index.active_model_code && index.status !== 'ready'
+        ? await this.pool.query<TaskRow>(
+            `select id,
                   job_type,
                   model_code,
                   status,
@@ -235,9 +236,9 @@ export class PostgresSemanticRepository implements SemanticRepository {
              and status in ('queued', 'running', 'failed')
            order by created_at desc, id desc
            limit 1`,
-          [index.active_model_code],
-        )
-      : undefined;
+            [index.active_model_code],
+          )
+        : undefined;
 
     return {
       activeModelCode: index.active_model_code,

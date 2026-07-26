@@ -211,8 +211,10 @@ type StableWriteResult = 'written' | 'deleted' | 'changed' | 'stale';
 
 const entityTypes = ['event', 'relation', 'case'] as const satisfies readonly SemanticEntityType[];
 
-function indexBatchSize(modelCode: SemanticIndexJob['modelCode']): number {
-  return modelCode === 'multilingual-e5-small' ? 64 : 16;
+export function semanticIndexBatchSize(modelCode: SemanticIndexJob['modelCode']): number {
+  if (modelCode === 'bge-m3') return 1;
+  if (modelCode === 'bge-small-zh-v1.5') return 8;
+  return 4;
 }
 
 function vectorDimensions(vector: readonly number[], expected: number): void {
@@ -346,7 +348,7 @@ export class PostgresIndexBuilder implements IndexBuilder {
         const batch = await this.options.sourceRepository.loadBatch(
           entityType,
           afterId,
-          indexBatchSize(job.modelCode),
+          semanticIndexBatchSize(job.modelCode),
         );
         if (batch.length === 0) break;
         const vectors = await this.options.runtime.embedDocuments(

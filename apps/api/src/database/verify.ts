@@ -139,10 +139,17 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
           `select
        (select count(*)::int
         from semantic_embeddings
-        where model_code not in ('multilingual-e5-small', 'bge-m3')) as invalid_model_codes,
+        where model_code not in (
+          'bge-small-zh-v1.5',
+          'multilingual-e5-small',
+          'granite-embedding-97m-multilingual-r2',
+          'bge-m3'
+        )) as invalid_model_codes,
        (select count(*)::int
         from semantic_embeddings
-        where (model_code = 'multilingual-e5-small' and vector_dims(embedding) <> 384)
+        where (model_code = 'bge-small-zh-v1.5' and vector_dims(embedding) <> 512)
+           or (model_code in ('multilingual-e5-small', 'granite-embedding-97m-multilingual-r2')
+             and vector_dims(embedding) <> 384)
            or (model_code = 'bge-m3' and vector_dims(embedding) <> 1024))
          as invalid_vector_dimensions,
        (select count(*)::int

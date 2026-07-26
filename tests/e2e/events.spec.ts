@@ -79,8 +79,8 @@ test('user can search, create, inspect, edit, and find an atomic event', async (
 
   await page.goto('/events');
   const search = page.getByRole('searchbox', { name: '搜索事件' });
-  await search.fill('原油价格上涨');
-  await expect(page.getByRole('link', { name: '原油价格上涨' })).toBeVisible();
+  await search.fill('政策利率上升');
+  await expect(page.getByRole('link', { name: '政策利率上升' })).toBeVisible();
 
   await page.getByRole('link', { name: '创建事件' }).first().click();
   await expect(page.getByRole('heading', { name: '创建原子事件' })).toBeVisible();

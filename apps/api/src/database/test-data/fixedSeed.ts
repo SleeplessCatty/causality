@@ -14,40 +14,43 @@ import {
   eventAliases,
   eventKeywords,
 } from '../schema/index.js';
+import {
+  realisticCaseLocations,
+  realisticSeedBridges,
+  realisticSeedChains,
+} from './realisticSeedData.js';
 
 function stableId(group: number, sequence: number): string {
   return `00000000-0000-4000-${group.toString().padStart(4, '0')}-${sequence.toString().padStart(12, '0')}`;
 }
 
-const eventDefinitions = [
-  ['央行提高政策利率', '政策利率被上调', ['政策利率', '加息']],
-  ['市场流动性收紧', '金融市场可用流动性下降', ['流动性', '资金面']],
-  ['债券收益率上升', '债券市场收益率整体上行', ['债券收益率', '利率债']],
-  ['股票估值折现率上升', '股票估值使用的折现率上升', ['折现率', '估值']],
-  ['高估值股票承压', '高估值股票价格或估值受到压力', ['成长股', '高估值']],
-  ['银行净息差扩大', '银行资产负债利差扩大', ['银行', '净息差']],
-  ['原油价格上涨', '国际原油价格持续上行', ['原油', '能源价格']],
-  ['通胀预期上升', '市场对未来通胀的预期上升', ['通胀', '通胀预期']],
-  ['企业运输成本上升', '企业承担的运输成本提高', ['运输成本', '物流']],
-  ['企业利润承压', '企业利润率或利润规模受到压力', ['企业利润', '利润率']],
-  ['股票利好', '对相关股票价格形成正面影响', ['利好', '正面影响']],
-  ['股票利空', '对相关股票价格形成负面影响', ['利空', '负面影响']],
-] as const;
+const flattenedEventDefinitions = realisticSeedChains.flatMap((chain, chainIndex) =>
+  chain.events.map(([name, alias], position) => ({
+    name,
+    alias,
+    domain: chain.domain,
+    topic: chain.topic,
+    chainIndex,
+    position,
+  })),
+);
 
-const fixedEvents = eventDefinitions.map(([name, description], index) => ({
+const fixedEvents = flattenedEventDefinitions.map((event, index) => ({
   id: stableId(8000, index + 1),
-  name,
-  description,
+  name: event.name,
+  description: `${event.domain}领域“${event.topic}”因果链中的原子事件，表示${event.name}。`,
 }));
 
-const fixedAliases = eventDefinitions.map(([, , keywords], index) => ({
+const eventByName = new Map(fixedEvents.map((event, index) => [event.name, { event, index }]));
+
+const fixedAliases = flattenedEventDefinitions.map((event, index) => ({
   id: stableId(8001, index + 1),
   eventId: fixedEvents[index]!.id,
-  alias: keywords[0],
+  alias: event.alias,
 }));
 
-const fixedKeywords = eventDefinitions.flatMap(([, , keywords], eventIndex) =>
-  keywords.map((keyword, keywordIndex) => ({
+const fixedKeywords = flattenedEventDefinitions.flatMap((event, eventIndex) =>
+  [event.domain, event.topic].map((keyword, keywordIndex) => ({
     id: stableId(8002, eventIndex * 2 + keywordIndex + 1),
     eventId: fixedEvents[eventIndex]!.id,
     keyword,
@@ -55,49 +58,101 @@ const fixedKeywords = eventDefinitions.flatMap(([, , keywords], eventIndex) =>
   })),
 );
 
-const relationDefinitions = [
-  [0, 1, 75, '政策利率上升促使市场流动性收紧'],
-  [1, 0, 20, '流动性持续收紧可能促使政策进一步调整'],
-  [0, 2, 85, '政策利率上升带动债券收益率上行'],
-  [0, 3, 80, '无风险利率上升提高股票估值折现率'],
-  [1, 4, 70, '流动性收紧使高估值股票承压'],
-  [2, 3, 90, '债券收益率上升提高估值折现率'],
-  [3, 4, 88, '折现率上升压低高估值股票估值'],
-  [4, 11, 82, '高估值股票承压形成股票利空'],
-  [0, 5, 60, '利率上升可能扩大银行净息差'],
-  [5, 10, 65, '银行净息差扩大形成银行股利好'],
-  [6, 7, 78, '原油价格上涨推高通胀预期'],
-  [6, 8, 92, '原油价格上涨推高运输成本'],
-  [7, 2, 55, '通胀预期上升带动债券收益率上行'],
-  [8, 9, 73, '运输成本上升使企业利润承压'],
-  [9, 11, 0, '企业利润承压形成相关股票利空'],
-] as const;
-
-const fixedRelations = relationDefinitions.map(
-  ([causeIndex, effectIndex, confidence, description], index) => ({
-    id: stableId(8100, index + 1),
-    causeEventId: fixedEvents[causeIndex]!.id,
-    effectEventId: fixedEvents[effectIndex]!.id,
-    confidence,
-    description,
+const chainRelationDefinitions = realisticSeedChains.flatMap((chain, chainIndex) =>
+  Array.from({ length: chain.events.length - 1 }, (_, position) => {
+    const cause = eventByName.get(chain.events[position]![0]);
+    const effect = eventByName.get(chain.events[position + 1]![0]);
+    if (!cause || !effect) throw new Error('Realistic seed chain references an unknown event');
+    return {
+      causeEventId: cause.event.id,
+      effectEventId: effect.event.id,
+      confidence: 64 + ((chainIndex * 3 + position * 7) % 31),
+      description: `在${chain.topic}场景中，${cause.event.name}会促使${effect.event.name}`,
+      location: chain.location,
+      chainIndex,
+    };
   }),
 );
 
-const fixedCases = Array.from({ length: 18 }, (_, index) => ({
-  id: stableId(8200, index + 1),
-  content: `202${4 + Math.floor(index / 12)}年${(index % 12) + 1}月固定案例${index + 1}`,
+const bridgeRelationDefinitions = realisticSeedBridges.map((bridge) => {
+  const cause = eventByName.get(bridge.cause);
+  const effect = eventByName.get(bridge.effect);
+  if (!cause || !effect) throw new Error('Realistic seed bridge references an unknown event');
+  return {
+    causeEventId: cause.event.id,
+    effectEventId: effect.event.id,
+    confidence: bridge.confidence,
+    description: bridge.description,
+    location: realisticCaseLocations[cause.index % realisticCaseLocations.length]!,
+    chainIndex: Math.floor(cause.index / 5),
+  };
+});
+
+const relationDefinitions = [...chainRelationDefinitions, ...bridgeRelationDefinitions];
+
+const fixedRelations = relationDefinitions.map((relation, index) => ({
+  id: stableId(8100, index + 1),
+  causeEventId: relation.causeEventId,
+  effectEventId: relation.effectEventId,
+  confidence: relation.confidence,
+  description: relation.description,
 }));
 
-const fixedCaseLinks = [
-  ...Array.from({ length: 15 }, (_, index) => ({
-    causalRelationId: fixedRelations[index]!.id,
-    concreteCaseId: fixedCases[index]!.id,
-  })),
-  ...Array.from({ length: 3 }, (_, index) => ({
-    causalRelationId: fixedRelations[index + 1]!.id,
-    concreteCaseId: fixedCases[index]!.id,
-  })),
-];
+const eventNamesById = new Map(fixedEvents.map((event) => [event.id, event.name]));
+const primaryCaseTemplates = [
+  (year: number, month: number, location: string, cause: string, effect: string) =>
+    `${year}年${month}月，${location}在${cause}后记录到${effect}。`,
+  (year: number, month: number, location: string, cause: string, effect: string) =>
+    `${year}年${month}月，${location}的观察记录显示：先发生${cause}，随后出现${effect}。`,
+  (year: number, month: number, location: string, cause: string, effect: string) =>
+    `${location}于${year}年${month}月报告，${cause}发生后，${effect}逐渐显现。`,
+  (year: number, month: number, location: string, cause: string, effect: string) =>
+    `${year}年${month}月的${location}记录中，${cause}与随后发生的${effect}前后相继。`,
+  (year: number, month: number, location: string, cause: string, effect: string) =>
+    `${location}在${year}年${month}月观察到${cause}，之后确认${effect}。`,
+  (year: number, month: number, location: string, cause: string, effect: string) =>
+    `${year}年${month}月，${location}先出现${cause}，一段时间后又记录到${effect}。`,
+] as const;
+
+const primaryCases = relationDefinitions.map((relation, index) => ({
+  id: stableId(8200, index + 1),
+  relationIndex: index,
+  content: primaryCaseTemplates[index % primaryCaseTemplates.length]!(
+    2024 + (index % 2),
+    (index % 12) + 1,
+    relation.location,
+    eventNamesById.get(relation.causeEventId)!,
+    eventNamesById.get(relation.effectEventId)!,
+  ),
+}));
+
+const verificationCaseTemplates = [
+  (month: number, location: string, cause: string, effect: string) =>
+    `2025年${month}月，${location}的复核记录再次显示${cause}后发生${effect}。`,
+  (month: number, location: string, cause: string, effect: string) =>
+    `${location}在2025年${month}月完成复盘，确认${cause}先于${effect}出现。`,
+  (month: number, location: string, cause: string, effect: string) =>
+    `2025年${month}月的${location}复查中，${cause}之后再次观察到${effect}。`,
+  (month: number, location: string, cause: string, effect: string) =>
+    `${location}于2025年${month}月补充案例：${cause}发生后出现了${effect}。`,
+] as const;
+
+const verificationCases = realisticSeedChains.map((chain, chainIndex) => ({
+  id: stableId(8200, primaryCases.length + chainIndex + 1),
+  relationIndex: chainIndex * 4,
+  content: verificationCaseTemplates[chainIndex % verificationCaseTemplates.length]!(
+    (chainIndex % 12) + 1,
+    realisticCaseLocations[chainIndex % realisticCaseLocations.length]!,
+    chain.events[0][0],
+    chain.events[1][0],
+  ),
+}));
+const caseDefinitions = [...primaryCases, ...verificationCases];
+const fixedCases = caseDefinitions.map(({ id, content }) => ({ id, content }));
+const fixedCaseLinks = caseDefinitions.map((concreteCase) => ({
+  causalRelationId: fixedRelations[concreteCase.relationIndex]!.id,
+  concreteCaseId: concreteCase.id,
+}));
 
 export async function runFixedSeed(pool: Pool): Promise<void> {
   const database = createDatabaseClient(pool);

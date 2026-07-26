@@ -16,6 +16,7 @@
     "db:verify": "tsx src/database/verify.ts",
     "data-check:benchmark": "tsx src/database/benchmark/dataCheckBenchmark.ts",
     "graph:benchmark": "tsx src/database/benchmark/causalGraphBenchmark.ts",
+    "semantic:benchmark": "tsx src/database/benchmark/semanticSearchBenchmark.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --exclude '**/*.integration.test.ts'",

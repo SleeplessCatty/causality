@@ -71,6 +71,27 @@
       "when": 1784822950315,
       "tag": "0009_semantic_sync_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784867996000,
+      "tag": "0010_semantic_quality_threshold",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785040000000,
+      "tag": "0011_semantic_model_comparison",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785043600000,
+      "tag": "0012_semantic_general_thresholds",
+      "breakpoints": true
     }
   ]
 }

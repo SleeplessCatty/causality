@@ -17,13 +17,39 @@ const settings: SemanticSettingsResponse = {
   },
   models: [
     {
+      code: 'bge-small-zh-v1.5',
+      label: '中文轻量',
+      description: '体积小、索引快，适合以中文内容为主的数据',
+      languageLabel: '中文',
+      dimensions: 512,
+      expectedDownloadBytes: 24_451_175,
+      threshold: 62,
+      downloadStatus: 'downloaded',
+      downloadedAt: '2026-07-23T09:00:00.000Z',
+      isActive: false,
+      error: null,
+    },
+    {
       code: 'multilingual-e5-small',
       label: '轻量快速',
       description: '适合普通 CPU 的快速语义检索',
       languageLabel: '中文、英文及中英混排',
       dimensions: 384,
       expectedDownloadBytes: 135_392_857,
-      threshold: 70,
+      threshold: 90,
+      downloadStatus: 'not_downloaded',
+      downloadedAt: null,
+      isActive: false,
+      error: null,
+    },
+    {
+      code: 'granite-embedding-97m-multilingual-r2',
+      label: '均衡多语言',
+      description: '在模型体积、跨语言能力和检索质量之间保持平衡',
+      languageLabel: '中文、英文及多语言',
+      dimensions: 384,
+      expectedDownloadBytes: 123_174_716,
+      threshold: 80,
       downloadStatus: 'not_downloaded',
       downloadedAt: null,
       isActive: false,
@@ -66,7 +92,7 @@ function renderPage() {
 describe('ParameterSettings', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('shows both built-in models, independent thresholds, and no enable switch', async () => {
+  it('shows all built-in models, independent thresholds, and no enable switch', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => jsonResponse(settings)),
@@ -75,6 +101,8 @@ describe('ParameterSettings', () => {
 
     expect(await screen.findByRole('heading', { name: '参数配置' })).toBeTruthy();
     const lightweight = screen.getByRole('article', { name: '轻量快速' });
+    expect(screen.getByRole('article', { name: '中文轻量' })).toBeTruthy();
+    expect(screen.getByRole('article', { name: '均衡多语言' })).toBeTruthy();
     const quality = screen.getByRole('article', { name: '质量优先' });
 
     expect(within(lightweight).getByText('中文、英文及中英混排')).toBeTruthy();
@@ -85,7 +113,7 @@ describe('ParameterSettings', () => {
           name: '相似度门槛数值',
         }) as HTMLInputElement
       ).valueAsNumber,
-    ).toBe(70);
+    ).toBe(90);
     expect(
       (
         within(quality).getByRole('spinbutton', {

@@ -1,0 +1,609 @@
+{
+  "metadata": {
+    "name": "通用因果语义查询验证集",
+    "version": 1,
+    "synthetic": true,
+    "description": "内容取自跨领域初始化数据，重点测试无完整关键词重合的同义改写。"
+  },
+  "documents": [
+    {
+      "id": "event-financing-cost",
+      "entityType": "event",
+      "text": "企业融资成本上升；别名：借款成本增加；经济与经营，融资与投资"
+    },
+    {
+      "id": "event-discretionary-spending",
+      "entityType": "event",
+      "text": "可选消费支出减少；别名：非必需品开支下降；经济与经营，消费与库存"
+    },
+    {
+      "id": "event-response-latency",
+      "entityType": "event",
+      "text": "服务响应延迟增加；别名：系统访问变慢；软件与技术，服务容量"
+    },
+    {
+      "id": "event-production-failures",
+      "entityType": "event",
+      "text": "生产环境故障增加；别名：线上事故变多；软件与技术，自动化测试"
+    },
+    {
+      "id": "event-credentials-leaked",
+      "entityType": "event",
+      "text": "员工登录凭据泄露；别名：账号密码外泄；网络安全，钓鱼攻击"
+    },
+    {
+      "id": "event-host-compromised",
+      "entityType": "event",
+      "text": "服务器主机被入侵；别名：主机系统失陷；网络安全，漏洞修复"
+    },
+    {
+      "id": "event-patient-wait",
+      "entityType": "event",
+      "text": "患者候诊时间延长；别名：排队看病时间变长；健康与生活，医疗接诊"
+    },
+    {
+      "id": "event-susceptible-down",
+      "entityType": "event",
+      "text": "易感人群比例下降；别名：容易感染的人减少；健康与生活，疫苗覆盖"
+    },
+    {
+      "id": "event-pm-rise",
+      "entityType": "event",
+      "text": "细颗粒物浓度上升；别名：空气PM2.5升高；健康与生活，空气与呼吸"
+    },
+    {
+      "id": "event-drought-stress",
+      "entityType": "event",
+      "text": "农作物遭受干旱胁迫；别名：庄稼缺水；环境与能源，干旱与粮食"
+    },
+    {
+      "id": "event-attendance-down",
+      "entityType": "event",
+      "text": "学生出勤率下降；别名：学生缺课变多；教育与组织，学生出勤"
+    },
+    {
+      "id": "event-turnover-rise",
+      "entityType": "event",
+      "text": "员工离职率上升；别名：人员流失增加；经济与经营，人员流动"
+    },
+    {
+      "id": "event-berth-wait",
+      "entityType": "event",
+      "text": "船舶泊位等待时间延长；别名：船只等泊更久；交通与物流，港口拥堵"
+    },
+    {
+      "id": "event-transit-wait-down",
+      "entityType": "event",
+      "text": "乘客平均候车时间下降；别名：等车时间缩短；社会与农业，公共交通供给"
+    },
+    {
+      "id": "event-care-pressure-down",
+      "entityType": "event",
+      "text": "家庭照护压力下降；别名：家庭带孩子负担减轻；社会与农业，托育服务"
+    },
+    {
+      "id": "event-financing-cost-down",
+      "entityType": "event",
+      "text": "企业融资成本下降，企业借款更加便宜"
+    },
+    {
+      "id": "event-response-faster",
+      "entityType": "event",
+      "text": "服务响应延迟下降，系统访问速度提升"
+    },
+    {
+      "id": "event-attendance-up",
+      "entityType": "event",
+      "text": "学生出勤率上升，学生缺课数量减少"
+    },
+
+    {
+      "id": "relation-rate-financing",
+      "entityType": "relation",
+      "text": "政策利率上升导致企业融资成本上升；基准利率上调使借款成本增加"
+    },
+    {
+      "id": "relation-traffic-latency",
+      "entityType": "relation",
+      "text": "服务访问量激增导致服务器负载上升，随后服务响应延迟增加"
+    },
+    {
+      "id": "relation-phishing-leak",
+      "entityType": "relation",
+      "text": "钓鱼邮件点击率上升导致员工登录凭据泄露"
+    },
+    {
+      "id": "relation-vulnerability-host",
+      "entityType": "relation",
+      "text": "漏洞被攻击者利用导致服务器主机被入侵"
+    },
+    {
+      "id": "relation-vaccine-transmission",
+      "entityType": "relation",
+      "text": "疫苗接种覆盖率上升使易感人群比例下降，传染病传播速度下降"
+    },
+    {
+      "id": "relation-pm-sickleave",
+      "entityType": "relation",
+      "text": "细颗粒物浓度上升引起呼吸道刺激，最终使员工病假人数增加"
+    },
+    {
+      "id": "relation-rain-river",
+      "entityType": "relation",
+      "text": "持续强降雨发生会促使河流水位上升"
+    },
+    {
+      "id": "relation-drought-crop",
+      "entityType": "relation",
+      "text": "土壤含水量下降导致农作物遭受干旱胁迫"
+    },
+    {
+      "id": "relation-attendance-gap",
+      "entityType": "relation",
+      "text": "学生出勤率下降使有效学习时间减少并扩大知识缺口"
+    },
+    {
+      "id": "relation-training-defect",
+      "entityType": "relation",
+      "text": "员工培训覆盖率上升提高流程熟悉度，从而减少产品质量缺陷"
+    },
+    {
+      "id": "relation-snow-delivery",
+      "entityType": "relation",
+      "text": "持续降雪使道路表面摩擦力下降，交通拥堵后同城配送延误增加"
+    },
+    {
+      "id": "relation-port-import",
+      "entityType": "relation",
+      "text": "港口集装箱积压增加导致进口货物交付延迟"
+    },
+    {
+      "id": "relation-transit-congestion",
+      "entityType": "relation",
+      "text": "公共交通发车频率上升缩短候车时间，减少驾车出行并缓解道路拥堵"
+    },
+    {
+      "id": "relation-childcare-employment",
+      "entityType": "relation",
+      "text": "普惠托育服务供给增加降低家庭照护压力，提高家庭成员就业参与率"
+    },
+    {
+      "id": "relation-monitor-pesticide",
+      "entityType": "relation",
+      "text": "病虫害监测频率上升使预警和防治提前，最终降低农药使用量"
+    },
+    {
+      "id": "relation-rate-financing-down",
+      "entityType": "relation",
+      "text": "政策利率下降导致企业融资成本下降"
+    },
+    {
+      "id": "relation-rain-river-down",
+      "entityType": "relation",
+      "text": "持续强降雨结束后河流水位下降"
+    },
+    {
+      "id": "relation-training-defect-rise",
+      "entityType": "relation",
+      "text": "员工培训不足导致产品质量缺陷增加"
+    },
+
+    {
+      "id": "case-financing",
+      "entityType": "case",
+      "text": "2024年1月，某制造业园区记录到政策利率上升后企业融资成本上升。"
+    },
+    {
+      "id": "case-latency",
+      "entityType": "case",
+      "text": "2025年2月，某在线平台访问量突然放大后，用户打开页面明显变慢。"
+    },
+    {
+      "id": "case-phishing",
+      "entityType": "case",
+      "text": "2024年3月，某办公机构多名员工点击仿冒邮件后发现账号密码外泄。"
+    },
+    {
+      "id": "case-host",
+      "entityType": "case",
+      "text": "2025年4月，某数据中心未及时修补高危漏洞后，一台服务器遭到入侵。"
+    },
+    {
+      "id": "case-hospital",
+      "entityType": "case",
+      "text": "2024年5月，某城市呼吸道病例集中增加后，医院排队看病时间明显变长。"
+    },
+    {
+      "id": "case-vaccine",
+      "entityType": "case",
+      "text": "2025年6月，某地区提高疫苗覆盖率后，当季传染病传播速度明显下降。"
+    },
+    {
+      "id": "case-air",
+      "entityType": "case",
+      "text": "2024年7月，某工业城市PM2.5持续升高后，呼吸不适就诊人数增加。"
+    },
+    {
+      "id": "case-rain",
+      "entityType": "case",
+      "text": "2025年8月，某沿江城市连续暴雨后，河流水位超过警戒线。"
+    },
+    {
+      "id": "case-drought",
+      "entityType": "case",
+      "text": "2024年9月，某粮食主产区长期少雨后，多片农田出现庄稼缺水。"
+    },
+    {
+      "id": "case-attendance",
+      "entityType": "case",
+      "text": "2025年10月，某职业学校学生缺课增多后，未完成作业的人数上升。"
+    },
+    {
+      "id": "case-training",
+      "entityType": "case",
+      "text": "2024年11月，某装配工厂扩大岗位培训后，不合格产品数量减少。"
+    },
+    {
+      "id": "case-snow",
+      "entityType": "case",
+      "text": "2025年12月，某北方城市连续降雪后，路面湿滑并出现大面积配送晚点。"
+    },
+    {
+      "id": "case-port",
+      "entityType": "case",
+      "text": "2024年1月，某港口到港货轮增加后，大量集装箱积压且进口货物延期。"
+    },
+    {
+      "id": "case-childcare",
+      "entityType": "case",
+      "text": "2025年2月，某社区新增普惠托育点后，多名家长重新参加全职工作。"
+    },
+    {
+      "id": "case-pest",
+      "entityType": "case",
+      "text": "2024年3月，某种植区提高虫害巡查频率后，提前防治并减少农药用量。"
+    },
+    {
+      "id": "case-rate-cut",
+      "entityType": "case",
+      "text": "2024年4月，某地区下调政策利率后企业借款成本下降。"
+    },
+    {
+      "id": "case-rain-ended",
+      "entityType": "case",
+      "text": "2025年5月，某地暴雨停止后河流水位逐步回落。"
+    },
+    {
+      "id": "case-training-missing",
+      "entityType": "case",
+      "text": "2024年6月，某工厂未开展新员工培训后产品缺陷数量增加。"
+    }
+  ],
+  "cases": [
+    {
+      "entityType": "event",
+      "query": "企业借钱变得更贵",
+      "capability": "口语改写",
+      "relevantDocumentIds": ["event-financing-cost"],
+      "confusingDocumentIds": ["event-financing-cost-down"]
+    },
+    {
+      "entityType": "event",
+      "query": "顾客减少购买非必需品",
+      "capability": "概念归一",
+      "relevantDocumentIds": ["event-discretionary-spending"],
+      "confusingDocumentIds": ["event-care-pressure-down"]
+    },
+    {
+      "entityType": "event",
+      "query": "网页打开越来越慢",
+      "capability": "口语改写",
+      "relevantDocumentIds": ["event-response-latency"],
+      "confusingDocumentIds": ["event-response-faster"]
+    },
+    {
+      "entityType": "event",
+      "query": "程序上线以后事故变多",
+      "capability": "场景改写",
+      "relevantDocumentIds": ["event-production-failures"],
+      "confusingDocumentIds": ["event-response-latency"]
+    },
+    {
+      "entityType": "event",
+      "query": "员工的账号密码被人拿到",
+      "capability": "同义改写",
+      "relevantDocumentIds": ["event-credentials-leaked"],
+      "confusingDocumentIds": ["event-host-compromised"]
+    },
+    {
+      "entityType": "event",
+      "query": "黑客已经控制服务器",
+      "capability": "安全术语归一",
+      "relevantDocumentIds": ["event-host-compromised"],
+      "confusingDocumentIds": ["event-credentials-leaked"]
+    },
+    {
+      "entityType": "event",
+      "query": "病人排队看诊越来越久",
+      "capability": "口语改写",
+      "relevantDocumentIds": ["event-patient-wait"],
+      "confusingDocumentIds": ["event-susceptible-down"]
+    },
+    {
+      "entityType": "event",
+      "query": "容易被传染的人变少",
+      "capability": "概念归一",
+      "relevantDocumentIds": ["event-susceptible-down"],
+      "confusingDocumentIds": ["event-patient-wait"]
+    },
+    {
+      "entityType": "event",
+      "query": "空气里的细小污染颗粒变多",
+      "capability": "术语解释",
+      "relevantDocumentIds": ["event-pm-rise"],
+      "confusingDocumentIds": ["event-susceptible-down"]
+    },
+    {
+      "entityType": "event",
+      "query": "田里的庄稼严重缺水",
+      "capability": "口语改写",
+      "relevantDocumentIds": ["event-drought-stress"],
+      "confusingDocumentIds": ["event-pm-rise"]
+    },
+    {
+      "entityType": "event",
+      "query": "孩子缺课变多",
+      "capability": "口语改写",
+      "relevantDocumentIds": ["event-attendance-down"],
+      "confusingDocumentIds": ["event-attendance-up"]
+    },
+    {
+      "entityType": "event",
+      "query": "公司人员流失越来越严重",
+      "capability": "同义改写",
+      "relevantDocumentIds": ["event-turnover-rise"],
+      "confusingDocumentIds": ["event-care-pressure-down"]
+    },
+    {
+      "entityType": "event",
+      "query": "货轮在码头外等得更久",
+      "capability": "场景改写",
+      "relevantDocumentIds": ["event-berth-wait"],
+      "confusingDocumentIds": ["event-transit-wait-down"]
+    },
+    {
+      "entityType": "event",
+      "query": "坐公交地铁不用等那么久",
+      "capability": "隐含方向",
+      "relevantDocumentIds": ["event-transit-wait-down"],
+      "confusingDocumentIds": ["event-berth-wait"]
+    },
+    {
+      "entityType": "event",
+      "query": "家里带孩子的负担减轻",
+      "capability": "口语改写",
+      "relevantDocumentIds": ["event-care-pressure-down"],
+      "confusingDocumentIds": ["event-turnover-rise"]
+    },
+
+    {
+      "entityType": "relation",
+      "query": "加息让企业贷款更贵",
+      "capability": "因果改写",
+      "relevantDocumentIds": ["relation-rate-financing"],
+      "confusingDocumentIds": ["relation-rate-financing-down"]
+    },
+    {
+      "entityType": "relation",
+      "query": "访问突然暴增把网站拖慢",
+      "capability": "链路压缩",
+      "relevantDocumentIds": ["relation-traffic-latency"],
+      "confusingDocumentIds": ["relation-rate-financing"]
+    },
+    {
+      "entityType": "relation",
+      "query": "员工点了假邮件以后密码泄露",
+      "capability": "因果改写",
+      "relevantDocumentIds": ["relation-phishing-leak"],
+      "confusingDocumentIds": ["relation-vulnerability-host"]
+    },
+    {
+      "entityType": "relation",
+      "query": "漏洞被利用以后服务器失陷",
+      "capability": "安全术语归一",
+      "relevantDocumentIds": ["relation-vulnerability-host"],
+      "confusingDocumentIds": ["relation-phishing-leak"]
+    },
+    {
+      "entityType": "relation",
+      "query": "更多人打疫苗以后疾病传得更慢",
+      "capability": "链路压缩",
+      "relevantDocumentIds": ["relation-vaccine-transmission"],
+      "confusingDocumentIds": ["relation-pm-sickleave"]
+    },
+    {
+      "entityType": "relation",
+      "query": "空气污染加重造成请病假的员工变多",
+      "capability": "链路压缩",
+      "relevantDocumentIds": ["relation-pm-sickleave"],
+      "confusingDocumentIds": ["relation-vaccine-transmission"]
+    },
+    {
+      "entityType": "relation",
+      "query": "连续下暴雨让江河涨水",
+      "capability": "口语因果",
+      "relevantDocumentIds": ["relation-rain-river"],
+      "confusingDocumentIds": ["relation-rain-river-down"]
+    },
+    {
+      "entityType": "relation",
+      "query": "地里水分减少使庄稼受旱",
+      "capability": "同义因果",
+      "relevantDocumentIds": ["relation-drought-crop"],
+      "confusingDocumentIds": ["relation-rain-river"]
+    },
+    {
+      "entityType": "relation",
+      "query": "经常缺课让学生落下更多知识",
+      "capability": "链路压缩",
+      "relevantDocumentIds": ["relation-attendance-gap"],
+      "confusingDocumentIds": ["relation-training-defect"]
+    },
+    {
+      "entityType": "relation",
+      "query": "岗位培训让产品不良率下降",
+      "capability": "隐含中间事件",
+      "relevantDocumentIds": ["relation-training-defect"],
+      "confusingDocumentIds": ["relation-training-defect-rise"]
+    },
+    {
+      "entityType": "relation",
+      "query": "大雪路滑造成快递晚点",
+      "capability": "链路压缩",
+      "relevantDocumentIds": ["relation-snow-delivery"],
+      "confusingDocumentIds": ["relation-port-import"]
+    },
+    {
+      "entityType": "relation",
+      "query": "码头压箱导致进口商品迟到",
+      "capability": "行业口语",
+      "relevantDocumentIds": ["relation-port-import"],
+      "confusingDocumentIds": ["relation-snow-delivery"]
+    },
+    {
+      "entityType": "relation",
+      "query": "公交班次增加以后堵车缓解",
+      "capability": "多跳压缩",
+      "relevantDocumentIds": ["relation-transit-congestion"],
+      "confusingDocumentIds": ["relation-rate-financing"]
+    },
+    {
+      "entityType": "relation",
+      "query": "托儿服务更多让家长重返工作",
+      "capability": "多跳压缩",
+      "relevantDocumentIds": ["relation-childcare-employment"],
+      "confusingDocumentIds": ["relation-transit-congestion"]
+    },
+    {
+      "entityType": "relation",
+      "query": "提前发现虫害可以减少打药",
+      "capability": "多跳压缩",
+      "relevantDocumentIds": ["relation-monitor-pesticide"],
+      "confusingDocumentIds": ["relation-drought-crop"]
+    },
+
+    {
+      "entityType": "case",
+      "query": "某工厂所在园区在加息后贷款支出增加",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-financing"],
+      "confusingDocumentIds": ["case-rate-cut"]
+    },
+    {
+      "entityType": "case",
+      "query": "在线系统流量暴涨后页面卡顿",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-latency"],
+      "confusingDocumentIds": ["case-phishing"]
+    },
+    {
+      "entityType": "case",
+      "query": "职员误点诈骗邮件导致密码被盗",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-phishing"],
+      "confusingDocumentIds": ["case-host"]
+    },
+    {
+      "entityType": "case",
+      "query": "服务器因为没打安全补丁而被攻破",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-host"],
+      "confusingDocumentIds": ["case-phishing"]
+    },
+    {
+      "entityType": "case",
+      "query": "呼吸道病人骤增造成看病排长队",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-hospital"],
+      "confusingDocumentIds": ["case-air"]
+    },
+    {
+      "entityType": "case",
+      "query": "提高接种比例后疫情扩散放缓",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-vaccine"],
+      "confusingDocumentIds": ["case-hospital"]
+    },
+    {
+      "entityType": "case",
+      "query": "雾霾加重以后因呼吸不适看病的人增多",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-air"],
+      "confusingDocumentIds": ["case-vaccine"]
+    },
+    {
+      "entityType": "case",
+      "query": "沿江地区连日暴雨造成水位超警",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-rain"],
+      "confusingDocumentIds": ["case-rain-ended"]
+    },
+    {
+      "entityType": "case",
+      "query": "粮食产区很久没下雨导致作物缺水",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-drought"],
+      "confusingDocumentIds": ["case-rain"]
+    },
+    {
+      "entityType": "case",
+      "query": "职业学校缺勤增加后作业提交率降低",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-attendance"],
+      "confusingDocumentIds": ["case-training"]
+    },
+    {
+      "entityType": "case",
+      "query": "工厂培训更多员工后次品减少",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-training"],
+      "confusingDocumentIds": ["case-training-missing"]
+    },
+    {
+      "entityType": "case",
+      "query": "北方连续下雪造成道路配送大面积迟到",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-snow"],
+      "confusingDocumentIds": ["case-port"]
+    },
+    {
+      "entityType": "case",
+      "query": "货轮集中到港造成进口箱迟迟不能交付",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-port"],
+      "confusingDocumentIds": ["case-snow"]
+    },
+    {
+      "entityType": "case",
+      "query": "社区增加平价托儿所以家长恢复全职就业",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-childcare"],
+      "confusingDocumentIds": ["case-attendance"]
+    },
+    {
+      "entityType": "case",
+      "query": "种植区更常巡查病虫害以后少用了农药",
+      "capability": "案例改写",
+      "relevantDocumentIds": ["case-pest"],
+      "confusingDocumentIds": ["case-drought"]
+    }
+  ],
+  "noMatchCases": [
+    { "entityType": "event", "query": "深海火山喷发改变洋流", "capability": "库外主题" },
+    { "entityType": "event", "query": "古代文字完成破译", "capability": "库外主题" },
+    { "entityType": "relation", "query": "月球引力导致潮汐变化", "capability": "库外因果" },
+    { "entityType": "relation", "query": "乐器调音改变音高", "capability": "库外因果" },
+    { "entityType": "case", "query": "某天文台观测到新彗星", "capability": "库外案例" },
+    { "entityType": "case", "query": "某考古队发现古城遗址", "capability": "库外案例" }
+  ]
+}

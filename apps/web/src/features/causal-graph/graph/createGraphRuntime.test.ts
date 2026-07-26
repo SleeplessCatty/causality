@@ -2,19 +2,29 @@ import type { Core } from 'cytoscape';
 import cytoscape from 'cytoscape';
 import { describe, expect, it, vi } from 'vitest';
 
-const { visibleRuntime } = vi.hoisted(() => ({
+const { runtimeState, visibleRuntime } = vi.hoisted(() => ({
+  runtimeState: { next: null as unknown },
   visibleRuntime: { destroy: vi.fn() },
 }));
 
 vi.mock('cytoscape', () => {
   const cytoscapeMock = Object.assign(
-    vi.fn(() => visibleRuntime),
+    vi.fn(() => {
+      const runtime = runtimeState.next;
+      runtimeState.next = null;
+      return runtime ?? visibleRuntime;
+    }),
     { use: vi.fn() },
   );
   return { default: cytoscapeMock };
 });
 
-import { applyGraphSelection, createGraphRuntime, focusVisibleNode } from './createGraphRuntime';
+import {
+  applyGraphSelection,
+  createGraphRuntime,
+  createLayoutRuntime,
+  focusVisibleNode,
+} from './createGraphRuntime';
 import { graphStyles } from './graphStyles';
 
 describe('graphStyles', () => {
@@ -112,5 +122,45 @@ describe('createGraphRuntime viewport', () => {
     expect(() => focusVisibleNode(visible, 'center', 48, 0.6)).not.toThrow();
     expect(zoom).toBe(0.6);
     expect(() => focusVisibleNode(visible, 'missing', 48, 0.6)).not.toThrow();
+  });
+});
+
+describe('createLayoutRuntime cancellation', () => {
+  it('stops the asynchronous layout and destroys staging exactly once when cancelled', () => {
+    let onLayoutStop: () => void = () => undefined;
+    let destroyed = false;
+    const stop = vi.fn();
+    const staging = {
+      layout: () => ({
+        one: (_event: string, listener: () => void) => {
+          onLayoutStop = listener;
+        },
+        run: () => undefined,
+        stop,
+      }),
+      elements: () => {
+        if (destroyed) throw new Error('staging core already destroyed');
+        return [];
+      },
+      destroy: vi.fn(() => {
+        destroyed = true;
+      }),
+    };
+    runtimeState.next = staging;
+    const onSuccess = vi.fn();
+
+    const cancel = createLayoutRuntime(
+      { nodes: [], edges: [] },
+      { name: 'elk' } as never,
+      onSuccess,
+      vi.fn(),
+    );
+    cancel();
+
+    expect(stop).toHaveBeenCalledOnce();
+    expect(staging.destroy).toHaveBeenCalledOnce();
+    expect(() => onLayoutStop()).not.toThrow();
+    expect(staging.destroy).toHaveBeenCalledOnce();
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 });

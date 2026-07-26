@@ -179,7 +179,7 @@ test('relation pages fit the supported desktop viewports', async ({ page }, test
     {
       name: 'detail',
       url: `/relations/${fixedRelationId}`,
-      heading: /央行提高政策利率.*市场流动性收紧/,
+      heading: /政策利率上升.*企业融资成本上升/,
     },
     { name: 'create', url: '/relations/new', heading: '创建因果关系' },
     {

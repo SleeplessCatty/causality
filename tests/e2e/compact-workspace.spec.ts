@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const centerEventId = '00000000-0000-4000-8000-000000000007';
+const centerEventId = '00000000-0000-4000-8000-000000000001';
 
 test('compact shell and full-canvas graph preserve workspace geometry', async ({
   page,
@@ -39,7 +39,7 @@ test('compact shell and full-canvas graph preserve workspace geometry', async ({
   await page.goto(
     `/graph?centerEventId=${centerEventId}&direction=both&limit=20&minConfidence=0&minCaseCount=0`,
   );
-  const canvas = page.getByRole('application', { name: /原油价格上涨的局部因果图/ });
+  const canvas = page.getByRole('application', { name: /政策利率上升的局部因果图/ });
   await expect(canvas).toHaveAttribute('data-layout-state', 'ready');
   const toolbar = page.getByLabel('因果图工具栏');
   const geometry = await page.evaluate(() => {

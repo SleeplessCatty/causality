@@ -15,7 +15,12 @@ export const semanticModelSettings = pgTable(
   (table) => [
     check(
       'semantic_model_settings_model_code_check',
-      sql`${table.modelCode} in ('multilingual-e5-small', 'bge-m3')`,
+      sql`${table.modelCode} in (
+        'bge-small-zh-v1.5',
+        'multilingual-e5-small',
+        'granite-embedding-97m-multilingual-r2',
+        'bge-m3'
+      )`,
     ),
     check('semantic_model_settings_threshold_check', sql`${table.threshold} between 0 and 100`),
     check(
