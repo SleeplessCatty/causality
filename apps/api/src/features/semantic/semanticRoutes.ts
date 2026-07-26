@@ -1,10 +1,10 @@
 import {
   apiErrorSchema,
+  semanticActionAcceptedSchema,
   semanticLifecycleSnapshotSchema,
   semanticModelParamsSchema,
   semanticSettingsResponseSchema,
   semanticThresholdInputSchema,
-  semanticUseModelResponseSchema,
 } from '@causality/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
@@ -14,6 +14,7 @@ import {
 } from 'fastify-type-provider-zod';
 import type { Pool } from 'pg';
 
+import { PostgresSemanticCommandRepository } from './semanticCommandRepository.js';
 import { PostgresSemanticLifecycleRepository } from './semanticLifecycleRepository.js';
 import { PostgresSemanticRepository } from './semanticRepository.js';
 import { SemanticLifecycleService, SemanticService } from './semanticService.js';
@@ -35,7 +36,10 @@ export function registerSemanticRoutes(
   const routes = app.withTypeProvider<ZodTypeProvider>();
   routes.setValidatorCompiler(validatorCompiler);
   routes.setSerializerCompiler(serializerCompiler);
-  const service = new SemanticService(new PostgresSemanticRepository(pool));
+  const service = new SemanticService(
+    new PostgresSemanticRepository(pool),
+    new PostgresSemanticCommandRepository(pool),
+  );
   const lifecycleService = new SemanticLifecycleService(
     new PostgresSemanticLifecycleRepository(pool),
     workerClient,
@@ -103,7 +107,7 @@ export function registerSemanticRoutes(
         tags: ['semantic'],
         params: semanticModelParamsSchema,
         response: {
-          202: semanticUseModelResponseSchema,
+          202: semanticActionAcceptedSchema,
           400: apiErrorSchema,
           409: apiErrorSchema,
           500: apiErrorSchema,
@@ -121,20 +125,22 @@ export function registerSemanticRoutes(
   );
 
   routes.post(
-    '/api/semantic/reindex',
+    '/api/semantic/models/:modelCode/retry-download',
     {
       schema: {
         tags: ['semantic'],
+        params: semanticModelParamsSchema,
         response: {
-          202: semanticUseModelResponseSchema,
+          202: semanticActionAcceptedSchema,
+          400: apiErrorSchema,
           409: apiErrorSchema,
           500: apiErrorSchema,
         },
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       try {
-        const result = await service.reindex();
+        const result = await service.retryDownload(request.params.modelCode);
         return reply.status(202).send(result);
       } catch (error) {
         return sendSemanticError(error, reply);
@@ -143,12 +149,84 @@ export function registerSemanticRoutes(
   );
 
   routes.post(
-    '/api/semantic/retry',
+    '/api/semantic/models/:modelCode/redownload',
+    {
+      schema: {
+        tags: ['semantic'],
+        params: semanticModelParamsSchema,
+        response: {
+          202: semanticActionAcceptedSchema,
+          400: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const result = await service.redownload(request.params.modelCode);
+        return reply.status(202).send(result);
+      } catch (error) {
+        return sendSemanticError(error, reply);
+      }
+    },
+  );
+
+  routes.post(
+    '/api/semantic/models/:modelCode/retry-load',
+    {
+      schema: {
+        tags: ['semantic'],
+        params: semanticModelParamsSchema,
+        response: {
+          202: semanticActionAcceptedSchema,
+          400: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const result = await service.retryLoad(request.params.modelCode);
+        return reply.status(202).send(result);
+      } catch (error) {
+        return sendSemanticError(error, reply);
+      }
+    },
+  );
+
+  routes.post(
+    '/api/semantic/models/:modelCode/retry-full-index',
+    {
+      schema: {
+        tags: ['semantic'],
+        params: semanticModelParamsSchema,
+        response: {
+          202: semanticActionAcceptedSchema,
+          400: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const result = await service.retryFullIndex(request.params.modelCode);
+        return reply.status(202).send(result);
+      } catch (error) {
+        return sendSemanticError(error, reply);
+      }
+    },
+  );
+
+  routes.post(
+    '/api/semantic/reindex',
     {
       schema: {
         tags: ['semantic'],
         response: {
-          202: semanticUseModelResponseSchema,
+          202: semanticActionAcceptedSchema,
           409: apiErrorSchema,
           500: apiErrorSchema,
         },
@@ -156,7 +234,7 @@ export function registerSemanticRoutes(
     },
     async (_request, reply) => {
       try {
-        const result = await service.retry();
+        const result = await service.reindex();
         return reply.status(202).send(result);
       } catch (error) {
         return sendSemanticError(error, reply);

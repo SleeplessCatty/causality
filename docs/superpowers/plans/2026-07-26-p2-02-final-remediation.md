@@ -613,7 +613,7 @@ POST /api/semantic/models/:modelCode/retry-full-index
 POST /api/semantic/reindex
 ```
 
-- [ ] **Step 1: Write command integration tests**
+- [x] **Step 1: Write command integration tests**
 
 Cover:
 
@@ -639,7 +639,7 @@ expect(embeddingCount).toBe(0);
 expect(staleJobCount).toBe(0);
 ```
 
-- [ ] **Step 2: Run integration tests and verify failure**
+- [x] **Step 2: Run integration tests and verify failure**
 
 Run:
 
@@ -649,7 +649,7 @@ pnpm --filter @causality/api test:integration -- semantic.integration.test.ts
 
 Expected: FAIL because stage-specific routes and load jobs do not exist.
 
-- [ ] **Step 3: Implement locked command transactions**
+- [x] **Step 3: Implement locked command transactions**
 
 Every command:
 
@@ -663,7 +663,7 @@ Every command:
 
 `useModel` increments state version, immediately deletes embeddings and stale jobs, and queues download or load based on file state. `reindex` increments state version, clears embeddings/failures/jobs, validates downloaded file state, and queues load.
 
-- [ ] **Step 4: Remove generic retry**
+- [x] **Step 4: Remove generic retry**
 
 Delete `/api/semantic/retry`, `retryLatestFailure`, and the priority query that searches old failed jobs. Retain only the threshold/current-settings compatibility reads still needed by the existing Web page; do not add new responsibilities to the legacy repository. Stable conflict responses use stage-specific codes such as:
 
@@ -673,7 +673,7 @@ Delete `/api/semantic/retry`, `retryLatestFailure`, and the priority query that 
 'SEMANTIC_MODEL_NOT_CURRENT'
 ```
 
-- [ ] **Step 5: Run API tests**
+- [x] **Step 5: Run API tests**
 
 Run:
 
@@ -685,7 +685,7 @@ pnpm --filter @causality/api typecheck
 
 Expected: stage-specific commands pass; no generic retry route remains.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/api/src/features/semantic apps/api/test packages/contracts

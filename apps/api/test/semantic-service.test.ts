@@ -1,12 +1,13 @@
 import type {
+  SemanticActionAccepted,
   SemanticModelCode,
   SemanticSettingsResponse,
-  SemanticUseModelResponse,
 } from '@causality/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   SemanticRepositoryError,
+  type SemanticCommandRepository,
   type SemanticRepository,
 } from '../src/features/semantic/semanticTypes.js';
 import { SemanticService } from '../src/features/semantic/semanticService.js';
@@ -58,7 +59,7 @@ function settings(overrides: Partial<SemanticSettingsResponse> = {}): SemanticSe
   };
 }
 
-function accepted(modelCode: SemanticModelCode): SemanticUseModelResponse {
+function accepted(modelCode: SemanticModelCode): SemanticActionAccepted {
   return { accepted: true, taskId, activeModelCode: modelCode };
 }
 
@@ -66,38 +67,59 @@ function repository(overrides: Partial<SemanticRepository> = {}): SemanticReposi
   const current = settings();
   return {
     getSettings: vi.fn(async () => current),
-    requestUseModel: vi.fn(async (modelCode) => accepted(modelCode)),
-    requestReindex: vi.fn(async () => accepted('multilingual-e5-small')),
-    retryLatestFailure: vi.fn(async () => accepted('multilingual-e5-small')),
+    ...overrides,
+  };
+}
+
+function commandRepository(
+  overrides: Partial<SemanticCommandRepository> = {},
+): SemanticCommandRepository {
+  return {
+    useModel: vi.fn(async (modelCode) => accepted(modelCode)),
+    retryDownload: vi.fn(async (modelCode) => accepted(modelCode)),
+    redownload: vi.fn(async (modelCode) => accepted(modelCode)),
+    retryLoad: vi.fn(async (modelCode) => accepted(modelCode)),
+    retryFullIndex: vi.fn(async (modelCode) => accepted(modelCode)),
+    reindex: vi.fn(async () => accepted('multilingual-e5-small')),
     ...overrides,
   };
 }
 
 describe('SemanticService', () => {
-  it('returns current settings and a model-use task', async () => {
-    const service = new SemanticService(repository());
+  it('returns settings and delegates every stage-specific command', async () => {
+    const service = new SemanticService(repository(), commandRepository());
 
     await expect(service.settings()).resolves.toMatchObject({ activeModelCode: null });
     await expect(service.useModel('multilingual-e5-small')).resolves.toEqual(
       accepted('multilingual-e5-small'),
     );
+    await expect(service.retryDownload('multilingual-e5-small')).resolves.toEqual(
+      accepted('multilingual-e5-small'),
+    );
+    await expect(service.redownload('multilingual-e5-small')).resolves.toEqual(
+      accepted('multilingual-e5-small'),
+    );
+    await expect(service.retryLoad('multilingual-e5-small')).resolves.toEqual(
+      accepted('multilingual-e5-small'),
+    );
+    await expect(service.retryFullIndex('multilingual-e5-small')).resolves.toEqual(
+      accepted('multilingual-e5-small'),
+    );
     await expect(service.reindex()).resolves.toEqual(accepted('multilingual-e5-small'));
   });
 
-  it('preserves stable repository conflicts and retry responses', async () => {
+  it('preserves stable command conflicts', async () => {
     const conflict = new SemanticRepositoryError(
-      'SEMANTIC_SWITCH_CONFLICT',
+      'SEMANTIC_HIGH_LEVEL_TASK_ACTIVE',
       '已有模型下载或索引任务正在执行',
     );
     const service = new SemanticService(
-      repository({
-        requestUseModel: vi.fn().mockRejectedValue(conflict),
+      repository(),
+      commandRepository({
+        useModel: vi.fn().mockRejectedValue(conflict),
       }),
     );
 
     await expect(service.useModel('bge-m3')).rejects.toBe(conflict);
-    await expect(new SemanticService(repository()).retry()).resolves.toEqual(
-      accepted('multilingual-e5-small'),
-    );
   });
 });

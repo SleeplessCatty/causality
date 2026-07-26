@@ -12,6 +12,7 @@ import type {
 import type {
   SemanticIndexState,
   SemanticJobState,
+  SemanticLifecycleFacts,
   SemanticLifecycleResolverInput,
   SemanticModelState,
 } from './semanticLifecycleTypes.js';
@@ -145,6 +146,19 @@ function currentActions(model: SemanticModelState, index: SemanticIndexState): S
   if (index.status === 'failed') return failedIndexActions(index.failure);
   if (index.status === 'ready' || index.status === 'incomplete') return ['reindex'];
   return [];
+}
+
+export function resolveSemanticAllowedActions(
+  facts: SemanticLifecycleFacts,
+  modelCode: SemanticModelState['modelCode'],
+): SemanticAction[] {
+  const model = facts.models.find((candidate) => candidate.modelCode === modelCode);
+  if (!model) return [];
+  const hasActiveHighLevelTask = facts.jobs.some((job) => isActiveJob(job) && isHighLevelJob(job));
+  if (hasActiveHighLevelTask) return [];
+  return modelCode === facts.index.currentModelCode
+    ? currentActions(model, facts.index)
+    : inactiveActions(model.fileState);
 }
 
 function workerCanServeCurrentModel(input: SemanticLifecycleResolverInput): boolean {

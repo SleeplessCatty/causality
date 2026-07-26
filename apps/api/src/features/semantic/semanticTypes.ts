@@ -1,13 +1,16 @@
 import type {
   ApiErrorCode,
+  SemanticActionAccepted,
   SemanticModelCode,
   SemanticSettingsResponse,
-  SemanticUseModelResponse,
 } from '@causality/contracts';
 
 export type SemanticRepositoryErrorCode = Extract<
   ApiErrorCode,
-  'SEMANTIC_MODEL_UNAVAILABLE' | 'SEMANTIC_INDEX_FAILED' | 'SEMANTIC_SWITCH_CONFLICT'
+  | 'SEMANTIC_MODEL_UNAVAILABLE'
+  | 'SEMANTIC_ACTION_NOT_ALLOWED'
+  | 'SEMANTIC_HIGH_LEVEL_TASK_ACTIVE'
+  | 'SEMANTIC_MODEL_NOT_CURRENT'
 >;
 
 export class SemanticRepositoryError extends Error {
@@ -22,7 +25,13 @@ export class SemanticRepositoryError extends Error {
 
 export interface SemanticRepository {
   getSettings(): Promise<SemanticSettingsResponse>;
-  requestUseModel(modelCode: SemanticModelCode): Promise<SemanticUseModelResponse>;
-  requestReindex(): Promise<SemanticUseModelResponse>;
-  retryLatestFailure(): Promise<SemanticUseModelResponse>;
+}
+
+export interface SemanticCommandRepository {
+  useModel(modelCode: SemanticModelCode): Promise<SemanticActionAccepted>;
+  retryDownload(modelCode: SemanticModelCode): Promise<SemanticActionAccepted>;
+  redownload(modelCode: SemanticModelCode): Promise<SemanticActionAccepted>;
+  retryLoad(modelCode: SemanticModelCode): Promise<SemanticActionAccepted>;
+  retryFullIndex(modelCode: SemanticModelCode): Promise<SemanticActionAccepted>;
+  reindex(): Promise<SemanticActionAccepted>;
 }

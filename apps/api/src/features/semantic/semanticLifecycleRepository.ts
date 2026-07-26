@@ -176,7 +176,9 @@ function mapJob(row: JobRow): SemanticJobState {
   };
 }
 
-async function readFacts(client: PoolClient): Promise<SemanticLifecycleFacts> {
+export async function readSemanticLifecycleFacts(
+  client: PoolClient,
+): Promise<SemanticLifecycleFacts> {
   const modelsResult = await client.query<ModelRow>(
     `select model_code,
             revision,
@@ -255,7 +257,7 @@ export class PostgresSemanticLifecycleRepository implements SemanticLifecycleRep
     const client = await this.pool.connect();
     try {
       await client.query('begin transaction isolation level repeatable read read only');
-      const facts = await readFacts(client);
+      const facts = await readSemanticLifecycleFacts(client);
       await client.query('commit');
       return facts;
     } catch (error) {

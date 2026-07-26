@@ -284,6 +284,9 @@ describe('semantic search contracts', () => {
       'SEMANTIC_INDEX_FAILED',
       'SEMANTIC_WORKER_UNAVAILABLE',
       'SEMANTIC_SWITCH_CONFLICT',
+      'SEMANTIC_ACTION_NOT_ALLOWED',
+      'SEMANTIC_HIGH_LEVEL_TASK_ACTIVE',
+      'SEMANTIC_MODEL_NOT_CURRENT',
     ] as const) {
       expect(apiErrorSchema.parse({ code, message: '增强查询暂不可用' }).code).toBe(code);
     }

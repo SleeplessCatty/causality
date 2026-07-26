@@ -1,34 +1,49 @@
 import type {
+  SemanticActionAccepted,
   SemanticLifecycleSnapshot,
   SemanticModelCode,
   SemanticSettingsResponse,
-  SemanticUseModelResponse,
   SemanticWorkerStatus,
 } from '@causality/contracts';
 
 import type { SemanticLifecycleRepository } from './semanticLifecycleRepository.js';
 import { resolveSemanticLifecycle } from './semanticLifecycleResolver.js';
 import type { SemanticLifecycleFacts } from './semanticLifecycleTypes.js';
-import type { SemanticRepository } from './semanticTypes.js';
+import type { SemanticCommandRepository, SemanticRepository } from './semanticTypes.js';
 import type { SemanticWorkerClient, SemanticWorkerHealth } from './semanticWorkerClient.js';
 
 export class SemanticService {
-  public constructor(private readonly repository: SemanticRepository) {}
+  public constructor(
+    private readonly repository: SemanticRepository,
+    private readonly commandRepository: SemanticCommandRepository,
+  ) {}
 
   public settings(): Promise<SemanticSettingsResponse> {
     return this.repository.getSettings();
   }
 
-  public useModel(modelCode: SemanticModelCode): Promise<SemanticUseModelResponse> {
-    return this.repository.requestUseModel(modelCode);
+  public useModel(modelCode: SemanticModelCode): Promise<SemanticActionAccepted> {
+    return this.commandRepository.useModel(modelCode);
   }
 
-  public reindex(): Promise<SemanticUseModelResponse> {
-    return this.repository.requestReindex();
+  public retryDownload(modelCode: SemanticModelCode): Promise<SemanticActionAccepted> {
+    return this.commandRepository.retryDownload(modelCode);
   }
 
-  public retry(): Promise<SemanticUseModelResponse> {
-    return this.repository.retryLatestFailure();
+  public redownload(modelCode: SemanticModelCode): Promise<SemanticActionAccepted> {
+    return this.commandRepository.redownload(modelCode);
+  }
+
+  public retryLoad(modelCode: SemanticModelCode): Promise<SemanticActionAccepted> {
+    return this.commandRepository.retryLoad(modelCode);
+  }
+
+  public retryFullIndex(modelCode: SemanticModelCode): Promise<SemanticActionAccepted> {
+    return this.commandRepository.retryFullIndex(modelCode);
+  }
+
+  public reindex(): Promise<SemanticActionAccepted> {
+    return this.commandRepository.reindex();
   }
 }
 

@@ -293,7 +293,7 @@ describe.sequential('semantic configuration API', () => {
     expect(jobs.rows[0]?.count).toBe(0);
   });
 
-  it('queues a first download and rejects a second model request while it is active', async () => {
+  it('switches immediately to an undownloaded model and returns the existing queued download for a duplicate submission', async () => {
     const accepted = await context!.app.inject({
       method: 'POST',
       url: '/api/semantic/models/multilingual-e5-small/use',
@@ -322,33 +322,61 @@ describe.sequential('semantic configuration API', () => {
       }),
     ]);
 
-    const settings = await context!.app.inject({ method: 'GET', url: '/api/semantic/settings' });
-    expect(settings.json()).toMatchObject({
-      activeModelCode: 'multilingual-e5-small',
-      index: { status: 'waiting_model' },
-      activeTask: {
-        type: 'download',
-        status: 'queued',
-        modelCode: 'multilingual-e5-small',
-      },
+    const duplicate = await context!.app.inject({
+      method: 'POST',
+      url: '/api/semantic/models/multilingual-e5-small/use',
     });
+    expect(duplicate.statusCode).toBe(202);
+    expect(duplicate.json()).toEqual(accepted.json());
 
-    await pool!.query(
-      `update semantic_jobs
-       set status = 'running',
-           started_at = clock_timestamp(),
-           lease_owner = 'test-worker',
-           lease_expires_at = clock_timestamp() + interval '1 minute',
-           updated_at = clock_timestamp()
-       where job_type = 'download'
-         and status = 'queued'`,
+    const state = await pool!.query<{
+      active_model_code: string;
+      state_version: number;
+      status: string;
+      job_count: number;
+    }>(
+      `select state.active_model_code,
+              state.state_version,
+              state.status,
+              (select count(*)::int from semantic_jobs) as job_count
+       from semantic_index_state as state
+       where state.singleton_key = true`,
     );
+    expect(state.rows).toEqual([
+      {
+        active_model_code: 'multilingual-e5-small',
+        state_version: 1,
+        status: 'waiting_model',
+        job_count: 1,
+      },
+    ]);
+  });
+
+  it('rejects switching models while another high-level job is active', async () => {
+    await pool!.query(
+      `update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'waiting_model',
+           state_version = 2
+       where singleton_key = true;
+       update semantic_model_settings
+       set file_status = 'download_queued'
+       where model_code = 'multilingual-e5-small';
+       insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         state_version
+       )
+       values ('download', 'multilingual-e5-small', 'queued', 2)`,
+    );
+
     const conflict = await context!.app.inject({
       method: 'POST',
       url: '/api/semantic/models/bge-m3/use',
     });
     expect(conflict.statusCode).toBe(409);
-    expect(conflict.json()).toMatchObject({ code: 'SEMANTIC_SWITCH_CONFLICT' });
+    expect(conflict.json()).toMatchObject({ code: 'SEMANTIC_HIGH_LEVEL_TASK_ACTIVE' });
 
     const stateAfterConflict = await pool!.query<{
       active_model_code: string;
@@ -367,7 +395,7 @@ describe.sequential('semantic configuration API', () => {
     ]);
   });
 
-  it('switches to a downloaded model, clears old vectors, and queues a full index', async () => {
+  it('switches to a downloaded model, clears vectors and stale jobs, advances the version, and queues load', async () => {
     await pool!.query(
       `update semantic_model_settings
        set file_status = 'downloaded',
@@ -377,7 +405,30 @@ describe.sequential('semantic configuration API', () => {
        set active_model_code = 'multilingual-e5-small',
            status = 'ready',
            state_version = 3
-       where singleton_key = true`,
+       where singleton_key = true;
+       insert into semantic_jobs (
+         job_type,
+         model_code,
+         entity_type,
+         entity_id,
+         status,
+         state_version
+       )
+       values (
+         'incremental',
+         'multilingual-e5-small',
+         'event',
+         '${eventId}',
+         'queued',
+         3
+       ), (
+         'load',
+         'multilingual-e5-small',
+         null,
+         null,
+         'queued',
+         2
+       )`,
     );
     await pool!.query(`insert into abstract_events (id, name) values ($1, '旧模型事件')`, [
       eventId,
@@ -421,14 +472,290 @@ describe.sequential('semantic configuration API', () => {
       `select count(*)::int as count from semantic_embeddings`,
     );
     expect(vectors.rows[0]?.count).toBe(0);
-    const jobs = await pool!.query<{ job_type: string; model_code: string; status: string }>(
-      `select job_type, model_code, status
+    const jobs = await pool!.query<{
+      job_type: string;
+      model_code: string;
+      state_version: number;
+      status: string;
+    }>(
+      `select job_type, model_code, state_version, status
        from semantic_jobs`,
     );
-    expect(jobs.rows).toEqual([{ job_type: 'full_index', model_code: 'bge-m3', status: 'queued' }]);
+    expect(jobs.rows).toEqual([
+      {
+        job_type: 'load',
+        model_code: 'bge-m3',
+        state_version: 4,
+        status: 'queued',
+      },
+    ]);
   });
 
-  it('rebuilds the active index without deleting events, relations, or cases', async () => {
+  it('retries only the selected failed download and removes the model failure', async () => {
+    await pool!.query(
+      `update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'failed',
+           state_version = 5,
+           failure_stage = 'download',
+           failure_kind = 'retryable',
+           failure_code = 'DOWNLOAD_TIMEOUT',
+           error = '下载超时'
+       where singleton_key = true;
+       update semantic_model_settings
+       set file_status = 'failed',
+           failure_kind = 'retryable',
+           failure_code = 'DOWNLOAD_TIMEOUT',
+           error = '下载超时'
+       where model_code = 'multilingual-e5-small'`,
+    );
+    const failedDownload = await pool!.query<{ id: string }>(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         failure_kind,
+         failure_code,
+         error
+       )
+       values (
+         'download',
+         'multilingual-e5-small',
+         'failed',
+         5,
+         3,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         'retryable',
+         'DOWNLOAD_TIMEOUT',
+         '下载超时'
+       )
+       returning id`,
+    );
+    await pool!.query(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         failure_kind,
+         failure_code,
+         error
+       )
+       values (
+         'full_index',
+         'multilingual-e5-small',
+         'failed',
+         5,
+         3,
+         clock_timestamp() - interval '4 minutes',
+         clock_timestamp() - interval '3 minutes',
+         'manual',
+         'INDEX_FAILURE',
+         '旧的索引失败'
+       )`,
+    );
+
+    const retried = await context!.app.inject({
+      method: 'POST',
+      url: '/api/semantic/models/multilingual-e5-small/retry-download',
+    });
+    expect(retried.statusCode).toBe(202);
+    expect(retried.json()).toMatchObject({
+      accepted: true,
+      taskId: failedDownload.rows[0]!.id,
+      activeModelCode: 'multilingual-e5-small',
+    });
+
+    const result = await pool!.query<{
+      file_status: string;
+      index_status: string;
+      job_type: string;
+      job_status: string;
+      failure_code: string | null;
+    }>(
+      `select settings.file_status,
+              state.status as index_status,
+              jobs.job_type,
+              jobs.status as job_status,
+              jobs.failure_code
+       from semantic_model_settings as settings
+       cross join semantic_index_state as state
+       join semantic_jobs as jobs on jobs.model_code = settings.model_code
+       where settings.model_code = 'multilingual-e5-small'
+       order by jobs.job_type`,
+    );
+    expect(result.rows).toEqual([
+      {
+        file_status: 'download_queued',
+        index_status: 'waiting_model',
+        job_type: 'download',
+        job_status: 'queued',
+        failure_code: null,
+      },
+      {
+        file_status: 'download_queued',
+        index_status: 'waiting_model',
+        job_type: 'full_index',
+        job_status: 'failed',
+        failure_code: 'INDEX_FAILURE',
+      },
+    ]);
+  });
+
+  it('retries only the selected failed load for the current downloaded model', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set file_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'bge-small-zh-v1.5';
+       update semantic_index_state
+       set active_model_code = 'bge-small-zh-v1.5',
+           status = 'failed',
+           state_version = 6,
+           failure_stage = 'load',
+           failure_kind = 'manual',
+           failure_code = 'MODEL_RUNTIME_INCOMPATIBLE',
+           error = '运行环境不兼容'
+       where singleton_key = true`,
+    );
+    const failedLoad = await pool!.query<{ id: string }>(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         phase,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         failure_kind,
+         failure_code,
+         error
+       )
+       values (
+         'load',
+         'bge-small-zh-v1.5',
+         'failed',
+         'loading',
+         6,
+         2,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         'manual',
+         'MODEL_RUNTIME_INCOMPATIBLE',
+         '运行环境不兼容'
+       )
+       returning id`,
+    );
+
+    const retried = await context!.app.inject({
+      method: 'POST',
+      url: '/api/semantic/models/bge-small-zh-v1.5/retry-load',
+    });
+    expect(retried.statusCode).toBe(202);
+    expect(retried.json()).toMatchObject({ taskId: failedLoad.rows[0]!.id });
+    const state = await pool!.query<{ status: string; failure_code: string | null }>(
+      `select status, failure_code from semantic_index_state where singleton_key = true`,
+    );
+    const job = await pool!.query<{
+      status: string;
+      phase: string;
+      attempts: number;
+      failure_code: string | null;
+    }>(
+      `select status, phase, attempts, failure_code
+       from semantic_jobs
+       where id = $1`,
+      [failedLoad.rows[0]!.id],
+    );
+    expect(state.rows).toEqual([{ status: 'loading', failure_code: null }]);
+    expect(job.rows).toEqual([
+      { status: 'queued', phase: 'waiting', attempts: 0, failure_code: null },
+    ]);
+  });
+
+  it('retries only a retryable failed full index without advancing the state version', async () => {
+    await pool!.query(
+      `update semantic_model_settings
+       set file_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'granite-embedding-97m-multilingual-r2';
+       update semantic_index_state
+       set active_model_code = 'granite-embedding-97m-multilingual-r2',
+           status = 'failed',
+           state_version = 9,
+           processed_items = 12,
+           total_items = 20,
+           failure_stage = 'full_index',
+           failure_kind = 'retryable',
+           failure_code = 'INDEX_TRANSIENT',
+           error = '索引暂时失败'
+       where singleton_key = true`,
+    );
+    const failedIndex = await pool!.query<{ id: string }>(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         status,
+         phase,
+         state_version,
+         attempts,
+         processed_items,
+         total_items,
+         started_at,
+         completed_at,
+         failure_kind,
+         failure_code,
+         error
+       )
+       values (
+         'full_index',
+         'granite-embedding-97m-multilingual-r2',
+         'failed',
+         'indexing',
+         9,
+         3,
+         12,
+         20,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         'retryable',
+         'INDEX_TRANSIENT',
+         '索引暂时失败'
+       )
+       returning id`,
+    );
+
+    const retried = await context!.app.inject({
+      method: 'POST',
+      url: '/api/semantic/models/granite-embedding-97m-multilingual-r2/retry-full-index',
+    });
+    expect(retried.statusCode).toBe(202);
+    expect(retried.json()).toMatchObject({ taskId: failedIndex.rows[0]!.id });
+    const state = await pool!.query<{
+      state_version: number;
+      status: string;
+      processed_items: number;
+      total_items: number;
+    }>(
+      `select state_version, status, processed_items, total_items
+       from semantic_index_state
+       where singleton_key = true`,
+    );
+    expect(state.rows).toEqual([
+      { state_version: 9, status: 'index_queued', processed_items: 0, total_items: 0 },
+    ]);
+  });
+
+  it('reindex clears vectors and failed incremental jobs, advances the version, and starts with load', async () => {
     await pool!.query(
       `update semantic_model_settings
        set file_status = 'downloaded',
@@ -476,12 +803,54 @@ describe.sequential('semantic configuration API', () => {
        )`,
       [eventId],
     );
+    await pool!.query(
+      `insert into semantic_jobs (
+         job_type,
+         model_code,
+         entity_type,
+         entity_id,
+         status,
+         phase,
+         state_version,
+         attempts,
+         started_at,
+         completed_at,
+         failure_kind,
+         failure_code,
+         error
+       )
+       values (
+         'incremental',
+         'multilingual-e5-small',
+         'event',
+         '${eventId}',
+         'failed',
+         'indexing',
+         7,
+         3,
+         clock_timestamp() - interval '2 minutes',
+         clock_timestamp() - interval '1 minute',
+         'manual',
+         'ITEM_FAILURE',
+         '单条索引失败'
+       )`,
+    );
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'incomplete',
+           failed_items = 1,
+           failure_stage = 'incremental',
+           failure_kind = 'manual',
+           failure_code = 'ITEM_FAILURE',
+           error = '单条索引失败'
+       where singleton_key = true`,
+    );
 
     const response = await context!.app.inject({
       method: 'POST',
       url: '/api/semantic/reindex',
     });
-    expect(response.statusCode).toBe(202);
+    expect(response.statusCode, JSON.stringify(response.json())).toBe(202);
     expect(response.json()).toMatchObject({
       accepted: true,
       activeModelCode: 'multilingual-e5-small',
@@ -522,57 +891,67 @@ describe.sequential('semantic configuration API', () => {
     );
     expect(jobs.rows).toEqual([
       {
-        job_type: 'full_index',
+        job_type: 'load',
         model_code: 'multilingual-e5-small',
         status: 'queued',
       },
     ]);
   });
 
-  it('retries the latest failed high-level task and validates fixed model parameters', async () => {
+  it('redownloads an invalid model but rejects a stage-specific command for the wrong state', async () => {
     await pool!.query(
       `update semantic_index_state
-       set active_model_code = 'multilingual-e5-small',
+       set active_model_code = 'bge-m3',
            status = 'failed',
            state_version = 5,
-           error = '下载失败'
+           failure_stage = 'verify',
+           failure_kind = 'manual',
+           failure_code = 'MODEL_HASH_MISMATCH',
+           error = '模型文件校验失败'
        where singleton_key = true;
        update semantic_model_settings
-       set file_status = 'failed',
-           error = '下载失败'
-       where model_code = 'multilingual-e5-small';
-       insert into semantic_jobs (
-         job_type,
-         model_code,
-         status,
-         state_version,
-         started_at,
-         completed_at,
-         error
-       )
-       values (
-         'download',
-         'multilingual-e5-small',
-         'failed',
-         5,
-         clock_timestamp() - interval '2 minutes',
-         clock_timestamp() - interval '1 minute',
-         '下载失败'
-       )`,
+       set file_status = 'invalid',
+           failure_kind = 'manual',
+           failure_code = 'MODEL_HASH_MISMATCH',
+           error = '模型文件校验失败'
+       where model_code = 'bge-m3'`,
     );
 
-    const retried = await context!.app.inject({ method: 'POST', url: '/api/semantic/retry' });
-    expect(retried.statusCode).toBe(202);
-    expect(retried.json()).toMatchObject({ activeModelCode: 'multilingual-e5-small' });
+    const invalidRetry = await context!.app.inject({
+      method: 'POST',
+      url: '/api/semantic/models/bge-m3/retry-download',
+    });
+    expect(invalidRetry.statusCode).toBe(409);
+    expect(invalidRetry.json()).toMatchObject({ code: 'SEMANTIC_ACTION_NOT_ALLOWED' });
 
-    const queued = await pool!.query<{ count: number }>(
-      `select count(*)::int as count
-       from semantic_jobs
-       where job_type = 'download'
-         and status = 'queued'
-         and state_version = 5`,
+    const redownloaded = await context!.app.inject({
+      method: 'POST',
+      url: '/api/semantic/models/bge-m3/redownload',
+    });
+    expect(redownloaded.statusCode).toBe(202);
+    const result = await pool!.query<{
+      file_status: string;
+      state_version: number;
+      index_status: string;
+      job_type: string;
+    }>(
+      `select settings.file_status,
+              state.state_version,
+              state.status as index_status,
+              jobs.job_type
+       from semantic_model_settings as settings
+       cross join semantic_index_state as state
+       join semantic_jobs as jobs on jobs.model_code = settings.model_code
+       where settings.model_code = 'bge-m3'`,
     );
-    expect(queued.rows[0]?.count).toBe(1);
+    expect(result.rows).toEqual([
+      {
+        file_status: 'download_queued',
+        state_version: 6,
+        index_status: 'waiting_model',
+        job_type: 'download',
+      },
+    ]);
 
     const invalidModel = await context!.app.inject({
       method: 'POST',
@@ -635,7 +1014,7 @@ describe.sequential('semantic configuration API', () => {
     });
   });
 
-  it('requeues a failed incremental task without clearing the usable index', async () => {
+  it('does not expose the removed generic retry endpoint for incremental failures', async () => {
     await pool!.query(
       `update semantic_model_settings
        set file_status = 'downloaded',
@@ -691,30 +1070,25 @@ describe.sequential('semantic configuration API', () => {
 
     const retried = await context!.app.inject({ method: 'POST', url: '/api/semantic/retry' });
 
-    expect(retried.statusCode).toBe(202);
+    expect(retried.statusCode).toBe(404);
     const state = await pool!.query<{
-      attempts: number;
       embeddings: number;
-      error: string | null;
       job_status: string;
       state_status: string;
     }>(
       `select job.status as job_status,
-              job.attempts,
               state.status as state_status,
-              state.error,
               (select count(*)::int from semantic_embeddings) as embeddings
        from semantic_jobs as job
        join semantic_index_state as state on state.singleton_key = true
-       where job.id = $1`,
-      [retried.json().taskId],
+       where job.job_type = 'incremental'
+         and job.entity_id = $1`,
+      [eventId],
     );
     expect(state.rows).toEqual([
       {
-        job_status: 'queued',
-        attempts: 0,
-        state_status: 'updating',
-        error: null,
+        job_status: 'failed',
+        state_status: 'ready',
         embeddings: 1,
       },
     ]);

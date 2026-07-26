@@ -247,13 +247,15 @@ export const semanticSettingsResponseSchema = z
   })
   .strict();
 
-export const semanticUseModelResponseSchema = z
+export const semanticActionAcceptedSchema = z
   .object({
     accepted: z.literal(true),
     taskId: z.uuid(),
     activeModelCode: semanticModelCodeSchema,
   })
   .strict();
+/** @deprecated Use semanticActionAcceptedSchema. */
+export const semanticUseModelResponseSchema = semanticActionAcceptedSchema;
 
 export type SearchMode = z.infer<typeof searchModeSchema>;
 export type SemanticModelCode = z.infer<typeof semanticModelCodeSchema>;
@@ -286,4 +288,6 @@ export type SemanticModel = z.infer<typeof semanticModelSchema>;
 export type SemanticIndex = z.infer<typeof semanticIndexSchema>;
 export type SemanticTask = z.infer<typeof semanticTaskSchema>;
 export type SemanticSettingsResponse = z.infer<typeof semanticSettingsResponseSchema>;
+export type SemanticActionAccepted = z.infer<typeof semanticActionAcceptedSchema>;
+/** @deprecated Use SemanticActionAccepted. */
 export type SemanticUseModelResponse = z.infer<typeof semanticUseModelResponseSchema>;
