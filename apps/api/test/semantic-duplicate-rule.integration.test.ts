@@ -86,6 +86,23 @@ describe.sequential('semantic duplicate data-check rule', () => {
     );
   }
 
+  async function publishSeededIndex(): Promise<void> {
+    await pool!.query(`delete from semantic_jobs`);
+    await pool!.query(
+      `update semantic_index_state
+       set status = 'ready',
+           processed_items = (select count(*)::int from semantic_embeddings),
+           total_items = (select count(*)::int from semantic_embeddings),
+           pending_items = 0,
+           failed_items = 0,
+           failure_stage = null,
+           failure_kind = null,
+           failure_code = null,
+           error = null
+       where singleton_key = true`,
+    );
+  }
+
   it('returns precise skipped reasons before querying candidates', async () => {
     await pool!.query(
       `update semantic_index_state set active_model_code = null, status = 'empty' where singleton_key = true`,
@@ -144,6 +161,7 @@ describe.sequential('semantic duplicate data-check rule', () => {
          ('relation', $5, $4, repeat('d', 64), $3::vector)`,
       [caseA, caseB, unitVector(), modelCode, relation],
     );
+    await publishSeededIndex();
 
     const result = await rule().scan();
     expect(result.semantic).toEqual({ status: 'completed', reason: null, issueCount: 2 });
@@ -199,6 +217,7 @@ describe.sequential('semantic duplicate data-check rule', () => {
          ('case', $6, $5, repeat('d', 64), $3::vector)`,
       [eventA, eventB, unitVector(), caseA, modelCode, caseB],
     );
+    await publishSeededIndex();
 
     await expect(rule().scan()).resolves.toMatchObject({
       semantic: { status: 'completed', issueCount: 0 },
@@ -214,6 +233,7 @@ describe.sequential('semantic duplicate data-check rule', () => {
     for (const [index, eventId] of eventIds.entries()) {
       await insertEvent(eventId, `候选上限事件${index + 1}`);
     }
+    await publishSeededIndex();
 
     const result = await rule().scan();
     expect(result.semantic).toEqual({ status: 'completed', reason: null, issueCount: 20 });
