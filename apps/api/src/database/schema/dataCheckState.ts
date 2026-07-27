@@ -19,6 +19,8 @@ export const dataCheckState = pgTable(
     warningCount: integer('warning_count').notNull().default(0),
     openCount: integer('open_count').notNull().default(0),
     handledCount: integer('handled_count').notNull().default(0),
+    semanticStatus: varchar('semantic_status', { length: 20 }),
+    semanticReason: varchar('semantic_reason', { length: 30 }),
   },
   (table) => [
     check('data_check_state_singleton_check', sql`${table.singletonKey} = true`),
@@ -35,6 +37,38 @@ export const dataCheckState = pgTable(
         and ${table.warningCount} >= 0
         and ${table.openCount} >= 0
         and ${table.handledCount} >= 0`,
+    ),
+    check(
+      'data_check_state_semantic_snapshot_check',
+      sql`(
+          ${table.lastSnapshotId} is null
+          and ${table.semanticStatus} is null
+          and ${table.semanticReason} is null
+        ) or (
+          ${table.lastSnapshotId} is not null
+          and ${table.semanticStatus} is not null
+          and (
+            (${table.semanticStatus} = 'completed' and ${table.semanticReason} is null)
+            or (
+              ${table.semanticStatus} = 'truncated'
+              and ${table.semanticReason} = 'candidate_limit'
+            )
+            or (
+              ${table.semanticStatus} = 'failed'
+              and ${table.semanticReason} = 'internal_failure'
+            )
+            or (
+              ${table.semanticStatus} = 'skipped'
+              and ${table.semanticReason} in (
+                'not_recorded',
+                'no_active_model',
+                'worker_unreachable',
+                'index_not_ready',
+                'no_embeddings'
+              )
+            )
+          )
+        )`,
     ),
   ],
 );

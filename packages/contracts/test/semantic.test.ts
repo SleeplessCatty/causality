@@ -65,6 +65,7 @@ describe('semantic search contracts', () => {
             dimensions: 512,
             expectedDownloadBytes: 25_200_000,
             threshold: 65,
+            dedupeThreshold: 100,
             downloadedAt: timestamp,
             fileState: 'downloaded',
             role: 'current',
@@ -96,7 +97,7 @@ describe('semantic search contracts', () => {
       }),
     ).toMatchObject({
       index: { status: 'incomplete' },
-      models: [{ modelCode: 'bge-small-zh-v1.5', threshold: 65 }],
+      models: [{ modelCode: 'bge-small-zh-v1.5', threshold: 65, dedupeThreshold: 100 }],
     });
   });
 
@@ -112,6 +113,7 @@ describe('semantic search contracts', () => {
           dimensions: 384,
           expectedDownloadBytes: 135_392_857,
           threshold: 70,
+          dedupeThreshold: 100,
           downloadedAt: null,
           fileState: 'downloading',
           role: 'current',
@@ -173,6 +175,66 @@ describe('semantic search contracts', () => {
     expect(semanticThresholdInputSchema.safeParse({ threshold: 65, extra: true }).success).toBe(
       false,
     );
+  });
+
+  it('requires a bounded per-model duplicate threshold', () => {
+    const model = {
+      modelCode: 'bge-small-zh-v1.5',
+      label: '中文轻量',
+      description: '适合中文语义查询',
+      languageLabel: '中文',
+      dimensions: 512,
+      expectedDownloadBytes: 25_200_000,
+      threshold: 65,
+      dedupeThreshold: 100,
+      downloadedAt: timestamp,
+      fileState: 'downloaded',
+      role: 'current',
+      stage: 'ready',
+      availableForEnhancedSearch: true,
+      allowedActions: ['reindex'],
+      failure: null,
+    };
+
+    const snapshot = {
+      currentModelCode: model.modelCode,
+      models: [model],
+      index: {
+        status: 'ready',
+        processedItems: 1,
+        totalItems: 1,
+        pendingItems: 0,
+        failedItems: 0,
+        availableForEnhancedSearch: true,
+        failure: null,
+        updatedAt: timestamp,
+      },
+      operation: null,
+      worker: {
+        status: 'online',
+        modelState: 'loaded',
+        loadedModelCode: model.modelCode,
+        checkedAt: timestamp,
+      },
+      pollAfterMs: null,
+      updatedAt: timestamp,
+    };
+
+    expect(semanticLifecycleSnapshotSchema.parse(snapshot).models[0]?.dedupeThreshold).toBe(100);
+    expect(
+      semanticLifecycleSnapshotSchema.safeParse({
+        ...snapshot,
+        models: [{ ...model, dedupeThreshold: 101 }],
+      }).success,
+    ).toBe(false);
+    const withoutDedupeThreshold: Partial<typeof model> = { ...model };
+    delete withoutDedupeThreshold.dedupeThreshold;
+    expect(
+      semanticLifecycleSnapshotSchema.safeParse({
+        ...snapshot,
+        models: [withoutDedupeThreshold],
+      }).success,
+    ).toBe(false);
   });
 
   it('accepts only pinned model codes in route parameters', () => {

@@ -8,6 +8,23 @@ export const dataCheckRunStatusSchema = z.enum(['never_run', 'running', 'succeed
 export const dataCheckSeveritySchema = z.enum(['error', 'warning']);
 export const dataCheckActionModeSchema = z.enum(['auto', 'manual']);
 export const dataCheckIssueStatusSchema = z.enum(['open', 'handled']);
+export const dataCheckSemanticStatusSchema = z.enum([
+  'completed',
+  'skipped',
+  'failed',
+  'truncated',
+]);
+export const dataCheckSemanticReasonSchema = z
+  .enum([
+    'not_recorded',
+    'no_active_model',
+    'worker_unreachable',
+    'index_not_ready',
+    'no_embeddings',
+    'candidate_limit',
+    'internal_failure',
+  ])
+  .nullable();
 export const dataCheckTargetTypeSchema = z.enum([
   'event',
   'relation',
@@ -36,8 +53,33 @@ export const dataCheckSnapshotSummarySchema = z
     warningCount: z.number().int().nonnegative(),
     openCount: z.number().int().nonnegative(),
     handledCount: z.number().int().nonnegative(),
+    semanticStatus: dataCheckSemanticStatusSchema,
+    semanticReason: dataCheckSemanticReasonSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const valid =
+      (value.semanticStatus === 'completed' && value.semanticReason === null) ||
+      (value.semanticStatus === 'truncated' && value.semanticReason === 'candidate_limit') ||
+      (value.semanticStatus === 'failed' && value.semanticReason === 'internal_failure') ||
+      (value.semanticStatus === 'skipped' &&
+        value.semanticReason !== null &&
+        [
+          'not_recorded',
+          'no_active_model',
+          'worker_unreachable',
+          'index_not_ready',
+          'no_embeddings',
+        ].includes(value.semanticReason));
+
+    if (!valid) {
+      context.addIssue({
+        code: 'custom',
+        path: ['semanticReason'],
+        message: '语义检查状态与原因不匹配',
+      });
+    }
+  });
 
 export const dataCheckFailureSchema = z
   .object({
@@ -96,6 +138,8 @@ export type DataCheckRunStatus = z.infer<typeof dataCheckRunStatusSchema>;
 export type DataCheckSeverity = z.infer<typeof dataCheckSeveritySchema>;
 export type DataCheckActionMode = z.infer<typeof dataCheckActionModeSchema>;
 export type DataCheckIssueStatus = z.infer<typeof dataCheckIssueStatusSchema>;
+export type DataCheckSemanticStatus = z.infer<typeof dataCheckSemanticStatusSchema>;
+export type DataCheckSemanticReason = z.infer<typeof dataCheckSemanticReasonSchema>;
 export type DataCheckTargetType = z.infer<typeof dataCheckTargetTypeSchema>;
 export type DataCheckTask = z.infer<typeof dataCheckTaskSchema>;
 export type DataCheckSnapshotSummary = z.infer<typeof dataCheckSnapshotSummarySchema>;

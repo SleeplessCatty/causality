@@ -24,6 +24,8 @@ const snapshot = {
   warningCount: 6,
   openCount: 7,
   handledCount: 4,
+  semanticStatus: 'completed',
+  semanticReason: null,
 };
 
 const issue = {
@@ -69,6 +71,44 @@ describe('data-check contracts', () => {
     expect(dataCheckSnapshotSummarySchema.safeParse({ ...snapshot, extra: true }).success).toBe(
       false,
     );
+  });
+
+  it('enforces semantic-check status and reason combinations', () => {
+    expect(
+      dataCheckSnapshotSummarySchema.safeParse({
+        ...snapshot,
+        semanticStatus: 'truncated',
+        semanticReason: 'candidate_limit',
+      }).success,
+    ).toBe(true);
+    expect(
+      dataCheckSnapshotSummarySchema.safeParse({
+        ...snapshot,
+        semanticStatus: 'skipped',
+        semanticReason: 'worker_unreachable',
+      }).success,
+    ).toBe(true);
+    expect(
+      dataCheckSnapshotSummarySchema.safeParse({
+        ...snapshot,
+        semanticStatus: 'failed',
+        semanticReason: 'internal_failure',
+      }).success,
+    ).toBe(true);
+    expect(
+      dataCheckSnapshotSummarySchema.safeParse({
+        ...snapshot,
+        semanticStatus: 'completed',
+        semanticReason: 'candidate_limit',
+      }).success,
+    ).toBe(false);
+    expect(
+      dataCheckSnapshotSummarySchema.safeParse({
+        ...snapshot,
+        semanticStatus: 'skipped',
+        semanticReason: null,
+      }).success,
+    ).toBe(false);
   });
 
   it('keeps latest failure and last successful snapshot together', () => {

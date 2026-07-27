@@ -65,6 +65,8 @@ describe.sequential('data-check REST API and rules', () => {
            warning_count = $3,
            open_count = $4,
            handled_count = $5,
+           semantic_status = 'skipped',
+           semantic_reason = 'not_recorded',
            last_failure_at = null,
            last_failure_message = null
        where singleton_key = true`,
@@ -106,6 +108,8 @@ describe.sequential('data-check REST API and rules', () => {
         orphanCaseCount: 1,
         errorCount: 0,
         warningCount: 0,
+        semanticStatus: 'skipped',
+        semanticReason: 'not_recorded',
       },
       latestFailure: null,
     });

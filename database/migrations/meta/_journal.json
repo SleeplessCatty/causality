@@ -106,6 +106,13 @@
       "when": 1785076000000,
       "tag": "0014_semantic_lifecycle_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1785131381319,
+      "tag": "0015_p2_03_data_transfer_governance",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ export interface SemanticModelState {
   dimensions: number;
   expectedDownloadBytes: number;
   threshold: number;
+  dedupeThreshold: number;
   downloadedAt: string | null;
   fileState: SemanticModelFileStatus;
   failure: SemanticFailure | null;

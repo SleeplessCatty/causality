@@ -13,18 +13,21 @@ import { searchModeSchema, semanticIndexNoticeSchema } from '../semantic/semanti
 const timestampSchema = z.iso.datetime({ offset: true });
 const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
 
+export const relationConfidenceSchema = z.number().int().min(0).max(100);
+export const relationDescriptionSchema = z
+  .string()
+  .trim()
+  .max(2_000)
+  .nullable()
+  .optional()
+  .transform((value) => value || null);
+
 export const relationFormInputSchema = z
   .object({
     causeEventId: z.uuid(),
     effectEventId: z.uuid(),
-    confidence: z.number().int().min(0).max(100),
-    description: z
-      .string()
-      .trim()
-      .max(2_000)
-      .nullable()
-      .optional()
-      .transform((value) => value || null),
+    confidence: relationConfidenceSchema,
+    description: relationDescriptionSchema,
     caseSelections: z
       .array(
         z.discriminatedUnion('type', [

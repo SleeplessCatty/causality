@@ -10,6 +10,8 @@ import {
   relationCaseListResponseSchema,
   relationPairCheckQuerySchema,
   relationPairCheckResponseSchema,
+  relationConfidenceSchema,
+  relationDescriptionSchema,
 } from '../src/index.js';
 
 const causeEventId = '11111111-1111-4111-8111-111111111111';
@@ -17,6 +19,15 @@ const effectEventId = '22222222-2222-4222-8222-222222222222';
 const relationId = '33333333-3333-4333-8333-333333333333';
 
 describe('relation contracts', () => {
+  it('exports reusable confidence and description field schemas', () => {
+    expect(relationConfidenceSchema.parse(75)).toBe(75);
+    expect(relationConfidenceSchema.safeParse(75.5).success).toBe(false);
+    expect(relationDescriptionSchema.parse('  利率上升促使流动性收紧  ')).toBe(
+      '利率上升促使流动性收紧',
+    );
+    expect(relationDescriptionSchema.parse('   ')).toBeNull();
+  });
+
   it('normalizes a valid relation form', () => {
     expect(
       relationFormInputSchema.parse({

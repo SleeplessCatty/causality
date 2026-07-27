@@ -57,6 +57,23 @@ async function createPreMaintenanceMigrationsFolder(): Promise<string> {
   return folder;
 }
 
+async function createPreP203MigrationsFolder(): Promise<string> {
+  const folder = await mkdtemp(join(tmpdir(), 'causality-pre-p2-03-migrations-'));
+  await mkdir(join(folder, 'meta'));
+  const journal = JSON.parse(
+    await readFile(join(migrationsFolder, 'meta/_journal.json'), 'utf8'),
+  ) as { entries: Array<{ idx: number; tag: string }> };
+
+  for (let index = 0; index <= 14; index += 1) {
+    const migration = journal.entries[index]!;
+    await cp(join(migrationsFolder, `${migration.tag}.sql`), join(folder, `${migration.tag}.sql`));
+  }
+
+  journal.entries = journal.entries.filter((entry) => entry.idx <= 14);
+  await writeFile(join(folder, 'meta/_journal.json'), `${JSON.stringify(journal, null, 2)}\n`);
+  return folder;
+}
+
 async function expectPgError(operation: Promise<unknown>, expectedCode: string): Promise<void> {
   await expect(operation).rejects.toMatchObject({ code: expectedCode });
 }
@@ -66,12 +83,14 @@ describe.sequential('core PostgreSQL model', () => {
   let pool: Pool | undefined;
   let legacyMigrationsFolder: string | undefined;
   let preMaintenanceMigrationsFolder: string | undefined;
+  let preP203MigrationsFolder: string | undefined;
 
   beforeAll(async () => {
     context = await startPostgresTestContext('causality_core_model_test');
     ({ pool } = context);
     legacyMigrationsFolder = await createLegacyMigrationsFolder();
     preMaintenanceMigrationsFolder = await createPreMaintenanceMigrationsFolder();
+    preP203MigrationsFolder = await createPreP203MigrationsFolder();
   }, 120_000);
 
   afterAll(async () => {
@@ -79,6 +98,9 @@ describe.sequential('core PostgreSQL model', () => {
     if (legacyMigrationsFolder) await rm(legacyMigrationsFolder, { recursive: true });
     if (preMaintenanceMigrationsFolder) {
       await rm(preMaintenanceMigrationsFolder, { recursive: true });
+    }
+    if (preP203MigrationsFolder) {
+      await rm(preP203MigrationsFolder, { recursive: true });
     }
   });
 
@@ -145,6 +167,9 @@ describe.sequential('core PostgreSQL model', () => {
         'data_check_state',
         'event_aliases',
         'event_keywords',
+        'export_requests',
+        'import_batches',
+        'import_records',
         'semantic_embeddings',
         'semantic_index_state',
         'semantic_jobs',
@@ -254,6 +279,42 @@ describe.sequential('core PostgreSQL model', () => {
         `select count(*) from data_check_issues`,
       );
       expect(issues.rows[0]?.count).toBe('0');
+    } finally {
+      await closePostgresTestPool(migrationPool);
+    }
+  });
+
+  it('backfills semantic check metadata for a pre-P2-03 successful snapshot', async () => {
+    const migrationDatabase = 'causality_p203_backfill_migration_test';
+    await pool!.query(`create database ${migrationDatabase}`);
+    const migrationPool = createPostgresTestPool(migrationDatabase);
+
+    try {
+      await migrate(createDatabaseClient(migrationPool), {
+        migrationsFolder: preP203MigrationsFolder!,
+      });
+      await migrationPool.query(
+        `update data_check_state
+         set status = 'succeeded',
+             last_snapshot_id = 'a1000000-0000-4000-8000-000000000001',
+             last_success_at = '2026-07-27T10:00:00Z'`,
+      );
+
+      await runMigrations(migrationPool);
+
+      const state = await migrationPool.query<{
+        semantic_reason: string | null;
+        semantic_status: string | null;
+      }>(
+        `select semantic_status, semantic_reason
+         from data_check_state`,
+      );
+      expect(state.rows).toEqual([
+        {
+          semantic_status: 'skipped',
+          semantic_reason: 'not_recorded',
+        },
+      ]);
     } finally {
       await closePostgresTestPool(migrationPool);
     }
@@ -703,6 +764,128 @@ describe.sequential('core PostgreSQL model', () => {
       'semantic_embeddings_relation_e5_hnsw_idx',
       'semantic_embeddings_relation_granite_hnsw_idx',
     ]);
+  });
+
+  it('installs data-transfer audit storage and semantic data-quality controls', async () => {
+    const tables = await pool!.query<{ table_name: string }>(
+      `select table_name
+       from information_schema.tables
+       where table_schema = 'public'
+         and table_name in ('import_batches', 'import_records', 'export_requests')
+       order by table_name`,
+    );
+    expect(tables.rows.map((row) => row.table_name)).toEqual([
+      'export_requests',
+      'import_batches',
+      'import_records',
+    ]);
+
+    const models = await pool!.query<{ dedupe_threshold: number }>(
+      `select dedupe_threshold
+       from semantic_model_settings
+       order by model_code`,
+    );
+    expect(models.rows).toHaveLength(4);
+    expect(models.rows.every((row) => row.dedupe_threshold === 100)).toBe(true);
+
+    const state = await pool!.query<{
+      semantic_reason: string | null;
+      semantic_status: string | null;
+    }>(
+      `select semantic_status, semantic_reason
+       from data_check_state`,
+    );
+    expect(state.rows).toEqual([{ semantic_status: null, semantic_reason: null }]);
+
+    const indexes = await pool!.query<{ indexname: string }>(
+      `select indexname
+       from pg_indexes
+       where schemaname = 'public'
+         and tablename in ('import_batches', 'import_records', 'export_requests')`,
+    );
+    expect(indexes.rows.map((row) => row.indexname)).toEqual(
+      expect.arrayContaining([
+        'import_batches_completed_id_idx',
+        'import_records_batch_source_item_sequence_uidx',
+        'import_records_batch_type_sequence_idx',
+        'export_requests_token_hash_uidx',
+        'export_requests_expires_at_idx',
+      ]),
+    );
+
+    await expectPgError(
+      pool!.query(
+        `update semantic_model_settings
+         set dedupe_threshold = 101
+         where model_code = 'bge-small-zh-v1.5'`,
+      ),
+      '23514',
+    );
+    await expectPgError(
+      pool!.query(
+        `update data_check_state
+         set last_snapshot_id = gen_random_uuid()`,
+      ),
+      '23514',
+    );
+
+    const client = await pool!.connect();
+    try {
+      await client.query('begin');
+      await client.query(
+        `update data_check_state
+         set last_snapshot_id = gen_random_uuid(),
+             semantic_status = 'completed',
+             semantic_reason = null`,
+      );
+      await expectPgError(
+        client.query(
+          `update data_check_state
+           set semantic_reason = 'candidate_limit'`,
+        ),
+        '23514',
+      );
+      await client.query('rollback');
+    } finally {
+      client.release();
+    }
+
+    const batch = await pool!.query<{ id: string }>(
+      `insert into import_batches (
+         filename,
+         record_types,
+         event_created,
+         event_reused,
+         case_created,
+         case_reused,
+         relation_created,
+         relation_reused,
+         relation_case_created,
+         relation_case_reused
+       )
+       values ('测试导入.csv', array['event']::varchar[], 1, 0, 0, 0, 0, 0, 0, 0)
+       returning id`,
+    );
+    const batchId = batch.rows[0]!.id;
+    await pool!.query(
+      `insert into import_records (
+         batch_id,
+         source_sequence,
+         item_sequence,
+         record_type,
+         outcome,
+         primary_record_id,
+         text_snapshot
+       )
+       values ($1, 1, 1, 'event', 'created', gen_random_uuid(), '{"type":"event","eventName":"测试事件"}')`,
+      [batchId],
+    );
+    await pool!.query(`delete from import_batches where id = $1`, [batchId]);
+    const auditCount = await pool!.query<{ count: string }>(
+      `select count(*) from import_records where batch_id = $1`,
+      [batchId],
+    );
+    expect(auditCount.rows[0]?.count).toBe('0');
   });
 
   it('enforces consistent semantic download and job lifecycle timestamps', async () => {

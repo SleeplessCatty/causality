@@ -34,6 +34,8 @@ const succeeded: DataCheckLatestResponse = {
     warningCount: 6,
     openCount: 7,
     handledCount: 8,
+    semanticStatus: 'skipped',
+    semanticReason: 'not_recorded',
   },
   latestFailure: null,
 };

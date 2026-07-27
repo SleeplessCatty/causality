@@ -152,6 +152,7 @@ export const semanticModelLifecycleSchema = z
     dimensions: z.number().int().positive(),
     expectedDownloadBytes: z.number().int().nonnegative(),
     threshold: z.number().int().min(0).max(100),
+    dedupeThreshold: z.number().int().min(0).max(100),
     downloadedAt: timestampSchema.nullable(),
     fileState: semanticModelFileStatusSchema,
     role: semanticModelRoleSchema,

@@ -198,6 +198,7 @@ function resolveModel(options: {
     dimensions: model.dimensions,
     expectedDownloadBytes: model.expectedDownloadBytes,
     threshold: model.threshold,
+    dedupeThreshold: model.dedupeThreshold,
     downloadedAt: model.downloadedAt,
     fileState: model.fileState,
     role: isCurrent ? 'current' : 'inactive',

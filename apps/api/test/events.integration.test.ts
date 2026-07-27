@@ -403,7 +403,9 @@ describe.sequential('event REST API', () => {
        set status = 'succeeded',
            last_snapshot_id = 'a1000000-0000-4000-8000-000000000001',
            last_success_at = '2026-07-23T09:00:00Z',
-           orphan_event_count = 9`,
+           orphan_event_count = 9,
+           semantic_status = 'skipped',
+           semantic_reason = 'not_recorded'`,
     );
     const stateBefore = await pool!.query<{ state: string }>(
       `select row_to_json(data_check_state)::text as state from data_check_state`,

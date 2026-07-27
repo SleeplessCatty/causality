@@ -7,6 +7,7 @@ export const semanticModelSettings = pgTable(
     modelCode: varchar('model_code', { length: 64 }).primaryKey(),
     revision: varchar('revision', { length: 64 }).notNull(),
     threshold: smallint('threshold').notNull(),
+    dedupeThreshold: smallint('dedupe_threshold').notNull().default(100),
     fileStatus: varchar('file_status', { length: 20 }).notNull().default('not_downloaded'),
     downloadedAt: timestamp('downloaded_at', { withTimezone: true }),
     failureKind: varchar('failure_kind', { length: 20 }),
@@ -25,6 +26,10 @@ export const semanticModelSettings = pgTable(
       )`,
     ),
     check('semantic_model_settings_threshold_check', sql`${table.threshold} between 0 and 100`),
+    check(
+      'semantic_model_settings_dedupe_threshold_check',
+      sql`${table.dedupeThreshold} between 0 and 100`,
+    ),
     check(
       'semantic_model_settings_file_status_check',
       sql`${table.fileStatus} in (

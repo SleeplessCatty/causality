@@ -288,7 +288,7 @@ ALTER TABLE semantic_model_settings
 
 ALTER TABLE data_check_state
   ADD COLUMN semantic_status varchar(20),
-  ADD COLUMN semantic_reason varchar(40);
+  ADD COLUMN semantic_reason varchar(30);
 
 CREATE TABLE import_batches (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -308,7 +308,8 @@ CREATE TABLE import_batches (
 CREATE TABLE import_records (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   batch_id uuid NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
-  sequence integer NOT NULL,
+  source_sequence integer NOT NULL,
+  item_sequence integer NOT NULL,
   record_type varchar(20) NOT NULL,
   outcome varchar(10) NOT NULL,
   primary_record_id uuid NOT NULL,
@@ -337,7 +338,7 @@ CREATE TABLE export_requests (
 - `import_records.primary_record_id` and `related_record_id` are audit values without foreign keys to live business tables, so later business deletion cannot erase or block history.
 - `export_requests.token_hash` stores SHA-256 of the opaque token, never the raw token.
 
-- [ ] **Step 1: Install pinned server dependencies**
+- [x] **Step 1: Install pinned server dependencies**
 
 Run:
 
@@ -347,7 +348,7 @@ pnpm --filter @causality/api add @fastify/multipart@10.1.0 csv-parse@7.0.1 csv-s
 
 Expected: `apps/api/package.json` and `pnpm-lock.yaml` contain the three exact versions.
 
-- [ ] **Step 2: Write failing contract tests**
+- [x] **Step 2: Write failing contract tests**
 
 Add parsing tests that assert:
 
@@ -374,7 +375,7 @@ Also assert that a semantic lifecycle model requires both `threshold` and `dedup
 
 Extract and export `relationConfidenceSchema` and `relationDescriptionSchema` from the current `relationFormInputSchema` without changing form parsing behavior.
 
-- [ ] **Step 3: Run contract tests and verify failure**
+- [x] **Step 3: Run contract tests and verify failure**
 
 Run:
 
@@ -384,11 +385,11 @@ pnpm --filter @causality/contracts test -- data-transfer.test.ts semantic.test.t
 
 Expected: FAIL because the new schemas and fields do not exist.
 
-- [ ] **Step 4: Implement the Zod schemas and exports**
+- [x] **Step 4: Implement the Zod schemas and exports**
 
 Use strict objects, `z.uuid()`, the existing offset timestamp schema, page size literal `50`, depth integer `1..10`, and closed enums. Export inferred TypeScript types through `packages/contracts/src/index.ts`.
 
-- [ ] **Step 5: Add Drizzle schemas and SQL migration**
+- [x] **Step 5: Add Drizzle schemas and SQL migration**
 
 Run the generator with the feature-specific name:
 
@@ -411,7 +412,8 @@ importBatches: {
 importRecords: {
   id: uuid,
   batchId: uuid,
-  sequence: integer,
+  sourceSequence: integer,
+  itemSequence: integer,
   recordType: varchar(20),
   outcome: varchar(10),
   primaryRecordId: uuid,
@@ -431,17 +433,17 @@ exportRequests: {
 }
 ```
 
-Add check constraints for closed record/outcome/export/direction values, non-negative counts, non-empty safe filename, positive sequence, the full-vs-filtered nullable-field combination, filtered start-event cardinality, and `expires_at > created_at`.
+Add check constraints for closed record/outcome/export/direction values, non-negative counts, non-empty safe filename, positive source/item sequences, the full-vs-filtered nullable-field combination, filtered start-event cardinality, and `expires_at > created_at`.
 
 Add:
 
 ```sql
 CREATE INDEX import_batches_completed_id_idx
   ON import_batches (completed_at DESC, id DESC);
-CREATE UNIQUE INDEX import_records_batch_sequence_uidx
-  ON import_records (batch_id, sequence);
+CREATE UNIQUE INDEX import_records_batch_source_item_sequence_uidx
+  ON import_records (batch_id, source_sequence, item_sequence);
 CREATE INDEX import_records_batch_type_sequence_idx
-  ON import_records (batch_id, record_type, sequence);
+  ON import_records (batch_id, record_type, source_sequence, item_sequence);
 CREATE UNIQUE INDEX export_requests_token_hash_uidx
   ON export_requests (token_hash);
 CREATE INDEX export_requests_expires_at_idx
@@ -452,11 +454,11 @@ Update `database/migrations/meta/_journal.json` with index 15 and create `databa
 
 For an existing successful pre-P2-03 data-check snapshot, backfill semantic state as `skipped/not_recorded`. Leave semantic state null only when `last_snapshot_id` is null.
 
-- [ ] **Step 6: Extend migration integration assertions**
+- [x] **Step 6: Extend migration integration assertions**
 
 Assert the three tables, indexes, threshold default/check, semantic status columns, and foreign-key cascade from `import_records.batch_id` to `import_batches.id`.
 
-- [ ] **Step 7: Run foundation tests**
+- [x] **Step 7: Run foundation tests**
 
 Run:
 
@@ -468,7 +470,7 @@ pnpm --filter @causality/api typecheck
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit locally**
+- [x] **Step 8: Commit locally**
 
 ```bash
 git add packages/contracts apps/api/package.json pnpm-lock.yaml apps/api/src/database database/migrations/0015_p2_03_data_transfer_governance.sql apps/api/test/core-model.integration.test.ts
@@ -816,7 +818,9 @@ GET  /api/data-transfers/imports/:batchId/records?type=event&page=1
 
 - Upload form contains exactly one file part named `file`.
 - History order is `(completed_at DESC, id DESC)`.
-- Detail order is `sequence ASC`.
+- Detail order is `source_sequence ASC, item_sequence ASC, id ASC`. The public response exposes
+  `source_sequence` as `sequence`; `item_sequence` only disambiguates multiple audit entries
+  produced by one CSV record.
 - `registerDataTransferRoutes(app, pool, { importTimeoutMs = 300_000 })` accepts an injectable timeout for deterministic cancellation tests.
 
 - [ ] **Step 1: Write failing route tests**

@@ -24,6 +24,7 @@ interface ModelRow {
   model_code: SemanticModelCode;
   revision: string;
   threshold: number;
+  dedupe_threshold: number;
   file_status: SemanticModelFileStatus;
   downloaded_at: Date | null;
   failure_kind: SemanticFailureKind | null;
@@ -116,6 +117,7 @@ function mapModel(row: ModelRow): SemanticModelState {
     dimensions: definition.dimensions,
     expectedDownloadBytes: definition.expectedDownloadBytes,
     threshold: row.threshold,
+    dedupeThreshold: row.dedupe_threshold,
     downloadedAt: row.downloaded_at?.toISOString() ?? null,
     fileState: row.file_status,
     failure: failure({
@@ -183,6 +185,7 @@ export async function readSemanticLifecycleFacts(
     `select model_code,
             revision,
             threshold,
+            dedupe_threshold,
             file_status,
             downloaded_at,
             failure_kind,

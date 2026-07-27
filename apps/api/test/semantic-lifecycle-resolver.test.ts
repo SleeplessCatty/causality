@@ -35,6 +35,7 @@ function modelState(overrides: Partial<SemanticModelState> = {}): SemanticModelS
     dimensions: 512,
     expectedDownloadBytes: 25_200_000,
     threshold: 65,
+    dedupeThreshold: 100,
     downloadedAt: timestamp,
     fileState: 'downloaded',
     failure: null,
@@ -104,6 +105,10 @@ function currentJob(overrides: Partial<SemanticJobState> = {}): SemanticJobState
 }
 
 describe('resolveSemanticLifecycle', () => {
+  it('publishes the per-model duplicate threshold', () => {
+    expect(resolveSemanticLifecycle(lifecycleInput()).models[0]?.dedupeThreshold).toBe(100);
+  });
+
   it.each([
     ['ready', 0, 0, true, null, ['reindex']],
     ['updating', 2, 0, true, 1_000, []],

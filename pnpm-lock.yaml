@@ -43,9 +43,18 @@ importers:
       '@fastify/cors':
         specifier: 11.3.0
         version: 11.3.0
+      '@fastify/multipart':
+        specifier: 10.1.0
+        version: 10.1.0
       '@fastify/swagger':
         specifier: 9.8.1
         version: 9.8.1
+      csv-parse:
+        specifier: 7.0.1
+        version: 7.0.1
+      csv-stringify:
+        specifier: 6.8.1
+        version: 6.8.1
       dotenv:
         specifier: 17.4.2
         version: 17.4.2
@@ -748,8 +757,14 @@ packages:
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
 
+  '@fastify/busboy@3.2.0':
+    resolution: {integrity: sha512-m9FVDXU3GT2ITSe0UaMA5rU3QkfC/UXtCU8y0gSN/GugTqtVldOBWIB5V6V3sbmenVZUIpU6f+mPEO2+m5iTaA==}
+
   '@fastify/cors@11.3.0':
     resolution: {integrity: sha512-ggQGua+xHv1MvePbPr0v//xLYEsCXbWspquXCJS9Ot5YoRXq8J8ZWzHnxDBVnbtXosvistXo6LtNzOJswf64Fw==}
+
+  '@fastify/deepmerge@3.2.1':
+    resolution: {integrity: sha512-N5Oqvltoa2r9z1tbx4xjky0oRR60v+T47Ic4J1ukoVQcptLOrIdRnCSdTGmOmajZuHVKlTnfcmrjyqsGEW1ztA==}
 
   '@fastify/error@4.2.0':
     resolution: {integrity: sha512-RSo3sVDXfHskiBZKBPRgnQTtIqpi/7zhJOEmAxCiBcM7d0uwdGdxLlsCaLzGs8v8NnxIRlfG0N51p5yFaOentQ==}
@@ -762,6 +777,9 @@ packages:
 
   '@fastify/merge-json-schemas@0.2.1':
     resolution: {integrity: sha512-OA3KGBCy6KtIvLf8DINC5880o5iBlDX4SxzLQS8HorJAbqluzLRn80UXU0bxZn7UOFhFgpRJDasfwn9nG4FG4A==}
+
+  '@fastify/multipart@10.1.0':
+    resolution: {integrity: sha512-b2r6CovmLQvLFJ5HJDtxVigZjcO9TwkRGslhiNQxsGJwilm5B3eqvXPOVLudC44zXMXJITpQ/iEATIE7zoXqcQ==}
 
   '@fastify/proxy-addr@5.1.0':
     resolution: {integrity: sha512-INS+6gh91cLUjB+PVHfu1UqcB76Sqtpyp7bnL+FYojhjygvOPA9ctiD/JDKsyD9Xgu4hUhCSJBPig/w7duNajw==}
@@ -1671,6 +1689,12 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  csv-parse@7.0.1:
+    resolution: {integrity: sha512-+2z7Ar0APQ7Uu6fX4cn+pitRmxjZ1WPBcGmZFKmA74FCyi7Et/XZx8cjNQ5CjbZ4HCOxXCOpRBYvYH08Qa003A==}
+
+  csv-stringify@6.8.1:
+    resolution: {integrity: sha512-tZ6X6TKQyQgCo5OptXcyAbfN1pwmoxEqELPQ7KFazNErx7kiVsDK8o+VYRXhfMl4N9vvOOLXuioquR2MeP847A==}
 
   cytoscape-elk@2.3.0:
     resolution: {integrity: sha512-1h2ZmPOy5HD2+mrfF3P2ICxfnDyPCWg/xLVs7fIjTOzdQu51ydrMtm6Sb7KnhFwLBzhGIVYI2Gbns0njggBarQ==}
@@ -3315,10 +3339,14 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 3.1.4
 
+  '@fastify/busboy@3.2.0': {}
+
   '@fastify/cors@11.3.0':
     dependencies:
       fastify-plugin: 6.0.0
       toad-cache: 3.7.4
+
+  '@fastify/deepmerge@3.2.1': {}
 
   '@fastify/error@4.2.0': {}
 
@@ -3331,6 +3359,14 @@ snapshots:
   '@fastify/merge-json-schemas@0.2.1':
     dependencies:
       dequal: 2.0.3
+
+  '@fastify/multipart@10.1.0':
+    dependencies:
+      '@fastify/busboy': 3.2.0
+      '@fastify/deepmerge': 3.2.1
+      '@fastify/error': 4.2.0
+      fastify-plugin: 6.0.0
+      secure-json-parse: 4.1.0
 
   '@fastify/proxy-addr@5.1.0':
     dependencies:
@@ -4157,6 +4193,10 @@ snapshots:
       which: 2.0.2
 
   csstype@3.2.3: {}
+
+  csv-parse@7.0.1: {}
+
+  csv-stringify@6.8.1: {}
 
   cytoscape-elk@2.3.0(cytoscape@3.34.0):
     dependencies:

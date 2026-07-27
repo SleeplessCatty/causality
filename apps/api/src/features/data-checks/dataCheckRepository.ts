@@ -3,6 +3,8 @@ import type {
   DataCheckIssueListQuery,
   DataCheckIssueListResponse,
   DataCheckLatestResponse,
+  DataCheckSemanticReason,
+  DataCheckSemanticStatus,
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
@@ -44,6 +46,8 @@ interface StateRow {
   warning_count: number;
   open_count: number;
   handled_count: number;
+  semantic_status: DataCheckSemanticStatus | null;
+  semantic_reason: DataCheckSemanticReason;
 }
 
 interface IssueRow {
@@ -75,7 +79,9 @@ select status,
        error_count,
        warning_count,
        open_count,
-       handled_count
+       handled_count,
+       semantic_status,
+       semantic_reason
 from data_check_state
 where singleton_key = true
 `;
@@ -101,6 +107,9 @@ function toIso(value: Date | null): string | null {
 }
 
 function mapLatest(row: StateRow): DataCheckLatestResponse {
+  if (row.last_snapshot_id && row.last_success_at && !row.semantic_status) {
+    throw new Error('Missing semantic status for latest data-check snapshot');
+  }
   const snapshot =
     row.last_snapshot_id && row.last_success_at
       ? {
@@ -113,6 +122,8 @@ function mapLatest(row: StateRow): DataCheckLatestResponse {
           warningCount: Number(row.warning_count),
           openCount: Number(row.open_count),
           handledCount: Number(row.handled_count),
+          semanticStatus: row.semantic_status!,
+          semanticReason: row.semantic_reason,
         }
       : null;
   const latestFailure =
@@ -514,7 +525,9 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
              error_count = $6,
              warning_count = $7,
              open_count = $8,
-             handled_count = 0
+             handled_count = 0,
+             semantic_status = 'skipped',
+             semantic_reason = 'not_recorded'
          where singleton_key = true`,
         [
           result.snapshotId,
