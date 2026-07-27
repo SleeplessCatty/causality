@@ -3,7 +3,7 @@ import type {
   DataCheckActionResponse,
   DataCheckIssue,
 } from '@causality/contracts';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { startPostgresTestContext } from './support/postgresTestContext.js';
@@ -21,6 +21,23 @@ const relationB = '22000000-0000-4000-8000-000000000002';
 const relationC = '22000000-0000-4000-8000-000000000003';
 const relationD = '22000000-0000-4000-8000-000000000004';
 const relationE = '22000000-0000-4000-8000-000000000005';
+const fixedActionCases = [
+  ['delete_missing_alias', 'cleanup'],
+  ['delete_missing_keyword', 'cleanup'],
+  ['delete_missing_relation_case', 'cleanup'],
+  ['delete_duplicate_alias', 'cleanup'],
+  ['delete_duplicate_keyword', 'cleanup'],
+  ['resequence_keywords', 'cleanup'],
+  ['relation_self_loop', 'delete_relation'],
+  ['missing_relation_cause_event', 'delete_relation'],
+  ['missing_relation_effect_event', 'delete_relation'],
+  ['invalid_event_timestamp_order', 'repair_timestamp'],
+  ['invalid_relation_timestamp_order', 'repair_timestamp'],
+  ['invalid_case_timestamp_order', 'repair_timestamp'],
+] as const satisfies readonly (readonly [
+  DataCheckIssue['issueType'],
+  'cleanup' | 'delete_relation' | 'repair_timestamp',
+])[];
 
 describe.sequential('typed data-check governance actions', () => {
   let context: Awaited<ReturnType<typeof startPostgresTestContext>> | undefined;
@@ -32,7 +49,9 @@ describe.sequential('typed data-check governance actions', () => {
     await pool.query(`drop index causal_relations_direction_uidx`);
     await pool.query(`drop index abstract_events_normalized_name_uidx`);
     await pool.query(`drop index concrete_cases_content_uidx`);
+    await pool.query(`drop index event_aliases_event_normalized_uidx`);
     await pool.query(`drop index event_keywords_event_normalized_uidx`);
+    await pool.query(`drop index event_keywords_event_position_uidx`);
     await pool.query(
       `alter table causal_relations
          drop constraint causal_relations_no_self_loop_check,
@@ -136,6 +155,210 @@ describe.sequential('typed data-check governance actions', () => {
     );
   }
 
+  async function runWithDisabledReferences(
+    work: (client: PoolClient) => Promise<void>,
+  ): Promise<void> {
+    const corruptionClient = await pool!.connect();
+    try {
+      await corruptionClient.query(`set session_replication_role = replica`);
+      await work(corruptionClient);
+    } finally {
+      await corruptionClient.query(`set session_replication_role = origin`);
+      corruptionClient.release();
+    }
+  }
+
+  async function insertFixedActionFixture(
+    issueType: (typeof fixedActionCases)[number][0],
+  ): Promise<string> {
+    const index = fixedActionCases.findIndex(([candidate]) => candidate === issueType);
+    const issueId = `b2000000-0000-4000-8000-${String(index + 80).padStart(12, '0')}`;
+    const aliasTarget = '42000000-0000-4000-8000-000000000080';
+    const aliasRetained = '42000000-0000-4000-8000-000000000081';
+    const keywordTarget = '52000000-0000-4000-8000-000000000080';
+    const keywordRetained = '52000000-0000-4000-8000-000000000081';
+    let targetType: DataCheckIssue['targetType'];
+    let targetId: string;
+    let relatedId: string | null = null;
+
+    switch (issueType) {
+      case 'delete_missing_alias':
+        await pool!.query(`insert into abstract_events (id, name) values ($1, '待失效事件')`, [
+          eventA,
+        ]);
+        await pool!.query(
+          `insert into event_aliases (id, event_id, alias) values ($1, $2, '失效别名')`,
+          [aliasTarget, eventA],
+        );
+        await runWithDisabledReferences(async (client) => {
+          await client.query(`delete from abstract_events where id = $1`, [eventA]);
+        });
+        targetType = 'alias';
+        targetId = aliasTarget;
+        break;
+      case 'delete_missing_keyword':
+        await pool!.query(`insert into abstract_events (id, name) values ($1, '待失效事件')`, [
+          eventA,
+        ]);
+        await pool!.query(
+          `insert into event_keywords (id, event_id, keyword, position)
+           values ($1, $2, '失效关键词', 1)`,
+          [keywordTarget, eventA],
+        );
+        await runWithDisabledReferences(async (client) => {
+          await client.query(`delete from abstract_events where id = $1`, [eventA]);
+        });
+        targetType = 'keyword';
+        targetId = keywordTarget;
+        break;
+      case 'delete_missing_relation_case':
+        await pool!.query(
+          `insert into abstract_events (id, name) values ($1, '原因事件'), ($2, '结果事件')`,
+          [eventA, eventC],
+        );
+        await pool!.query(
+          `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+           values ($1, $2, $3, 50)`,
+          [relationA, eventA, eventC],
+        );
+        await pool!.query(`insert into concrete_cases (id, content) values ($1, '待失效案例')`, [
+          caseA,
+        ]);
+        await pool!.query(
+          `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+           values ($1, $2)`,
+          [relationA, caseA],
+        );
+        await runWithDisabledReferences(async (client) => {
+          await client.query(`delete from concrete_cases where id = $1`, [caseA]);
+        });
+        targetType = 'relation_case';
+        targetId = relationA;
+        relatedId = caseA;
+        break;
+      case 'delete_duplicate_alias':
+        await pool!.query(`insert into abstract_events (id, name) values ($1, '重复别名事件')`, [
+          eventA,
+        ]);
+        await pool!.query(
+          `insert into event_aliases (id, event_id, alias, created_at) values
+           ($1, $3, '重复别名', now()),
+           ($2, $3, '重复别名', now() + interval '1 second')`,
+          [aliasRetained, aliasTarget, eventA],
+        );
+        targetType = 'alias';
+        targetId = aliasTarget;
+        relatedId = aliasRetained;
+        break;
+      case 'delete_duplicate_keyword':
+        await pool!.query(`insert into abstract_events (id, name) values ($1, '重复关键词事件')`, [
+          eventA,
+        ]);
+        await pool!.query(
+          `insert into event_keywords (id, event_id, keyword, position) values
+           ($1, $3, '重复关键词', 1),
+           ($2, $3, '重复关键词', 2)`,
+          [keywordRetained, keywordTarget, eventA],
+        );
+        targetType = 'keyword';
+        targetId = keywordTarget;
+        relatedId = keywordRetained;
+        break;
+      case 'resequence_keywords':
+        await pool!.query(`insert into abstract_events (id, name) values ($1, '关键词重排事件')`, [
+          eventA,
+        ]);
+        await pool!.query(
+          `insert into event_keywords (id, event_id, keyword, position) values
+           ($1, $3, '关键词一', 2),
+           ($2, $3, '关键词二', 4)`,
+          [keywordRetained, keywordTarget, eventA],
+        );
+        targetType = 'event';
+        targetId = eventA;
+        break;
+      case 'relation_self_loop':
+        await pool!.query(`insert into abstract_events (id, name) values ($1, '自环事件')`, [
+          eventA,
+        ]);
+        await pool!.query(`insert into concrete_cases (id, content) values ($1, '自环关系案例')`, [
+          caseA,
+        ]);
+        await pool!.query(
+          `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+           values ($1, $2, $2, 50)`,
+          [relationA, eventA],
+        );
+        await pool!.query(
+          `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+           values ($1, $2)`,
+          [relationA, caseA],
+        );
+        targetType = 'relation';
+        targetId = relationA;
+        break;
+      case 'missing_relation_cause_event':
+      case 'missing_relation_effect_event':
+        await pool!.query(`insert into abstract_events (id, name) values ($1, '现存事件')`, [
+          eventC,
+        ]);
+        await runWithDisabledReferences(async (client) => {
+          await client.query(
+            `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+             values ($1, $2, $3, 50)`,
+            issueType === 'missing_relation_cause_event'
+              ? [relationA, eventA, eventC]
+              : [relationA, eventC, eventA],
+          );
+        });
+        targetType = 'relation';
+        targetId = relationA;
+        relatedId = eventA;
+        break;
+      case 'invalid_event_timestamp_order':
+        await pool!.query(
+          `insert into abstract_events (id, name, created_at, updated_at)
+           values
+             ($1, '事件时间异常', now(), now() - interval '1 day'),
+             ($2, '未处理事件时间异常', now(), now() - interval '2 days')`,
+          [eventA, eventB],
+        );
+        targetType = 'event';
+        targetId = eventA;
+        break;
+      case 'invalid_relation_timestamp_order':
+        await pool!.query(
+          `insert into abstract_events (id, name) values ($1, '原因事件'), ($2, '结果事件')`,
+          [eventA, eventC],
+        );
+        await pool!.query(
+          `insert into causal_relations
+             (id, cause_event_id, effect_event_id, confidence, created_at, updated_at)
+           values
+             ($1, $3, $4, 50, now(), now() - interval '1 day'),
+             ($2, $4, $3, 50, now(), now() - interval '2 days')`,
+          [relationA, relationB, eventA, eventC],
+        );
+        targetType = 'relation';
+        targetId = relationA;
+        break;
+      case 'invalid_case_timestamp_order':
+        await pool!.query(
+          `insert into concrete_cases (id, content, created_at, updated_at)
+           values
+             ($1, '案例时间异常', now(), now() - interval '1 day'),
+             ($2, '未处理案例时间异常', now(), now() - interval '2 days')`,
+          [caseA, caseB],
+        );
+        targetType = 'case';
+        targetId = caseA;
+        break;
+    }
+
+    await currentIssue({ issueId, issueType, targetType, targetId, relatedId });
+    return issueId;
+  }
+
   async function postAction(
     issueId: string,
     payload: Record<string, unknown>,
@@ -201,6 +424,172 @@ describe.sequential('typed data-check governance actions', () => {
     );
     return Number(result.rows[0]?.count ?? 0);
   }
+
+  it.each(fixedActionCases)(
+    'offers one authorized %s plan as %s plus snapshot-only ignore',
+    async (issueType, actionType) => {
+      const issueId = await insertFixedActionFixture(issueType);
+      const response = await context!.app.inject({
+        method: 'GET',
+        url: `/api/data-checks/issues/${issueId}/action-context?snapshotId=${snapshotId}`,
+      });
+      expect(response.statusCode).toBe(200);
+      const actionContext = response.json<DataCheckActionContext>();
+      expect(actionContext.actions.map((option) => option.type)).toEqual([actionType, 'ignore']);
+      const automaticAction = actionContext.actions[0]!;
+      expect(automaticAction.actionKey).toMatch(/^[0-9a-f]{64}$/);
+      expect(actionContext.actions[1]?.actionKey).toBeNull();
+      if (issueType === 'resequence_keywords') {
+        expect(automaticAction.impact.recordsUpdated).toBe(2);
+      }
+      if (actionType === 'delete_relation') {
+        expect(automaticAction.impact.relationsDeleted).toBe(1);
+      }
+
+      const applied = await context!.app.inject({
+        method: 'POST',
+        url: `/api/data-checks/issues/${issueId}/actions`,
+        payload: {
+          type: actionType,
+          snapshotId,
+          actionKey: automaticAction.actionKey,
+        },
+      });
+      expect(applied.statusCode, applied.body).toBe(200);
+      expect(await issueStatus(issueId)).toBe('handled');
+
+      switch (issueType) {
+        case 'delete_missing_alias':
+          expect(
+            Number(
+              (
+                await pool!.query(
+                  `select count(*)::int as count from event_aliases
+                   where id = '42000000-0000-4000-8000-000000000080'`,
+                )
+              ).rows[0]?.count,
+            ),
+          ).toBe(0);
+          break;
+        case 'delete_missing_keyword':
+          expect(
+            Number(
+              (
+                await pool!.query(
+                  `select count(*)::int as count from event_keywords
+                   where id = '52000000-0000-4000-8000-000000000080'`,
+                )
+              ).rows[0]?.count,
+            ),
+          ).toBe(0);
+          break;
+        case 'delete_missing_relation_case':
+          expect(
+            Number(
+              (
+                await pool!.query(
+                  `select count(*)::int as count
+                   from causal_relation_cases
+                   where causal_relation_id = $1 and concrete_case_id = $2`,
+                  [relationA, caseA],
+                )
+              ).rows[0]?.count,
+            ),
+          ).toBe(0);
+          expect(await recordExists('causal_relations', relationA)).toBe(true);
+          break;
+        case 'delete_duplicate_alias':
+          expect(
+            (
+              await pool!.query(
+                `select id::text
+                 from event_aliases
+                 where event_id = $1
+                 order by id`,
+                [eventA],
+              )
+            ).rows,
+          ).toEqual([{ id: '42000000-0000-4000-8000-000000000081' }]);
+          break;
+        case 'delete_duplicate_keyword':
+          expect(
+            (
+              await pool!.query(
+                `select id::text, position
+                 from event_keywords
+                 where event_id = $1
+                 order by position`,
+                [eventA],
+              )
+            ).rows,
+          ).toEqual([{ id: '52000000-0000-4000-8000-000000000081', position: 1 }]);
+          break;
+        case 'resequence_keywords':
+          expect(
+            (
+              await pool!.query(
+                `select position from event_keywords where event_id = $1 order by position`,
+                [eventA],
+              )
+            ).rows,
+          ).toEqual([{ position: 1 }, { position: 2 }]);
+          break;
+        case 'relation_self_loop':
+          expect(await recordExists('causal_relations', relationA)).toBe(false);
+          expect(await recordExists('abstract_events', eventA)).toBe(true);
+          expect(await recordExists('concrete_cases', caseA)).toBe(true);
+          expect(automaticAction.impact.relationCaseLinksDeleted).toBe(1);
+          break;
+        case 'missing_relation_cause_event':
+        case 'missing_relation_effect_event':
+          expect(await recordExists('causal_relations', relationA)).toBe(false);
+          expect(await recordExists('abstract_events', eventC)).toBe(true);
+          break;
+        case 'invalid_event_timestamp_order':
+          expect(
+            await pool!.query(
+              `select id::text, updated_at >= created_at as valid
+               from abstract_events
+               order by id`,
+            ),
+          ).toMatchObject({
+            rows: [
+              { id: eventA, valid: true },
+              { id: eventB, valid: false },
+            ],
+          });
+          break;
+        case 'invalid_relation_timestamp_order':
+          expect(
+            await pool!.query(
+              `select id::text, updated_at >= created_at as valid
+               from causal_relations
+               order by id`,
+            ),
+          ).toMatchObject({
+            rows: [
+              { id: relationA, valid: true },
+              { id: relationB, valid: false },
+            ],
+          });
+          break;
+        case 'invalid_case_timestamp_order':
+          expect(
+            await pool!.query(
+              `select id::text, updated_at >= created_at as valid
+               from concrete_cases
+               order by id`,
+            ),
+          ).toMatchObject({
+            rows: [
+              { id: caseA, valid: true },
+              { id: caseB, valid: false },
+            ],
+          });
+          break;
+      }
+    },
+  );
 
   it('returns refreshed server-authorized context and closes handled or deleted targets', async () => {
     await insertEvents();
@@ -760,6 +1149,186 @@ describe.sequential('typed data-check governance actions', () => {
       { id: retainedKeyword, position: 1 },
       { id: otherKeyword, position: 2 },
     ]);
+  });
+
+  it.each(['duplicate', 'over_limit'] as const)(
+    'rolls back unsafe keyword resequencing for %s data',
+    async (failureKind) => {
+      await pool!.query(`insert into abstract_events (id, name) values ($1, '拒绝重排事件')`, [
+        eventA,
+      ]);
+      if (failureKind === 'duplicate') {
+        await pool!.query(
+          `insert into event_keywords (event_id, keyword, position) values
+           ($1, '重复词', 2),
+           ($1, '重复词', 4)`,
+          [eventA],
+        );
+      } else {
+        await pool!.query(
+          `insert into event_keywords (event_id, keyword, position)
+           select $1::uuid, '关键词' || number, (number % 20) + 1
+           from generate_series(1, 21) number`,
+          [eventA],
+        );
+      }
+      const before = (
+        await pool!.query(
+          `select keyword, position
+           from event_keywords
+           where event_id = $1
+           order by position, id`,
+          [eventA],
+        )
+      ).rows;
+      const issueId =
+        failureKind === 'duplicate'
+          ? 'b2000000-0000-4000-8000-000000000092'
+          : 'b2000000-0000-4000-8000-000000000093';
+      await currentIssue({
+        issueId,
+        issueType: 'resequence_keywords',
+        targetType: 'event',
+        targetId: eventA,
+      });
+
+      const response = await postAction(issueId, { type: 'cleanup', snapshotId });
+      expect(response.statusCode).toBe(409);
+      expect(await issueStatus(issueId)).toBe('open');
+      expect(
+        (
+          await pool!.query(
+            `select keyword, position
+             from event_keywords
+             where event_id = $1
+             order by position, id`,
+            [eventA],
+          )
+        ).rows,
+      ).toEqual(before);
+    },
+  );
+
+  it('rejects an incorrect fixed-action key without changing data', async () => {
+    const issueId = await insertFixedActionFixture('delete_missing_alias');
+    const response = await context!.app.inject({
+      method: 'POST',
+      url: `/api/data-checks/issues/${issueId}/actions`,
+      payload: {
+        type: 'cleanup',
+        snapshotId,
+        actionKey: '0'.repeat(64),
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(await issueStatus(issueId)).toBe('open');
+    expect(
+      Number(
+        (
+          await pool!.query(
+            `select count(*)::int as count
+             from event_aliases
+             where id = '42000000-0000-4000-8000-000000000080'`,
+          )
+        ).rows[0]?.count,
+      ),
+    ).toBe(1);
+  });
+
+  it.each(['before_issue_status', 'after_issue_status'] as const)(
+    'rolls back fixed-action business changes on a forced failure %s update',
+    async (failurePoint) => {
+      const issueId = await insertFixedActionFixture('delete_missing_alias');
+      const functionName =
+        failurePoint === 'before_issue_status'
+          ? 'fail_before_issue_status_update'
+          : 'fail_after_issue_status_update';
+      const triggerName = `${functionName}_trigger`;
+      const table =
+        failurePoint === 'before_issue_status' ? 'data_check_issues' : 'data_check_state';
+      const condition =
+        failurePoint === 'before_issue_status'
+          ? `new.id = '${issueId}'::uuid and new.status = 'handled'`
+          : `new.handled_count > old.handled_count`;
+      await pool!.query(`
+        create function ${functionName}() returns trigger language plpgsql as $$
+        begin
+          if ${condition} then
+            raise exception 'forced fixed-action failure';
+          end if;
+          return new;
+        end
+        $$;
+        create trigger ${triggerName}
+        before update on ${table}
+        for each row execute function ${functionName}();
+      `);
+
+      let response: Awaited<ReturnType<typeof postAction>>;
+      try {
+        response = await postAction(issueId, { type: 'cleanup', snapshotId });
+      } finally {
+        await pool!.query(`
+          drop trigger ${triggerName} on ${table};
+          drop function ${functionName}();
+        `);
+      }
+
+      expect(response!.statusCode).toBe(500);
+      expect(await issueStatus(issueId)).toBe('open');
+      expect(
+        Number(
+          (
+            await pool!.query(
+              `select count(*)::int as count
+               from event_aliases
+               where id = '42000000-0000-4000-8000-000000000080'`,
+            )
+          ).rows[0]?.count,
+        ),
+      ).toBe(1);
+      expect(
+        await pool!.query(
+          `select open_count, handled_count from data_check_state where singleton_key = true`,
+        ),
+      ).toMatchObject({ rows: [{ open_count: 1, handled_count: 0 }] });
+    },
+  );
+
+  it('ignores only the current snapshot issue and leaves business data unchanged', async () => {
+    await pool!.query(
+      `insert into abstract_events (id, name, description)
+       values ($1, '忽略测试事件', null)`,
+      [eventA],
+    );
+    const issueId = 'b2000000-0000-4000-8000-000000000094';
+    await currentIssue({
+      issueId,
+      issueType: 'invalid_event_description',
+      targetType: 'event',
+      targetId: eventA,
+    });
+    const before = (
+      await pool!.query(
+        `select name, description, created_at, updated_at from abstract_events where id = $1`,
+        [eventA],
+      )
+    ).rows;
+
+    const response = await postAction(issueId, { type: 'ignore', snapshotId });
+    expect(response.statusCode).toBe(200);
+    expect(await issueStatus(issueId)).toBe('handled');
+    expect(
+      await pool!.query(
+        `select name, description, created_at, updated_at from abstract_events where id = $1`,
+        [eventA],
+      ),
+    ).toMatchObject({ rows: before });
+    expect(
+      await pool!.query(
+        `select open_count, handled_count from data_check_state where singleton_key = true`,
+      ),
+    ).toMatchObject({ rows: [{ open_count: 0, handled_count: 1 }] });
   });
 
   it.each([

@@ -27,7 +27,20 @@ type AffectedIds = Pick<
   'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'
 >;
 
-type MergeResult = AffectedIds & { impact: DataCheckActionImpact };
+type ActionResult = AffectedIds & { impact: DataCheckActionImpact };
+type MergeResult = ActionResult;
+
+function impact(values: Partial<DataCheckActionImpact> = {}): DataCheckActionImpact {
+  return {
+    relationsMoved: 0,
+    relationsDeleted: 0,
+    relationCaseLinksMoved: 0,
+    relationCaseLinksDeleted: 0,
+    recordsDeleted: 0,
+    recordsUpdated: 0,
+    ...values,
+  };
+}
 
 export function assertMergePairMembership(
   issue: DataCheckIssue,
@@ -472,22 +485,33 @@ async function resequenceKeywords(client: PoolClient, eventId: string): Promise<
   return rows.rows.map((row) => row.id);
 }
 
-async function applyCleanup(
-  client: PoolClient,
-  issue: DataCheckIssue,
-): Promise<
-  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
-> {
+async function applyCleanup(client: PoolClient, issue: DataCheckIssue): Promise<ActionResult> {
   switch (issue.issueType) {
-    case 'delete_missing_alias':
-      await client.query(`delete from event_aliases where id::text = $1`, [issue.targetId]);
-      return { affectedEventIds: [], affectedCaseIds: [], affectedRelationIds: [] };
-    case 'delete_missing_keyword':
-      await client.query(`delete from event_keywords where id::text = $1`, [issue.targetId]);
-      return { affectedEventIds: [], affectedCaseIds: [], affectedRelationIds: [] };
-    case 'delete_missing_relation_case':
+    case 'delete_missing_alias': {
+      const deleted = await client.query(`delete from event_aliases where id::text = $1`, [
+        issue.targetId,
+      ]);
+      return {
+        affectedEventIds: [],
+        affectedCaseIds: [],
+        affectedRelationIds: [],
+        impact: impact({ recordsDeleted: deleted.rowCount ?? 0 }),
+      };
+    }
+    case 'delete_missing_keyword': {
+      const deleted = await client.query(`delete from event_keywords where id::text = $1`, [
+        issue.targetId,
+      ]);
+      return {
+        affectedEventIds: [],
+        affectedCaseIds: [],
+        affectedRelationIds: [],
+        impact: impact({ recordsDeleted: deleted.rowCount ?? 0 }),
+      };
+    }
+    case 'delete_missing_relation_case': {
       if (!issue.relatedId) return unsafe();
-      await client.query(
+      const deleted = await client.query(
         `delete from causal_relation_cases
          where causal_relation_id::text = $1 and concrete_case_id::text = $2`,
         [issue.targetId, issue.relatedId],
@@ -496,7 +520,9 @@ async function applyCleanup(
         affectedEventIds: [],
         affectedCaseIds: [issue.relatedId],
         affectedRelationIds: [issue.targetId],
+        impact: impact({ relationCaseLinksDeleted: deleted.rowCount ?? 0 }),
       };
+    }
     case 'delete_duplicate_alias': {
       const event = await client.query<{ event_id: string }>(
         `select event_id::text from event_aliases where id::text = $1 for update`,
@@ -504,8 +530,15 @@ async function applyCleanup(
       );
       const eventId = event.rows[0]?.event_id;
       if (!eventId) return unsafe();
-      await client.query(`delete from event_aliases where id::text = $1`, [issue.targetId]);
-      return { affectedEventIds: [eventId], affectedCaseIds: [], affectedRelationIds: [] };
+      const deleted = await client.query(`delete from event_aliases where id::text = $1`, [
+        issue.targetId,
+      ]);
+      return {
+        affectedEventIds: [eventId],
+        affectedCaseIds: [],
+        affectedRelationIds: [],
+        impact: impact({ recordsDeleted: deleted.rowCount ?? 0 }),
+      };
     }
     case 'delete_duplicate_keyword': {
       const event = await client.query<{ event_id: string }>(
@@ -514,24 +547,32 @@ async function applyCleanup(
       );
       const eventId = event.rows[0]?.event_id;
       if (!eventId) return unsafe();
-      await client.query(`delete from event_keywords where id::text = $1`, [issue.targetId]);
+      const deleted = await client.query(`delete from event_keywords where id::text = $1`, [
+        issue.targetId,
+      ]);
       await resequenceKeywords(client, eventId);
-      return { affectedEventIds: [eventId], affectedCaseIds: [], affectedRelationIds: [] };
+      return {
+        affectedEventIds: [eventId],
+        affectedCaseIds: [],
+        affectedRelationIds: [],
+        impact: impact({ recordsDeleted: deleted.rowCount ?? 0 }),
+      };
     }
-    case 'resequence_keywords':
-      await resequenceKeywords(client, issue.targetId);
-      return { affectedEventIds: [issue.targetId], affectedCaseIds: [], affectedRelationIds: [] };
+    case 'resequence_keywords': {
+      const updatedIds = await resequenceKeywords(client, issue.targetId);
+      return {
+        affectedEventIds: [issue.targetId],
+        affectedCaseIds: [],
+        affectedRelationIds: [],
+        impact: impact({ recordsUpdated: updatedIds.length }),
+      };
+    }
     default:
       return notAllowed('当前问题类型不允许清理操作');
   }
 }
 
-async function deleteRelation(
-  client: PoolClient,
-  issue: DataCheckIssue,
-): Promise<
-  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
-> {
+async function deleteRelation(client: PoolClient, issue: DataCheckIssue): Promise<ActionResult> {
   if (
     issue.targetType !== 'relation' ||
     ![
@@ -549,25 +590,28 @@ async function deleteRelation(
     [issue.targetId],
   );
   const affectedCaseIds = await linkedCaseIds(client, [issue.targetId]);
-  await client.query(`delete from causal_relation_cases where causal_relation_id::text = $1`, [
+  const deletedLinks = await client.query(
+    `delete from causal_relation_cases where causal_relation_id::text = $1`,
+    [issue.targetId],
+  );
+  const deletedRelation = await client.query(`delete from causal_relations where id::text = $1`, [
     issue.targetId,
   ]);
-  await client.query(`delete from causal_relations where id::text = $1`, [issue.targetId]);
   return {
     affectedEventIds: relation.rows[0]
       ? [...new Set([relation.rows[0].cause_event_id, relation.rows[0].effect_event_id])].sort()
       : [],
     affectedCaseIds,
     affectedRelationIds: [issue.targetId],
+    impact: impact({
+      relationsDeleted: deletedRelation.rowCount ?? 0,
+      relationCaseLinksDeleted: deletedLinks.rowCount ?? 0,
+      recordsDeleted: deletedRelation.rowCount ?? 0,
+    }),
   };
 }
 
-async function repairTimestamp(
-  client: PoolClient,
-  issue: DataCheckIssue,
-): Promise<
-  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
-> {
+async function repairTimestamp(client: PoolClient, issue: DataCheckIssue): Promise<ActionResult> {
   const whitelist: Record<
     string,
     {
@@ -594,6 +638,7 @@ async function repairTimestamp(
     affectedEventIds: issue.targetType === 'event' ? [issue.targetId] : [],
     affectedCaseIds: issue.targetType === 'case' ? [issue.targetId] : [],
     affectedRelationIds: issue.targetType === 'relation' ? [issue.targetId] : [],
+    impact: impact({ recordsUpdated: result.rowCount ?? 0 }),
   };
 }
 
@@ -689,36 +734,32 @@ export class DataCheckActionService {
         );
         const selectedAction = assertActionAllowed(allowedActions, request);
 
-        let affected: Pick<
-          DataCheckActionResponse,
-          'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'
-        >;
+        let result: ActionResult;
         switch (request.type) {
-          case 'merge': {
-            const mergeResult = await applyMerge(client, issue, request);
-            if (!dataCheckImpactEquals(mergeResult.impact, selectedAction.impact)) {
-              unsafe('实际数据影响与确认前的处理方案不一致');
-            }
-            affected = {
-              affectedEventIds: mergeResult.affectedEventIds,
-              affectedCaseIds: mergeResult.affectedCaseIds,
-              affectedRelationIds: mergeResult.affectedRelationIds,
-            };
+          case 'merge':
+            result = await applyMerge(client, issue, request);
             break;
-          }
           case 'cleanup':
-            affected = await applyCleanup(client, issue);
+            result = await applyCleanup(client, issue);
             break;
           case 'delete_relation':
-            affected = await deleteRelation(client, issue);
+            result = await deleteRelation(client, issue);
             break;
           case 'repair_timestamp':
-            affected = await repairTimestamp(client, issue);
+            result = await repairTimestamp(client, issue);
             break;
+        }
+        if (!dataCheckImpactEquals(result.impact, selectedAction.impact)) {
+          unsafe('实际数据影响与确认前的处理方案不一致');
         }
         const handled = await markIssueHandled(client, row);
         await client.query('commit');
-        return { issue: handled, ...affected };
+        return {
+          issue: handled,
+          affectedEventIds: result.affectedEventIds,
+          affectedCaseIds: result.affectedCaseIds,
+          affectedRelationIds: result.affectedRelationIds,
+        };
       } catch (error) {
         await client.query('rollback');
         if (isSerializationFailure(error) && attempt === 0) continue;

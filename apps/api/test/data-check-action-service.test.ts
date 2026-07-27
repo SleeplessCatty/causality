@@ -71,6 +71,35 @@ describe('data-check action service authorization', () => {
     expect(issueEvaluatorRegistry[issueType]?.panelKind).toBe(panelKind);
   });
 
+  it('keeps the fixed-action coverage table closed to twelve issue types', () => {
+    const automatic = new Map([
+      ['delete_missing_alias', 'cleanup'],
+      ['delete_missing_keyword', 'cleanup'],
+      ['delete_missing_relation_case', 'cleanup'],
+      ['delete_duplicate_alias', 'cleanup'],
+      ['delete_duplicate_keyword', 'cleanup'],
+      ['resequence_keywords', 'cleanup'],
+      ['relation_self_loop', 'delete_relation'],
+      ['missing_relation_cause_event', 'delete_relation'],
+      ['missing_relation_effect_event', 'delete_relation'],
+      ['invalid_event_timestamp_order', 'repair_timestamp'],
+      ['invalid_relation_timestamp_order', 'repair_timestamp'],
+      ['invalid_case_timestamp_order', 'repair_timestamp'],
+    ] as const);
+
+    expect(
+      Object.entries(issueEvaluatorRegistry)
+        .filter(([, evaluator]) =>
+          ['cleanup', 'delete_relation', 'repair_timestamp'].includes(evaluator.panelKind),
+        )
+        .map(([issueType]) => issueType)
+        .sort(),
+    ).toEqual([...automatic.keys()].sort());
+    for (const [issueType, panelKind] of automatic) {
+      expect(issueEvaluatorRegistry[issueType].panelKind).toBe(panelKind);
+    }
+  });
+
   it('offers only ignore for manual issues', async () => {
     const evaluator = getDataCheckIssueEvaluator('relation_confidence_range');
     await expect(

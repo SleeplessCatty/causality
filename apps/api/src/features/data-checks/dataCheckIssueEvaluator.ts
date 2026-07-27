@@ -549,15 +549,37 @@ function semanticMergeEvaluator(entityType: 'event' | 'case'): DataCheckIssueEva
   };
 }
 
-function cleanupEvaluator(predicateSql: string, recordsDeleted = 1): DataCheckIssueEvaluator {
+type CleanupImpactKind = 'record' | 'relation_case' | 'resequence';
+
+function cleanupEvaluator(
+  predicateSql: string,
+  impactKind: CleanupImpactKind = 'record',
+): DataCheckIssueEvaluator {
   return {
     panelKind: 'cleanup',
     loadContext: loadDefaultContext,
     evaluate: (client, issue) => evaluateSql(client, issue, predicateSql),
-    async buildActions() {
+    async buildActions(client, issue) {
+      let impact: DataCheckActionImpact;
+      if (impactKind === 'relation_case') {
+        impact = { ...zeroImpact, relationCaseLinksDeleted: 1 };
+      } else if (impactKind === 'resequence') {
+        const keywords = await client.query<{ count: number }>(
+          `select count(*)::int as count
+           from event_keywords
+           where event_id::text = $1`,
+          [issue.targetId],
+        );
+        impact = {
+          ...zeroImpact,
+          recordsUpdated: Number(keywords.rows[0]?.count ?? 0),
+        };
+      } else {
+        impact = { ...zeroImpact, recordsDeleted: 1 };
+      }
       return [
         action('cleanup', '清理此问题', {
-          impact: { ...zeroImpact, recordsDeleted },
+          impact,
         }),
         action('ignore', '忽略此问题'),
       ];
@@ -585,6 +607,7 @@ function standardEvaluator(
           action('delete_relation', '删除此因果关系', {
             impact: {
               ...zeroImpact,
+              relationsDeleted: 1,
               relationCaseLinksDeleted: Number(links.rows[0]?.count ?? 0),
               recordsDeleted: 1,
             },
@@ -652,14 +675,17 @@ export const issueEvaluatorRegistry = {
     left join abstract_events event on event.id = keyword.event_id
     where keyword.id::text = $1 and event.id is null
   `),
-  delete_missing_relation_case: cleanupEvaluator(`
-    select 1 from causal_relation_cases link
-    left join causal_relations relation on relation.id = link.causal_relation_id
-    left join concrete_cases concrete_case on concrete_case.id = link.concrete_case_id
-    where link.causal_relation_id::text = $1
-      and link.concrete_case_id::text = $2
-      and (relation.id is null or concrete_case.id is null)
-  `),
+  delete_missing_relation_case: cleanupEvaluator(
+    `
+      select 1 from causal_relation_cases link
+      left join causal_relations relation on relation.id = link.causal_relation_id
+      left join concrete_cases concrete_case on concrete_case.id = link.concrete_case_id
+      where link.causal_relation_id::text = $1
+        and link.concrete_case_id::text = $2
+        and (relation.id is null or concrete_case.id is null)
+    `,
+    'relation_case',
+  ),
   delete_duplicate_alias: cleanupEvaluator(`
     select 1 from event_aliases target
     join event_aliases retained on retained.id::text = $2
@@ -682,7 +708,7 @@ export const issueEvaluatorRegistry = {
     having min(position) <> 1 or max(position) > 20 or max(position) <> count(*)
        or count(distinct position) <> count(*)
   `,
-    0,
+    'resequence',
   ),
 
   relation_self_loop: standardEvaluator(
