@@ -38,6 +38,12 @@ export function DataMaintenance() {
 
   return (
     <div className="data-maintenance-workspace">
+      <div className="page-heading">
+        <div>
+          <h1>数据维护</h1>
+          <p>数据检查</p>
+        </div>
+      </div>
       <DataCheckPanel
         latest={dataCheck.data}
         loading={dataCheck.isPending}

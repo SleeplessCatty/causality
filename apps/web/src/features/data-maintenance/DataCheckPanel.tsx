@@ -66,12 +66,8 @@ export function DataCheckPanel({ latest, loading, error, checking, onCheck }: Da
   const snapshot = latest?.snapshot ?? null;
   const running = latest?.task.status === 'running';
   return (
-    <section className="data-check-panel" aria-labelledby="data-check-panel-title">
-      <div className="data-check-section-heading">
-        <div>
-          <p className="eyebrow">数据维护</p>
-          <h2 id="data-check-panel-title">数据检查</h2>
-        </div>
+    <section className="data-check-panel" aria-label="数据检查">
+      <div className="data-check-panel-toolbar">
         <div className="data-check-heading-actions">
           <span
             className={`data-check-task-state${running ? ' data-check-task-state--running' : ''}`}

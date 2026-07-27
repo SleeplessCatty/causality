@@ -114,6 +114,21 @@ describe('DataMaintenance', () => {
     vi.unstubAllGlobals();
   });
 
+  it('renders the maintenance title and data-check subtitle outside the panel', async () => {
+    vi.stubGlobal('fetch', baseFetch());
+
+    renderMaintenance();
+
+    const title = screen.getByRole('heading', { level: 1, name: '数据维护' });
+    const subtitle = screen.getByText('数据检查');
+    const pageHeading = title.closest('.page-heading');
+    expect(pageHeading).toBeTruthy();
+    expect(pageHeading?.contains(subtitle)).toBe(true);
+
+    const panel = await screen.findByRole('region', { name: '数据检查' });
+    expect(within(panel).queryByRole('heading', { name: '数据检查' })).toBeNull();
+  });
+
   it('shows the unified action, first-run state, and exactly three issue columns', async () => {
     const fetchMock = baseFetch();
     vi.stubGlobal('fetch', fetchMock);
