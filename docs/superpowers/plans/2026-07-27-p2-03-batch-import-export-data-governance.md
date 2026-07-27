@@ -635,7 +635,7 @@ Ignore a raw record only when it contains no non-whitespace character. Do not sp
 
 - [x] **Step 5: Implement the three record decoders**
 
-Trim business fields, preserve meaningful interior whitespace, reuse `eventFormInputSchema`, `eventNameSchema`, `caseContentSchema`, `relationConfidenceSchema`, and `relationDescriptionSchema`, and return only normalized in-memory records. Later duplicate records must retain their original `sequence` for logging.
+Trim business fields, preserve meaningful interior whitespace, reuse `eventFormInputSchema`, `eventNameSchema`, `caseContentSchema`, `relationConfidenceSchema`, and `relationDescriptionSchema`, and return only normalized in-memory records. Preserve source `sequence` until file-local planning selects the first occurrence of each logical record.
 
 - [x] **Step 6: Add export row encoder tests**
 
@@ -711,7 +711,7 @@ Assert:
 
 - a relation may appear before both event rows;
 - the first strict duplicate event/case supplies optional fields;
-- later duplicates produce `reused` logs but never enrich fields;
+- later file-local duplicates collapse into that first logical record, produce no additional audit row, and never enrich fields;
 - duplicate relation rows may add new case associations;
 - unresolved relation endpoint names remain available for the final database match;
 - relation self-loops never enter the write plan.

@@ -1,5 +1,3 @@
-import type { ImportOutcome } from '@causality/contracts';
-
 import type { ParsedImportRecord } from './dataTransferTypes.js';
 
 type EventRecord = Extract<ParsedImportRecord, { type: 'event' }>;
@@ -9,7 +7,6 @@ type RelationRecord = Extract<ParsedImportRecord, { type: 'relation' }>;
 export interface PlannedOccurrence {
   sourceSequence: number;
   itemSequence: number;
-  provisionalOutcome: ImportOutcome;
 }
 
 export interface PlannedEvent {
@@ -58,16 +55,8 @@ function caseKey(content: string): string {
   return content.trim();
 }
 
-function occurrence(
-  sourceSequence: number,
-  itemSequence: number,
-  reused: boolean,
-): PlannedOccurrence {
-  return {
-    sourceSequence,
-    itemSequence,
-    provisionalOutcome: reused ? 'reused' : 'created',
-  };
+function occurrence(sourceSequence: number, itemSequence: number): PlannedOccurrence {
+  return { sourceSequence, itemSequence };
 }
 
 export function planFileRecords(records: readonly ParsedImportRecord[]): FileImportPlan {
@@ -84,15 +73,12 @@ export function planFileRecords(records: readonly ParsedImportRecord[]): FileImp
   ): PlannedCase => {
     const key = caseKey(record.content);
     const existing = caseMap.get(key);
-    if (existing) {
-      existing.occurrences.push(occurrence(sourceSequence, itemSequence, true));
-      return existing;
-    }
+    if (existing) return existing;
 
     const planned: PlannedCase = {
       key,
       creator: record,
-      occurrences: [occurrence(sourceSequence, itemSequence, false)],
+      occurrences: [occurrence(sourceSequence, itemSequence)],
     };
     caseMap.set(key, planned);
     return planned;
@@ -102,13 +88,11 @@ export function planFileRecords(records: readonly ParsedImportRecord[]): FileImp
     if (record.type === 'event') {
       const key = eventKey(record.name);
       const existing = eventMap.get(key);
-      if (existing) {
-        existing.occurrences.push(occurrence(record.sequence, 1, true));
-      } else {
+      if (!existing) {
         eventMap.set(key, {
           key,
           creator: record,
-          occurrences: [occurrence(record.sequence, 1, false)],
+          occurrences: [occurrence(record.sequence, 1)],
         });
       }
       continue;
@@ -125,15 +109,13 @@ export function planFileRecords(records: readonly ParsedImportRecord[]): FileImp
 
     const key = `${causeEventKey}\u0000${effectEventKey}`;
     const existingRelation = relationMap.get(key);
-    if (existingRelation) {
-      existingRelation.occurrences.push(occurrence(record.sequence, 1, true));
-    } else {
+    if (!existingRelation) {
       relationMap.set(key, {
         key,
         causeEventKey,
         effectEventKey,
         creator: record,
-        occurrences: [occurrence(record.sequence, 1, false)],
+        occurrences: [occurrence(record.sequence, 1)],
       });
     }
 
@@ -151,11 +133,7 @@ export function planFileRecords(records: readonly ParsedImportRecord[]): FileImp
       );
       const relationCaseKey = `${key}\u0000${plannedCase.key}`;
       const existingRelationCase = relationCaseMap.get(relationCaseKey);
-      if (existingRelationCase) {
-        existingRelationCase.occurrences.push(
-          occurrence(record.sequence, relationCaseItemSequence, true),
-        );
-      } else {
+      if (!existingRelationCase) {
         relationCaseMap.set(relationCaseKey, {
           key: relationCaseKey,
           relationKey: key,
@@ -163,7 +141,7 @@ export function planFileRecords(records: readonly ParsedImportRecord[]): FileImp
           causeEventName: record.causeEventName,
           effectEventName: record.effectEventName,
           caseContent: content,
-          occurrences: [occurrence(record.sequence, relationCaseItemSequence, false)],
+          occurrences: [occurrence(record.sequence, relationCaseItemSequence)],
         });
       }
     });

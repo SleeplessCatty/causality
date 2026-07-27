@@ -61,18 +61,16 @@ describe('file-local import planner', () => {
         causeEventName: '需求增长',
         effectEventName: '企业扩产',
       },
-      occurrences: [{ sourceSequence: 1, itemSequence: 1, provisionalOutcome: 'created' }],
+      occurrences: [{ sourceSequence: 1, itemSequence: 1 }],
     });
     expect(plan.cases[0]).toMatchObject({
       creator: { content: '某企业宣布新增生产线' },
-      occurrences: [{ sourceSequence: 1, itemSequence: 2, provisionalOutcome: 'created' }],
+      occurrences: [{ sourceSequence: 1, itemSequence: 2 }],
     });
-    expect(plan.relationCases[0]?.occurrences).toEqual([
-      { sourceSequence: 1, itemSequence: 3, provisionalOutcome: 'created' },
-    ]);
+    expect(plan.relationCases[0]?.occurrences).toEqual([{ sourceSequence: 1, itemSequence: 3 }]);
   });
 
-  it('keeps the first strict duplicate event and case fields and marks later occurrences reused', () => {
+  it('collapses strict duplicate event and case rows into one file-local occurrence', () => {
     const plan = planFileRecords([
       event(1, '需求增长', { aliases: ['需求上升'] }),
       concreteCase(2, '某地区销量增长'),
@@ -92,12 +90,6 @@ describe('file-local import planner', () => {
           {
             sourceSequence: 1,
             itemSequence: 1,
-            provisionalOutcome: 'created',
-          },
-          {
-            sourceSequence: 3,
-            itemSequence: 1,
-            provisionalOutcome: 'reused',
           },
         ],
       },
@@ -110,12 +102,6 @@ describe('file-local import planner', () => {
           {
             sourceSequence: 2,
             itemSequence: 1,
-            provisionalOutcome: 'created',
-          },
-          {
-            sourceSequence: 4,
-            itemSequence: 1,
-            provisionalOutcome: 'reused',
           },
         ],
       },
@@ -142,24 +128,18 @@ describe('file-local import planner', () => {
           confidence: 70,
           description: '首次说明',
         }),
-        occurrences: [
-          { sourceSequence: 3, itemSequence: 1, provisionalOutcome: 'created' },
-          { sourceSequence: 4, itemSequence: 1, provisionalOutcome: 'reused' },
-        ],
+        occurrences: [{ sourceSequence: 3, itemSequence: 1 }],
       }),
     ]);
     expect(plan.cases.map((item) => item.key)).toEqual(['案例一', '案例二']);
     expect(plan.relationCases).toEqual([
       expect.objectContaining({
         caseKey: '案例一',
-        occurrences: [
-          { sourceSequence: 3, itemSequence: 3, provisionalOutcome: 'created' },
-          { sourceSequence: 4, itemSequence: 3, provisionalOutcome: 'reused' },
-        ],
+        occurrences: [{ sourceSequence: 3, itemSequence: 3 }],
       }),
       expect.objectContaining({
         caseKey: '案例二',
-        occurrences: [{ sourceSequence: 4, itemSequence: 5, provisionalOutcome: 'created' }],
+        occurrences: [{ sourceSequence: 4, itemSequence: 5 }],
       }),
     ]);
   });

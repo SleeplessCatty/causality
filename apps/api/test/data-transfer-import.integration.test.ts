@@ -205,8 +205,8 @@ describe.sequential('append-only data import transaction', () => {
       filename: '导入测试.csv',
       recordTypes: ['event', 'case', 'relation', 'relation_case'],
       counts: {
-        event: { created: 2, reused: 2 },
-        case: { created: 2, reused: 4 },
+        event: { created: 2, reused: 1 },
+        case: { created: 2, reused: 2 },
         relation: { created: 1, reused: 1 },
         relationCase: { created: 4, reused: 1 },
       },
@@ -301,7 +301,45 @@ describe.sequential('append-only data import transaction', () => {
        where batch_id = $1`,
       [result.batch.id],
     );
-    expect(audit.rows[0]?.count).toBe(17);
+    expect(audit.rows[0]?.count).toBe(14);
+  });
+
+  it('collapses duplicate logical records inside one CSV without counting them as reused', async () => {
+    const result = await runImport(pool!, [
+      event(1, '文件内原因事件'),
+      event(2, '文件内结果事件'),
+      event(3, ' 文件内原因事件 ', { description: '后续字段不覆盖首次记录' }),
+      concreteCase(4, '文件内重复案例'),
+      concreteCase(5, '文件内重复案例'),
+      relation(6, '文件内原因事件', '文件内结果事件', ['文件内重复案例']),
+      relation(7, '文件内原因事件', '文件内结果事件', ['文件内重复案例']),
+    ]);
+
+    expect(result.batch.counts).toEqual({
+      event: { created: 2, reused: 0 },
+      case: { created: 1, reused: 0 },
+      relation: { created: 1, reused: 0 },
+      relationCase: { created: 1, reused: 0 },
+    });
+
+    const audit = await pool!.query<{
+      outcome: string;
+      record_type: string;
+      source_sequence: number;
+    }>(
+      `select source_sequence, record_type, outcome
+       from import_records
+       where batch_id = $1
+       order by source_sequence, item_sequence`,
+      [result.batch.id],
+    );
+    expect(audit.rows).toEqual([
+      { source_sequence: 1, record_type: 'event', outcome: 'created' },
+      { source_sequence: 2, record_type: 'event', outcome: 'created' },
+      { source_sequence: 4, record_type: 'case', outcome: 'created' },
+      { source_sequence: 6, record_type: 'relation', outcome: 'created' },
+      { source_sequence: 6, record_type: 'relation_case', outcome: 'created' },
+    ]);
   });
 
   it('skips relations with unresolved endpoints and excludes their embedded cases', async () => {

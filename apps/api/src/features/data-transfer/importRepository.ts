@@ -307,8 +307,13 @@ export class PostgresImportRepository implements ImportRepository {
       aliases: record.aliases,
       keywords: record.keywords,
     }));
+    const uniqueEventOccurrences = [
+      ...firstByKey(eventOccurrences, (occurrence) =>
+        normalizedByRaw.get(occurrence.name)!,
+      ).values(),
+    ];
     const eventCreators = firstByKey(
-      eventOccurrences.filter((occurrence) => {
+      uniqueEventOccurrences.filter((occurrence) => {
         const key = normalizedByRaw.get(occurrence.name)!;
         return (existingEvents.get(key)?.length ?? 0) === 0;
       }),
@@ -376,18 +381,15 @@ export class PostgresImportRepository implements ImportRepository {
       })),
     );
 
-    const firstEventOccurrence = new Set<string>();
-    for (const occurrence of eventOccurrences) {
+    for (const occurrence of uniqueEventOccurrences) {
       const key = normalizedByRaw.get(occurrence.name)!;
       const eventId = uniqueEvents.get(key);
       if (!eventId) continue;
-      const created = createdEvents.has(key) && !firstEventOccurrence.has(key);
-      firstEventOccurrence.add(key);
       audit.push({
         sourceSequence: occurrence.sourceSequence,
         itemSequence: occurrence.itemSequence,
         recordType: 'event',
-        outcome: created ? 'created' : 'reused',
+        outcome: createdEvents.has(key) ? 'created' : 'reused',
         primaryRecordId: eventId,
         relatedRecordId: null,
         textSnapshot: { type: 'event', eventName: occurrence.name },
@@ -473,6 +475,9 @@ export class PostgresImportRepository implements ImportRepository {
       (left, right) =>
         left.sourceSequence - right.sourceSequence || left.itemSequence - right.itemSequence,
     );
+    const uniqueCaseOccurrences = [
+      ...firstByKey(caseOccurrences, (occurrence) => occurrence.content).values(),
+    ];
     const caseContents = [...new Set(caseOccurrences.map((occurrence) => occurrence.content))];
     const existingCaseRows =
       caseContents.length === 0
@@ -488,7 +493,7 @@ export class PostgresImportRepository implements ImportRepository {
           ).rows;
     const existingCases = groupIds(existingCaseRows);
     const caseCreators = firstByKey(
-      caseOccurrences.filter(
+      uniqueCaseOccurrences.filter(
         (occurrence) => (existingCases.get(occurrence.content)?.length ?? 0) === 0,
       ),
       (occurrence) => occurrence.content,
@@ -516,26 +521,27 @@ export class PostgresImportRepository implements ImportRepository {
         uniqueCases.set(content, createdCases.get(content)!);
       }
     }
-    const firstCaseOccurrence = new Set<string>();
-    for (const occurrence of caseOccurrences) {
+    for (const occurrence of uniqueCaseOccurrences) {
       const caseId = uniqueCases.get(occurrence.content);
       if (!caseId) continue;
-      const created =
-        createdCases.has(occurrence.content) && !firstCaseOccurrence.has(occurrence.content);
-      firstCaseOccurrence.add(occurrence.content);
       audit.push({
         sourceSequence: occurrence.sourceSequence,
         itemSequence: occurrence.itemSequence,
         recordType: 'case',
-        outcome: created ? 'created' : 'reused',
+        outcome: createdCases.has(occurrence.content) ? 'created' : 'reused',
         primaryRecordId: caseId,
         relatedRecordId: null,
         textSnapshot: { type: 'case', caseContent: occurrence.content },
       });
     }
 
+    const uniqueRelationOccurrences = [
+      ...firstByKey(validRelationOccurrences, (occurrence) =>
+        relationKey(occurrence.causeId, occurrence.effectId),
+      ).values(),
+    ];
     const relationCreators = firstByKey(
-      validRelationOccurrences.filter((occurrence) => {
+      uniqueRelationOccurrences.filter((occurrence) => {
         const ids = existingRelations.get(relationKey(occurrence.causeId, occurrence.effectId));
         return (ids?.length ?? 0) === 0;
       }),
@@ -587,18 +593,15 @@ export class PostgresImportRepository implements ImportRepository {
         uniqueRelations.set(key, createdRelations.get(key)!);
       }
     }
-    const firstRelationOccurrence = new Set<string>();
-    for (const occurrence of validRelationOccurrences) {
+    for (const occurrence of uniqueRelationOccurrences) {
       const key = relationKey(occurrence.causeId, occurrence.effectId);
       const relationId = uniqueRelations.get(key);
       if (!relationId) continue;
-      const created = createdRelations.has(key) && !firstRelationOccurrence.has(key);
-      firstRelationOccurrence.add(key);
       audit.push({
         sourceSequence: occurrence.sourceSequence,
         itemSequence: occurrence.itemSequence,
         recordType: 'relation',
-        outcome: created ? 'created' : 'reused',
+        outcome: createdRelations.has(key) ? 'created' : 'reused',
         primaryRecordId: relationId,
         relatedRecordId: null,
         textSnapshot: {
@@ -680,16 +683,13 @@ export class PostgresImportRepository implements ImportRepository {
     const createdLinks = new Set(
       createdLinkResult.rows.map((row) => linkKey(row.causal_relation_id, row.concrete_case_id)),
     );
-    const firstLinkOccurrence = new Set<string>();
-    for (const occurrence of linkOccurrences) {
+    for (const occurrence of uniqueLinkCandidates.values()) {
       const key = linkKey(occurrence.relationId, occurrence.caseId);
-      const created = createdLinks.has(key) && !firstLinkOccurrence.has(key);
-      firstLinkOccurrence.add(key);
       audit.push({
         sourceSequence: occurrence.sourceSequence,
         itemSequence: occurrence.itemSequence,
         recordType: 'relation_case',
-        outcome: created ? 'created' : 'reused',
+        outcome: createdLinks.has(key) ? 'created' : 'reused',
         primaryRecordId: occurrence.relationId,
         relatedRecordId: occurrence.caseId,
         textSnapshot: {
