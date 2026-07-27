@@ -7,6 +7,11 @@ import type {
   DataCheckIssue,
   DataCheckTargetType,
 } from '@causality/contracts';
+import {
+  caseDetailSchema,
+  eventDetailSchema,
+  relationDetailSchema,
+} from '@causality/contracts';
 import { buildSemanticDocument, hashSemanticDocument } from '@causality/semantic-core';
 import type { PoolClient } from 'pg';
 
@@ -76,13 +81,6 @@ function action(
     impact: zeroImpact,
     ...values,
   };
-}
-
-function detailPath(targetType: DataCheckTargetType, id: string): string | null {
-  if (targetType === 'event') return `/events/${id}`;
-  if (targetType === 'case') return `/cases/${id}`;
-  if (targetType === 'relation') return `/relations/${id}`;
-  return null;
 }
 
 interface RecordRow {
@@ -248,6 +246,173 @@ async function loadRecord(
         caseCount: Number(row.case_count),
       }
     : null;
+}
+
+async function canLoadEventDetail(client: PoolClient, eventId: string): Promise<boolean> {
+  const result = await client.query<{
+    id: string;
+    name: string;
+    description: string | null;
+    created_at: Date;
+    updated_at: Date;
+    aliases: string[];
+    keywords: string[];
+    relation_count: number;
+  }>(
+    `select event.id::text,
+            event.name,
+            event.description,
+            event.created_at,
+            event.updated_at,
+            coalesce(
+              (
+                select array_agg(alias.alias order by alias.normalized_alias, alias.id)
+                from event_aliases alias where alias.event_id = event.id
+              ),
+              array[]::varchar[]
+            ) as aliases,
+            coalesce(
+              (
+                select array_agg(keyword.keyword order by keyword.position, keyword.id)
+                from event_keywords keyword where keyword.event_id = event.id
+              ),
+              array[]::varchar[]
+            ) as keywords,
+            (
+              select count(*)::int from causal_relations relation
+              where relation.cause_event_id = event.id or relation.effect_event_id = event.id
+            ) as relation_count
+     from abstract_events event
+     where event.id::text = $1`,
+    [eventId],
+  );
+  const row = result.rows[0];
+  return Boolean(
+    row &&
+      eventDetailSchema.safeParse({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        aliases: row.aliases,
+        keywords: row.keywords,
+        relationCount: Number(row.relation_count),
+        listPage: 1,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(),
+      }).success,
+  );
+}
+
+async function canLoadCaseDetail(client: PoolClient, caseId: string): Promise<boolean> {
+  const result = await client.query<{
+    id: string;
+    content: string;
+    created_at: Date;
+    updated_at: Date;
+    relation_count: number;
+  }>(
+    `select concrete_case.id::text,
+            concrete_case.content,
+            concrete_case.created_at,
+            concrete_case.updated_at,
+            count(link.causal_relation_id)::int as relation_count
+     from concrete_cases concrete_case
+     left join causal_relation_cases link on link.concrete_case_id = concrete_case.id
+     where concrete_case.id::text = $1
+     group by concrete_case.id`,
+    [caseId],
+  );
+  const row = result.rows[0];
+  return Boolean(
+    row &&
+      caseDetailSchema.safeParse({
+        id: row.id,
+        content: row.content,
+        relationCount: Number(row.relation_count),
+        listPage: 1,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(),
+      }).success,
+  );
+}
+
+async function canLoadRelationDetail(client: PoolClient, relationId: string): Promise<boolean> {
+  const result = await client.query<{
+    id: string;
+    cause_event_id: string;
+    cause_event_name: string;
+    effect_event_id: string;
+    effect_event_name: string;
+    confidence: number;
+    description: string | null;
+    created_at: Date;
+    updated_at: Date;
+    case_count: number;
+  }>(
+    `select relation.id::text,
+            cause.id::text as cause_event_id,
+            cause.name as cause_event_name,
+            effect.id::text as effect_event_id,
+            effect.name as effect_event_name,
+            relation.confidence,
+            relation.description,
+            relation.created_at,
+            relation.updated_at,
+            count(link.concrete_case_id)::int as case_count
+     from causal_relations relation
+     join abstract_events cause on cause.id = relation.cause_event_id
+     join abstract_events effect on effect.id = relation.effect_event_id
+     left join causal_relation_cases link on link.causal_relation_id = relation.id
+     where relation.id::text = $1
+     group by relation.id, cause.id, effect.id`,
+    [relationId],
+  );
+  const row = result.rows[0];
+  if (!row) return false;
+  const cases = await client.query<{ id: string; content: string }>(
+    `select concrete_case.id::text, concrete_case.content
+     from causal_relation_cases link
+     join concrete_cases concrete_case on concrete_case.id = link.concrete_case_id
+     where link.causal_relation_id::text = $1
+     order by link.linked_at desc, concrete_case.id desc
+     limit 5`,
+    [relationId],
+  );
+  return relationDetailSchema.safeParse({
+    id: row.id,
+    causeEvent: { id: row.cause_event_id, name: row.cause_event_name },
+    effectEvent: { id: row.effect_event_id, name: row.effect_event_name },
+    confidence: Number(row.confidence),
+    description: row.description,
+    caseCount: Number(row.case_count),
+    listPage: 1,
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    recentCases: cases.rows,
+  }).success;
+}
+
+async function canOpenStrictDetail(
+  client: PoolClient,
+  record: DataCheckActionRecord,
+): Promise<boolean> {
+  if (!record.detailPath) return false;
+  if (record.targetType === 'event') return canLoadEventDetail(client, record.id);
+  if (record.targetType === 'case') return canLoadCaseDetail(client, record.id);
+  if (record.targetType === 'relation') return canLoadRelationDetail(client, record.id);
+  if (record.targetType === 'alias' || record.targetType === 'keyword') {
+    const table = record.targetType === 'alias' ? 'event_aliases' : 'event_keywords';
+    const owner = await client.query<{ event_id: string }>(
+      `select event_id::text from ${table} where id::text = $1`,
+      [record.id],
+    );
+    const eventId = owner.rows[0]?.event_id;
+    return eventId ? canLoadEventDetail(client, eventId) : false;
+  }
+  if (record.targetType === 'relation_case') {
+    return canLoadRelationDetail(client, record.id);
+  }
+  return false;
 }
 
 async function targetExists(client: PoolClient, issue: DataCheckIssue): Promise<boolean> {
@@ -431,13 +596,17 @@ function mergeEvaluator(predicateSql: string): DataCheckIssueEvaluator {
           }),
         ),
       );
-      const edit = records
-        .filter((record) => record.detailPath)
-        .map((record, index) =>
-          action('open_edit', `编辑记录 ${index === 0 ? 'A' : 'B'}`, {
-            editPath: record.detailPath,
-          }),
-        );
+      const edit = (
+        await Promise.all(
+          records.map(async (record, index) =>
+            record.detailPath && (await canOpenStrictDetail(client, record))
+              ? action('open_edit', `编辑记录 ${index === 0 ? 'A' : 'B'}`, {
+                  editPath: record.detailPath,
+                })
+              : null,
+          ),
+        )
+      ).filter((option): option is DataCheckActionOption => option !== null);
       return [...options, ...edit, action('ignore', '忽略此问题')];
     },
   };
@@ -629,8 +798,10 @@ function editableEvaluator(
       } else if (dialogKind === 'repair_timestamp') {
         options.push(action('repair_timestamp', '修复时间顺序'));
       }
-      const path = records[0]?.detailPath ?? detailPath(issue.targetType, issue.targetId);
-      if (path) options.push(action('open_edit', '打开详情编辑', { editPath: path }));
+      const record = records[0];
+      if (record?.detailPath && (await canOpenStrictDetail(client, record))) {
+        options.push(action('open_edit', '打开详情编辑', { editPath: record.detailPath }));
+      }
       options.push(action('ignore', '忽略此问题'));
       return options;
     },
@@ -794,10 +965,12 @@ function fallbackEvaluator(targetType: DataCheckTargetType): DataCheckIssueEvalu
     async evaluate(client, issue) {
       return (await targetExists(client, issue)) ? 'present' : 'missing';
     },
-    async buildActions(_client, issue, records) {
+    async buildActions(client, _issue, records) {
       const options: DataCheckActionOption[] = [];
-      const path = records[0]?.detailPath ?? (safeDetail ? detailPath(targetType, issue.targetId) : null);
-      if (path) options.push(action('open_edit', '打开详情编辑', { editPath: path }));
+      const record = records[0];
+      if (record?.detailPath && (await canOpenStrictDetail(client, record))) {
+        options.push(action('open_edit', '打开详情编辑', { editPath: record.detailPath }));
+      }
       options.push(action('ignore', '忽略此问题'));
       return options;
     },
@@ -850,6 +1023,18 @@ export async function buildDataCheckActionContext(
             : '数据已变化，请重新检查此问题',
     };
   }
+  const actions = await evaluator.buildActions(client, issue, records);
+  const strictDetailRecordCount =
+    evaluator.dialogKind === 'cleanup'
+      ? 0
+      : records.filter((record) => record.detailPath !== null).length;
+  const openEditCount = actions.filter((option) => option.type === 'open_edit').length;
+  const message =
+    strictDetailRecordCount > openEditCount
+      ? openEditCount === 0
+        ? '当前记录不符合严格详情页加载约束，暂时无法打开编辑页'
+        : '部分记录不符合严格详情页加载约束，相关编辑入口已隐藏'
+      : null;
   return {
     snapshotId: issue.snapshotId,
     issueId: issue.id,
@@ -857,7 +1042,7 @@ export async function buildDataCheckActionContext(
     status: issue.status,
     dialogKind: evaluator.dialogKind,
     records,
-    actions: await evaluator.buildActions(client, issue, records),
-    message: null,
+    actions,
+    message,
   };
 }

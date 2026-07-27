@@ -368,22 +368,32 @@ async function applyMerge(
 }
 
 async function resequenceKeywords(client: PoolClient, eventId: string): Promise<string[]> {
-  const rows = await client.query<{ id: string }>(
-    `select id::text from event_keywords
+  const rows = await client.query<{
+    id: string;
+    keyword: string;
+    normalized_keyword: string;
+  }>(
+    `select id::text, keyword, normalized_keyword from event_keywords
      where event_id::text = $1 order by position, id for update`,
     [eventId],
   );
   if (rows.rows.length > 20) unsafe('关键词数量超过 20 个，无法自动重排');
   if (rows.rows.length === 0) return [];
+  if (new Set(rows.rows.map((row) => row.normalized_keyword)).size !== rows.rows.length) {
+    unsafe('关键词仍包含重复值，请先清理重复关键词');
+  }
+  await client.query(`delete from event_keywords where event_id::text = $1`, [eventId]);
   await client.query(
-    `update event_keywords keyword
-     set position = ordered.next_position
-     from (
-       select id, row_number() over (order by position, id)::int as next_position
-       from event_keywords where event_id::text = $1
-     ) ordered
-     where keyword.id = ordered.id`,
-    [eventId],
+    `insert into event_keywords (id, event_id, keyword, position)
+     select keyword.id, keyword.event_id, keyword.keyword, keyword.position
+     from unnest($1::uuid[], $2::uuid[], $3::varchar[], $4::int[])
+       as keyword(id, event_id, keyword, position)`,
+    [
+      rows.rows.map((row) => row.id),
+      rows.rows.map(() => eventId),
+      rows.rows.map((row) => row.keyword),
+      rows.rows.map((_row, index) => index + 1),
+    ],
   );
   return rows.rows.map((row) => row.id);
 }

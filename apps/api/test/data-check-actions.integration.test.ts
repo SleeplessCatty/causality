@@ -33,14 +33,20 @@ describe.sequential('typed data-check governance actions', () => {
     await pool.query(`drop index causal_relations_direction_uidx`);
     await pool.query(`drop index abstract_events_normalized_name_uidx`);
     await pool.query(`drop index concrete_cases_content_uidx`);
+    await pool.query(`drop index event_keywords_event_normalized_uidx`);
     await pool.query(
-      `alter table causal_relations drop constraint causal_relations_no_self_loop_check`,
+      `alter table causal_relations
+         drop constraint causal_relations_no_self_loop_check,
+         drop constraint causal_relations_confidence_check`,
     );
     await pool.query(
       `alter table abstract_events
          drop constraint abstract_events_name_length_check,
          drop constraint abstract_events_description_check`,
     );
+    await pool.query(`alter table concrete_cases drop constraint concrete_cases_content_check`);
+    await pool.query(`alter table event_aliases drop constraint event_aliases_alias_length_check`);
+    await pool.query(`alter table event_keywords drop constraint event_keywords_length_check`);
   }, 120_000);
 
   afterEach(async () => {
@@ -283,9 +289,8 @@ describe.sequential('typed data-check governance actions', () => {
     expect(malformedContext.records).toEqual([
       expect.objectContaining({ id: eventA, primaryText: '   ', secondaryText: ['   '] }),
     ]);
-    expect(malformedContext.actions).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: 'open_edit' })]),
-    );
+    expect(malformedContext.actions.some((option) => option.type === 'open_edit')).toBe(false);
+    expect(malformedContext.message).toContain('详情页');
 
     await pool!.query(`delete from data_check_issues`);
     await pool!.query(`insert into concrete_cases (id, content) values ($1, '仍存在的案例')`, [
@@ -324,6 +329,261 @@ describe.sequential('typed data-check governance actions', () => {
     expect(danglingContext.actions).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: 'cleanup' })]),
     );
+  });
+
+  it('suppresses strict detail actions for records the current detail contracts cannot load', async () => {
+    await pool!.query(
+      `insert into abstract_events (id, name) values
+       ($1, '   '),
+       ($2, '可加载事件'),
+       ($3, '另一个可加载事件')`,
+      [eventA, eventB, eventC],
+    );
+    await pool!.query(`insert into concrete_cases (id, content) values ($1, '   ')`, [caseA]);
+    const aliasId = '42000000-0000-4000-8000-000000000010';
+    const keywordId = '52000000-0000-4000-8000-000000000010';
+    await pool!.query(
+      `insert into event_aliases (id, event_id, alias) values ($1, $2, '   ')`,
+      [aliasId, eventB],
+    );
+    await pool!.query(
+      `insert into event_keywords (id, event_id, keyword, position) values ($1, $2, '   ', 1)`,
+      [keywordId, eventC],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence) values
+       ($1, $2, $3, 150)`,
+      [relationA, eventB, eventC],
+    );
+    const missingCauseRelation = '22000000-0000-4000-8000-000000000011';
+    const missingEffectRelation = '22000000-0000-4000-8000-000000000012';
+    const missingEvent = '12000000-0000-4000-8000-000000000099';
+    const corruptionClient = await pool!.connect();
+    try {
+      await corruptionClient.query(`set session_replication_role = replica`);
+      await corruptionClient.query(
+        `insert into causal_relations
+           (id, cause_event_id, effect_event_id, confidence)
+         values ($1, $2, $3, 50), ($4, $3, $2, 50)`,
+        [missingCauseRelation, missingEvent, eventB, missingEffectRelation],
+      );
+      await corruptionClient.query(`set session_replication_role = origin`);
+    } finally {
+      corruptionClient.release();
+    }
+
+    const cases = [
+      {
+        issueId: 'b2000000-0000-4000-8000-000000000014',
+        issueType: 'invalid_event_name',
+        targetType: 'event',
+        targetId: eventA,
+      },
+      {
+        issueId: 'b2000000-0000-4000-8000-000000000015',
+        issueType: 'invalid_case_content',
+        targetType: 'case',
+        targetId: caseA,
+      },
+      {
+        issueId: 'b2000000-0000-4000-8000-000000000016',
+        issueType: 'invalid_alias_text',
+        targetType: 'alias',
+        targetId: aliasId,
+      },
+      {
+        issueId: 'b2000000-0000-4000-8000-000000000017',
+        issueType: 'invalid_keyword_text',
+        targetType: 'keyword',
+        targetId: keywordId,
+      },
+      {
+        issueId: 'b2000000-0000-4000-8000-000000000018',
+        issueType: 'relation_confidence_range',
+        targetType: 'relation',
+        targetId: relationA,
+      },
+      {
+        issueId: 'b2000000-0000-4000-8000-000000000019',
+        issueType: 'missing_relation_cause_event',
+        targetType: 'relation',
+        targetId: missingCauseRelation,
+        relatedId: missingEvent,
+      },
+      {
+        issueId: 'b2000000-0000-4000-8000-00000000001a',
+        issueType: 'missing_relation_effect_event',
+        targetType: 'relation',
+        targetId: missingEffectRelation,
+        relatedId: missingEvent,
+      },
+    ] as const;
+
+    for (const values of cases) {
+      await currentIssue(values);
+      const response = await context!.app.inject({
+        method: 'GET',
+        url: `/api/data-checks/issues/${values.issueId}/action-context?snapshotId=${snapshotId}`,
+      });
+      expect(response.statusCode).toBe(200);
+      const actionContext = response.json<DataCheckActionContext>();
+      expect(actionContext.records).not.toEqual([]);
+      expect(actionContext.actions.some((option) => option.type === 'open_edit')).toBe(false);
+      expect(actionContext.message).toContain('详情页');
+    }
+
+    const rechecked = await context!.app.inject({
+      method: 'POST',
+      url: `/api/data-checks/issues/${cases[0].issueId}/recheck`,
+      payload: { snapshotId },
+    });
+    expect(rechecked.statusCode).toBe(200);
+    expect(rechecked.json<DataCheckRecheckResponse>()).toMatchObject({
+      status: 'open',
+      context: {
+        records: [expect.objectContaining({ id: eventA, primaryText: '   ' })],
+        message: expect.stringContaining('详情页'),
+      },
+    });
+
+    await pool!.query(`insert into abstract_events (id, name) values ($1, '完整详情事件')`, [
+      eventD,
+    ]);
+    const validAliasId = '42000000-0000-4000-8000-000000000011';
+    const validKeywordId = '52000000-0000-4000-8000-000000000011';
+    await pool!.query(
+      `insert into event_aliases (id, event_id, alias) values ($1, $2, '可加载别名')`,
+      [validAliasId, eventD],
+    );
+    await pool!.query(
+      `insert into event_keywords (id, event_id, keyword, position)
+       values ($1, $2, '可加载关键词', 1)`,
+      [validKeywordId, eventD],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $2, $3, 50)`,
+      [relationB, eventB, eventC],
+    );
+    await pool!.query(`insert into concrete_cases (id, content) values ($1, '可加载关联案例')`, [
+      caseB,
+    ]);
+    await pool!.query(
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+       values ($1, $2)`,
+      [relationB, caseB],
+    );
+
+    const loadableFallbackCases = [
+      {
+        issueId: 'b2000000-0000-4000-8000-00000000001b',
+        targetType: 'alias',
+        targetId: validAliasId,
+        editPath: `/events/${eventD}`,
+      },
+      {
+        issueId: 'b2000000-0000-4000-8000-00000000001c',
+        targetType: 'keyword',
+        targetId: validKeywordId,
+        editPath: `/events/${eventD}`,
+      },
+      {
+        issueId: 'b2000000-0000-4000-8000-00000000001d',
+        targetType: 'relation_case',
+        targetId: relationB,
+        relatedId: caseB,
+        editPath: `/relations/${relationB}`,
+      },
+    ] as const;
+
+    for (const values of loadableFallbackCases) {
+      await currentIssue({
+        ...values,
+        issueType: 'future_unknown_data_check',
+      });
+      const response = await context!.app.inject({
+        method: 'GET',
+        url: `/api/data-checks/issues/${values.issueId}/action-context?snapshotId=${snapshotId}`,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json<DataCheckActionContext>()).toMatchObject({
+        actions: expect.arrayContaining([
+          expect.objectContaining({ type: 'open_edit', editPath: values.editPath }),
+        ]),
+        message: null,
+      });
+    }
+  });
+
+  it('re-sequences reverse physical keyword rows and post-delete gaps without unique collisions', async () => {
+    await pool!.query(
+      `insert into abstract_events (id, name) values ($1, '关键词重排事件'), ($2, '删除后重排事件')`,
+      [eventA, eventB],
+    );
+    const keyword1 = '52000000-0000-4000-8000-000000000021';
+    const keyword2 = '52000000-0000-4000-8000-000000000022';
+    const keyword3 = '52000000-0000-4000-8000-000000000023';
+    await pool!.query(
+      `insert into event_keywords (id, event_id, keyword, position) values
+       ($1, $4, '位置七', 7),
+       ($2, $4, '位置四', 4),
+       ($3, $4, '位置二', 2)`,
+      [keyword1, keyword2, keyword3, eventA],
+    );
+    const resequenceIssue = 'b2000000-0000-4000-8000-000000000060';
+    await currentIssue({
+      issueId: resequenceIssue,
+      issueType: 'resequence_keywords',
+      targetType: 'event',
+      targetId: eventA,
+    });
+    const resequenced = await postAction(resequenceIssue, { type: 'cleanup', snapshotId });
+    expect(resequenced.statusCode).toBe(200);
+    expect(
+      (
+        await pool!.query(
+          `select id::text, position from event_keywords where event_id = $1 order by position`,
+          [eventA],
+        )
+      ).rows,
+    ).toEqual([
+      { id: keyword3, position: 1 },
+      { id: keyword2, position: 2 },
+      { id: keyword1, position: 3 },
+    ]);
+
+    await pool!.query(`delete from data_check_issues`);
+    const retainedKeyword = '52000000-0000-4000-8000-000000000031';
+    const otherKeyword = '52000000-0000-4000-8000-000000000032';
+    const duplicateKeyword = '52000000-0000-4000-8000-000000000033';
+    await pool!.query(
+      `insert into event_keywords (id, event_id, keyword, position) values
+       ($2, $4, '其他词', 3),
+       ($3, $4, '重复词', 4),
+       ($1, $4, '重复词', 2)`,
+      [retainedKeyword, otherKeyword, duplicateKeyword, eventB],
+    );
+    const duplicateIssue = 'b2000000-0000-4000-8000-000000000061';
+    await currentIssue({
+      issueId: duplicateIssue,
+      issueType: 'delete_duplicate_keyword',
+      targetType: 'keyword',
+      targetId: duplicateKeyword,
+      relatedId: retainedKeyword,
+    });
+    const deleted = await postAction(duplicateIssue, { type: 'cleanup', snapshotId });
+    expect(deleted.statusCode).toBe(200);
+    expect(
+      (
+        await pool!.query(
+          `select id::text, position from event_keywords where event_id = $1 order by position`,
+          [eventB],
+        )
+      ).rows,
+    ).toEqual([
+      { id: retainedKeyword, position: 1 },
+      { id: otherKeyword, position: 2 },
+    ]);
   });
 
   it.each([
