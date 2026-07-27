@@ -1390,4 +1390,171 @@ describe('DataMaintenance', () => {
     await waitFor(() => expect(router.state.location.search).toBe('?severity=warning'));
     expect(rechecks).toBe(0);
   });
+
+  it('preserves a saved return through page clamping and canonicalization before rechecking S', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000052', 'manual');
+    const returnState = {
+      dataCheckReturnPath: `/maintenance?page=4&severity=warning&issue=${current.id}`,
+      dataCheckSnapshotId: snapshotId,
+      dataCheckIssueId: current.id,
+      dataCheckReturnMode: 'saved',
+    } as const;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    queryClient.setQueryData(['data-checks', 'latest'], succeeded);
+    let resolveLatest!: (value: Response) => void;
+    let resolveIssues!: (value: Response) => void;
+    const pendingLatest = new Promise<Response>((resolve) => {
+      resolveLatest = resolve;
+    });
+    const pendingIssues = new Promise<Response>((resolve) => {
+      resolveIssues = resolve;
+    });
+    let rechecks = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return pendingLatest;
+      if (url.includes('/latest/issues')) return pendingIssues;
+      if (url.includes('/action-context')) return jsonResponse(context(current.id));
+      if (url.includes('/recheck') && options?.method === 'POST') {
+        rechecks += 1;
+        return jsonResponse({ status: 'open', issue: current, context: context(current.id) });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderMaintenanceRoute(
+      `/maintenance?page=4&severity=warning&issue=${current.id}&recheck=1`,
+      returnState,
+      queryClient,
+    );
+    const transitions: string[] = [];
+    const unsubscribe = router.subscribe((state) => {
+      transitions.push(state.location.search);
+    });
+
+    resolveIssues(await jsonResponse(issuePage([current], 1, 1)));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(
+        `?severity=warning&issue=${current.id}&recheck=1`,
+      ),
+    );
+    expect(transitions.some((search) => search.includes('page=1'))).toBe(true);
+    expect(router.state.location.state).toEqual(returnState);
+
+    resolveLatest(await jsonResponse(succeeded));
+    await waitFor(() => expect(rechecks).toBe(1));
+    expect(router.state.location.search).toBe(`?severity=warning&issue=${current.id}`);
+    expect(router.state.location.state).toEqual(returnState);
+    unsubscribe();
+  });
+
+  it('preserves stale cancel evidence through page canonicalization and rejects it after T', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000053', 'manual');
+    const latestSnapshotId = 'a1000000-0000-4000-8000-000000000103';
+    const latest = {
+      ...succeeded,
+      snapshot: { ...succeeded.snapshot!, snapshotId: latestSnapshotId },
+    };
+    const returnState = {
+      dataCheckReturnPath: `/maintenance?page=4&severity=warning&issue=${current.id}`,
+      dataCheckSnapshotId: snapshotId,
+      dataCheckIssueId: current.id,
+      dataCheckReturnMode: 'cancel',
+    } as const;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    queryClient.setQueryData(['data-checks', 'latest'], succeeded);
+    let resolveLatest!: (value: Response) => void;
+    let resolveIssues!: (value: Response) => void;
+    const pendingLatest = new Promise<Response>((resolve) => {
+      resolveLatest = resolve;
+    });
+    const pendingIssues = new Promise<Response>((resolve) => {
+      resolveIssues = resolve;
+    });
+    const staleRequests: string[] = [];
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return pendingLatest;
+      if (url.includes('/latest/issues')) return pendingIssues;
+      if (url.includes('/action-context')) {
+        staleRequests.push(url);
+        return jsonResponse(context(current.id));
+      }
+      if (url.includes('/recheck') && options?.method === 'POST') {
+        staleRequests.push(url);
+        return jsonResponse({ status: 'open', issue: current, context: context(current.id) });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderMaintenanceRoute(
+      `/maintenance?page=4&severity=warning&issue=${current.id}`,
+      returnState,
+      queryClient,
+    );
+    const transitions: string[] = [];
+    const unsubscribe = router.subscribe((state) => {
+      transitions.push(state.location.search);
+    });
+
+    resolveIssues(await jsonResponse(issuePage([current], 1, 1)));
+    await waitFor(() =>
+      expect(router.state.location.search).toBe(`?severity=warning&issue=${current.id}`),
+    );
+    expect(transitions.some((search) => search.includes('page=1'))).toBe(true);
+    expect(router.state.location.state).toEqual(returnState);
+
+    resolveLatest(await jsonResponse(latest));
+    await waitFor(() => {
+      expect(router.state.location.search).toBe('?severity=warning');
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    expect(staleRequests).toEqual([]);
+    unsubscribe();
+  });
+
+  it('preserves navigation state across general query canonicalization replaces', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000054', 'manual');
+    const returnState = {
+      dataCheckReturnPath: `/maintenance?issue=${current.id}`,
+      dataCheckSnapshotId: snapshotId,
+      dataCheckIssueId: current.id,
+      dataCheckReturnMode: 'cancel',
+    } as const;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    queryClient.setQueryData(['data-checks', 'latest'], succeeded);
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return new Promise(() => undefined);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderMaintenanceRoute(
+      '/maintenance?page=1&severity=critical&issueType=unknown&status=stale&issue=bad&recheck=bad',
+      returnState,
+      queryClient,
+    );
+
+    await waitFor(() => expect(router.state.location.search).toBe(''));
+    expect(router.state.location.state).toEqual(returnState);
+  });
 });

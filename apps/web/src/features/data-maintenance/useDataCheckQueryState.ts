@@ -79,10 +79,11 @@ export function useDataCheckQueryState(): DataCheckQueryState {
     if (rawIssueId !== null && !issueId) next.delete('issue');
     if (searchParameters.has('recheck') && !recheck) next.delete('recheck');
     if (next.toString() !== searchParameters.toString())
-      setSearchParameters(next, { replace: true });
+      setSearchParameters(next, { replace: true, state: location.state });
   }, [
     issueId,
     issueType,
+    location.state,
     page,
     rawIssueId,
     rawIssueType,
