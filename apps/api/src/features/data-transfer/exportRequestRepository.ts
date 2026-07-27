@@ -13,7 +13,12 @@ export interface StoredExportRequest {
 }
 
 export interface ExportRequestRepository {
-  create(client: PoolClient, input: ExportPreviewInput, expiresAt: Date): Promise<string>;
+  create(
+    client: PoolClient,
+    input: ExportPreviewInput,
+    createdAt: Date,
+    expiresAt: Date,
+  ): Promise<string>;
   read(client: PoolClient, rawToken: string): Promise<StoredExportRequest>;
   deleteExpired(client: PoolClient, now: Date): Promise<number>;
 }
@@ -78,13 +83,17 @@ export class PostgresExportRequestRepository implements ExportRequestRepository 
     this.createToken = options.createToken ?? createExportToken;
   }
 
-  public async create(client: PoolClient, rawInput: ExportPreviewInput, expiresAt: Date): Promise<string> {
+  public async create(
+    client: PoolClient,
+    rawInput: ExportPreviewInput,
+    createdAt: Date,
+    expiresAt: Date,
+  ): Promise<string> {
     const input = normalizeExportInput(rawInput);
     const rawToken = this.createToken();
     if (!isExportTokenFormat(rawToken)) {
       throw new Error('Export token generator returned an invalid token');
     }
-    const createdAt = this.now();
     await client.query(
       `insert into export_requests (
          token_hash, export_type, start_event_ids, direction, depth, created_at, expires_at

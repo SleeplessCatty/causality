@@ -1,7 +1,4 @@
-import type {
-  ExportCounts,
-  ExportPreviewInput,
-} from '@causality/contracts';
+import type { ExportCounts, ExportPreviewInput } from '@causality/contracts';
 import type { PoolClient } from 'pg';
 
 import type { CaseExportRow, EventExportRow, RelationExportRow } from './dataTransferTypes.js';
@@ -56,62 +53,62 @@ async function createScopeTables(client: PoolClient): Promise<void> {
     create temp table if not exists export_scope_cases (
       id uuid primary key
     ) on commit drop;
-    truncate export_scope_events, export_scope_relations, export_scope_cases;
+    create temp table if not exists export_scope_frontier (
+      id uuid primary key,
+      depth smallint not null
+    ) on commit drop;
+    truncate export_scope_events, export_scope_relations, export_scope_cases,
+      export_scope_frontier;
   `);
 }
 
-async function insertFilteredScope(client: PoolClient, input: Extract<ExportPreviewInput, { type: 'filtered' }>): Promise<void> {
+async function insertFilteredScope(
+  client: PoolClient,
+  input: Extract<ExportPreviewInput, { type: 'filtered' }>,
+): Promise<void> {
   await assertStartEventsExist(client, input.startEventIds);
 
   await client.query(
-    `with recursive walk(event_id, depth, path) as (
-       select start_id, 0, array[start_id]::uuid[]
-       from unnest($1::uuid[]) as starts(start_id)
-       union all
-       select step.next_event_id, walk.depth + 1, walk.path || step.next_event_id
-       from walk
-       join lateral (
+    `insert into export_scope_frontier (id, depth)
+     select id, 0
+     from unnest($1::uuid[]) as starts(id)
+     on conflict do nothing`,
+    [input.startEventIds],
+  );
+
+  for (let depth = 0; depth < input.depth; depth += 1) {
+    const expansion = await client.query(
+      `with steps as materialized (
          select relation.id as relation_id,
                 case
-                  when ($2::text in ('downstream', 'both') and relation.cause_event_id = walk.event_id)
+                  when ($1::text in ('downstream', 'both')
+                    and relation.cause_event_id = frontier.id)
                     then relation.effect_event_id
                   else relation.cause_event_id
                 end as next_event_id
-         from causal_relations relation
-         where ($2::text in ('downstream', 'both') and relation.cause_event_id = walk.event_id)
-            or ($2::text in ('upstream', 'both') and relation.effect_event_id = walk.event_id)
-       ) step on true
-       where walk.depth < $3
-         and not (step.next_event_id = any(walk.path))
-     ), in_range_relations as (
-       select distinct step.relation_id as id
-       from walk
-       join lateral (
-         select relation.id as relation_id
-         from causal_relations relation
-         where ($2::text in ('downstream', 'both') and relation.cause_event_id = walk.event_id)
-            or ($2::text in ('upstream', 'both') and relation.effect_event_id = walk.event_id)
-       ) step on true
-       where walk.depth < $3
-     )
-     insert into export_scope_relations (id)
-     select id from in_range_relations
-     on conflict do nothing`,
-    [input.startEventIds, input.direction, input.depth],
-  );
+         from export_scope_frontier frontier
+         join causal_relations relation
+           on ($1::text in ('downstream', 'both') and relation.cause_event_id = frontier.id)
+           or ($1::text in ('upstream', 'both') and relation.effect_event_id = frontier.id)
+         where frontier.depth = $2
+       ), inserted_relations as (
+         insert into export_scope_relations (id)
+         select distinct relation_id from steps
+         on conflict do nothing
+       )
+       insert into export_scope_frontier (id, depth)
+       select distinct next_event_id, $3::smallint
+       from steps
+       on conflict do nothing`,
+      [input.direction, depth, depth + 1],
+    );
+    if ((expansion.rowCount ?? 0) === 0) break;
+  }
+
   await client.query(
     `insert into export_scope_events (id)
-     select id from unnest($1::uuid[]) as starts(id)
-     union
-     select relation.cause_event_id
-     from causal_relations relation
-     join export_scope_relations scope on scope.id = relation.id
-     union
-     select relation.effect_event_id
-     from causal_relations relation
-     join export_scope_relations scope on scope.id = relation.id
+     select id from export_scope_frontier
      on conflict do nothing`,
-    [input.startEventIds],
   );
   await client.query(
     `insert into export_scope_cases (id)
@@ -123,7 +120,10 @@ async function insertFilteredScope(client: PoolClient, input: Extract<ExportPrev
 }
 
 export class PostgresExportScopeRepository implements ExportScopeRepository {
-  public async materialize(client: PoolClient, rawInput: ExportPreviewInput): Promise<ExportCounts> {
+  public async materialize(
+    client: PoolClient,
+    rawInput: ExportPreviewInput,
+  ): Promise<ExportCounts> {
     const input = normalizeExportInput(rawInput);
     await createScopeTables(client);
     if (input.type === 'full') {
@@ -152,12 +152,13 @@ export class PostgresExportScopeRepository implements ExportScopeRepository {
     };
   }
 
-  public async *streamEvents(client: PoolClient, batchSize: number): AsyncIterable<EventExportRow[]> {
+  public async *streamEvents(
+    client: PoolClient,
+    batchSize: number,
+  ): AsyncIterable<EventExportRow[]> {
     let lastId: string | undefined;
     while (true) {
-      const result = await client.query<
-        EventExportRow & { id: string }
-      >(
+      const result = await client.query<EventExportRow & { id: string }>(
         `select event.id, event.name, event.description,
                 coalesce((
                   select array_agg(alias.alias order by alias.alias)

@@ -17,8 +17,11 @@ const fixedNow = new Date('2026-07-27T08:00:00.000Z');
 class RecordingScopeRepository implements ExportScopeRepository {
   public readonly inputs: ExportPreviewInput[] = [];
 
+  public constructor(private readonly onMaterialize: () => void = () => undefined) {}
+
   public async materialize(_client: PoolClient, input: ExportPreviewInput): Promise<ExportCounts> {
     this.inputs.push(input);
+    this.onMaterialize();
     return { events: 3, relations: 2, cases: 1 };
   }
 
@@ -36,16 +39,22 @@ class RecordingScopeRepository implements ExportScopeRepository {
 }
 
 class RecordingRequestRepository implements ExportRequestRepository {
-  public readonly creates: Array<{ input: ExportPreviewInput; expiresAt: Date }> = [];
+  public readonly creates: Array<{
+    input: ExportPreviewInput;
+    createdAt: Date;
+    expiresAt: Date;
+  }> = [];
+  public readonly cleanups: Date[] = [];
   public readonly reads: string[] = [];
   public stored: StoredExportRequest | null = null;
 
   public async create(
     _client: PoolClient,
     input: ExportPreviewInput,
+    createdAt: Date,
     expiresAt: Date,
   ): Promise<string> {
-    this.creates.push({ input, expiresAt });
+    this.creates.push({ input, createdAt, expiresAt });
     return 'a'.repeat(43);
   }
 
@@ -55,7 +64,8 @@ class RecordingRequestRepository implements ExportRequestRepository {
     return this.stored;
   }
 
-  public async deleteExpired(): Promise<number> {
+  public async deleteExpired(_client: PoolClient, now: Date): Promise<number> {
+    this.cleanups.push(now);
     return 0;
   }
 }
@@ -66,7 +76,9 @@ function createPool(eventCount = 1): { pool: Pool; queries: string[] } {
     query: vi.fn(async (sql: string) => {
       queries.push(sql);
       if (sql.includes('count(*)')) {
-        return { rows: [{ count: String(eventCount) }] } as unknown as QueryResult<{ count: string }>;
+        return { rows: [{ count: String(eventCount) }] } as unknown as QueryResult<{
+          count: string;
+        }>;
       }
       return { rows: [] } as unknown as QueryResult;
     }),
@@ -98,17 +110,44 @@ describe('ExportService', () => {
       counts: { events: 3, relations: 2, cases: 1 },
     });
 
-    expect(queries).toEqual([
-      'begin transaction isolation level repeatable read',
-      'commit',
-    ]);
+    expect(queries).toEqual(['begin transaction isolation level repeatable read', 'commit']);
     expect(scope.inputs).toEqual([
       { type: 'filtered', startEventIds: [startId], direction: 'both', depth: 2 },
     ]);
     expect(requests.creates).toEqual([
       {
         input: { type: 'filtered', startEventIds: [startId], direction: 'both', depth: 2 },
+        createdAt: fixedNow,
         expiresAt: new Date('2026-07-27T08:10:00.000Z'),
+      },
+    ]);
+    expect(requests.cleanups).toEqual([fixedNow]);
+  });
+
+  it('starts the exact configured lifetime only after delayed scope materialization', async () => {
+    const { pool } = createPool();
+    let clock = new Date('2026-07-27T08:00:00.000Z');
+    const issuance = new Date('2026-07-27T08:04:30.000Z');
+    const scope = new RecordingScopeRepository(() => {
+      clock = issuance;
+    });
+    const requests = new RecordingRequestRepository();
+    const service = new ExportService(pool, scope, requests, {
+      now: () => clock,
+      tokenLifetimeMs: 90_000,
+    });
+
+    await expect(service.previewExport({ type: 'full' })).resolves.toEqual({
+      token: 'a'.repeat(43),
+      expiresAt: '2026-07-27T08:06:00.000Z',
+      counts: { events: 3, relations: 2, cases: 1 },
+    });
+    expect(requests.cleanups).toEqual([issuance]);
+    expect(requests.creates).toEqual([
+      {
+        input: { type: 'full' },
+        createdAt: issuance,
+        expiresAt: new Date('2026-07-27T08:06:00.000Z'),
       },
     ]);
   });
@@ -171,7 +210,12 @@ describe('PostgresExportRequestRepository', () => {
     const repository = new PostgresExportRequestRepository({ createToken: () => rawToken });
 
     await expect(
-      repository.create(client, { type: 'filtered', startEventIds: [startId], direction: 'both', depth: 2 }, new Date('2026-07-27T08:10:00.000Z')),
+      repository.create(
+        client,
+        { type: 'filtered', startEventIds: [startId], direction: 'both', depth: 2 },
+        fixedNow,
+        new Date('2026-07-27T08:10:00.000Z'),
+      ),
     ).resolves.toBe(rawToken);
 
     expect(queries).toHaveLength(1);

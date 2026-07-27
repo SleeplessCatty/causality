@@ -29,9 +29,7 @@ export interface ExportServiceOptions {
 export class ExportServiceError extends Error {
   public constructor(
     public readonly code:
-      | 'EXPORT_TOKEN_INVALID'
-      | 'EXPORT_TOKEN_EXPIRED'
-      | 'EXPORT_START_EVENT_NOT_FOUND',
+      'EXPORT_TOKEN_INVALID' | 'EXPORT_TOKEN_EXPIRED' | 'EXPORT_START_EVENT_NOT_FOUND',
     message: string,
     options?: ErrorOptions,
   ) {
@@ -65,15 +63,16 @@ export class ExportService {
 
   public async previewExport(rawInput: ExportPreviewInput): Promise<ExportPreviewResponse> {
     const input = normalizeExportInput(rawInput);
-    const createdAt = this.now();
-    const expiresAt = new Date(createdAt.getTime() + this.tokenLifetimeMs);
     const client = await this.pool.connect();
     let transactionStarted = false;
     try {
       await client.query('begin transaction isolation level repeatable read');
       transactionStarted = true;
       const counts = await this.scopeRepository.materialize(client, input);
-      const token = await this.requestRepository.create(client, input, expiresAt);
+      const createdAt = this.now();
+      const expiresAt = new Date(createdAt.getTime() + this.tokenLifetimeMs);
+      await this.requestRepository.deleteExpired(client, createdAt);
+      const token = await this.requestRepository.create(client, input, createdAt, expiresAt);
       await client.query('commit');
       transactionStarted = false;
       return { token, expiresAt: expiresAt.toISOString(), counts };

@@ -1,7 +1,13 @@
+import { createHash } from 'node:crypto';
+
 import type { ExportPreviewInput } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import {
+  ExportRequestError,
+  PostgresExportRequestRepository,
+} from '../src/features/data-transfer/exportRequestRepository.js';
 import {
   ExportScopeError,
   PostgresExportScopeRepository,
@@ -99,7 +105,9 @@ async function seedGraph(pool: Pool): Promise<void> {
 async function materializedIds(client: PoolClient, input: ExportPreviewInput) {
   const repository = new PostgresExportScopeRepository();
   const counts = await repository.materialize(client, input);
-  const events = await client.query<{ id: string }>('select id from export_scope_events order by id');
+  const events = await client.query<{ id: string }>(
+    'select id from export_scope_events order by id',
+  );
   const relations = await client.query<{ id: string }>(
     'select id from export_scope_relations order by id',
   );
@@ -112,7 +120,7 @@ async function materializedIds(client: PoolClient, input: ExportPreviewInput) {
   };
 }
 
-describe.sequential('PostgresExportScopeRepository', () => {
+describe.sequential('Postgres export repositories', () => {
   let context: StartedPostgresTestContext | undefined;
   let pool: Pool | undefined;
 
@@ -237,6 +245,113 @@ describe.sequential('PostgresExportScopeRepository', () => {
     });
   });
 
+  it('uses a minimum-depth frontier across dense convergence, long revisits, and cycles', async () => {
+    const denseEventIds = {
+      root: '74000000-0000-4000-8000-000000000001',
+      merge: '74000000-0000-4000-8000-000000000002',
+      left: '74000000-0000-4000-8000-000000000003',
+      p: '74000000-0000-4000-8000-000000000004',
+      q: '74000000-0000-4000-8000-000000000005',
+      next: '74000000-0000-4000-8000-000000000006',
+      mid: '74000000-0000-4000-8000-000000000007',
+      tail: '74000000-0000-4000-8000-000000000008',
+    } as const;
+    const denseRelationIds = {
+      rootMerge: '75000000-0000-4000-8000-000000000001',
+      rootLeft: '75000000-0000-4000-8000-000000000002',
+      rootP: '75000000-0000-4000-8000-000000000003',
+      rootQ: '75000000-0000-4000-8000-000000000004',
+      mergeNext: '75000000-0000-4000-8000-000000000005',
+      leftMid: '75000000-0000-4000-8000-000000000006',
+      pMerge: '75000000-0000-4000-8000-000000000007',
+      pQ: '75000000-0000-4000-8000-000000000008',
+      qMerge: '75000000-0000-4000-8000-000000000009',
+      qP: '75000000-0000-4000-8000-000000000010',
+      nextTail: '75000000-0000-4000-8000-000000000011',
+      midMerge: '75000000-0000-4000-8000-000000000012',
+    } as const;
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       select id, name
+       from jsonb_to_recordset($1::jsonb) as input(id uuid, name text)`,
+      [
+        JSON.stringify(
+          Object.entries(denseEventIds).map(([name, id]) => ({ id, name: `密集-${name}` })),
+        ),
+      ],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       select id, cause_id, effect_id, 80
+       from jsonb_to_recordset($1::jsonb)
+         as input(id uuid, cause_id uuid, effect_id uuid)`,
+      [
+        JSON.stringify([
+          {
+            id: denseRelationIds.rootMerge,
+            cause_id: denseEventIds.root,
+            effect_id: denseEventIds.merge,
+          },
+          {
+            id: denseRelationIds.rootLeft,
+            cause_id: denseEventIds.root,
+            effect_id: denseEventIds.left,
+          },
+          { id: denseRelationIds.rootP, cause_id: denseEventIds.root, effect_id: denseEventIds.p },
+          { id: denseRelationIds.rootQ, cause_id: denseEventIds.root, effect_id: denseEventIds.q },
+          {
+            id: denseRelationIds.mergeNext,
+            cause_id: denseEventIds.merge,
+            effect_id: denseEventIds.next,
+          },
+          {
+            id: denseRelationIds.leftMid,
+            cause_id: denseEventIds.left,
+            effect_id: denseEventIds.mid,
+          },
+          {
+            id: denseRelationIds.pMerge,
+            cause_id: denseEventIds.p,
+            effect_id: denseEventIds.merge,
+          },
+          { id: denseRelationIds.pQ, cause_id: denseEventIds.p, effect_id: denseEventIds.q },
+          {
+            id: denseRelationIds.qMerge,
+            cause_id: denseEventIds.q,
+            effect_id: denseEventIds.merge,
+          },
+          { id: denseRelationIds.qP, cause_id: denseEventIds.q, effect_id: denseEventIds.p },
+          {
+            id: denseRelationIds.nextTail,
+            cause_id: denseEventIds.next,
+            effect_id: denseEventIds.tail,
+          },
+          {
+            id: denseRelationIds.midMerge,
+            cause_id: denseEventIds.mid,
+            effect_id: denseEventIds.merge,
+          },
+        ]),
+      ],
+    );
+
+    const result = await inTransaction((client) =>
+      materializedIds(client, {
+        type: 'filtered',
+        startEventIds: [denseEventIds.root],
+        direction: 'downstream',
+        depth: 3,
+      }),
+    );
+
+    expect(result).toEqual({
+      counts: { events: 8, relations: 12, cases: 0 },
+      events: Object.values(denseEventIds),
+      relations: Object.values(denseRelationIds),
+      cases: [],
+    });
+  });
+
   it('includes all full-export orphans, but keeps a filtered orphan isolated', async () => {
     const full = await inTransaction((client) => materializedIds(client, { type: 'full' }));
     expect(full).toEqual({
@@ -276,5 +391,73 @@ describe.sequential('PostgresExportScopeRepository', () => {
       code: 'EXPORT_START_EVENT_NOT_FOUND',
       message: '起始原子事件不存在',
     } satisfies Partial<ExportScopeError>);
+  });
+
+  it('stores production tokens only by exact SHA-256 and returns stable read errors', async () => {
+    await inTransaction(async (client) => {
+      const createdAt = new Date('2026-07-27T08:00:00.000Z');
+      const expiresAt = new Date('2026-07-27T08:10:00.000Z');
+      const repository = new PostgresExportRequestRepository({
+        now: () => new Date('2026-07-27T08:05:00.000Z'),
+      });
+      const rawToken = await repository.create(client, { type: 'full' }, createdAt, expiresAt);
+      expect(rawToken).toMatch(/^[A-Za-z0-9_-]+$/);
+      expect(Buffer.from(rawToken, 'base64url').byteLength).toBeGreaterThanOrEqual(32);
+
+      const expectedHash = createHash('sha256').update(rawToken).digest('hex');
+      const stored = await client.query<{ stored: string; token_hash: string }>(
+        `select token_hash, row_to_json(export_requests)::text as stored
+         from export_requests
+         where token_hash = $1`,
+        [expectedHash],
+      );
+      expect(stored.rows).toHaveLength(1);
+      expect(stored.rows[0]!.token_hash).toBe(expectedHash);
+      expect(stored.rows[0]!.stored).not.toContain(rawToken);
+      await expect(repository.read(client, rawToken)).resolves.toMatchObject({
+        input: { type: 'full' },
+        createdAt,
+        expiresAt,
+      });
+      await expect(repository.read(client, 'z'.repeat(43))).rejects.toMatchObject({
+        code: 'EXPORT_TOKEN_INVALID',
+        message: '导出令牌无效',
+      } satisfies Partial<ExportRequestError>);
+
+      const expiredRepository = new PostgresExportRequestRepository({
+        now: () => new Date('2026-07-27T08:11:00.000Z'),
+      });
+      await expect(expiredRepository.read(client, rawToken)).rejects.toMatchObject({
+        code: 'EXPORT_TOKEN_EXPIRED',
+        message: '导出令牌已过期',
+      } satisfies Partial<ExportRequestError>);
+    });
+  });
+
+  it('cleanup deletes only requests expired at or before issuance', async () => {
+    await inTransaction(async (client) => {
+      const repository = new PostgresExportRequestRepository();
+      const createdAt = new Date('2026-07-27T07:00:00.000Z');
+      const issuance = new Date('2026-07-27T08:00:00.000Z');
+      await repository.create(
+        client,
+        { type: 'full' },
+        createdAt,
+        new Date('2026-07-27T07:30:00.000Z'),
+      );
+      await repository.create(client, { type: 'full' }, createdAt, issuance);
+      await repository.create(
+        client,
+        { type: 'full' },
+        createdAt,
+        new Date('2026-07-27T08:30:00.000Z'),
+      );
+
+      await expect(repository.deleteExpired(client, issuance)).resolves.toBe(2);
+      const remaining = await client.query<{ expires_at: Date }>(
+        'select expires_at from export_requests',
+      );
+      expect(remaining.rows).toEqual([{ expires_at: new Date('2026-07-27T08:30:00.000Z') }]);
+    });
   });
 });
