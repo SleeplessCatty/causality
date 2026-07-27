@@ -1,8 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
 import { E2E_WRITE_BATCH_SIZE, runInBatches } from './support/runInBatches';
-
-const apiBase = 'http://127.0.0.1:3000/api';
+import { apiBase } from './support/urls';
 
 async function createEvent(request: APIRequestContext, name: string) {
   const response = await request.post(`${apiBase}/events`, {
@@ -78,7 +77,7 @@ test('user can create a reverse relation, inspect it inline, edit it, and find i
 
   const cause = await createEvent(request, causeName);
   const effect = await createEvent(request, effectName);
-  const forward = await request.post('http://127.0.0.1:3000/api/relations', {
+  const forward = await request.post(`${apiBase}/relations`, {
     data: {
       causeEventId: cause.id,
       effectEventId: effect.id,

@@ -227,7 +227,10 @@ describe('event route pages', () => {
       dataCheckIssueId: issueId,
       dataCheckReturnMode: 'saved',
     };
-    vi.stubGlobal('fetch', vi.fn(() => jsonResponse(eventDetail)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse(eventDetail)),
+    );
     const router = renderRoute('/events/:eventId/edit', <EventEditPage />, state);
 
     await screen.findByRole('textbox', { name: '标准名称' });

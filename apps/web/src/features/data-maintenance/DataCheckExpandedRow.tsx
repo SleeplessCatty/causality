@@ -7,10 +7,7 @@ import { DataCheckActionPlan, DataCheckPanelActions } from './DataCheckActionPla
 import { DataCheckIssueSummary } from './DataCheckIssueSummary';
 import { DataCheckMergePlan } from './DataCheckMergePlan';
 import { getDataCheckActionContext } from './dataMaintenanceApi';
-import {
-  isStaleDataCheckActionError,
-  useDataCheckIssueAction,
-} from './useDataCheckIssueAction';
+import { isStaleDataCheckActionError, useDataCheckIssueAction } from './useDataCheckIssueAction';
 
 interface DataCheckExpandedRowProps {
   issue: DataCheckIssueListItem;
@@ -18,13 +15,10 @@ interface DataCheckExpandedRowProps {
   onHandled(): void;
 }
 
-export function DataCheckExpandedRow({
-  issue,
-  snapshotId,
-  onHandled,
-}: DataCheckExpandedRowProps) {
-  const [selectedMergeAction, setSelectedMergeAction] =
-    useState<DataCheckActionOption | null>(null);
+export function DataCheckExpandedRow({ issue, snapshotId, onHandled }: DataCheckExpandedRowProps) {
+  const [selectedMergeAction, setSelectedMergeAction] = useState<DataCheckActionOption | null>(
+    null,
+  );
   const contextQuery = useQuery({
     queryKey: ['data-checks', 'action-context', issue.id, snapshotId],
     queryFn: ({ signal }) => getDataCheckActionContext(issue.id, snapshotId, signal),
@@ -35,19 +29,14 @@ export function DataCheckExpandedRow({
     onSuccess: onHandled,
   });
   const context = contextQuery.data;
-  const ignoreAction =
-    context?.actions.find((candidate) => candidate.type === 'ignore') ?? null;
+  const ignoreAction = context?.actions.find((candidate) => candidate.type === 'ignore') ?? null;
   const fixedAction =
     context?.actions.find(
       (candidate) => candidate.type !== 'ignore' && candidate.type !== 'merge',
     ) ?? null;
-  const hasMergeAction =
-    context?.actions.some((candidate) => candidate.type === 'merge') ?? false;
-  const confirmAction =
-    context?.panelKind === 'merge' ? selectedMergeAction : fixedAction;
-  const contextStale = Boolean(
-    context && (context.actions.length === 0 || context.message),
-  );
+  const hasMergeAction = context?.actions.some((candidate) => candidate.type === 'merge') ?? false;
+  const confirmAction = context?.panelKind === 'merge' ? selectedMergeAction : fixedAction;
+  const contextStale = Boolean(context && (context.actions.length === 0 || context.message));
   const disabled = contextStale || mutation.stale;
 
   return (
@@ -57,10 +46,7 @@ export function DataCheckExpandedRow({
       data-snapshot-id={snapshotId}
       aria-live="polite"
     >
-      <DataCheckIssueSummary
-        description={issue.description}
-        suggestion={issue.suggestion}
-      />
+      <DataCheckIssueSummary description={issue.description} suggestion={issue.suggestion} />
       {contextQuery.isPending ? (
         <div className="data-check-action-loading" role="status">
           正在加载处理方案…
@@ -90,10 +76,7 @@ export function DataCheckExpandedRow({
             <DataCheckActionPlan action={fixedAction} />
           ) : null}
           {contextStale ? (
-            <DataCheckActionError
-              message={context.message ?? '当前问题已发生变化。'}
-              stale
-            />
+            <DataCheckActionError message={context.message ?? '当前问题已发生变化。'} stale />
           ) : null}
           {mutation.error ? (
             <DataCheckActionError message={mutation.error} stale={mutation.stale} />

@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
-const apiBase = 'http://127.0.0.1:3000/api';
+import { apiBase } from './support/urls';
 
 interface EventRecord {
   id: string;
@@ -143,16 +143,17 @@ test('case deletion preserves associated relations', async ({ page, request }) =
   expect((await request.get(`${apiBase}/relations/${relation.id}`)).status()).toBe(200);
 });
 
-test('data maintenance starts only on request, retains snapshots, and rediscovers handled warnings', async ({
+test('data maintenance uses inline merge/ignore actions and rediscovers ignored warnings', async ({
   page,
   request,
 }) => {
   test.setTimeout(60_000);
   const token = `E2E 数据检查 ${Date.now()}`;
   const target = await createEvent(request, `${token} 目标`);
-  await createEvent(request, `${token} 别名来源`, [target.name]);
+  const aliasSource = await createEvent(request, `${token} 别名来源`, [target.name]);
+  const generatedLoop = await createRelation(request, target.id, aliasSource.id);
   const otherTarget = await createEvent(request, `${token} 另一目标`);
-  await createEvent(request, `${token} 另一别名来源`, [otherTarget.name]);
+  const otherAliasSource = await createEvent(request, `${token} 另一别名来源`, [otherTarget.name]);
 
   const before = await request.get(`${apiBase}/data-checks/latest`);
   expect(before.status()).toBe(200);
@@ -175,7 +176,7 @@ test('data maintenance starts only on request, retains snapshots, and rediscover
   await expect(page.getByText('最近成功检查')).toBeVisible();
   await page.reload();
   await expect(page.getByText('最近成功检查')).toBeVisible();
-  await expect(page.locator('.data-check-table thead th')).toHaveCount(3);
+  await expect(page.locator('.data-check-table thead th')).toHaveCount(4);
 
   await page.getByRole('link', { name: '孤立原子事件' }).click();
   await expect(page).toHaveURL(/\/events\?orphan=true$/);
@@ -183,7 +184,7 @@ test('data maintenance starts only on request, retains snapshots, and rediscover
 
   const warningRows = page
     .locator('.data-check-table tbody tr')
-    .filter({ hasText: '一个事件的别名与另一个事件的标准名称相同' });
+    .filter({ hasText: '别名与事件名称冲突' });
   const targetWarning = warningRows.filter({
     has: page.locator(`a[href="/events/${target.id}"]`),
   });
@@ -192,9 +193,36 @@ test('data maintenance starts only on request, retains snapshots, and rediscover
   });
   await expect(targetWarning).toHaveCount(1);
   await expect(otherWarning).toHaveCount(1);
-  await targetWarning.getByRole('button', { name: '手动处理' }).click();
-  await expect(targetWarning.getByText('已处理')).toBeVisible();
-  await expect(otherWarning.getByRole('button', { name: '手动处理' })).toBeVisible();
+  await targetWarning.getByRole('button', { name: '展开' }).click();
+  const mergePanel = page.locator(`[data-testid^="expanded-"]`);
+  await expect(mergePanel.getByRole('heading', { name: '处理建议' })).toBeVisible();
+  await expect(mergePanel.getByRole('button', { name: '确认处理' })).toBeDisabled();
+  await expect(mergePanel.getByRole('button', { name: '忽略此问题' })).toBeVisible();
+  const mergeDirections = mergePanel.getByRole('radio');
+  await expect(mergeDirections).toHaveCount(2);
+  await mergeDirections.first().check();
+  await mergePanel.getByRole('button', { name: '确认处理' }).click();
+  await expect(warningRows.filter({ hasText: '已处理' })).toHaveCount(1);
+  expect((await request.get(`${apiBase}/relations/${generatedLoop.id}`)).status()).toBe(404);
+
+  await otherWarning.getByRole('button', { name: '展开' }).click();
+  const ignorePanel = page.locator(`[data-testid^="expanded-"]`);
+  await page.route(
+    '**/api/data-checks/issues/*/actions',
+    async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'INTERNAL_ERROR', message: '模拟处理失败' }),
+      });
+    },
+    { times: 1 },
+  );
+  await ignorePanel.getByRole('button', { name: '忽略此问题' }).click();
+  await expect(ignorePanel).toContainText('模拟处理失败');
+  await expect(otherWarning.getByRole('button', { name: '收起' })).toBeVisible();
+  await ignorePanel.getByRole('button', { name: '忽略此问题' }).click();
+  await expect(otherWarning.getByText('已处理')).toBeVisible();
 
   const secondStart = await request.post(`${apiBase}/data-checks`);
   expect(secondStart.status()).toBe(202);
@@ -202,10 +230,10 @@ test('data maintenance starts only on request, retains snapshots, and rediscover
   expect(secondSnapshot.snapshot?.snapshotId).not.toBe(firstSnapshot.snapshot?.snapshotId);
 
   await page.reload();
-  const rediscoveredTarget = page
+  const rediscoveredOther = page
     .locator('.data-check-table tbody tr')
-    .filter({ hasText: '一个事件的别名与另一个事件的标准名称相同' })
-    .filter({ has: page.locator(`a[href="/events/${target.id}"]`) });
-  await expect(rediscoveredTarget).toHaveCount(1);
-  await expect(rediscoveredTarget.getByRole('button', { name: '手动处理' })).toBeVisible();
+    .filter({ hasText: '别名与事件名称冲突' })
+    .filter({ has: page.locator(`a[href="/events/${otherTarget.id}"]`) });
+  await expect(rediscoveredOther.getByRole('button', { name: '展开' })).toBeVisible();
+  expect((await request.get(`${apiBase}/events/${otherAliasSource.id}`)).status()).toBe(200);
 });

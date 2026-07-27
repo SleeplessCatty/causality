@@ -1,4 +1,4 @@
-import type { ExportCounts, ExportPreviewInput } from '@causality/contracts';
+import type { ExportCounts, ExportPreparationInput } from '@causality/contracts';
 import type { Pool, PoolClient, QueryResult } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -18,11 +18,14 @@ const startId = '81000000-0000-4000-8000-000000000001';
 const fixedNow = new Date('2026-07-27T08:00:00.000Z');
 
 class RecordingScopeRepository implements ExportScopeRepository {
-  public readonly inputs: ExportPreviewInput[] = [];
+  public readonly inputs: ExportPreparationInput[] = [];
 
   public constructor(private readonly onMaterialize: () => void = () => undefined) {}
 
-  public async materialize(_client: PoolClient, input: ExportPreviewInput): Promise<ExportCounts> {
+  public async materialize(
+    _client: PoolClient,
+    input: ExportPreparationInput,
+  ): Promise<ExportCounts> {
     this.inputs.push(input);
     this.onMaterialize();
     return { events: 3, relations: 2, cases: 1 };
@@ -43,7 +46,7 @@ class RecordingScopeRepository implements ExportScopeRepository {
 
 class RecordingRequestRepository implements ExportRequestRepository {
   public readonly creates: Array<{
-    input: ExportPreviewInput;
+    input: ExportPreparationInput;
     createdAt: Date;
     expiresAt: Date;
   }> = [];
@@ -53,7 +56,7 @@ class RecordingRequestRepository implements ExportRequestRepository {
 
   public async create(
     _client: PoolClient,
-    input: ExportPreviewInput,
+    input: ExportPreparationInput,
     createdAt: Date,
     expiresAt: Date,
   ): Promise<string> {
@@ -101,7 +104,7 @@ describe('ExportService', () => {
     const service = new ExportService(pool, scope, requests, { now: () => fixedNow });
 
     await expect(
-      service.previewExport({
+      service.prepareExport({
         type: 'filtered',
         startEventIds: [startId, startId],
         direction: 'both',
@@ -140,7 +143,7 @@ describe('ExportService', () => {
       tokenLifetimeMs: 90_000,
     });
 
-    await expect(service.previewExport({ type: 'full' })).resolves.toEqual({
+    await expect(service.prepareExport({ type: 'full' })).resolves.toEqual({
       token: 'a'.repeat(43),
       expiresAt: '2026-07-27T08:06:00.000Z',
       counts: { events: 3, relations: 2, cases: 1 },

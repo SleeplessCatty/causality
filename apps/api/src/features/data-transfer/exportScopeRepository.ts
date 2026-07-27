@@ -1,4 +1,4 @@
-import type { ExportCounts, ExportPreviewInput } from '@causality/contracts';
+import type { ExportCounts, ExportPreparationInput } from '@causality/contracts';
 import type { PoolClient } from 'pg';
 
 import type { CaseExportRow, EventExportRow, RelationExportRow } from './dataTransferTypes.js';
@@ -17,7 +17,7 @@ export class ExportScopeError extends Error {
 export interface ExportScopeRepository {
   materialize(
     client: PoolClient,
-    input: ExportPreviewInput,
+    input: ExportPreparationInput,
     signal?: AbortSignal,
   ): Promise<ExportCounts>;
   streamEvents(
@@ -37,7 +37,7 @@ export interface ExportScopeRepository {
   ): AsyncIterable<RelationExportRow[]>;
 }
 
-export function normalizeExportInput(input: ExportPreviewInput): ExportPreviewInput {
+export function normalizeExportInput(input: ExportPreparationInput): ExportPreparationInput {
   if (input.type === 'full') return input;
   return { ...input, startEventIds: [...new Set(input.startEventIds)] };
 }
@@ -85,7 +85,7 @@ async function createScopeTables(client: PoolClient, signal?: AbortSignal): Prom
 
 async function insertFilteredScope(
   client: PoolClient,
-  input: Extract<ExportPreviewInput, { type: 'filtered' }>,
+  input: Extract<ExportPreparationInput, { type: 'filtered' }>,
   signal?: AbortSignal,
 ): Promise<void> {
   await assertStartEventsExist(client, input.startEventIds, signal);
@@ -151,7 +151,7 @@ async function insertFilteredScope(
 export class PostgresExportScopeRepository implements ExportScopeRepository {
   public async materialize(
     client: PoolClient,
-    rawInput: ExportPreviewInput,
+    rawInput: ExportPreparationInput,
     signal?: AbortSignal,
   ): Promise<ExportCounts> {
     const input = normalizeExportInput(rawInput);

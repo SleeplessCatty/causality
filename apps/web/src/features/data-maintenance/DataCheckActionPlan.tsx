@@ -22,11 +22,7 @@ const impactLabels: ReadonlyArray<readonly [keyof DataCheckActionImpact, string]
   ['recordsUpdated', '更新记录'],
 ];
 
-export function DataCheckActionImpactView({
-  action,
-}: {
-  action: DataCheckActionOption;
-}) {
+export function DataCheckActionImpactView({ action }: { action: DataCheckActionOption }) {
   const visibleImpacts = impactLabels.filter(([key]) => action.impact[key] > 0);
   return (
     <div className="data-check-action-impact" role="status">

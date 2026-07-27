@@ -1,7 +1,7 @@
 import type {
   ExportAvailabilityResponse,
-  ExportPreviewInput,
-  ExportPreviewResponse,
+  ExportPreparationInput,
+  ExportPreparationResponse,
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
@@ -62,7 +62,7 @@ export class ExportService {
     this.tokenLifetimeMs = options.tokenLifetimeMs ?? DEFAULT_TOKEN_LIFETIME_MS;
   }
 
-  public async previewExport(rawInput: ExportPreviewInput): Promise<ExportPreviewResponse> {
+  public async prepareExport(rawInput: ExportPreparationInput): Promise<ExportPreparationResponse> {
     const input = normalizeExportInput(rawInput);
     const client = await this.pool.connect();
     let transactionStarted = false;

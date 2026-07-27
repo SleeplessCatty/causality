@@ -22,10 +22,7 @@ const staleErrorCodes = new Set([
   'DATA_CHECK_ACTION_CONFLICT',
 ]);
 
-function requestFor(
-  action: DataCheckActionOption,
-  snapshotId: string,
-): DataCheckActionRequest {
+function requestFor(action: DataCheckActionOption, snapshotId: string): DataCheckActionRequest {
   if (action.type === 'ignore') return { type: 'ignore', snapshotId };
   if (!action.actionKey) throw new Error('处理方案信息不完整，请重新执行数据检查');
   if (action.type === 'merge') {

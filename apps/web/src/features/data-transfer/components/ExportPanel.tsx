@@ -1,19 +1,19 @@
 import type {
   EventCandidate,
   ExportDirection,
-  ExportPreviewInput,
-  ExportPreviewResponse,
+  ExportPreparationInput as ExportRequestInput,
+  ExportPreparationResponse as ExportConfirmation,
 } from '@causality/contracts';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
 import { AppSelect } from '../../../shared/controls/AppSelect';
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
-import { downloadExport, previewExport } from '../dataTransferApi';
+import { prepareExport, saveExportFile } from '../dataTransferApi';
 import { ExportConfirmDialog } from './ExportConfirmDialog';
 import { ExportEventSelector } from './ExportEventSelector';
 
-type ExportMode = ExportPreviewInput['type'];
+type ExportMode = ExportRequestInput['type'];
 
 const directionOptions = [
   { value: 'both', label: '双向' },
@@ -34,13 +34,13 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
-interface PreviewMutationVariables {
-  input: ExportPreviewInput;
+interface PrepareMutationVariables {
+  input: ExportRequestInput;
   signal: AbortSignal;
   filterRevision: number;
 }
 
-interface DownloadMutationVariables {
+interface SaveMutationVariables {
   token: string;
   signal: AbortSignal;
   filterRevision: number;
@@ -51,26 +51,25 @@ export function ExportPanel() {
   const [selectedEvents, setSelectedEvents] = useState<EventCandidate[]>([]);
   const [direction, setDirection] = useState<ExportDirection>('both');
   const [depth, setDepth] = useState(1);
-  const [preview, setPreview] = useState<ExportPreviewResponse | null>(null);
+  const [confirmation, setConfirmation] = useState<ExportConfirmation | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [errorRevision, setErrorRevision] = useState(0);
-  const [notice, setNotice] = useState<string | null>(null);
   const filterRevisionRef = useRef(0);
-  const previewAbortControllerRef = useRef<AbortController | null>(null);
-  const downloadAbortControllerRef = useRef<AbortController | null>(null);
+  const prepareAbortControllerRef = useRef<AbortController | null>(null);
+  const saveAbortControllerRef = useRef<AbortController | null>(null);
 
-  const previewMutation = useMutation<ExportPreviewResponse, unknown, PreviewMutationVariables>({
-    mutationFn: ({ input, signal }) => previewExport(input, signal),
-    onSuccess: (nextPreview, variables) => {
+  const prepareMutation = useMutation<ExportConfirmation, unknown, PrepareMutationVariables>({
+    mutationFn: ({ input, signal }) => prepareExport(input, signal),
+    onSuccess: (nextConfirmation, variables) => {
       if (variables.signal.aborted || variables.filterRevision !== filterRevisionRef.current) {
         return;
       }
-      setPreview(nextPreview);
+      setConfirmation(nextConfirmation);
       setDialogOpen(true);
     },
-    onError: (previewError, variables) => {
+    onError: (prepareError, variables) => {
       if (
-        isAbortError(previewError) ||
+        isAbortError(prepareError) ||
         variables.signal.aborted ||
         variables.filterRevision !== filterRevisionRef.current
       ) {
@@ -79,36 +78,36 @@ export function ExportPanel() {
       setErrorRevision((revision) => revision + 1);
     },
     onSettled: (_data, _error, variables) => {
-      if (previewAbortControllerRef.current?.signal === variables.signal) {
-        previewAbortControllerRef.current = null;
+      if (prepareAbortControllerRef.current?.signal === variables.signal) {
+        prepareAbortControllerRef.current = null;
       }
     },
   });
 
-  const downloadMutation = useMutation<void, unknown, DownloadMutationVariables>({
-    mutationFn: ({ token, signal }) => downloadExport(token, signal),
+  const saveMutation = useMutation<void, unknown, SaveMutationVariables>({
+    mutationFn: ({ token, signal }) => saveExportFile(token, signal),
     onSuccess: (_data, variables) => {
       if (variables.signal.aborted || variables.filterRevision !== filterRevisionRef.current) {
         return;
       }
       setDialogOpen(false);
-      setNotice('下载已开始');
+      setConfirmation(null);
     },
-    onError: (availabilityError, variables) => {
+    onError: (saveError, variables) => {
       if (
-        isAbortError(availabilityError) ||
+        isAbortError(saveError) ||
         variables.signal.aborted ||
         variables.filterRevision !== filterRevisionRef.current
       ) {
         return;
       }
-      setPreview(null);
+      setConfirmation(null);
       setDialogOpen(false);
       setErrorRevision((revision) => revision + 1);
     },
     onSettled: (_data, _error, variables) => {
-      if (downloadAbortControllerRef.current?.signal === variables.signal) {
-        downloadAbortControllerRef.current = null;
+      if (saveAbortControllerRef.current?.signal === variables.signal) {
+        saveAbortControllerRef.current = null;
       }
     },
   });
@@ -116,56 +115,55 @@ export function ExportPanel() {
   useEffect(
     () => () => {
       filterRevisionRef.current += 1;
-      previewAbortControllerRef.current?.abort();
-      downloadAbortControllerRef.current?.abort();
+      prepareAbortControllerRef.current?.abort();
+      saveAbortControllerRef.current?.abort();
     },
     [],
   );
 
-  const previewError =
-    previewMutation.isError && !isAbortError(previewMutation.error)
-      ? errorMessage(previewMutation.error, '无法预览导出，请重试')
+  const prepareError =
+    prepareMutation.isError && !isAbortError(prepareMutation.error)
+      ? errorMessage(prepareMutation.error, '无法统计导出数据，请重试')
       : null;
-  const availabilityError =
-    downloadMutation.isError && !isAbortError(downloadMutation.error)
-      ? `${errorMessage(downloadMutation.error, '无法确认导出可用性')}，请重新预览`
+  const saveError =
+    saveMutation.isError && !isAbortError(saveMutation.error)
+      ? `${errorMessage(saveMutation.error, '无法导出数据')}，请重新发起导出`
       : null;
-  const error = availabilityError ?? previewError;
+  const error = saveError ?? prepareError;
 
   useAutoDismissError(Boolean(error), errorRevision, () => {
-    previewMutation.reset();
-    downloadMutation.reset();
+    prepareMutation.reset();
+    saveMutation.reset();
   });
 
-  function invalidatePreview(): void {
+  function invalidateConfirmation(): void {
     filterRevisionRef.current += 1;
-    previewAbortControllerRef.current?.abort();
-    previewAbortControllerRef.current = null;
-    downloadAbortControllerRef.current?.abort();
-    downloadAbortControllerRef.current = null;
-    previewMutation.reset();
-    downloadMutation.reset();
-    setPreview(null);
+    prepareAbortControllerRef.current?.abort();
+    prepareAbortControllerRef.current = null;
+    saveAbortControllerRef.current?.abort();
+    saveAbortControllerRef.current = null;
+    prepareMutation.reset();
+    saveMutation.reset();
+    setConfirmation(null);
     setDialogOpen(false);
-    setNotice(null);
   }
 
   function changeMode(nextMode: ExportMode): void {
     if (nextMode === mode) return;
     setMode(nextMode);
-    invalidatePreview();
+    invalidateConfirmation();
   }
 
-  function openPreview(): void {
-    if (preview) {
+  function openExportConfirmation(): void {
+    if (confirmation) {
       setDialogOpen(true);
       return;
     }
-    if (previewMutation.isPending || (mode === 'filtered' && selectedEvents.length === 0)) {
+    if (prepareMutation.isPending || (mode === 'filtered' && selectedEvents.length === 0)) {
       return;
     }
 
-    const input: ExportPreviewInput =
+    const input: ExportRequestInput =
       mode === 'full'
         ? { type: 'full' }
         : {
@@ -174,32 +172,30 @@ export function ExportPanel() {
             direction,
             depth,
           };
-    setNotice(null);
-    downloadMutation.reset();
+    saveMutation.reset();
     const controller = new AbortController();
-    previewAbortControllerRef.current = controller;
-    previewMutation.mutate({
+    prepareAbortControllerRef.current = controller;
+    prepareMutation.mutate({
       input,
       signal: controller.signal,
       filterRevision: filterRevisionRef.current,
     });
   }
 
-  function confirmDownload(): void {
-    if (!preview || downloadMutation.isPending) return;
-    setNotice(null);
-    previewMutation.reset();
+  function confirmExport(): void {
+    if (!confirmation || saveMutation.isPending) return;
+    prepareMutation.reset();
     const controller = new AbortController();
-    downloadAbortControllerRef.current = controller;
-    downloadMutation.mutate({
-      token: preview.token,
+    saveAbortControllerRef.current = controller;
+    saveMutation.mutate({
+      token: confirmation.token,
       signal: controller.signal,
       filterRevision: filterRevisionRef.current,
     });
   }
 
-  const previewDisabled =
-    previewMutation.isPending || (mode === 'filtered' && selectedEvents.length === 0);
+  const exportDisabled =
+    prepareMutation.isPending || (mode === 'filtered' && selectedEvents.length === 0);
 
   return (
     <section className="data-transfer-export-card" aria-labelledby="export-panel-title">
@@ -235,7 +231,7 @@ export function ExportPanel() {
             selected={selectedEvents}
             onChange={(events) => {
               setSelectedEvents(events);
-              invalidatePreview();
+              invalidateConfirmation();
             }}
           />
           <div className="data-transfer-export-selects">
@@ -247,7 +243,7 @@ export function ExportPanel() {
               onChange={(value) => {
                 if (value === direction) return;
                 setDirection(value);
-                invalidatePreview();
+                invalidateConfirmation();
               }}
             />
             <AppSelect
@@ -258,7 +254,7 @@ export function ExportPanel() {
               onChange={(value) => {
                 if (value === depth) return;
                 setDepth(value);
-                invalidatePreview();
+                invalidateConfirmation();
               }}
             />
           </div>
@@ -269,16 +265,10 @@ export function ExportPanel() {
         <button
           className="button button--primary"
           type="button"
-          disabled={previewDisabled}
-          onClick={openPreview}
+          disabled={exportDisabled}
+          onClick={openExportConfirmation}
         >
-          {previewMutation.isPending
-            ? '正在预览…'
-            : preview
-              ? '查看导出确认'
-              : error?.includes('重新预览')
-                ? '重新预览'
-                : '预览并导出'}
+          {prepareMutation.isPending ? '正在统计…' : confirmation ? '查看导出确认' : '数据导出'}
         </button>
       </div>
 
@@ -287,20 +277,14 @@ export function ExportPanel() {
           {error}
         </div>
       ) : null}
-      {notice ? (
-        <div className="data-transfer-export-message data-transfer-export-success" role="status">
-          {notice}
-        </div>
-      ) : null}
-
       <ExportConfirmDialog
         open={dialogOpen}
-        preview={preview}
-        pending={downloadMutation.isPending}
+        confirmation={confirmation}
+        pending={saveMutation.isPending}
         onClose={() => {
-          if (!downloadMutation.isPending) setDialogOpen(false);
+          if (!saveMutation.isPending) setDialogOpen(false);
         }}
-        onConfirm={confirmDownload}
+        onConfirm={confirmExport}
       />
     </section>
   );

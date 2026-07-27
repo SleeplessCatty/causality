@@ -30,6 +30,17 @@ interface SemanticIntegrity {
   invalidModelCodes: number;
   invalidVectorDimensions: number;
   inactiveModelVectors: number;
+  invalidThresholds: number;
+  invalidLifecycleStates: number;
+  invalidDataCheckSemanticStates: number;
+}
+
+interface DataTransferIntegrity {
+  requiredTablesPresent: boolean;
+  requiredIndexesPresent: boolean;
+  invalidImportCounts: number;
+  invalidImportRecordSnapshots: number;
+  expiredExportRequests: number;
 }
 
 export interface DatabaseVerificationReport {
@@ -37,6 +48,7 @@ export interface DatabaseVerificationReport {
   counts: DatabaseCounts;
   integrity: IntegrityCounts;
   semantic: SemanticIntegrity;
+  dataTransfer: DataTransferIntegrity;
   valid: boolean;
 }
 
@@ -128,6 +140,28 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
          and to_regclass('public.semantic_jobs') is not null
          as required_tables_present`,
   );
+  const dataTransferFoundation = await pool.query<{
+    required_indexes_present: boolean;
+    required_tables_present: boolean;
+  }>(
+    `select
+       to_regclass('public.import_batches') is not null
+         and to_regclass('public.import_records') is not null
+         and to_regclass('public.export_requests') is not null
+         as required_tables_present,
+       (
+         select count(*) = 5
+         from pg_indexes
+         where schemaname = 'public'
+           and indexname = any(array[
+             'import_batches_completed_id_idx',
+             'import_records_batch_source_item_sequence_uidx',
+             'import_records_batch_type_sequence_idx',
+             'export_requests_token_hash_uidx',
+             'export_requests_expires_at_idx'
+           ])
+       ) as required_indexes_present`,
+  );
   const foundationRow = semanticFoundation.rows[0]!;
   const semanticCounts =
     foundationRow.extension_installed && foundationRow.required_tables_present
@@ -163,10 +197,114 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
          as inactive_model_vectors`,
         )
       : undefined;
+  const semanticLifecycleCounts = foundationRow.required_tables_present
+    ? await pool.query<{
+        invalid_data_check_semantic_states: number;
+        invalid_lifecycle_states: number;
+        invalid_thresholds: number;
+      }>(
+        `select
+           (select count(*)::int
+            from semantic_model_settings
+            where threshold not between 0 and 100
+               or dedupe_threshold not between 0 and 100) as invalid_thresholds,
+           (select count(*)::int
+            from semantic_index_state
+            where processed_items < 0
+               or total_items < 0
+               or pending_items < 0
+               or failed_items < 0
+               or processed_items > total_items
+               or (active_model_code is null and status <> 'empty')
+               or (
+                 (failure_stage is null or failure_kind is null or failure_code is null)
+                 and not (
+                   failure_stage is null
+                   and failure_kind is null
+                   and failure_code is null
+                 )
+               )) as invalid_lifecycle_states,
+           (select count(*)::int
+            from data_check_state
+            where (
+                last_snapshot_id is null
+                and (semantic_status is not null or semantic_reason is not null)
+              )
+              or (
+                last_snapshot_id is not null
+                and (
+                  semantic_status is null
+                  or not (
+                    (semantic_status = 'completed' and semantic_reason is null)
+                    or (semantic_status = 'truncated' and semantic_reason = 'candidate_limit')
+                    or (semantic_status = 'failed' and semantic_reason = 'internal_failure')
+                    or (
+                      semantic_status = 'skipped'
+                      and semantic_reason in (
+                        'not_recorded',
+                        'no_active_model',
+                        'worker_unreachable',
+                        'index_not_ready',
+                        'no_embeddings'
+                      )
+                    )
+                  )
+                )
+              )) as invalid_data_check_semantic_states`,
+      )
+    : undefined;
+  const dataTransferFoundationRow = dataTransferFoundation.rows[0]!;
+  const dataTransferCounts = dataTransferFoundationRow.required_tables_present
+    ? await pool.query<{
+        expired_export_requests: number;
+        invalid_import_counts: number;
+        invalid_import_record_snapshots: number;
+      }>(
+        `select
+           (select count(*)::int
+            from import_batches
+            where event_created < 0
+               or event_reused < 0
+               or case_created < 0
+               or case_reused < 0
+               or relation_created < 0
+               or relation_reused < 0
+               or relation_case_created < 0
+               or relation_case_reused < 0) as invalid_import_counts,
+           (select count(*)::int
+            from import_records
+            where jsonb_typeof(text_snapshot) <> 'object'
+               or text_snapshot ->> 'type' <> record_type
+               or (
+                 record_type = 'event'
+                 and nullif(btrim(text_snapshot ->> 'eventName'), '') is null
+               )
+               or (
+                 record_type = 'case'
+                 and nullif(btrim(text_snapshot ->> 'caseContent'), '') is null
+               )
+               or (
+                 record_type in ('relation', 'relation_case')
+                 and (
+                   nullif(btrim(text_snapshot ->> 'causeEventName'), '') is null
+                   or nullif(btrim(text_snapshot ->> 'effectEventName'), '') is null
+                 )
+               )
+               or (
+                 record_type = 'relation_case'
+                 and nullif(btrim(text_snapshot ->> 'caseContent'), '') is null
+               )) as invalid_import_record_snapshots,
+           (select count(*)::int
+            from export_requests
+            where expires_at <= clock_timestamp()) as expired_export_requests`,
+      )
+    : undefined;
 
   const countRow = counts.rows[0]!;
   const integrityRow = integrity.rows[0]!;
   const semanticCountRow = semanticCounts?.rows[0];
+  const semanticLifecycleRow = semanticLifecycleCounts?.rows[0];
+  const dataTransferCountRow = dataTransferCounts?.rows[0];
   const report: DatabaseVerificationReport = {
     migrationApplied: migration.rows[0]?.applied ?? false,
     counts: {
@@ -191,6 +329,16 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
       invalidModelCodes: semanticCountRow?.invalid_model_codes ?? 0,
       invalidVectorDimensions: semanticCountRow?.invalid_vector_dimensions ?? 0,
       inactiveModelVectors: semanticCountRow?.inactive_model_vectors ?? 0,
+      invalidThresholds: semanticLifecycleRow?.invalid_thresholds ?? 0,
+      invalidLifecycleStates: semanticLifecycleRow?.invalid_lifecycle_states ?? 0,
+      invalidDataCheckSemanticStates: semanticLifecycleRow?.invalid_data_check_semantic_states ?? 0,
+    },
+    dataTransfer: {
+      requiredTablesPresent: dataTransferFoundationRow.required_tables_present,
+      requiredIndexesPresent: dataTransferFoundationRow.required_indexes_present,
+      invalidImportCounts: dataTransferCountRow?.invalid_import_counts ?? 0,
+      invalidImportRecordSnapshots: dataTransferCountRow?.invalid_import_record_snapshots ?? 0,
+      expiredExportRequests: dataTransferCountRow?.expired_export_requests ?? 0,
     },
     valid: false,
   };
@@ -202,7 +350,14 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
     report.semantic.requiredTablesPresent &&
     report.semantic.invalidModelCodes === 0 &&
     report.semantic.invalidVectorDimensions === 0 &&
-    report.semantic.inactiveModelVectors === 0;
+    report.semantic.inactiveModelVectors === 0 &&
+    report.semantic.invalidThresholds === 0 &&
+    report.semantic.invalidLifecycleStates === 0 &&
+    report.semantic.invalidDataCheckSemanticStates === 0 &&
+    report.dataTransfer.requiredTablesPresent &&
+    report.dataTransfer.requiredIndexesPresent &&
+    report.dataTransfer.invalidImportCounts === 0 &&
+    report.dataTransfer.invalidImportRecordSnapshots === 0;
 
   return report;
 }

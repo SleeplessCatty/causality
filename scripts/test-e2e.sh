@@ -38,6 +38,11 @@ drop_test_database
   --command "CREATE DATABASE \"$E2E_DATABASE_NAME\";"
 
 export DATABASE_URL="postgresql://causality:causality@127.0.0.1:5432/$E2E_DATABASE_NAME"
+export E2E_API_PORT="${E2E_API_PORT:-3200}"
+export E2E_WEB_PORT="${E2E_WEB_PORT:-5274}"
 corepack pnpm db:migrate
 corepack pnpm db:seed
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
 corepack pnpm exec playwright test "$@"

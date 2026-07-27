@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   apiErrorSchema,
   exportAvailabilityResponseSchema,
-  exportPreviewInputSchema,
-  exportPreviewResponseSchema,
+  exportPreparationInputSchema,
+  exportPreparationResponseSchema,
   importBatchListResponseSchema,
   importDetailQuerySchema,
   importHistoryQuerySchema,
@@ -119,10 +119,10 @@ describe('data-transfer contracts', () => {
     ).toBe(false);
   });
 
-  it('accepts full and bounded filtered export previews', () => {
-    expect(exportPreviewInputSchema.parse({ type: 'full' })).toEqual({ type: 'full' });
+  it('accepts full and bounded filtered export preparations', () => {
+    expect(exportPreparationInputSchema.parse({ type: 'full' })).toEqual({ type: 'full' });
     expect(
-      exportPreviewInputSchema.parse({
+      exportPreparationInputSchema.parse({
         type: 'filtered',
         startEventIds: [recordId],
         direction: 'both',
@@ -135,7 +135,7 @@ describe('data-transfer contracts', () => {
       depth: 10,
     });
     expect(
-      exportPreviewInputSchema.safeParse({
+      exportPreparationInputSchema.safeParse({
         type: 'filtered',
         startEventIds: [],
         direction: 'both',
@@ -143,7 +143,7 @@ describe('data-transfer contracts', () => {
       }).success,
     ).toBe(false);
     expect(
-      exportPreviewInputSchema.safeParse({
+      exportPreparationInputSchema.safeParse({
         type: 'filtered',
         startEventIds: [recordId],
         direction: 'both',
@@ -153,12 +153,12 @@ describe('data-transfer contracts', () => {
   });
 
   it('accepts short-lived export token responses', () => {
-    const preview = {
+    const preparation = {
       token: 'opaque-download-token',
       expiresAt: timestamp,
       counts: { events: 3, cases: 4, relations: 2 },
     };
-    expect(exportPreviewResponseSchema.parse(preview)).toEqual(preview);
+    expect(exportPreparationResponseSchema.parse(preparation)).toEqual(preparation);
     expect(
       exportAvailabilityResponseSchema.parse({
         available: true,

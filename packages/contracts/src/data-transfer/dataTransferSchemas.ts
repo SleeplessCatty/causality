@@ -99,7 +99,7 @@ export const MAX_EXPORT_START_EVENTS = 100;
 
 export const exportDirectionSchema = z.enum(['upstream', 'downstream', 'both']);
 
-export const exportPreviewInputSchema = z.discriminatedUnion('type', [
+export const exportPreparationInputSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('full') }).strict(),
   z
     .object({
@@ -119,7 +119,7 @@ export const exportCountsSchema = z
   })
   .strict();
 
-export const exportPreviewResponseSchema = z
+export const exportPreparationResponseSchema = z
   .object({
     token: z.string().min(1).max(512),
     expiresAt: timestampSchema,
@@ -146,7 +146,7 @@ export type ImportRecordItem = z.infer<typeof importRecordItemSchema>;
 export type ImportRecordListResponse = z.infer<typeof importRecordListResponseSchema>;
 export type ImportUploadResponse = z.infer<typeof importUploadResponseSchema>;
 export type ExportDirection = z.infer<typeof exportDirectionSchema>;
-export type ExportPreviewInput = z.infer<typeof exportPreviewInputSchema>;
+export type ExportPreparationInput = z.infer<typeof exportPreparationInputSchema>;
 export type ExportCounts = z.infer<typeof exportCountsSchema>;
-export type ExportPreviewResponse = z.infer<typeof exportPreviewResponseSchema>;
+export type ExportPreparationResponse = z.infer<typeof exportPreparationResponseSchema>;
 export type ExportAvailabilityResponse = z.infer<typeof exportAvailabilityResponseSchema>;

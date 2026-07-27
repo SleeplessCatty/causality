@@ -3,10 +3,7 @@ interface DataCheckIssueSummaryProps {
   suggestion: string;
 }
 
-export function DataCheckIssueSummary({
-  description,
-  suggestion,
-}: DataCheckIssueSummaryProps) {
+export function DataCheckIssueSummary({ description, suggestion }: DataCheckIssueSummaryProps) {
   return (
     <div className="data-check-issue-summary">
       <section>

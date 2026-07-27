@@ -20,6 +20,7 @@ function model(
     dimensions: 384,
     expectedDownloadBytes: 135_392_857,
     threshold: 70,
+    dedupeThreshold: 100,
     downloadedAt: null,
     fileState: 'not_downloaded',
     role: 'inactive',

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { apiBase } from './support/urls';
+
 test('boundary-length business text stays contained, inspectable, and editable', async ({
   page,
   request,
@@ -9,7 +11,7 @@ test('boundary-length business text stays contained, inspectable, and editable',
   const alias = 'A'.repeat(80);
   const keyword = 'K'.repeat(50);
   const description = 'D'.repeat(2_000);
-  const created = await request.post('http://127.0.0.1:3000/api/events', {
+  const created = await request.post(`${apiBase}/events`, {
     data: { name, description, aliases: [alias], keywords: [keyword] },
   });
   expect(created.status()).toBe(201);

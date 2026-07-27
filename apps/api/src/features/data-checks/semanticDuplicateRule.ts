@@ -21,11 +21,19 @@ export interface SemanticDuplicateRuleResult {
   semantic: DataCheckSemanticResult;
 }
 
-function skipped(reason: Exclude<DataCheckSemanticReason, null | 'not_recorded' | 'candidate_limit' | 'internal_failure'>): SemanticDuplicateRuleResult {
+function skipped(
+  reason: Exclude<
+    DataCheckSemanticReason,
+    null | 'not_recorded' | 'candidate_limit' | 'internal_failure'
+  >,
+): SemanticDuplicateRuleResult {
   return { issues: [], semantic: { status: 'skipped', reason, issueCount: 0 } };
 }
 
-function issueCopy(entityType: 'event' | 'case', similarity: number): Pick<DataCheckIssueDraft, 'description' | 'suggestion'> {
+function issueCopy(
+  entityType: 'event' | 'case',
+  similarity: number,
+): Pick<DataCheckIssueDraft, 'description' | 'suggestion'> {
   const label = entityType === 'event' ? '原子事件' : '具体案例';
   return {
     description: `两个${label}的语义相似度为 ${Math.round(similarity * 100)}%，请人工确认是否重复。`,
@@ -76,7 +84,7 @@ function candidatePairCte(entityType: 'event' | 'case', dimensions: number): str
   `;
 }
 
-function candidateSql(dimensions: number): string {
+export function semanticCandidateSql(dimensions: number): string {
   return `
     with ${candidatePairCte('event', dimensions)},
          ${candidatePairCte('case', dimensions)}
@@ -126,7 +134,7 @@ export class SemanticDuplicateRule {
 
     const dimensions = MODEL_CATALOG[modelCode].dimensions;
     const threshold = model.dedupeThreshold / 100;
-    const candidates = await this.pool.query<SemanticPairRow>(candidateSql(dimensions), [
+    const candidates = await this.pool.query<SemanticPairRow>(semanticCandidateSql(dimensions), [
       modelCode,
       'event',
       threshold,

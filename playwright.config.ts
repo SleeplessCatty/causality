@@ -8,6 +8,10 @@ try {
   parsedDatabaseUrl = undefined;
 }
 const databaseName = parsedDatabaseUrl?.pathname.slice(1) ?? '';
+const apiPort = process.env.E2E_API_PORT ?? '3200';
+const webPort = process.env.E2E_WEB_PORT ?? '5274';
+const apiOrigin = `http://127.0.0.1:${apiPort}`;
+const webOrigin = `http://127.0.0.1:${webPort}`;
 
 if (
   parsedDatabaseUrl?.protocol !== 'postgresql:' ||
@@ -28,30 +32,34 @@ export default defineConfig({
   retries: 0,
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:5173',
+    baseURL: webOrigin,
     viewport: { width: 1280, height: 720 },
     trace: 'retain-on-failure',
   },
   webServer: [
     {
       command: 'corepack pnpm --filter @causality/api dev',
-      url: 'http://127.0.0.1:3000/api/health',
+      url: `${apiOrigin}/api/health`,
       reuseExistingServer: false,
       timeout: 30_000,
       env: {
         NODE_ENV: 'test',
         HOST: '127.0.0.1',
-        PORT: '3000',
+        PORT: apiPort,
         DATABASE_URL: databaseUrl,
         LOG_LEVEL: 'silent',
-        CORS_ORIGIN: 'http://127.0.0.1:5173',
+        CORS_ORIGIN: webOrigin,
       },
     },
     {
       command: 'corepack pnpm --filter @causality/web dev',
-      url: 'http://127.0.0.1:5173',
+      url: webOrigin,
       reuseExistingServer: false,
       timeout: 30_000,
+      env: {
+        WEB_PORT: webPort,
+        API_PROXY_URL: apiOrigin,
+      },
     },
   ],
 });

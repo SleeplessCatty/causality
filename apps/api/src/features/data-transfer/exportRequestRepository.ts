@@ -1,13 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import type { ExportPreviewInput } from '@causality/contracts';
+import type { ExportPreparationInput } from '@causality/contracts';
 import type { PoolClient } from 'pg';
 
 import { normalizeExportInput } from './exportScopeRepository.js';
 
 export interface StoredExportRequest {
   id: string;
-  input: ExportPreviewInput;
+  input: ExportPreparationInput;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -15,7 +15,7 @@ export interface StoredExportRequest {
 export interface ExportRequestRepository {
   create(
     client: PoolClient,
-    input: ExportPreviewInput,
+    input: ExportPreparationInput,
     createdAt: Date,
     expiresAt: Date,
   ): Promise<string>;
@@ -66,7 +66,7 @@ interface ExportRequestRow {
 }
 
 function toStoredRequest(row: ExportRequestRow): StoredExportRequest {
-  const input: ExportPreviewInput =
+  const input: ExportPreparationInput =
     row.export_type === 'full'
       ? { type: 'full' }
       : {
@@ -89,7 +89,7 @@ export class PostgresExportRequestRepository implements ExportRequestRepository 
 
   public async create(
     client: PoolClient,
-    rawInput: ExportPreviewInput,
+    rawInput: ExportPreparationInput,
     createdAt: Date,
     expiresAt: Date,
   ): Promise<string> {

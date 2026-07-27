@@ -1,5 +1,5 @@
 import type {
-  ExportPreviewResponse,
+  ExportPreparationResponse,
   ImportBatchListResponse,
   ImportBatchSummary,
   ImportRecordListResponse,
@@ -12,11 +12,11 @@ import {
   startBrowserDownload,
 } from '../../shared/api/httpClient';
 import {
-  downloadExport,
   getImportBatch,
   getImportHistory,
   getImportRecords,
-  previewExport,
+  prepareExport,
+  saveExportFile,
   uploadImport,
 } from './dataTransferApi';
 
@@ -62,7 +62,7 @@ const records: ImportRecordListResponse = {
   totalPages: 3,
 };
 
-const exportPreview: ExportPreviewResponse = {
+const exportPreparation: ExportPreparationResponse = {
   token: 'signed-export-token',
   expiresAt: '2026-07-27T08:30:00.000Z',
   counts: { events: 4, relations: 3, cases: 7 },
@@ -134,8 +134,8 @@ describe('dataTransferApi', () => {
     await expect(getImportHistory(1)).rejects.toThrow();
   });
 
-  it('previews and validates a filtered export', async () => {
-    vi.mocked(requestJson).mockResolvedValue(exportPreview);
+  it('prepares and validates a filtered export confirmation', async () => {
+    vi.mocked(requestJson).mockResolvedValue(exportPreparation);
     const signal = new AbortController().signal;
     const input = {
       type: 'filtered' as const,
@@ -144,9 +144,9 @@ describe('dataTransferApi', () => {
       depth: 3,
     };
 
-    await expect(previewExport(input, signal)).resolves.toEqual(exportPreview);
+    await expect(prepareExport(input, signal)).resolves.toEqual(exportPreparation);
     expect(requestJson).toHaveBeenCalledWith(
-      '/api/data-transfers/exports/preview',
+      '/api/data-transfers/exports/prepare',
       {
         method: 'POST',
         body: JSON.stringify(input),
@@ -155,17 +155,17 @@ describe('dataTransferApi', () => {
     );
   });
 
-  it('rejects malformed export preview data at the adapter boundary', async () => {
+  it('rejects malformed export confirmation data at the adapter boundary', async () => {
     vi.mocked(requestJson).mockResolvedValue({
-      ...exportPreview,
+      ...exportPreparation,
       counts: { events: 4, relations: -1, cases: 7 },
     });
 
-    await expect(previewExport({ type: 'full' })).rejects.toThrow();
+    await expect(prepareExport({ type: 'full' })).rejects.toThrow();
   });
 
   it('accepts exactly 100 filtered start events at the shared submit boundary', async () => {
-    vi.mocked(requestJson).mockResolvedValue(exportPreview);
+    vi.mocked(requestJson).mockResolvedValue(exportPreparation);
     const input = {
       type: 'filtered' as const,
       startEventIds: exportEventIds(100),
@@ -173,9 +173,9 @@ describe('dataTransferApi', () => {
       depth: 3,
     };
 
-    await expect(previewExport(input)).resolves.toEqual(exportPreview);
+    await expect(prepareExport(input)).resolves.toEqual(exportPreparation);
     expect(requestJson).toHaveBeenCalledWith(
-      '/api/data-transfers/exports/preview',
+      '/api/data-transfers/exports/prepare',
       {
         method: 'POST',
         body: JSON.stringify(input),
@@ -184,7 +184,7 @@ describe('dataTransferApi', () => {
     );
   });
 
-  it('rejects 101 filtered start events before sending the preview request', async () => {
+  it('rejects 101 filtered start events before sending the preparation request', async () => {
     const input = {
       type: 'filtered' as const,
       startEventIds: exportEventIds(101),
@@ -192,18 +192,18 @@ describe('dataTransferApi', () => {
       depth: 3,
     };
 
-    await expect(previewExport(input)).rejects.toThrow();
+    await expect(prepareExport(input)).rejects.toThrow();
     expect(requestJson).not.toHaveBeenCalled();
   });
 
   it('validates availability before starting a same-route token download', async () => {
     vi.mocked(requestJson).mockResolvedValue({
       available: true,
-      expiresAt: exportPreview.expiresAt,
+      expiresAt: exportPreparation.expiresAt,
     });
 
     const signal = new AbortController().signal;
-    await downloadExport('token / with unsafe characters', signal);
+    await saveExportFile('token / with unsafe characters', signal);
 
     expect(requestJson).toHaveBeenCalledWith(
       '/api/data-transfers/exports/token%20%2F%20with%20unsafe%20characters/availability',
@@ -218,10 +218,10 @@ describe('dataTransferApi', () => {
   it('does not start a download when availability is invalid', async () => {
     vi.mocked(requestJson).mockResolvedValue({
       available: false,
-      expiresAt: exportPreview.expiresAt,
+      expiresAt: exportPreparation.expiresAt,
     });
 
-    await expect(downloadExport(exportPreview.token)).rejects.toThrow();
+    await expect(saveExportFile(exportPreparation.token)).rejects.toThrow();
     expect(startBrowserDownload).not.toHaveBeenCalled();
   });
 
@@ -229,10 +229,10 @@ describe('dataTransferApi', () => {
     const controller = new AbortController();
     vi.mocked(requestJson).mockImplementation(async () => {
       controller.abort(new DOMException('Cancelled', 'AbortError'));
-      return { available: true, expiresAt: exportPreview.expiresAt };
+      return { available: true, expiresAt: exportPreparation.expiresAt };
     });
 
-    await expect(downloadExport(exportPreview.token, controller.signal)).rejects.toMatchObject({
+    await expect(saveExportFile(exportPreparation.token, controller.signal)).rejects.toMatchObject({
       name: 'AbortError',
     });
     expect(startBrowserDownload).not.toHaveBeenCalled();

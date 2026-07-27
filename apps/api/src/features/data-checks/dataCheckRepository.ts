@@ -1,5 +1,4 @@
 import type {
-  DataCheckActionMode,
   DataCheckIssue,
   DataCheckIssueListQuery,
   DataCheckIssueListResponse,
@@ -11,6 +10,7 @@ import type {
 import type { Pool, PoolClient } from 'pg';
 
 import type {
+  DataCheckActionMode,
   DataCheckIssueDraft,
   DataCheckRepository,
   DataCheckScanResult,

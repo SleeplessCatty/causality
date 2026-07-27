@@ -792,7 +792,8 @@ a {
 }
 
 .data-check-table th:first-child {
-  width: 13%;
+  width: 9%;
+  text-align: center;
 }
 
 .data-check-table th:nth-child(2) {
@@ -800,19 +801,24 @@ a {
 }
 
 .data-check-table th:nth-child(3) {
-  width: 53%;
+  width: 60%;
 }
 
 .data-check-table th:last-child {
-  width: 12%;
+  width: 9%;
+  text-align: center;
 }
 
 .data-check-table td:last-child {
   white-space: nowrap;
 }
 
+.data-check-table tbody > tr:not(.data-check-expanded-row) > td:first-child {
+  text-align: center;
+}
+
 .data-check-row-actions {
-  text-align: right !important;
+  text-align: center !important;
 }
 
 .data-check-table__empty,

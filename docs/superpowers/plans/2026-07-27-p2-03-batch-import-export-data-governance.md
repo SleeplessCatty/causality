@@ -23,7 +23,7 @@
 - Import history and every detail tab use page size 50 and stable URL-backed pagination.
 - Export uses the same no-header, fully quoted CSV contract and outputs event rows, standalone case rows, then relation rows.
 - Filtered export supports multiple start events, `upstream`, `downstream`, or `both`, and depth 1 through 10 with no result-count hard cap.
-- Export preview tokens expire after 10 minutes, are unguessable, store filters rather than CSV data, and do not change the current Web route when downloaded.
+- Export preparation tokens expire after 10 minutes, are unguessable, store filters rather than CSV data, and do not change the current Web route when the file is saved.
 - Every semantic model stores an independent duplicate threshold; the default is 100 and changing it never rebuilds an index.
 - Semantic duplicate scanning applies only to events and cases, keeps at most five candidates per source, deduplicates pairs, and stores at most 50,000 semantic issues per snapshot.
 - Data-check issue rows retain three columns. Every open row displays the same secondary `操作` button and opens a server-authorized, type-specific dialog.
@@ -40,7 +40,7 @@
 
 ### Shared contracts
 
-- Create `packages/contracts/src/data-transfer/dataTransferSchemas.ts` — import history/detail, export preview, and download-availability contracts.
+- Create `packages/contracts/src/data-transfer/dataTransferSchemas.ts` — import history/detail, export preparation, and file-availability contracts.
 - Create `packages/contracts/test/data-transfer.test.ts`.
 - Modify `packages/contracts/src/events/eventSchemas.ts` — extend the existing shared API error-code enum.
 - Modify `packages/contracts/src/semantic/semanticSchemas.ts` — add `dedupeThreshold`.
@@ -224,7 +224,7 @@ interface ImportUploadResponse {
 }
 
 type ExportDirection = 'upstream' | 'downstream' | 'both';
-type ExportPreviewInput =
+type ExportPreparationInput =
   | { type: 'full' }
   | {
       type: 'filtered';
@@ -239,7 +239,7 @@ interface ExportCounts {
   relations: number;
 }
 
-interface ExportPreviewResponse {
+interface ExportPreparationResponse {
   token: string;
   expiresAt: string;
   counts: ExportCounts;
@@ -360,14 +360,20 @@ expect(importDetailQuerySchema.parse({ type: 'case', page: '3' })).toEqual({
   page: 3,
 });
 expect(
-  exportPreviewInputSchema.parse({
+  exportPreparationInputSchema.parse({
     type: 'filtered',
     startEventIds: [crypto.randomUUID()],
     direction: 'both',
     depth: 10,
   }).depth,
 ).toBe(10);
-expect(exportPreviewInputSchema.safeParse({ type: 'filtered', startEventIds: [], depth: 0 }).success)
+expect(
+  exportPreparationInputSchema.safeParse({
+    type: 'filtered',
+    startEventIds: [],
+    depth: 0,
+  }).success,
+)
   .toBe(false);
 ```
 
@@ -1143,7 +1149,7 @@ Ask the user to verify file selection, cancel/leave protection, mixed-record imp
 
 ---
 
-### Task 7: Export scope traversal, preview, and token repository
+### Task 7: Export scope traversal, preparation, and token repository
 
 **Files:**
 
@@ -1160,26 +1166,26 @@ Ask the user to verify file selection, cancel/leave protection, mixed-record imp
 
 ```ts
 interface ExportScopeRepository {
-  materialize(client: PoolClient, input: ExportPreviewInput): Promise<ExportCounts>;
+  materialize(client: PoolClient, input: ExportPreparationInput): Promise<ExportCounts>;
   streamEvents(client: PoolClient, batchSize: number): AsyncIterable<EventExportRow[]>;
   streamCases(client: PoolClient, batchSize: number): AsyncIterable<CaseExportRow[]>;
   streamRelations(client: PoolClient, batchSize: number): AsyncIterable<RelationExportRow[]>;
 }
 
 interface ExportRequestRepository {
-  create(client: PoolClient, input: ExportPreviewInput, expiresAt: Date): Promise<string>;
+  create(client: PoolClient, input: ExportPreparationInput, expiresAt: Date): Promise<string>;
   read(client: PoolClient, rawToken: string): Promise<StoredExportRequest>;
   deleteExpired(client: PoolClient, now: Date): Promise<number>;
 }
 
 interface StoredExportRequest {
   id: string;
-  input: ExportPreviewInput;
+  input: ExportPreparationInput;
   createdAt: Date;
   expiresAt: Date;
 }
 
-function previewExport(input: ExportPreviewInput): Promise<ExportPreviewResponse>;
+function prepareExport(input: ExportPreparationInput): Promise<ExportPreparationResponse>;
 function checkExportAvailability(token: string): Promise<{ available: true; expiresAt: string }>;
 
 interface ExportServiceOptions {
@@ -1192,7 +1198,7 @@ interface ExportServiceOptions {
 - Routes:
 
 ```text
-POST /api/data-transfers/exports/preview
+POST /api/data-transfers/exports/prepare
 GET  /api/data-transfers/exports/:token/availability
 ```
 
@@ -1228,18 +1234,18 @@ Assert:
 - expiry is exactly 10 minutes from creation;
 - expired, malformed, and missing tokens return stable errors;
 - cleanup deletes only expired rows;
-- a start event deleted before preview rejects the request.
+- a start event deleted before export preparation rejects the request.
 - duplicate start event IDs are normalized to one start event without changing traversal results.
 
-- [ ] **Step 5: Implement preview transaction**
+- [ ] **Step 5: Implement export preparation transaction**
 
 Use a repeatable-read transaction to materialize and count the scope, then store the request filter and expiry. Return current counts and the raw token once.
 
-- [ ] **Step 6: Register preview and availability routes**
+- [ ] **Step 6: Register preparation and availability routes**
 
 Validate request/response with shared contracts. Availability rechecks expiry and the continued existence of every selected start event without generating CSV.
 
-- [ ] **Step 7: Run export preview tests**
+- [ ] **Step 7: Run export preparation tests**
 
 Run:
 
@@ -1255,7 +1261,7 @@ Expected: PASS.
 
 ```bash
 git add apps/api/src/features/data-transfer apps/api/test/export-scope.integration.test.ts apps/api/test/export-service.test.ts
-git commit -m "feat: add export scope preview and tokens"
+git commit -m "feat: add export scope preparation and tokens"
 ```
 
 ---
@@ -1299,7 +1305,7 @@ Assert:
 - relation rows repeat all associated cases;
 - IDs/timestamps/vectors never appear;
 - entities and links are deduplicated;
-- a data change after preview appears according to the download transaction snapshot;
+- a data change after preparation appears according to the export transaction snapshot;
 - deleting a selected start event invalidates filtered download;
 - expired token returns JSON before CSV headers begin;
 - response filename contains no control characters;
@@ -1384,8 +1390,8 @@ git commit -m "feat: stream compatible CSV exports"
 **Interfaces:**
 
 - `ExportEventSelector` wraps `EventCandidateCombobox`, excludes selected IDs, and renders removable ordered chips.
-- `previewExport(input)` returns counts/token.
-- `downloadExport(token)` first calls availability, then starts a same-route browser download.
+- `prepareExport(input)` returns confirmation counts/token.
+- `saveExportFile(token)` first calls availability, then starts a same-route browser file save.
 
 - [ ] **Step 1: Write failing export UI tests**
 
@@ -1397,11 +1403,11 @@ Assert:
 - duplicate selection is impossible;
 - direction uses `AppSelect` in order 双向、下游、上游;
 - depth uses `AppSelect` values 1 through 10;
-- filtered preview is disabled without an event;
+- filtered export is disabled without an event;
 - selection/direction/depth changes clear prior counts and token;
-- preview opens `AppDialog` with event/relation/case counts;
+- export preparation opens `AppDialog` with event/relation/case confirmation counts;
 - confirm validates availability and starts download without navigation;
-- expired token keeps all filters and asks for a new preview;
+- expired token keeps all filters and asks for a new export confirmation;
 - no export history is rendered.
 
 - [ ] **Step 2: Run UI tests and verify failure**
@@ -1416,7 +1422,7 @@ Expected: FAIL because export UI is absent.
 
 - [ ] **Step 3: Implement API calls and download launcher**
 
-Add preview and availability schema validation. After availability succeeds, create a temporary hidden `<a download>` pointing at the same-origin token GET route, click it, and remove it. Do not replace `window.location`.
+Add preparation and availability schema validation. After availability succeeds, create a temporary hidden `<a download>` pointing at the same-origin token GET route, click it, and remove it. Do not replace `window.location`.
 
 - [ ] **Step 4: Implement selection controls**
 
@@ -1424,7 +1430,7 @@ Reuse `EventCandidateCombobox`, `AppSelect`, `OverflowText`, existing button sty
 
 - [ ] **Step 5: Implement confirmation dialog**
 
-Use `AppDialog`; no direction is altered when it opens. Disable close/confirm while availability is being checked. Closing the dialog retains current filters and preview token; only parameter changes, token expiry, or a failed availability check discards it.
+Use `AppDialog`; no direction is altered when it opens. Disable close/confirm while availability is being checked. Closing the dialog retains current filters and preparation token; only parameter changes, token expiry, or a failed availability check discards it.
 
 - [ ] **Step 6: Run Web regression**
 
@@ -1447,7 +1453,7 @@ git commit -m "feat: add filtered and full export interface"
 
 - [ ] **Step 8: Request manual review**
 
-Ask the user to verify multi-event selection, custom dropdowns, chip overflow tips, preview counts, full and filtered downloads, route preservation, and importing a downloaded file before Task 10.
+Ask the user to verify multi-event selection, custom dropdowns, chip overflow tips, export confirmation counts, full and filtered file exports, route preservation, and importing an exported file before Task 10.
 
 ---
 
@@ -1765,7 +1771,7 @@ pnpm --filter @causality/api typecheck
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit locally**
+- [x] **Step 10: Commit locally**
 
 ```bash
 git add packages/contracts/src/data-checks packages/contracts/test/data-checks.test.ts apps/api/src/features/data-checks apps/api/test/data-check-action-service.test.ts apps/api/test/data-check-actions.integration.test.ts
@@ -1903,7 +1909,7 @@ git commit -m "feat: add typed data-maintenance dialogs"
 
 - [ ] **Step 10: Request manual review**
 
-Ask the user to verify every dialog type, both merge directions, pending locks, current visual style, filters/page/modal in browser history, edit cancel return, edit save recheck, and unchanged normal list returns before Task 13.
+Ask the user to verify every inline expanded-panel type, both merge directions, pending locks, failure retention, current visual style, filters/page/expanded state in browser history, and full recheck behavior before Task 13.
 
 ---
 
@@ -1932,11 +1938,11 @@ Ask the user to verify every dialog type, both merge directions, pending locks, 
 - Removes the obsolete public `actionMode`, `auto-handle`, and `manual-handle` contracts/routes after the Web no longer consumes them.
 - Adds `data-transfer:benchmark` root/API scripts.
 
-- [ ] **Step 1: Remove legacy issue endpoints**
+- [x] **Step 1: Remove legacy issue endpoints**
 
 Delete old auto/manual handlers, repository methods, API adapters, and contract exposure. Keep internal rule metadata only if it is still required to select a typed evaluator; do not expose it in list responses.
 
-- [ ] **Step 2: Run focused cleanup regression**
+- [x] **Step 2: Run focused cleanup regression**
 
 Run:
 
@@ -1955,7 +1961,7 @@ Use these focused scans so the internal database `action_mode` column may remain
 ! rg "actionMode" apps/web/src packages/contracts/src
 ```
 
-- [ ] **Step 3: Add the import/export benchmark**
+- [x] **Step 3: Add the import/export benchmark**
 
 Generate in memory:
 
@@ -1971,11 +1977,11 @@ Measure peak process RSS before/after, total time, database round trips, and out
 - a 50,000-record import executes more than 500 SQL statements;
 - export buffers the full CSV before the first response chunk.
 
-- [ ] **Step 4: Extend data-check benchmark**
+- [x] **Step 4: Extend data-check benchmark**
 
 Seed enough active embeddings to exercise indexed top-five lookup and the 50,000 issue cap. Assert bounded candidate retention and no full vector-table load into Node.js.
 
-- [ ] **Step 5: Add import E2E**
+- [x] **Step 5: Add import E2E**
 
 Cover:
 
@@ -1987,26 +1993,26 @@ Cover:
 - long-text tooltip;
 - response-loss recovery through history.
 
-- [ ] **Step 6: Add export E2E**
+- [x] **Step 6: Add export E2E**
 
 Cover:
 
 - event candidate keyboard selection;
 - multiple removable chips;
 - all three directions and depth changes;
-- preview counts;
-- full and filtered download;
-- downloaded CSV round-trip import.
+- export confirmation counts;
+- full and filtered file export;
+- exported CSV round-trip import.
 
-- [ ] **Step 7: Extend governance E2E**
+- [x] **Step 7: Extend governance E2E**
 
-Cover independent duplicate threshold controls, skipped semantic status, `操作` dialogs, both merge directions, generated self-loop cleanup, ignore/recheck, and edit save/cancel return.
+Cover independent duplicate threshold controls, skipped semantic status, inline expanded panels, both merge directions, generated self-loop cleanup, failed-action state retention, and ignore/full-recheck behavior.
 
-- [ ] **Step 8: Extend database verification**
+- [x] **Step 8: Extend database verification**
 
 Verify new tables/indexes, expired export-request cleanup safety, import-count non-negativity, import-record snapshot shapes, threshold bounds, and semantic status/reason combinations.
 
-- [ ] **Step 9: Run complete automated gates**
+- [x] **Step 9: Run complete automated gates**
 
 Run:
 
@@ -2108,7 +2114,7 @@ Do not push GitHub. Report the local commit range and ask whether to enter P2-04
 
 1. Tasks 1–4 establish the database, CSV, import transaction, and read APIs. Run automated tests after every task.
 2. Tasks 5–6 deliver shared primitives and import UI. Stop for manual review after Task 6.
-3. Tasks 7–9 deliver preview, streaming export, and export UI. Stop for manual review after Task 9.
+3. Tasks 7–9 deliver preparation, streaming export, and export UI. Stop for manual review after Task 9.
 4. Task 10 adds semantic duplicate detection and threshold UI. Stop for manual review.
 5. Tasks 11–12 deliver typed governance actions and edit return. Stop for manual review after Task 12.
 6. Task 13 removes compatibility paths and runs performance/full regression.

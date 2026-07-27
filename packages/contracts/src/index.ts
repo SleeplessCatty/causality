@@ -37,7 +37,6 @@ export {
 } from './causal-graph/causalGraphSchemas.js';
 
 export {
-  dataCheckActionModeSchema,
   dataCheckActionContextSchema,
   dataCheckActionImpactSchema,
   dataCheckActionOptionSchema,
@@ -63,7 +62,6 @@ export {
   dataCheckSnapshotSummarySchema,
   dataCheckTargetTypeSchema,
   dataCheckTaskSchema,
-  type DataCheckActionMode,
   type DataCheckActionContext,
   type DataCheckActionImpact,
   type DataCheckActionOption,
@@ -95,8 +93,8 @@ export {
   exportAvailabilityResponseSchema,
   exportCountsSchema,
   exportDirectionSchema,
-  exportPreviewInputSchema,
-  exportPreviewResponseSchema,
+  exportPreparationInputSchema,
+  exportPreparationResponseSchema,
   importBatchListResponseSchema,
   importBatchSummarySchema,
   importDetailQuerySchema,
@@ -111,8 +109,8 @@ export {
   type ExportAvailabilityResponse,
   type ExportCounts,
   type ExportDirection,
-  type ExportPreviewInput,
-  type ExportPreviewResponse,
+  type ExportPreparationInput,
+  type ExportPreparationResponse,
   type ImportBatchListResponse,
   type ImportBatchSummary,
   type ImportDetailQuery,

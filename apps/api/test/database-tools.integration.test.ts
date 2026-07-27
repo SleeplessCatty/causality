@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runFixedSeed } from '../src/database/test-data/fixedSeed.js';
 import { runSimulation } from '../src/database/test-data/simulate.js';
 import { verifyDatabase } from '../src/database/verify.js';
+import { PostgresExportRequestRepository } from '../src/features/data-transfer/exportRequestRepository.js';
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 const firstFixedEventId = '00000000-0000-4000-8000-000000000001';
@@ -144,6 +145,16 @@ describe.sequential('database data tools', () => {
       invalidModelCodes: 0,
       invalidVectorDimensions: 0,
       inactiveModelVectors: 0,
+      invalidThresholds: 0,
+      invalidLifecycleStates: 0,
+      invalidDataCheckSemanticStates: 0,
+    });
+    expect(report.dataTransfer).toEqual({
+      requiredTablesPresent: true,
+      requiredIndexesPresent: true,
+      invalidImportCounts: 0,
+      invalidImportRecordSnapshots: 0,
+      expiredExportRequests: 0,
     });
     expect(report.valid).toBe(true);
   });
@@ -162,6 +173,46 @@ describe.sequential('database data tools', () => {
       await client.query('rollback');
       client.release();
     }
+  });
+
+  it('deletes only expired export requests without changing business records', async () => {
+    const before = await verifyDatabase(pool!);
+    const repository = new PostgresExportRequestRepository({
+      createToken: () => 'a'.repeat(43),
+    });
+    const client = await pool!.connect();
+    try {
+      await client.query('begin');
+      await repository.create(
+        client,
+        { type: 'full' },
+        new Date('2026-01-01T00:00:00.000Z'),
+        new Date('2026-01-01T00:10:00.000Z'),
+      );
+      await client.query('commit');
+    } finally {
+      client.release();
+    }
+
+    const withExpired = await verifyDatabase(pool!);
+    expect(withExpired.dataTransfer.expiredExportRequests).toBe(1);
+    expect(withExpired.valid).toBe(true);
+
+    const cleanupClient = await pool!.connect();
+    try {
+      await cleanupClient.query('begin');
+      expect(
+        await repository.deleteExpired(cleanupClient, new Date('2026-01-01T00:10:00.000Z')),
+      ).toBe(1);
+      await cleanupClient.query('commit');
+    } finally {
+      cleanupClient.release();
+    }
+
+    const after = await verifyDatabase(pool!);
+    expect(after.dataTransfer.expiredExportRequests).toBe(0);
+    expect(after.counts).toEqual(before.counts);
+    expect(after.valid).toBe(true);
   });
 
   it('inserts a configured simulation batch without breaking integrity', async () => {

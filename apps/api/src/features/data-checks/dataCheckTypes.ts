@@ -1,6 +1,5 @@
 import type {
   DataCheckActionContext,
-  DataCheckActionMode,
   DataCheckActionRequest,
   DataCheckActionResponse,
   DataCheckIssueListQuery,
@@ -12,6 +11,8 @@ import type {
   DataCheckTargetType,
 } from '@causality/contracts';
 import type { PoolClient } from 'pg';
+
+export type DataCheckActionMode = 'auto' | 'manual';
 
 export interface DataCheckIssueDraft {
   severity: DataCheckSeverity;

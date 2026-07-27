@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { ExportPreviewInput } from '@causality/contracts';
+import type { ExportPreparationInput } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -102,7 +102,7 @@ async function seedGraph(pool: Pool): Promise<void> {
   );
 }
 
-async function materializedIds(client: PoolClient, input: ExportPreviewInput) {
+async function materializedIds(client: PoolClient, input: ExportPreparationInput) {
   const repository = new PostgresExportScopeRepository();
   const counts = await repository.materialize(client, input);
   const events = await client.query<{ id: string }>(

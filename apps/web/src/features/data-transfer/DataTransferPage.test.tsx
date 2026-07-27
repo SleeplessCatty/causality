@@ -4,7 +4,7 @@ import { Link, Outlet, RouterProvider, createMemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppProviders } from '../../app/AppProviders';
-import { downloadExport, getImportHistory, previewExport, uploadImport } from './dataTransferApi';
+import { getImportHistory, prepareExport, saveExportFile, uploadImport } from './dataTransferApi';
 import { DataTransferPage } from './DataTransferPage';
 
 vi.mock('./dataTransferApi', () => ({
@@ -12,8 +12,8 @@ vi.mock('./dataTransferApi', () => ({
   getImportHistory: vi.fn(),
   getImportBatch: vi.fn(),
   getImportRecords: vi.fn(),
-  previewExport: vi.fn(),
-  downloadExport: vi.fn(),
+  prepareExport: vi.fn(),
+  saveExportFile: vi.fn(),
 }));
 
 const batch: ImportBatchSummary = {
@@ -88,12 +88,12 @@ function chooseFile(name = 'mixed.csv', size = 1_572_864): File {
 describe('DataTransferPage', () => {
   beforeEach(() => {
     vi.mocked(getImportHistory).mockResolvedValue(historyPage());
-    vi.mocked(previewExport).mockResolvedValue({
+    vi.mocked(prepareExport).mockResolvedValue({
       token: 'export-token',
       expiresAt: '2026-07-27T08:30:00.000Z',
       counts: { events: 3, relations: 2, cases: 5 },
     });
-    vi.mocked(downloadExport).mockResolvedValue(undefined);
+    vi.mocked(saveExportFile).mockResolvedValue(undefined);
   });
 
   afterEach(() => {

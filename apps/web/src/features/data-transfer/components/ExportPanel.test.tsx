@@ -1,17 +1,17 @@
-import type { ExportPreviewResponse } from '@causality/contracts';
+import type { ExportPreparationResponse as ExportConfirmation } from '@causality/contracts';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppProviders } from '../../../app/AppProviders';
 import { getEventCandidatePage } from '../../events/api/eventApi';
-import { downloadExport, previewExport } from '../dataTransferApi';
+import { prepareExport, saveExportFile } from '../dataTransferApi';
 import { ExportPanel } from './ExportPanel';
 
 vi.mock('../../events/api/eventApi', () => ({ getEventCandidatePage: vi.fn() }));
 vi.mock('../dataTransferApi', () => ({
-  previewExport: vi.fn(),
-  downloadExport: vi.fn(),
+  prepareExport: vi.fn(),
+  saveExportFile: vi.fn(),
 }));
 
 const events = [
@@ -20,8 +20,8 @@ const events = [
   { id: '33333333-3333-4333-8333-333333333333', name: '运输成本上升' },
 ];
 
-const firstPreview: ExportPreviewResponse = {
-  token: 'preview-token-1',
+const firstConfirmation: ExportConfirmation = {
+  token: 'export-token-1',
   expiresAt: '2026-07-27T08:30:00.000Z',
   counts: { events: 3, relations: 2, cases: 5 },
 };
@@ -64,8 +64,8 @@ describe('ExportPanel', () => {
       nextCursor: null,
       hasMore: false,
     });
-    vi.mocked(previewExport).mockResolvedValue(firstPreview);
-    vi.mocked(downloadExport).mockResolvedValue(undefined);
+    vi.mocked(prepareExport).mockResolvedValue(firstConfirmation);
+    vi.mocked(saveExportFile).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -80,12 +80,12 @@ describe('ExportPanel', () => {
     const filtered = screen.getByRole('button', { name: '筛选导出' });
     expect(full.className).toContain('button--primary');
     expect(filtered.className).toContain('button--secondary');
-    expect(screen.getByRole('button', { name: '预览并导出' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '数据导出' })).toBeTruthy();
 
     fireEvent.click(filtered);
     expect(filtered.className).toContain('button--primary');
     expect(full.className).toContain('button--secondary');
-    expect((screen.getByRole('button', { name: '预览并导出' }) as HTMLButtonElement).disabled).toBe(
+    expect((screen.getByRole('button', { name: '数据导出' }) as HTMLButtonElement).disabled).toBe(
       true,
     );
 
@@ -164,19 +164,19 @@ describe('ExportPanel', () => {
     ).toEqual([`${events[0]!.name}移除`]);
   });
 
-  it('retains a closed preview but clears it whenever a filter changes', async () => {
-    vi.mocked(previewExport)
-      .mockResolvedValueOnce(firstPreview)
+  it('retains a closed confirmation but clears it whenever a filter changes', async () => {
+    vi.mocked(prepareExport)
+      .mockResolvedValueOnce(firstConfirmation)
       .mockResolvedValueOnce({
-        ...firstPreview,
-        token: 'preview-token-2',
+        ...firstConfirmation,
+        token: 'export-token-2',
         counts: { events: 7, relations: 6, cases: 9 },
       });
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '筛选导出' }));
     await selectFirstEvent();
 
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
     const dialog = await screen.findByRole('dialog', { name: '确认导出' });
     expect(within(dialog).getByText('3')).toBeTruthy();
     expect(within(dialog).getByText('2')).toBeTruthy();
@@ -184,7 +184,7 @@ describe('ExportPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
 
     fireEvent.click(screen.getByRole('button', { name: '查看导出确认' }));
-    expect(previewExport).toHaveBeenCalledTimes(1);
+    expect(prepareExport).toHaveBeenCalledTimes(1);
     fireEvent.click(
       within(screen.getByRole('dialog', { name: '确认导出' })).getByRole('button', {
         name: '取消',
@@ -194,12 +194,12 @@ describe('ExportPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '遍历方向' }));
     fireEvent.click(screen.getByRole('option', { name: '下游' }));
     expect(screen.queryByText('3')).toBeNull();
-    expect(screen.getByRole('button', { name: '预览并导出' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '数据导出' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
     const nextDialog = await screen.findByRole('dialog', { name: '确认导出' });
     expect(within(nextDialog).getByText('7')).toBeTruthy();
-    expect(previewExport).toHaveBeenLastCalledWith(
+    expect(prepareExport).toHaveBeenLastCalledWith(
       {
         type: 'filtered',
         startEventIds: [events[0]!.id],
@@ -210,173 +210,184 @@ describe('ExportPanel', () => {
     );
   });
 
-  it('discards a preview response that arrives after its filters changed', async () => {
-    let finishPreview!: (value: ExportPreviewResponse) => void;
-    vi.mocked(previewExport).mockImplementation(
+  it('discards a confirmation response that arrives after its filters changed', async () => {
+    let finishPreparation!: (value: ExportConfirmation) => void;
+    vi.mocked(prepareExport).mockImplementation(
       () =>
         new Promise((resolve) => {
-          finishPreview = resolve;
+          finishPreparation = resolve;
         }),
     );
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '筛选导出' }));
     await selectFirstEvent();
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
-    await waitFor(() => expect(previewExport).toHaveBeenCalledOnce());
-    const previewCall = vi.mocked(previewExport).mock.calls[0] as unknown as [unknown, AbortSignal];
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
+    await waitFor(() => expect(prepareExport).toHaveBeenCalledOnce());
+    const preparationCall = vi.mocked(prepareExport).mock.calls[0] as unknown as [
+      unknown,
+      AbortSignal,
+    ];
 
     fireEvent.click(screen.getByRole('button', { name: `移除起始原子事件：${events[0]!.name}` }));
-    expect(previewCall[1]).toBeInstanceOf(AbortSignal);
-    expect(previewCall[1].aborted).toBe(true);
-    await act(async () => finishPreview(firstPreview));
+    expect(preparationCall[1]).toBeInstanceOf(AbortSignal);
+    expect(preparationCall[1].aborted).toBe(true);
+    await act(async () => finishPreparation(firstConfirmation));
 
     expect(screen.queryByRole('dialog', { name: '确认导出' })).toBeNull();
     expect(screen.queryByRole('button', { name: '查看导出确认' })).toBeNull();
-    expect((screen.getByRole('button', { name: '预览并导出' }) as HTMLButtonElement).disabled).toBe(
+    expect((screen.getByRole('button', { name: '数据导出' }) as HTMLButtonElement).disabled).toBe(
       true,
     );
   });
 
-  it('aborts an in-flight preview when its traversal parameter changes', async () => {
-    vi.mocked(previewExport).mockImplementation(() => new Promise(() => undefined));
+  it('aborts an in-flight preparation when its traversal parameter changes', async () => {
+    vi.mocked(prepareExport).mockImplementation(() => new Promise(() => undefined));
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '筛选导出' }));
     await selectFirstEvent();
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
-    await waitFor(() => expect(previewExport).toHaveBeenCalledOnce());
-    const previewCall = vi.mocked(previewExport).mock.calls[0] as unknown as [unknown, AbortSignal];
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
+    await waitFor(() => expect(prepareExport).toHaveBeenCalledOnce());
+    const preparationCall = vi.mocked(prepareExport).mock.calls[0] as unknown as [
+      unknown,
+      AbortSignal,
+    ];
 
     fireEvent.click(screen.getByRole('button', { name: '遍历方向' }));
     fireEvent.click(screen.getByRole('option', { name: '下游' }));
 
-    expect(previewCall[1]).toBeInstanceOf(AbortSignal);
-    expect(previewCall[1].aborted).toBe(true);
+    expect(preparationCall[1]).toBeInstanceOf(AbortSignal);
+    expect(preparationCall[1].aborted).toBe(true);
   });
 
-  it('aborts an in-flight preview when the export mode changes', async () => {
-    vi.mocked(previewExport).mockImplementation(() => new Promise(() => undefined));
+  it('aborts an in-flight preparation when the export mode changes', async () => {
+    vi.mocked(prepareExport).mockImplementation(() => new Promise(() => undefined));
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
-    await waitFor(() => expect(previewExport).toHaveBeenCalledOnce());
-    const previewCall = vi.mocked(previewExport).mock.calls[0] as unknown as [unknown, AbortSignal];
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
+    await waitFor(() => expect(prepareExport).toHaveBeenCalledOnce());
+    const preparationCall = vi.mocked(prepareExport).mock.calls[0] as unknown as [
+      unknown,
+      AbortSignal,
+    ];
 
     fireEvent.click(screen.getByRole('button', { name: '筛选导出' }));
 
-    expect(previewCall[1]).toBeInstanceOf(AbortSignal);
-    expect(previewCall[1].aborted).toBe(true);
+    expect(preparationCall[1]).toBeInstanceOf(AbortSignal);
+    expect(preparationCall[1].aborted).toBe(true);
   });
 
-  it('aborts an in-flight preview when the panel unmounts', async () => {
-    vi.mocked(previewExport).mockImplementation(() => new Promise(() => undefined));
+  it('aborts an in-flight preparation when the panel unmounts', async () => {
+    vi.mocked(prepareExport).mockImplementation(() => new Promise(() => undefined));
     const panel = renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
-    await waitFor(() => expect(previewExport).toHaveBeenCalledOnce());
-    const previewCall = vi.mocked(previewExport).mock.calls[0] as unknown as [unknown, AbortSignal];
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
+    await waitFor(() => expect(prepareExport).toHaveBeenCalledOnce());
+    const preparationCall = vi.mocked(prepareExport).mock.calls[0] as unknown as [
+      unknown,
+      AbortSignal,
+    ];
 
     panel.unmount();
 
-    expect(previewCall[1]).toBeInstanceOf(AbortSignal);
-    expect(previewCall[1].aborted).toBe(true);
+    expect(preparationCall[1]).toBeInstanceOf(AbortSignal);
+    expect(preparationCall[1].aborted).toBe(true);
   });
 
-  it('locks the confirmation dialog while validating availability and downloads without navigation', async () => {
-    let finishDownload!: () => void;
-    vi.mocked(downloadExport).mockImplementation(
+  it('locks the confirmation dialog while saving and returns to the export action without a progress notice', async () => {
+    let finishSave!: () => void;
+    vi.mocked(saveExportFile).mockImplementation(
       () =>
         new Promise<void>((resolve) => {
-          finishDownload = resolve;
+          finishSave = resolve;
         }),
     );
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
     const dialog = await screen.findByRole('dialog', { name: '确认导出' });
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认下载' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '导出' }));
     await waitFor(() =>
-      expect(downloadExport).toHaveBeenCalledWith(firstPreview.token, expect.any(AbortSignal)),
+      expect(saveExportFile).toHaveBeenCalledWith(firstConfirmation.token, expect.any(AbortSignal)),
     );
     expect(
       (within(dialog).getByRole('button', { name: '取消' }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(
-      (within(dialog).getByRole('button', { name: '正在确认可用性…' }) as HTMLButtonElement)
-        .disabled,
+      (within(dialog).getByRole('button', { name: '正在导出…' }) as HTMLButtonElement).disabled,
     ).toBe(true);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.getByRole('dialog', { name: '确认导出' })).toBeTruthy();
 
-    await act(async () => finishDownload());
+    await act(async () => finishSave());
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '确认导出' })).toBeNull());
-    expect(screen.getByRole('status', { name: '' }).textContent).toContain('下载已开始');
+    expect(screen.queryByText('下载已开始')).toBeNull();
+    expect(screen.getByRole('button', { name: '数据导出' })).toBeTruthy();
     expect(screen.getByLabelText('当前路由').textContent).toBe('/data-transfer?tab=export&page=2');
   });
 
-  it('aborts pending availability when a filter changes', async () => {
-    vi.mocked(downloadExport).mockImplementation(() => new Promise(() => undefined));
+  it('aborts a pending save when a filter changes', async () => {
+    vi.mocked(saveExportFile).mockImplementation(() => new Promise(() => undefined));
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '筛选导出' }));
     await selectFirstEvent();
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
     const dialog = await screen.findByRole('dialog', { name: '确认导出' });
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认下载' }));
-    await waitFor(() => expect(downloadExport).toHaveBeenCalledOnce());
-    const downloadCall = vi.mocked(downloadExport).mock.calls[0] as unknown as [
-      string,
-      AbortSignal,
-    ];
+    fireEvent.click(within(dialog).getByRole('button', { name: '导出' }));
+    await waitFor(() => expect(saveExportFile).toHaveBeenCalledOnce());
+    const saveCall = vi.mocked(saveExportFile).mock.calls[0] as unknown as [string, AbortSignal];
 
     fireEvent.click(screen.getByRole('button', { name: '遍历方向' }));
     fireEvent.click(screen.getByRole('option', { name: '下游' }));
 
-    expect(downloadCall[1]).toBeInstanceOf(AbortSignal);
-    expect(downloadCall[1].aborted).toBe(true);
+    expect(saveCall[1]).toBeInstanceOf(AbortSignal);
+    expect(saveCall[1].aborted).toBe(true);
     expect(screen.queryByRole('dialog', { name: '确认导出' })).toBeNull();
   });
 
-  it('aborts pending availability when the panel unmounts', async () => {
-    vi.mocked(downloadExport).mockImplementation(() => new Promise(() => undefined));
+  it('aborts a pending save when the panel unmounts', async () => {
+    vi.mocked(saveExportFile).mockImplementation(() => new Promise(() => undefined));
     const panel = renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
     const dialog = await screen.findByRole('dialog', { name: '确认导出' });
-    fireEvent.click(within(dialog).getByRole('button', { name: '确认下载' }));
-    await waitFor(() => expect(downloadExport).toHaveBeenCalledOnce());
-    const downloadCall = vi.mocked(downloadExport).mock.calls[0] as unknown as [
-      string,
-      AbortSignal,
-    ];
+    fireEvent.click(within(dialog).getByRole('button', { name: '导出' }));
+    await waitFor(() => expect(saveExportFile).toHaveBeenCalledOnce());
+    const saveCall = vi.mocked(saveExportFile).mock.calls[0] as unknown as [string, AbortSignal];
 
     panel.unmount();
 
-    expect(downloadCall[1]).toBeInstanceOf(AbortSignal);
-    expect(downloadCall[1].aborted).toBe(true);
+    expect(saveCall[1]).toBeInstanceOf(AbortSignal);
+    expect(saveCall[1].aborted).toBe(true);
   });
 
-  it('replaces an earlier download success notice with a later availability failure', async () => {
-    vi.mocked(downloadExport)
+  it('starts each completed export from a fresh confirmation without showing a success notice', async () => {
+    vi.mocked(saveExportFile)
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('导出令牌已过期'));
     renderPanel();
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
     fireEvent.click(
       within(await screen.findByRole('dialog', { name: '确认导出' })).getByRole('button', {
-        name: '确认下载',
+        name: '导出',
       }),
     );
-    expect(await screen.findByText('下载已开始')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '确认导出' })).toBeNull());
+    expect(screen.queryByText('下载已开始')).toBeNull();
+    expect(screen.getByRole('button', { name: '数据导出' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: '查看导出确认' }));
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
+    await waitFor(() => expect(prepareExport).toHaveBeenCalledTimes(2));
     fireEvent.click(
       within(await screen.findByRole('dialog', { name: '确认导出' })).getByRole('button', {
-        name: '确认下载',
+        name: '导出',
       }),
     );
 
-    expect((await screen.findByRole('alert')).textContent).toContain('导出令牌已过期，请重新预览');
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '导出令牌已过期，请重新发起导出',
+    );
     expect(screen.queryByText('下载已开始')).toBeNull();
   });
 
-  it('discards an unavailable token, keeps filters, and requires a fresh preview', async () => {
-    vi.mocked(downloadExport).mockRejectedValue(new Error('导出令牌已过期'));
+  it('discards an unavailable token, keeps filters, and requires a fresh export', async () => {
+    vi.mocked(saveExportFile).mockRejectedValue(new Error('导出令牌已过期'));
     renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '筛选导出' }));
     await selectFirstEvent();
@@ -384,19 +395,21 @@ describe('ExportPanel', () => {
     fireEvent.click(screen.getByRole('option', { name: '上游' }));
     fireEvent.click(screen.getByRole('button', { name: '遍历深度' }));
     fireEvent.click(screen.getByRole('option', { name: '4' }));
-    fireEvent.click(screen.getByRole('button', { name: '预览并导出' }));
+    fireEvent.click(screen.getByRole('button', { name: '数据导出' }));
 
     fireEvent.click(
       within(await screen.findByRole('dialog', { name: '确认导出' })).getByRole('button', {
-        name: '确认下载',
+        name: '导出',
       }),
     );
 
-    expect((await screen.findByRole('alert')).textContent).toContain('导出令牌已过期，请重新预览');
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '导出令牌已过期，请重新发起导出',
+    );
     expect(screen.getByRole('listitem').textContent).toContain(events[0]!.name);
     expect(screen.getByRole('button', { name: '遍历方向' }).textContent).toContain('上游');
     expect(screen.getByRole('button', { name: '遍历深度' }).textContent).toContain('4');
-    expect(screen.getByRole('button', { name: '重新预览' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '数据导出' })).toBeTruthy();
     expect(screen.queryByText('导出历史')).toBeNull();
   });
 });

@@ -120,11 +120,5 @@ export function useListPageCorrection({
       },
       { replace: true, state: navigationState },
     );
-  }, [
-    isPlaceholderData,
-    navigationState,
-    requestedPage,
-    responsePage,
-    setSearchParameters,
-  ]);
+  }, [isPlaceholderData, navigationState, requestedPage, responsePage, setSearchParameters]);
 }

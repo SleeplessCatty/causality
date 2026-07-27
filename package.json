@@ -18,6 +18,7 @@
     "db:seed": "pnpm --filter @causality/api db:seed",
     "db:simulate": "pnpm --filter @causality/api db:simulate",
     "db:verify": "pnpm --filter @causality/api db:verify",
+    "data-transfer:benchmark": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api data-transfer:benchmark",
     "data-check:benchmark": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api data-check:benchmark",
     "graph:benchmark": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" pnpm --filter @causality/api graph:benchmark",
     "semantic:model-smoke": "pnpm --filter @causality/semantic-worker smoke:model",

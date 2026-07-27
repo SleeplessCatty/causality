@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 
-import type { ExportCounts, ExportPreviewInput } from '@causality/contracts';
+import type { ExportCounts, ExportPreparationInput } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -93,11 +93,11 @@ async function seedExportGraph(pool: Pool): Promise<void> {
 
 async function preview(
   context: StartedPostgresTestContext,
-  body: ExportPreviewInput = { type: 'full' },
+  body: ExportPreparationInput = { type: 'full' },
 ): Promise<string> {
   const response = await context.app.inject({
     method: 'POST',
-    url: '/api/data-transfers/exports/preview',
+    url: '/api/data-transfers/exports/prepare',
     payload: body,
   });
   expect(response.statusCode, response.body).toBe(200);
@@ -268,7 +268,7 @@ describe.sequential('consistent streaming CSV export', () => {
     const token = await preview(context!);
     await pool!.query(
       `insert into abstract_events (id, name, description)
-       values ($1, '预览后事件', '下载快照应包含')`,
+       values ($1, '确认后事件', '导出快照应包含')`,
       [eventIds.afterPreview],
     );
 
@@ -292,7 +292,7 @@ describe.sequential('consistent streaming CSV export', () => {
     expect(response.body).toBe(
       `"原子事件","事件 A","说明,""引号""\n第二行","alpha one;alpha two;Zulu","第一关键词;第二关键词"\n` +
         `"原子事件","事件 B","","",""\n` +
-        `"原子事件","预览后事件","下载快照应包含","",""\n` +
+        `"原子事件","确认后事件","导出快照应包含","",""\n` +
         `"具体案例","案例,一"\n` +
         `"具体案例","案例""二"\n` +
         `"具体案例","独立案例"\n` +
@@ -381,7 +381,7 @@ describe.sequential('consistent streaming CSV export', () => {
       scope,
       new PostgresExportRequestRepository({ createToken: () => 'b'.repeat(43) }),
     );
-    const issued = await service.previewExport({ type: 'full' });
+    const issued = await service.prepareExport({ type: 'full' });
     const controller = new AbortController();
     const exported = await service.openExportCsv(issued.token, controller.signal);
 
@@ -403,7 +403,7 @@ describe.sequential('consistent streaming CSV export', () => {
       new PostgresExportScopeRepository(),
       new PostgresExportRequestRepository({ createToken: () => 'c'.repeat(43) }),
     );
-    const liveToken = await liveService.previewExport({ type: 'full' });
+    const liveToken = await liveService.prepareExport({ type: 'full' });
     const controller = new AbortController();
     const liveExport = await liveService.openExportCsv(liveToken.token, controller.signal);
     const iterator = (liveExport.stream as Readable)[Symbol.asyncIterator]();
@@ -417,7 +417,7 @@ describe.sequential('consistent streaming CSV export', () => {
       new FailingScopeRepository(),
       new PostgresExportRequestRepository({ createToken: () => 'd'.repeat(43) }),
     );
-    const failingToken = await failingService.previewExport({ type: 'full' });
+    const failingToken = await failingService.prepareExport({ type: 'full' });
     const failedExport = await failingService.openExportCsv(
       failingToken.token,
       new AbortController().signal,
@@ -445,7 +445,7 @@ describe.sequential('consistent streaming CSV export', () => {
       new CommitFailingScopeRepository(),
       new PostgresExportRequestRepository({ createToken: () => 'e'.repeat(43) }),
     );
-    const issued = await service.previewExport({ type: 'full' });
+    const issued = await service.prepareExport({ type: 'full' });
     const exported = await service.openExportCsv(issued.token, new AbortController().signal);
 
     await expect(
@@ -467,7 +467,7 @@ describe.sequential('consistent streaming CSV export', () => {
       new SetupAbortedScopeRepository(controller),
       new PostgresExportRequestRepository({ createToken: () => 'f'.repeat(43) }),
     );
-    const issued = await service.previewExport({ type: 'full' });
+    const issued = await service.prepareExport({ type: 'full' });
 
     const outcome = await service.openExportCsv(issued.token, controller.signal).then(
       (exported) => ({ exported }),

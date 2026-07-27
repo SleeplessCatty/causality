@@ -3,8 +3,8 @@ import path from 'node:path';
 import {
   apiErrorSchema,
   exportAvailabilityResponseSchema,
-  exportPreviewInputSchema,
-  exportPreviewResponseSchema,
+  exportPreparationInputSchema,
+  exportPreparationResponseSchema,
   importBatchListResponseSchema,
   importBatchSummarySchema,
   importDetailQuerySchema,
@@ -174,13 +174,13 @@ export function registerDataTransferRoutes(
   const exportTokenParamsSchema = z.object({ token: z.string().min(1).max(512) }).strict();
 
   routes.post(
-    '/api/data-transfers/exports/preview',
+    '/api/data-transfers/exports/prepare',
     {
       schema: {
         tags: ['data-transfers'],
-        body: exportPreviewInputSchema,
+        body: exportPreparationInputSchema,
         response: {
-          200: exportPreviewResponseSchema,
+          200: exportPreparationResponseSchema,
           400: apiErrorSchema,
           500: apiErrorSchema,
         },
@@ -188,7 +188,7 @@ export function registerDataTransferRoutes(
     },
     async (request, reply) => {
       try {
-        return await exportService.previewExport(request.body);
+        return await exportService.prepareExport(request.body);
       } catch (error) {
         return sendExportError(error, reply);
       }

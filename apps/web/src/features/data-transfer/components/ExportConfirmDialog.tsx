@@ -1,10 +1,10 @@
-import type { ExportPreviewResponse } from '@causality/contracts';
+import type { ExportPreparationResponse as ExportConfirmation } from '@causality/contracts';
 
 import { AppDialog } from '../../../shared/dialog/AppDialog';
 
 interface ExportConfirmDialogProps {
   open: boolean;
-  preview: ExportPreviewResponse | null;
+  confirmation: ExportConfirmation | null;
   pending: boolean;
   onClose(): void;
   onConfirm(): void;
@@ -12,14 +12,14 @@ interface ExportConfirmDialogProps {
 
 export function ExportConfirmDialog({
   open,
-  preview,
+  confirmation,
   pending,
   onClose,
   onConfirm,
 }: ExportConfirmDialogProps) {
   return (
     <AppDialog
-      open={open && preview !== null}
+      open={open && confirmation !== null}
       title="确认导出"
       descriptionId="export-confirm-description"
       pending={pending}
@@ -41,26 +41,26 @@ export function ExportConfirmDialog({
             disabled={pending}
             onClick={onConfirm}
           >
-            {pending ? '正在确认可用性…' : '确认下载'}
+            {pending ? '正在导出…' : '导出'}
           </button>
         </>
       }
     >
-      {preview ? (
+      {confirmation ? (
         <>
-          <p id="export-confirm-description">请确认本次导出的数据范围。</p>
+          <p id="export-confirm-description">本次将导出以下数据，请确认是否继续。</p>
           <dl className="data-transfer-export-counts">
             <div>
               <dt>原子事件</dt>
-              <dd>{preview.counts.events}</dd>
+              <dd>{confirmation.counts.events}</dd>
             </div>
             <div>
               <dt>因果关系</dt>
-              <dd>{preview.counts.relations}</dd>
+              <dd>{confirmation.counts.relations}</dd>
             </div>
             <div>
               <dt>具体案例</dt>
-              <dd>{preview.counts.cases}</dd>
+              <dd>{confirmation.counts.cases}</dd>
             </div>
           </dl>
         </>

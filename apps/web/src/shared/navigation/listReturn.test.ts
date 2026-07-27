@@ -61,11 +61,7 @@ describe('list return navigation', () => {
 
   it('rejects unsafe list return paths', () => {
     expect(
-      resolveRecordReturnTarget(
-        { listReturnPath: 'https://evil.example/events' },
-        '/events',
-        2,
-      ),
+      resolveRecordReturnTarget({ listReturnPath: 'https://evil.example/events' }, '/events', 2),
     ).toEqual({ path: '/events?page=2' });
   });
 });

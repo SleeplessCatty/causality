@@ -297,8 +297,9 @@ describe('data-check contracts', () => {
         dataCheckActionRequestSchema.safeParse({ ...request, sql: 'delete from abstract_events' })
           .success,
       ).toBe(false);
-      expect(dataCheckActionRequestSchema.safeParse({ ...request, snapshotId: 'not-an-id' }).success)
-        .toBe(false);
+      expect(
+        dataCheckActionRequestSchema.safeParse({ ...request, snapshotId: 'not-an-id' }).success,
+      ).toBe(false);
     }
 
     expect(
@@ -319,9 +320,9 @@ describe('data-check contracts', () => {
         actionKey,
       }).success,
     ).toBe(false);
-    expect(
-      dataCheckActionRequestSchema.safeParse({ type: 'drop_table', snapshotId }).success,
-    ).toBe(false);
+    expect(dataCheckActionRequestSchema.safeParse({ type: 'drop_table', snapshotId }).success).toBe(
+      false,
+    );
     expect(
       dataCheckActionRequestSchema.safeParse({
         type: 'cleanup',
@@ -394,8 +395,9 @@ describe('data-check contracts', () => {
       message: null,
     };
     expect(dataCheckActionContextSchema.parse(context)).toEqual(context);
-    expect(dataCheckActionContextSchema.safeParse({ ...context, table: 'abstract_events' }).success)
-      .toBe(false);
+    expect(
+      dataCheckActionContextSchema.safeParse({ ...context, table: 'abstract_events' }).success,
+    ).toBe(false);
     expect(
       dataCheckActionResponseSchema.parse({
         issue: { ...issue, status: 'handled', handledAt: timestamp },

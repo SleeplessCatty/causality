@@ -77,7 +77,10 @@ export class DataCheckService implements DataCheckScanner {
     this.semanticRule = options.semanticRule;
   }
 
-  private async scanSemantic(): Promise<{ issues: DataCheckIssueDraft[]; semantic: DataCheckSemanticResult }> {
+  private async scanSemantic(): Promise<{
+    issues: DataCheckIssueDraft[];
+    semantic: DataCheckSemanticResult;
+  }> {
     if (!this.semanticRule) {
       return {
         issues: [],

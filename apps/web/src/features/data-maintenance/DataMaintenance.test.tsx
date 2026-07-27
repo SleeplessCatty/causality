@@ -365,9 +365,7 @@ function baseFetch(
       const page = Number(requestUrl.searchParams.get('page') ?? 1);
       return jsonResponse(issuePage(items, page));
     }
-    const actionContextMatch = url.match(
-      /\/api\/data-checks\/issues\/([^/]+)\/action-context/,
-    );
+    const actionContextMatch = url.match(/\/api\/data-checks\/issues\/([^/]+)\/action-context/);
     if (actionContextMatch) {
       const issueId = actionContextMatch[1]!;
       const currentIssue = items.find((candidate) => candidate.id === issueId);
@@ -615,9 +613,7 @@ describe('DataMaintenance', () => {
       const confirm = within(panel).queryByRole('button', { name: '确认处理' });
       if (variant.confirm) {
         expect(confirm).toBeTruthy();
-        expect((confirm as HTMLButtonElement).disabled).toBe(
-          variant.context.panelKind === 'merge',
-        );
+        expect((confirm as HTMLButtonElement).disabled).toBe(variant.context.panelKind === 'merge');
       } else {
         expect(confirm).toBeNull();
       }
@@ -644,9 +640,7 @@ describe('DataMaintenance', () => {
     expect(within(panel).getByText('正在加载处理方案…')).toBeTruthy();
     expect(within(panel).queryByRole('button', { name: '忽略此问题' })).toBeNull();
 
-    resolveContext(
-      (await jsonResponse(actionContext(singleIssue))) as unknown as Response,
-    );
+    resolveContext((await jsonResponse(actionContext(singleIssue))) as unknown as Response);
     expect(await within(panel).findByRole('button', { name: '忽略此问题' })).toBeTruthy();
   });
 
@@ -673,11 +667,7 @@ describe('DataMaintenance', () => {
     const actionResponse = new Promise<Response>((_, reject) => {
       rejectAction = reject;
     });
-    const fetchMock = baseFetch(
-      succeeded,
-      [pairIssue],
-      new Map([[pairIssue.id, mergeContext]]),
-    );
+    const fetchMock = baseFetch(succeeded, [pairIssue], new Map([[pairIssue.id, mergeContext]]));
     vi.stubGlobal(
       'fetch',
       vi.fn((input: string | URL | Request, options?: RequestInit) => {

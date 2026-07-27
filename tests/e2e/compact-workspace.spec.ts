@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { apiBase } from './support/urls';
+
 const centerEventId = '00000000-0000-4000-8000-000000000001';
 
 test('compact shell and full-canvas graph preserve workspace geometry', async ({
@@ -14,7 +16,7 @@ test('compact shell and full-canvas graph preserve workspace geometry', async ({
   await page.setViewportSize({ width: 1280, height: 720 });
   const tooltipName = `E2E 提示事件 ${Date.now()}`;
   const tooltipAliases = ['提示别名一', '提示别名二', '提示别名三', '提示别名四'];
-  const created = await request.post('http://127.0.0.1:3000/api/events', {
+  const created = await request.post(`${apiBase}/events`, {
     data: {
       name: tooltipName,
       description: null,

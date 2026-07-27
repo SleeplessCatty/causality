@@ -55,11 +55,7 @@ export function DataCheckMergePlan({
       <h4>处理方案</h4>
       <div className="data-check-merge-records">
         {context.records.map((record, index) => (
-          <RecordCard
-            record={record}
-            label={index === 0 ? '记录 A' : '记录 B'}
-            key={record.id}
-          />
+          <RecordCard record={record} label={index === 0 ? '记录 A' : '记录 B'} key={record.id} />
         ))}
       </div>
       <fieldset className="data-check-merge-directions" disabled={disabled}>

@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 
 import { expect, test, type APIRequestContext } from '@playwright/test';
 
+import { apiBase } from './support/urls';
+
 test.setTimeout(120_000);
 
 async function createDenseGraph(request: APIRequestContext) {
@@ -19,7 +21,7 @@ async function createDenseGraph(request: APIRequestContext) {
   );
   const result = JSON.parse(output.slice(output.indexOf('{'))) as { batchId: string };
   const centerName = `SIM-${result.batchId}-事件-1`;
-  const centerResponse = await request.get('http://127.0.0.1:3000/api/events/candidates', {
+  const centerResponse = await request.get(`${apiBase}/events/candidates`, {
     params: { q: centerName, limit: 1 },
   });
   expect(centerResponse.ok()).toBe(true);

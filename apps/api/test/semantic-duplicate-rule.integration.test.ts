@@ -128,7 +128,9 @@ describe.sequential('semantic duplicate data-check rule', () => {
       semantic: { status: 'skipped', reason: 'index_not_ready', issueCount: 0 },
     });
 
-    await pool!.query(`update semantic_index_state set status = 'ready' where singleton_key = true`);
+    await pool!.query(
+      `update semantic_index_state set status = 'ready' where singleton_key = true`,
+    );
     await expect(rule().scan()).resolves.toMatchObject({
       semantic: { status: 'skipped', reason: 'no_embeddings', issueCount: 0 },
     });
@@ -241,35 +243,37 @@ describe.sequential('semantic duplicate data-check rule', () => {
   });
 
   it('caps a 50,001-row global candidate probe as a truncated semantic snapshot', async () => {
-    const readFacts = vi.spyOn(PostgresSemanticLifecycleRepository.prototype, 'readFacts').mockResolvedValue({
-      models: [
-        {
-          modelCode,
-          label: 'test',
-          description: 'test',
-          languageLabel: 'test',
-          dimensions: 384,
-          expectedDownloadBytes: 0,
-          threshold: 0,
-          dedupeThreshold: 0,
-          downloadedAt: null,
-          fileState: 'downloaded',
+    const readFacts = vi
+      .spyOn(PostgresSemanticLifecycleRepository.prototype, 'readFacts')
+      .mockResolvedValue({
+        models: [
+          {
+            modelCode,
+            label: 'test',
+            description: 'test',
+            languageLabel: 'test',
+            dimensions: 384,
+            expectedDownloadBytes: 0,
+            threshold: 0,
+            dedupeThreshold: 0,
+            downloadedAt: null,
+            fileState: 'downloaded',
+            failure: null,
+          },
+        ],
+        index: {
+          currentModelCode: modelCode,
+          status: 'ready',
+          stateVersion: 1,
+          processedItems: 0,
+          totalItems: 0,
+          pendingItems: 0,
+          failedItems: 0,
           failure: null,
+          updatedAt: null,
         },
-      ],
-      index: {
-        currentModelCode: modelCode,
-        status: 'ready',
-        stateVersion: 1,
-        processedItems: 0,
-        totalItems: 0,
-        pendingItems: 0,
-        failedItems: 0,
-        failure: null,
-        updatedAt: null,
-      },
-      jobs: [],
-    });
+        jobs: [],
+      });
     const candidateRows = Array.from({ length: 50_001 }, (_, index) => ({
       target_id: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
       related_id: `20000000-0000-4000-8000-${String(index).padStart(12, '0')}`,

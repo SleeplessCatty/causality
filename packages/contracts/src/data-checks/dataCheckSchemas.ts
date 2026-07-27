@@ -6,7 +6,6 @@ const fixedIssuePageSizeSchema = z.literal(50);
 
 export const dataCheckRunStatusSchema = z.enum(['never_run', 'running', 'succeeded', 'failed']);
 export const dataCheckSeveritySchema = z.enum(['error', 'warning']);
-export const dataCheckActionModeSchema = z.enum(['auto', 'manual']);
 export const dataCheckIssueStatusSchema = z.enum(['open', 'handled']);
 export const dataCheckIssueTypes = [
   'missing_relation_cause_event',
@@ -63,8 +62,7 @@ export const dataCheckTargetTypeSchema = z.enum([
   'relation_case',
 ]);
 
-const uuidPathPart =
-  '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+const uuidPathPart = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const dataCheckDetailPathSchema = z
   .string()
   .regex(new RegExp(`^/(events|cases|relations)/${uuidPathPart}$`, 'i'));
@@ -348,7 +346,6 @@ export const dataCheckActionResponseSchema = z
 
 export type DataCheckRunStatus = z.infer<typeof dataCheckRunStatusSchema>;
 export type DataCheckSeverity = z.infer<typeof dataCheckSeveritySchema>;
-export type DataCheckActionMode = z.infer<typeof dataCheckActionModeSchema>;
 export type DataCheckIssueStatus = z.infer<typeof dataCheckIssueStatusSchema>;
 export type DataCheckIssueType = z.infer<typeof dataCheckIssueTypeSchema>;
 export type DataCheckSemanticStatus = z.infer<typeof dataCheckSemanticStatusSchema>;

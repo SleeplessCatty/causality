@@ -69,8 +69,7 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
     },
   });
   const data = issues.data;
-  const issueActionPending =
-    useIsMutating({ mutationKey: ['data-checks', 'issue-action'] }) > 0;
+  const issueActionPending = useIsMutating({ mutationKey: ['data-checks', 'issue-action'] }) > 0;
   useListPageCorrection({
     requestedPage: page,
     responsePage: data?.page,

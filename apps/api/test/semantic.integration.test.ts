@@ -411,7 +411,9 @@ describe.sequential('semantic configuration API', () => {
       updated.json().models.find((model: { modelCode: string }) => model.modelCode === 'bge-m3'),
     ).toMatchObject({ dedupeThreshold: 80, threshold: MODEL_CATALOG['bge-m3'].defaultThreshold });
     expect(
-      updated.json().models.find((model: { modelCode: string }) => model.modelCode === 'bge-small-zh-v1.5'),
+      updated
+        .json()
+        .models.find((model: { modelCode: string }) => model.modelCode === 'bge-small-zh-v1.5'),
     ).toMatchObject({ dedupeThreshold: 100 });
 
     const similarityUpdated = await context!.app.inject({

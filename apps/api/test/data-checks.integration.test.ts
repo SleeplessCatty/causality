@@ -425,5 +425,4 @@ describe.sequential('data-check REST API and rules', () => {
     expect(latest.task.status).toBe('failed');
     expect(latest.latestFailure?.message).toContain('API 进程中断');
   });
-
 });

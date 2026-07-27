@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { apiBase } from './support/urls';
+
 test('user can generate, navigate, restore, and inspect a local causal graph', async ({
   page,
   request,
@@ -125,7 +127,7 @@ test('user can generate, navigate, restore, and inspect a local causal graph', a
   });
 
   const isolatedName = `E2E 孤立事件 ${Date.now()}`;
-  const isolatedResponse = await request.post('http://127.0.0.1:3000/api/events', {
+  const isolatedResponse = await request.post(`${apiBase}/events`, {
     data: { name: isolatedName, description: null, aliases: [], keywords: [] },
   });
   expect(isolatedResponse.status()).toBe(201);

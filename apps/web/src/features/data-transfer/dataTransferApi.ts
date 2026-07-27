@@ -1,13 +1,13 @@
 import {
   exportAvailabilityResponseSchema,
-  exportPreviewInputSchema,
-  exportPreviewResponseSchema,
+  exportPreparationInputSchema,
+  exportPreparationResponseSchema,
   importBatchListResponseSchema,
   importBatchSummarySchema,
   importRecordListResponseSchema,
   importUploadResponseSchema,
-  type ExportPreviewInput,
-  type ExportPreviewResponse,
+  type ExportPreparationInput,
+  type ExportPreparationResponse,
   type ImportBatchListResponse,
   type ImportBatchSummary,
   type ImportRecordListResponse,
@@ -66,14 +66,14 @@ export async function getImportRecords(
   );
 }
 
-export async function previewExport(
-  input: ExportPreviewInput,
+export async function prepareExport(
+  input: ExportPreparationInput,
   signal?: AbortSignal,
-): Promise<ExportPreviewResponse> {
-  const validatedInput = exportPreviewInputSchema.parse(input);
-  return exportPreviewResponseSchema.parse(
+): Promise<ExportPreparationResponse> {
+  const validatedInput = exportPreparationInputSchema.parse(input);
+  return exportPreparationResponseSchema.parse(
     await requestJson(
-      '/api/data-transfers/exports/preview',
+      '/api/data-transfers/exports/prepare',
       {
         method: 'POST',
         body: JSON.stringify(validatedInput),
@@ -83,7 +83,7 @@ export async function previewExport(
   );
 }
 
-export async function downloadExport(token: string, signal?: AbortSignal): Promise<void> {
+export async function saveExportFile(token: string, signal?: AbortSignal): Promise<void> {
   const encodedToken = encodeURIComponent(token);
   exportAvailabilityResponseSchema.parse(
     await requestJson(`/api/data-transfers/exports/${encodedToken}/availability`, {}, signal),

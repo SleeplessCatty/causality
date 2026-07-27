@@ -276,7 +276,8 @@ describe('ParameterSettings', () => {
     });
     const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
       if (String(input).endsWith('/dedupe-threshold')) return jsonResponse(saved);
-      if (options?.method === 'POST') throw new Error('threshold save must not start a model action');
+      if (options?.method === 'POST')
+        throw new Error('threshold save must not start a model action');
       return jsonResponse(initial);
     });
     vi.stubGlobal('fetch', fetchMock);
