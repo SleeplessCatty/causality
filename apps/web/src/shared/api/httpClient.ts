@@ -18,6 +18,19 @@ function withTimeout(signal: AbortSignal | undefined, timeoutMilliseconds: numbe
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
+async function parseJsonResponse(response: Response): Promise<unknown> {
+  if (response.ok) return response.json();
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new ApiClientError(unavailableError);
+  }
+  const parsed = apiErrorSchema.safeParse(body);
+  throw new ApiClientError(parsed.success ? parsed.data : unavailableError);
+}
+
 export async function requestJson(
   url: string,
   options: RequestInit = {},
@@ -35,16 +48,29 @@ export async function requestJson(
     signal: withTimeout(signal, timeoutMilliseconds),
   });
 
-  if (!response.ok) {
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      throw new ApiClientError(unavailableError);
-    }
-    const parsed = apiErrorSchema.safeParse(body);
-    throw new ApiClientError(parsed.success ? parsed.data : unavailableError);
-  }
+  return parseJsonResponse(response);
+}
 
-  return response.json();
+export async function requestMultipartJson(
+  url: string,
+  form: FormData,
+  signal: AbortSignal,
+  timeoutMilliseconds: number,
+): Promise<unknown> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    body: form,
+    signal: withTimeout(signal, timeoutMilliseconds),
+  });
+  return parseJsonResponse(response);
+}
+
+export function startBrowserDownload(url: string, filename?: string): void {
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  if (filename) anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
 }

@@ -980,15 +980,15 @@ function requestMultipartJson(
 function startBrowserDownload(url: string, filename?: string): void;
 ```
 
-- [ ] **Step 1: Write failing `AppDialog` tests**
+- [x] **Step 1: Write failing `AppDialog` tests**
 
 Assert initial focus, Tab/Shift+Tab trap, Escape close, backdrop close, focus restoration, `aria-modal`, and refusal to close while `pending`.
 
-- [ ] **Step 2: Implement `AppDialog` and migrate both existing dialogs**
+- [x] **Step 2: Implement `AppDialog` and migrate both existing dialogs**
 
 `DeleteRecordDialog` and `SemanticModelActionDialog` retain their existing DOM copy, button order, classes, and pending behavior while delegating modal mechanics to `AppDialog`.
 
-- [ ] **Step 3: Run dialog regression tests**
+- [x] **Step 3: Run dialog regression tests**
 
 Run:
 
@@ -998,15 +998,15 @@ pnpm --filter @causality/web test -- AppDialog.test.tsx DeleteRecordDialog.test.
 
 Expected: PASS with no snapshot or interaction changes outside modal mechanics.
 
-- [ ] **Step 4: Write and implement `AppTabs` tests**
+- [x] **Step 4: Write and implement `AppTabs` tests**
 
 Assert `tablist/tab/tabpanel` semantics, active state, Left/Right wrap, Home, End, click selection, and visible focus. Use existing accent, border, surface, and compact spacing variables.
 
-- [ ] **Step 5: Extract `EventCandidateCombobox`**
+- [x] **Step 5: Extract `EventCandidateCombobox`**
 
 Move the 250ms debounce, exhaustive candidate pagination, virtualized list, active index, Escape, Arrow keys, Home/End, Enter, retry, and error state out of `GraphEventSelector`. Keep graph-specific label placement and CSS wrapper in `GraphEventSelector`.
 
-- [ ] **Step 6: Run graph candidate regression**
+- [x] **Step 6: Run graph candidate regression**
 
 Run:
 
@@ -1016,11 +1016,11 @@ pnpm --filter @causality/web test -- EventCandidateCombobox.test.tsx GraphEventS
 
 Expected: PASS; graph sizing, candidate order, and keyboard behavior are unchanged.
 
-- [ ] **Step 7: Refactor shared HTTP error parsing**
+- [x] **Step 7: Refactor shared HTTP error parsing**
 
 Keep `requestJson` public behavior unchanged. Extract response error parsing and timeout-signal composition, then add multipart and download-launch helpers. Never set multipart `Content-Type` manually.
 
-- [ ] **Step 8: Run shared Web tests**
+- [x] **Step 8: Run shared Web tests**
 
 Run:
 
@@ -1031,7 +1031,7 @@ pnpm --filter @causality/web typecheck
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit locally**
+- [x] **Step 9: Commit locally**
 
 ```bash
 git add apps/web/src/shared apps/web/src/features/parameter-settings/SemanticModelActionDialog.tsx apps/web/src/features/causal-graph/components/GraphEventSelector.tsx apps/web/src/features/causal-graph/components/GraphEventSelector.test.tsx apps/web/src/styles/global.css

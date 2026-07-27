@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Link } from 'react-router';
+
+import { AppDialog } from '../dialog/AppDialog';
 
 export interface DeleteRecordDialogProps {
   open: boolean;
@@ -25,89 +27,17 @@ export function DeleteRecordDialog({
   blockedAction,
 }: DeleteRecordDialogProps) {
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const onCancelRef = useRef(onCancel);
-  const pendingRef = useRef(pending);
-
-  useEffect(() => {
-    onCancelRef.current = onCancel;
-    pendingRef.current = pending;
-  });
-
-  useEffect(() => {
-    if (!open) return;
-    const previousFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    cancelButtonRef.current?.focus();
-    return () => {
-      previousFocus?.focus();
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    if (pending) {
-      dialogRef.current?.focus();
-    } else if (!dialogRef.current?.contains(document.activeElement)) {
-      cancelButtonRef.current?.focus();
-    }
-  }, [open, pending]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !pendingRef.current) {
-        event.preventDefault();
-        onCancelRef.current();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not(:disabled), [tabindex]:not([tabindex="-1"])',
-      );
-      if (!focusable?.length) return;
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open]);
-
-  if (!open) return null;
 
   return (
-    <div
-      className="delete-dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !pending) onCancel();
-      }}
-    >
-      <div
-        ref={dialogRef}
-        className="delete-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="delete-dialog-title"
-        aria-describedby="delete-dialog-message"
-        tabIndex={-1}
-      >
-        <h2 id="delete-dialog-title">{title}</h2>
-        <p id="delete-dialog-message">{message}</p>
-        {error ? (
-          <div className="form-alert delete-dialog__error" role="alert">
-            {error}
-          </div>
-        ) : null}
-        <div className="delete-dialog__actions">
+    <AppDialog
+      open={open}
+      title={title}
+      descriptionId="delete-dialog-message"
+      pending={pending}
+      initialFocusRef={cancelButtonRef}
+      onClose={onCancel}
+      actions={
+        <>
           <button
             ref={cancelButtonRef}
             className="button button--secondary"
@@ -132,8 +62,15 @@ export function DeleteRecordDialog({
               {pending ? '删除中…' : '确认删除'}
             </button>
           ) : null}
+        </>
+      }
+    >
+      <p id="delete-dialog-message">{message}</p>
+      {error ? (
+        <div className="form-alert delete-dialog__error" role="alert">
+          {error}
         </div>
-      </div>
-    </div>
+      ) : null}
+    </AppDialog>
   );
 }

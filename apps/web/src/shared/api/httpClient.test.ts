@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiClientError, requestJson } from './httpClient';
+import {
+  ApiClientError,
+  requestJson,
+  requestMultipartJson,
+  startBrowserDownload,
+} from './httpClient';
 
 function response(body: unknown, status = 200) {
   return {
@@ -171,5 +176,106 @@ describe('requestJson', () => {
     expect(requestHeaders.get('Accept')).toBe('application/problem+json');
     expect(requestHeaders.get('Content-Type')).toBe('application/problem+json');
     expect(requestHeaders.get('X-Request-Id')).toBe('tuples');
+  });
+});
+
+describe('requestMultipartJson', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('posts FormData without manually setting multipart Content-Type', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => response({ batch: { id: 'batch-1' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const form = new FormData();
+    form.append('file', new File(['csv'], 'data.csv'));
+
+    await expect(
+      requestMultipartJson(
+        '/api/data-transfers/imports',
+        form,
+        new AbortController().signal,
+        300_000,
+      ),
+    ).resolves.toEqual({ batch: { id: 'batch-1' } });
+
+    const options = fetchMock.mock.calls[0]?.[1];
+    const headers = new Headers(options?.headers);
+    expect(options?.method).toBe('POST');
+    expect(options?.body).toBe(form);
+    expect(headers.get('Accept')).toBe('application/json');
+    expect(headers.has('Content-Type')).toBe(false);
+  });
+
+  it('uses the requested timeout and preserves caller cancellation', async () => {
+    const caller = new AbortController();
+    const timeoutController = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeoutController.signal);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, options?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () => reject(options.signal?.reason), {
+              once: true,
+            });
+          }),
+      ),
+    );
+
+    const pending = requestMultipartJson(
+      '/api/data-transfers/imports',
+      new FormData(),
+      caller.signal,
+      300_000,
+    );
+    expect(timeout).toHaveBeenCalledWith(300_000);
+    caller.abort(new DOMException('Cancelled', 'AbortError'));
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('uses the same standard API error parsing as JSON requests', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response({ code: 'CSV_NO_VALID_RECORDS', message: '没有有效记录' }, 400)),
+    );
+
+    await expect(
+      requestMultipartJson(
+        '/api/data-transfers/imports',
+        new FormData(),
+        new AbortController().signal,
+        300_000,
+      ),
+    ).rejects.toEqual(
+      new ApiClientError({ code: 'CSV_NO_VALID_RECORDS', message: '没有有效记录' }),
+    );
+  });
+});
+
+describe('startBrowserDownload', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('launches a browser download with the optional filename and removes the temporary anchor', () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    startBrowserDownload('/api/data-transfers/exports/token', '因果数据.csv');
+
+    expect(click).toHaveBeenCalledTimes(1);
+    const anchor = click.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.getAttribute('href')).toBe('/api/data-transfers/exports/token');
+    expect(anchor.getAttribute('download')).toBe('因果数据.csv');
+    expect(document.body.contains(anchor)).toBe(false);
+  });
+
+  it('does not force a download filename when none is provided', () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    startBrowserDownload('/api/data-transfers/exports/token');
+
+    const anchor = click.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.hasAttribute('download')).toBe(false);
   });
 });

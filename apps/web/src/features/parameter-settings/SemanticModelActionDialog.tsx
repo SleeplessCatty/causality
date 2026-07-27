@@ -1,6 +1,7 @@
 import type { SemanticAction, SemanticModelLifecycle } from '@causality/contracts';
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 
+import { AppDialog } from '../../shared/dialog/AppDialog';
 import { formatApproximateMegabytes, semanticActionLabel } from './semanticPresentation';
 
 export interface SemanticModelAction {
@@ -60,97 +61,59 @@ export function SemanticModelActionDialog({
   onConfirm,
 }: SemanticModelActionDialogProps) {
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!action) return;
-    const previousFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    cancelButtonRef.current?.focus();
-    return () => previousFocus?.focus();
-  }, [action]);
-
-  useEffect(() => {
-    if (!action) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !pending) {
-        event.preventDefault();
-        onCancel();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const focusable =
-        dialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
-      if (!focusable?.length) return;
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [action, onCancel, pending]);
-
-  if (!action) return null;
-
-  const copy = dialogCopy(action);
+  const copy = action ? dialogCopy(action) : null;
   const requiresDownload =
-    action.type === 'download_and_use' || action.type === 'redownload_and_use';
+    action?.type === 'download_and_use' || action?.type === 'redownload_and_use';
 
   return (
-    <div
-      className="delete-dialog-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !pending) onCancel();
-      }}
+    <AppDialog
+      open={action !== null}
+      title={copy?.title ?? ''}
+      descriptionId="semantic-action-description"
+      pending={pending}
+      initialFocusRef={cancelButtonRef}
+      className="model-switch-dialog"
+      onClose={onCancel}
+      actions={
+        action ? (
+          <>
+            <button
+              ref={cancelButtonRef}
+              className="button button--secondary"
+              type="button"
+              disabled={pending}
+              onClick={onCancel}
+            >
+              取消
+            </button>
+            <button
+              className="button button--primary"
+              type="button"
+              disabled={pending}
+              onClick={onConfirm}
+            >
+              {pending ? `${semanticActionLabel(action.type)}中…` : copy?.confirmLabel}
+            </button>
+          </>
+        ) : null
+      }
     >
-      <div
-        ref={dialogRef}
-        className="delete-dialog model-switch-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="semantic-action-title"
-        aria-describedby="semantic-action-description"
-        tabIndex={-1}
-      >
-        <h2 id="semantic-action-title">{copy.title}</h2>
-        <p id="semantic-action-description">{copy.description}</p>
-        {requiresDownload ? (
-          <p className="model-switch-dialog__download">
-            {action.model.label}预计需要下载{' '}
-            {formatApproximateMegabytes(action.model.expectedDownloadBytes)}。
-          </p>
-        ) : null}
-        {error ? (
-          <div className="form-alert delete-dialog__error" role="alert">
-            {error}
-          </div>
-        ) : null}
-        <div className="delete-dialog__actions">
-          <button
-            ref={cancelButtonRef}
-            className="button button--secondary"
-            type="button"
-            disabled={pending}
-            onClick={onCancel}
-          >
-            取消
-          </button>
-          <button
-            className="button button--primary"
-            type="button"
-            disabled={pending}
-            onClick={onConfirm}
-          >
-            {pending ? `${semanticActionLabel(action.type)}中…` : copy.confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+      {action && copy ? (
+        <>
+          <p id="semantic-action-description">{copy.description}</p>
+          {requiresDownload ? (
+            <p className="model-switch-dialog__download">
+              {action.model.label}预计需要下载{' '}
+              {formatApproximateMegabytes(action.model.expectedDownloadBytes)}。
+            </p>
+          ) : null}
+          {error ? (
+            <div className="form-alert delete-dialog__error" role="alert">
+              {error}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </AppDialog>
   );
 }
