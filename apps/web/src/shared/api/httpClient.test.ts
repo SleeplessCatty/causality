@@ -260,6 +260,7 @@ describe('startBrowserDownload', () => {
 
   it('launches a browser download with the optional filename and removes the temporary anchor', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const routeBeforeDownload = window.location.href;
 
     startBrowserDownload('/api/data-transfers/exports/token', '因果数据.csv');
 
@@ -267,15 +268,18 @@ describe('startBrowserDownload', () => {
     const anchor = click.mock.instances[0] as HTMLAnchorElement;
     expect(anchor.getAttribute('href')).toBe('/api/data-transfers/exports/token');
     expect(anchor.getAttribute('download')).toBe('因果数据.csv');
+    expect(anchor.hidden).toBe(true);
     expect(document.body.contains(anchor)).toBe(false);
+    expect(window.location.href).toBe(routeBeforeDownload);
   });
 
-  it('does not force a download filename when none is provided', () => {
+  it('uses an empty download attribute when the server supplies the filename', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
     startBrowserDownload('/api/data-transfers/exports/token');
 
     const anchor = click.mock.instances[0] as HTMLAnchorElement;
-    expect(anchor.hasAttribute('download')).toBe(false);
+    expect(anchor.hasAttribute('download')).toBe(true);
+    expect(anchor.getAttribute('download')).toBe('');
   });
 });

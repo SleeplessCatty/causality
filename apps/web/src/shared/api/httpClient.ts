@@ -69,7 +69,8 @@ export async function requestMultipartJson(
 export function startBrowserDownload(url: string, filename?: string): void {
   const anchor = document.createElement('a');
   anchor.href = url;
-  if (filename) anchor.download = filename;
+  anchor.hidden = true;
+  anchor.download = filename ?? '';
   document.body.append(anchor);
   anchor.click();
   anchor.remove();

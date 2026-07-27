@@ -4,7 +4,7 @@ import { Link, Outlet, RouterProvider, createMemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppProviders } from '../../app/AppProviders';
-import { getImportHistory, uploadImport } from './dataTransferApi';
+import { downloadExport, getImportHistory, previewExport, uploadImport } from './dataTransferApi';
 import { DataTransferPage } from './DataTransferPage';
 
 vi.mock('./dataTransferApi', () => ({
@@ -12,6 +12,8 @@ vi.mock('./dataTransferApi', () => ({
   getImportHistory: vi.fn(),
   getImportBatch: vi.fn(),
   getImportRecords: vi.fn(),
+  previewExport: vi.fn(),
+  downloadExport: vi.fn(),
 }));
 
 const batch: ImportBatchSummary = {
@@ -86,6 +88,12 @@ function chooseFile(name = 'mixed.csv', size = 1_572_864): File {
 describe('DataTransferPage', () => {
   beforeEach(() => {
     vi.mocked(getImportHistory).mockResolvedValue(historyPage());
+    vi.mocked(previewExport).mockResolvedValue({
+      token: 'export-token',
+      expiresAt: '2026-07-27T08:30:00.000Z',
+      counts: { events: 3, relations: 2, cases: 5 },
+    });
+    vi.mocked(downloadExport).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -116,6 +124,22 @@ describe('DataTransferPage', () => {
       `/data-transfer/imports/${batch.id}?tab=events&eventPage=1&casePage=1&relationPage=1&relationCasePage=1`,
     );
     expect(screen.getByText('共 51 条 · 第 2/2 页')).toBeTruthy();
+  });
+
+  it('keeps the export tab in the URL without rendering an export or import history', async () => {
+    vi.mocked(getImportHistory).mockResolvedValue(historyPage([batch], 2, 2));
+    const router = renderPage('/data-transfer?tab=export&page=2');
+
+    expect(await screen.findByRole('heading', { name: '导出 CSV' })).toBeTruthy();
+    expect(router.state.location.search).toBe('?tab=export&page=2');
+    expect(screen.getByRole('tab', { name: '导出' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByText('导入历史')).toBeNull();
+    expect(screen.queryByText('导出历史')).toBeNull();
+    expect(getImportHistory).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
+    expect(await screen.findByText(batch.filename)).toBeTruthy();
+    expect(router.state.location.search).toBe('?tab=import&page=2');
   });
 
   it('shows the selected filename and size in MB', async () => {

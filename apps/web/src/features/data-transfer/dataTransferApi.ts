@@ -1,15 +1,23 @@
 import {
+  exportAvailabilityResponseSchema,
+  exportPreviewResponseSchema,
   importBatchListResponseSchema,
   importBatchSummarySchema,
   importRecordListResponseSchema,
   importUploadResponseSchema,
+  type ExportPreviewInput,
+  type ExportPreviewResponse,
   type ImportBatchListResponse,
   type ImportBatchSummary,
   type ImportRecordListResponse,
   type ImportRecordType,
 } from '@causality/contracts';
 
-import { requestJson, requestMultipartJson } from '../../shared/api/httpClient';
+import {
+  requestJson,
+  requestMultipartJson,
+  startBrowserDownload,
+} from '../../shared/api/httpClient';
 
 const importTimeoutMilliseconds = 5 * 60 * 1_000;
 
@@ -55,4 +63,21 @@ export async function getImportRecords(
   return importRecordListResponseSchema.parse(
     await requestJson(`/api/data-transfers/imports/${batchId}/records?${parameters}`, {}, signal),
   );
+}
+
+export async function previewExport(input: ExportPreviewInput): Promise<ExportPreviewResponse> {
+  return exportPreviewResponseSchema.parse(
+    await requestJson('/api/data-transfers/exports/preview', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function downloadExport(token: string): Promise<void> {
+  const encodedToken = encodeURIComponent(token);
+  exportAvailabilityResponseSchema.parse(
+    await requestJson(`/api/data-transfers/exports/${encodedToken}/availability`),
+  );
+  startBrowserDownload(`/api/data-transfers/exports/${encodedToken}`);
 }

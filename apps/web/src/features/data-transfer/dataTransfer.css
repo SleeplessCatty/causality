@@ -100,6 +100,158 @@
   font-size: 11px;
 }
 
+.data-transfer-export-card {
+  min-height: 250px;
+}
+
+.data-transfer-export-mode {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.data-transfer-export-filter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fafcfb;
+}
+
+.data-transfer-export-events {
+  min-width: 0;
+}
+
+.data-transfer-export-events .event-candidate-combobox {
+  max-width: 620px;
+}
+
+.data-transfer-export-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.data-transfer-export-chips li {
+  display: flex;
+  min-width: 0;
+  max-width: 280px;
+  height: 30px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #cbd9d0;
+  border-radius: 999px;
+  background: white;
+}
+
+.data-transfer-export-chip-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 11px;
+  color: #294236;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-transfer-export-chips button {
+  height: 100%;
+  flex: none;
+  padding: 0 9px;
+  border: 0;
+  border-left: 1px solid #e0e7e2;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.data-transfer-export-chips button:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.data-transfer-export-empty-events {
+  margin: 9px 0 0 57px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.data-transfer-export-selects {
+  display: flex;
+  gap: 10px;
+}
+
+.data-transfer-export-selects .app-select__trigger {
+  min-width: 94px;
+}
+
+.data-transfer-export-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.data-transfer-export-message {
+  margin: 12px 0 0;
+}
+
+.data-transfer-export-success {
+  padding: 10px 12px;
+  border: 1px solid #bdd8c8;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.data-transfer-export-dialog {
+  width: min(440px, calc(100vw - 48px));
+}
+
+.data-transfer-export-dialog > p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.data-transfer-export-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 16px 0 0;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+}
+
+.data-transfer-export-counts > div {
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
+.data-transfer-export-counts dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.data-transfer-export-counts dd {
+  margin: 5px 0 0;
+  color: #183d30;
+  font-size: 20px;
+  font-weight: 720;
+}
+
 .data-transfer-history {
   padding-top: 18px;
 }

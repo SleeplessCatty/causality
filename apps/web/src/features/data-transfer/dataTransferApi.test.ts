@@ -1,21 +1,29 @@
 import type {
+  ExportPreviewResponse,
   ImportBatchListResponse,
   ImportBatchSummary,
   ImportRecordListResponse,
 } from '@causality/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { requestJson, requestMultipartJson } from '../../shared/api/httpClient';
 import {
+  requestJson,
+  requestMultipartJson,
+  startBrowserDownload,
+} from '../../shared/api/httpClient';
+import {
+  downloadExport,
   getImportBatch,
   getImportHistory,
   getImportRecords,
+  previewExport,
   uploadImport,
 } from './dataTransferApi';
 
 vi.mock('../../shared/api/httpClient', () => ({
   requestJson: vi.fn(),
   requestMultipartJson: vi.fn(),
+  startBrowserDownload: vi.fn(),
 }));
 
 const batch: ImportBatchSummary = {
@@ -54,10 +62,17 @@ const records: ImportRecordListResponse = {
   totalPages: 3,
 };
 
+const exportPreview: ExportPreviewResponse = {
+  token: 'signed-export-token',
+  expiresAt: '2026-07-27T08:30:00.000Z',
+  counts: { events: 4, relations: 3, cases: 7 },
+};
+
 describe('dataTransferApi', () => {
   beforeEach(() => {
     vi.mocked(requestJson).mockReset();
     vi.mocked(requestMultipartJson).mockReset();
+    vi.mocked(startBrowserDownload).mockReset();
   });
 
   it('uploads the selected CSV under the file field with the five-minute timeout', async () => {
@@ -110,5 +125,56 @@ describe('dataTransferApi', () => {
     vi.mocked(requestJson).mockResolvedValue({ ...history, pageSize: 20 });
 
     await expect(getImportHistory(1)).rejects.toThrow();
+  });
+
+  it('previews and validates a filtered export', async () => {
+    vi.mocked(requestJson).mockResolvedValue(exportPreview);
+    const input = {
+      type: 'filtered' as const,
+      startEventIds: ['11111111-1111-4111-8111-111111111111'],
+      direction: 'both' as const,
+      depth: 3,
+    };
+
+    await expect(previewExport(input)).resolves.toEqual(exportPreview);
+    expect(requestJson).toHaveBeenCalledWith('/api/data-transfers/exports/preview', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  });
+
+  it('rejects malformed export preview data at the adapter boundary', async () => {
+    vi.mocked(requestJson).mockResolvedValue({
+      ...exportPreview,
+      counts: { events: 4, relations: -1, cases: 7 },
+    });
+
+    await expect(previewExport({ type: 'full' })).rejects.toThrow();
+  });
+
+  it('validates availability before starting a same-route token download', async () => {
+    vi.mocked(requestJson).mockResolvedValue({
+      available: true,
+      expiresAt: exportPreview.expiresAt,
+    });
+
+    await downloadExport('token / with unsafe characters');
+
+    expect(requestJson).toHaveBeenCalledWith(
+      '/api/data-transfers/exports/token%20%2F%20with%20unsafe%20characters/availability',
+    );
+    expect(startBrowserDownload).toHaveBeenCalledWith(
+      '/api/data-transfers/exports/token%20%2F%20with%20unsafe%20characters',
+    );
+  });
+
+  it('does not start a download when availability is invalid', async () => {
+    vi.mocked(requestJson).mockResolvedValue({
+      available: false,
+      expiresAt: exportPreview.expiresAt,
+    });
+
+    await expect(downloadExport(exportPreview.token)).rejects.toThrow();
+    expect(startBrowserDownload).not.toHaveBeenCalled();
   });
 });

@@ -10,30 +10,36 @@ import { useListRecordFocus } from '../../shared/navigation/useListRecordFocus';
 import { readListPage } from '../../shared/pagination/ListPagination';
 import { ImportHistoryTable } from './components/ImportHistoryTable';
 import { ImportPanel } from './components/ImportPanel';
+import { ExportPanel } from './components/ExportPanel';
 import { getImportHistory, uploadImport } from './dataTransferApi';
 import { useImportNavigationProtection } from './useImportNavigationProtection';
 
-const importTabs = [{ value: 'import', label: '导入' }] as const;
+const dataTransferTabs = [
+  { value: 'import', label: '导入' },
+  { value: 'export', label: '导出' },
+] as const;
 
 export function DataTransferPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const page = readListPage(searchParameters.get('page'));
+  const requestedTab = searchParameters.get('tab');
+  const activeTab = requestedTab === 'export' ? 'export' : 'import';
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorRevision, setErrorRevision] = useState(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (searchParameters.get('tab') === 'import' && searchParameters.get('page') === String(page)) {
+    if (requestedTab === activeTab && searchParameters.get('page') === String(page)) {
       return;
     }
     const next = new URLSearchParams(searchParameters);
-    next.set('tab', 'import');
+    next.set('tab', activeTab);
     next.set('page', String(page));
     setSearchParameters(next, { replace: true });
-  }, [page, searchParameters, setSearchParameters]);
+  }, [activeTab, page, requestedTab, searchParameters, setSearchParameters]);
 
   const history = useQuery({
     queryKey: ['data-transfers', 'imports', page],
@@ -41,12 +47,14 @@ export function DataTransferPage() {
       requestedPage: page,
       response: await getImportHistory(page, signal),
     }),
+    enabled: activeTab === 'import',
     placeholderData: (previous) => previous,
   });
   const historyData = history.data?.response;
 
   useEffect(() => {
     if (
+      activeTab !== 'import' ||
       history.isFetching ||
       history.isPlaceholderData ||
       history.data?.requestedPage !== page ||
@@ -59,6 +67,7 @@ export function DataTransferPage() {
     next.set('page', String(historyData.page));
     setSearchParameters(next, { replace: true });
   }, [
+    activeTab,
     history.data?.requestedPage,
     history.isFetching,
     history.isPlaceholderData,
@@ -68,7 +77,9 @@ export function DataTransferPage() {
     setSearchParameters,
   ]);
 
-  useListRecordFocus(historyData?.items.map((batch) => batch.id) ?? []);
+  useListRecordFocus(
+    activeTab === 'import' ? (historyData?.items.map((batch) => batch.id) ?? []) : [],
+  );
 
   const upload = useMutation({
     mutationFn: ({ selectedFile, signal }: { selectedFile: File; signal: AbortSignal }) =>
@@ -118,52 +129,63 @@ export function DataTransferPage() {
         <AppTabs
           id="data-transfer-mode"
           label="导入导出功能"
-          value="import"
-          tabs={importTabs}
-          onChange={() => undefined}
+          value={activeTab}
+          tabs={dataTransferTabs}
+          onChange={(nextTab) => {
+            const next = new URLSearchParams(searchParameters);
+            next.set('tab', nextTab);
+            next.set('page', String(page));
+            setSearchParameters(next);
+          }}
         >
-          <ImportPanel
-            file={file}
-            pending={upload.isPending}
-            error={error}
-            onFileChange={(selectedFile) => {
-              setFile(selectedFile);
-              setError(null);
-            }}
-            onSubmit={startImport}
-          />
-
-          <section className="data-transfer-history" aria-labelledby="import-history-title">
-            <div className="data-transfer-section-heading">
-              <div>
-                <h2 id="import-history-title">导入历史</h2>
-                <p>仅记录已经成功提交的导入批次。</p>
-              </div>
-            </div>
-            {history.isPending && !historyData ? (
-              <div className="table-state">加载导入历史…</div>
-            ) : null}
-            {history.isError ? (
-              <div className="table-state table-state--error" role="alert">
-                <strong>无法加载导入历史</strong>
-                <button
-                  className="button button--secondary"
-                  type="button"
-                  onClick={() => void history.refetch()}
-                >
-                  重新加载
-                </button>
-              </div>
-            ) : null}
-            {historyData ? (
-              <ImportHistoryTable
-                data={historyData}
-                fetching={history.isFetching}
-                location={location}
-                onPageChange={changePage}
+          {activeTab === 'import' ? (
+            <>
+              <ImportPanel
+                file={file}
+                pending={upload.isPending}
+                error={error}
+                onFileChange={(selectedFile) => {
+                  setFile(selectedFile);
+                  setError(null);
+                }}
+                onSubmit={startImport}
               />
-            ) : null}
-          </section>
+
+              <section className="data-transfer-history" aria-labelledby="import-history-title">
+                <div className="data-transfer-section-heading">
+                  <div>
+                    <h2 id="import-history-title">导入历史</h2>
+                    <p>仅记录已经成功提交的导入批次。</p>
+                  </div>
+                </div>
+                {history.isPending && !historyData ? (
+                  <div className="table-state">加载导入历史…</div>
+                ) : null}
+                {history.isError ? (
+                  <div className="table-state table-state--error" role="alert">
+                    <strong>无法加载导入历史</strong>
+                    <button
+                      className="button button--secondary"
+                      type="button"
+                      onClick={() => void history.refetch()}
+                    >
+                      重新加载
+                    </button>
+                  </div>
+                ) : null}
+                {historyData ? (
+                  <ImportHistoryTable
+                    data={historyData}
+                    fetching={history.isFetching}
+                    location={location}
+                    onPageChange={changePage}
+                  />
+                ) : null}
+              </section>
+            </>
+          ) : (
+            <ExportPanel />
+          )}
         </AppTabs>
       </div>
 
