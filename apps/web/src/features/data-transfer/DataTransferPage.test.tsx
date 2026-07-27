@@ -102,7 +102,6 @@ describe('DataTransferPage', () => {
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       '完成时间',
       '文件名',
-      '导入类型',
       '原子事件',
       '具体案例',
       '因果关系',

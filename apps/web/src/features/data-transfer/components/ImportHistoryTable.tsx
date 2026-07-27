@@ -19,13 +19,6 @@ const completedAtFormatter = new Intl.DateTimeFormat('zh-CN', {
   timeStyle: 'short',
 });
 
-const typeLabels = {
-  event: '原子事件',
-  case: '具体案例',
-  relation: '因果关系',
-  relation_case: '案例关联',
-} as const;
-
 function formatCounts(counts: { created: number; reused: number }): string {
   return counts.created === 0 && counts.reused === 0
     ? '—'
@@ -59,7 +52,6 @@ export function ImportHistoryTable({
             <tr>
               <th scope="col">完成时间</th>
               <th scope="col">文件名</th>
-              <th scope="col">导入类型</th>
               <th scope="col">原子事件</th>
               <th scope="col">具体案例</th>
               <th scope="col">因果关系</th>
@@ -69,7 +61,6 @@ export function ImportHistoryTable({
           </thead>
           <tbody>
             {data.items.map((batch) => {
-              const typeSummary = batch.recordTypes.map((type) => typeLabels[type]).join('、');
               return (
                 <tr key={batch.id} id={listRecordDomId(batch.id)}>
                   <td>
@@ -80,11 +71,6 @@ export function ImportHistoryTable({
                   <td>
                     <OverflowText content={batch.filename} mode="always">
                       <span>{batch.filename}</span>
-                    </OverflowText>
-                  </td>
-                  <td>
-                    <OverflowText content={typeSummary} mode="always">
-                      <span>{typeSummary}</span>
                     </OverflowText>
                   </td>
                   <td>{formatCounts(batch.counts.event)}</td>

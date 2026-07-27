@@ -1,8 +1,11 @@
-.data-transfer-page,
-.data-transfer-detail-page {
+.data-transfer-page {
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
+}
+
+.data-transfer-detail-page {
+  width: 100%;
 }
 
 .data-transfer-surface {
@@ -111,7 +114,7 @@
 }
 
 .data-transfer-history-table {
-  min-width: 980px;
+  min-width: 900px;
 }
 
 .data-transfer-history-table th,
@@ -123,23 +126,19 @@
 }
 
 .data-transfer-history-table th:nth-child(1) {
-  width: 15%;
+  width: 16%;
 }
 
 .data-transfer-history-table th:nth-child(2) {
-  width: 17%;
+  width: 21%;
 }
 
-.data-transfer-history-table th:nth-child(3) {
-  width: 13%;
-}
-
-.data-transfer-history-table th:nth-child(n + 4):nth-child(-n + 7) {
-  width: 12%;
+.data-transfer-history-table th:nth-child(n + 3):nth-child(-n + 6) {
+  width: 14%;
 }
 
 .data-transfer-history-table th:last-child {
-  width: 8%;
+  width: 7%;
 }
 
 .data-transfer-history-table td .overflow-text {
@@ -150,7 +149,7 @@
   text-align: center;
 }
 
-.data-transfer-history-table td:nth-child(n + 4):nth-child(-n + 7) {
+.data-transfer-history-table td:nth-child(n + 3):nth-child(-n + 6) {
   font-size: 12px;
 }
 

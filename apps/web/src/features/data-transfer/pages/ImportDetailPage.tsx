@@ -157,7 +157,10 @@ export function ImportDetailPage() {
   }
 
   return (
-    <section className="data-transfer-detail-page" aria-labelledby="import-detail-title">
+    <section
+      className="event-detail-page data-transfer-detail-page"
+      aria-labelledby="import-detail-title"
+    >
       <Link className="back-link" to={returnPath} state={listFocusState(batchId)}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />

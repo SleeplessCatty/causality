@@ -1095,7 +1095,7 @@ Assert:
 - import disables repeated submission and shows `正在导入…`;
 - failure preserves the selected file and the alert disappears after three seconds;
 - success navigates directly to the batch detail;
-- history uses the approved eight columns and `ListPagination`;
+- history uses the approved seven columns and `ListPagination`;
 - all four detail tabs preserve independent URL page values;
 - `OverflowText` wraps file names, event names, case content, and relation text;
 - back navigation restores the history page and focused row.

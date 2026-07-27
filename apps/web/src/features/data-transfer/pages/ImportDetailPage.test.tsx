@@ -132,6 +132,9 @@ describe('ImportDetailPage', () => {
     );
 
     expect(await screen.findByText(batch.filename)).toBeTruthy();
+    expect(screen.getByRole('region', { name: batch.filename }).className).toContain(
+      'event-detail-page',
+    );
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       '原子事件',
       '具体案例',
