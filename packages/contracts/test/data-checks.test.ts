@@ -1,17 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  dataCheckActionContextSchema,
+  dataCheckActionRequestSchema,
+  dataCheckActionResponseSchema,
   dataCheckHandlingRequestSchema,
   dataCheckIssueListQuerySchema,
   dataCheckIssueListResponseSchema,
   dataCheckIssueSchema,
   dataCheckLatestResponseSchema,
+  dataCheckRecheckResponseSchema,
   dataCheckSnapshotSummarySchema,
 } from '../src/index.js';
 
 const snapshotId = '11111111-1111-4111-8111-111111111111';
 const issueId = '22222222-2222-4222-8222-222222222222';
 const eventId = '33333333-3333-4333-8333-333333333333';
+const relatedEventId = '44444444-4444-4444-8444-444444444444';
 const timestamp = '2026-07-23T08:00:00.000Z';
 
 const snapshot = {
@@ -173,5 +178,126 @@ describe('data-check contracts', () => {
     expect(() =>
       dataCheckHandlingRequestSchema.parse({ snapshotId, ignorePermanently: true }),
     ).toThrow();
+  });
+
+  it('accepts only strict typed governance action requests', () => {
+    const requests = [
+      { type: 'merge', snapshotId, keepId: eventId, mergeId: relatedEventId },
+      { type: 'cleanup', snapshotId },
+      { type: 'delete_relation', snapshotId },
+      { type: 'repair_timestamp', snapshotId },
+      { type: 'ignore', snapshotId },
+    ] as const;
+
+    for (const request of requests) {
+      expect(dataCheckActionRequestSchema.parse(request)).toEqual(request);
+      expect(
+        dataCheckActionRequestSchema.safeParse({ ...request, sql: 'delete from abstract_events' })
+          .success,
+      ).toBe(false);
+      expect(dataCheckActionRequestSchema.safeParse({ ...request, snapshotId: 'not-an-id' }).success)
+        .toBe(false);
+    }
+
+    expect(
+      dataCheckActionRequestSchema.safeParse({
+        type: 'merge',
+        snapshotId,
+        keepId: eventId,
+        mergeId: 'not-an-id',
+      }).success,
+    ).toBe(false);
+    expect(
+      dataCheckActionRequestSchema.safeParse({
+        type: 'merge',
+        snapshotId,
+        keepId: eventId,
+        mergeId: eventId,
+      }).success,
+    ).toBe(false);
+    expect(
+      dataCheckActionRequestSchema.safeParse({ type: 'drop_table', snapshotId }).success,
+    ).toBe(false);
+    expect(
+      dataCheckActionRequestSchema.safeParse({
+        type: 'cleanup',
+        snapshotId,
+        targetType: 'event',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates strict server-authorized action contexts and responses', () => {
+    const context = {
+      snapshotId,
+      issueId,
+      issueType: 'duplicate_event_name',
+      status: 'open',
+      dialogKind: 'merge',
+      records: [
+        {
+          id: eventId,
+          targetType: 'event',
+          title: '事件 A',
+          primaryText: '重复事件',
+          secondaryText: ['说明 A'],
+          detailPath: `/events/${eventId}`,
+          relationCount: 2,
+          caseCount: 1,
+        },
+        {
+          id: relatedEventId,
+          targetType: 'event',
+          title: '事件 B',
+          primaryText: '重复事件',
+          secondaryText: [],
+          detailPath: `/events/${relatedEventId}`,
+          relationCount: 3,
+          caseCount: 2,
+        },
+      ],
+      actions: [
+        {
+          type: 'merge',
+          label: '保留事件 A',
+          keepId: eventId,
+          mergeId: relatedEventId,
+          editPath: null,
+          impact: {
+            relationsMoved: 3,
+            relationsDeleted: 0,
+            relationCaseLinksMoved: 2,
+            relationCaseLinksDeleted: 0,
+            recordsDeleted: 1,
+          },
+        },
+      ],
+      message: null,
+    };
+    expect(dataCheckActionContextSchema.parse(context)).toEqual(context);
+    expect(dataCheckActionContextSchema.safeParse({ ...context, table: 'abstract_events' }).success)
+      .toBe(false);
+    expect(
+      dataCheckActionResponseSchema.parse({
+        issue: { ...issue, status: 'handled', handledAt: timestamp },
+        affectedEventIds: [eventId, relatedEventId],
+        affectedCaseIds: [],
+        affectedRelationIds: [],
+      }),
+    ).toMatchObject({ affectedEventIds: [eventId, relatedEventId] });
+    expect(
+      dataCheckRecheckResponseSchema.parse({
+        status: 'open',
+        issue,
+        context,
+      }),
+    ).toMatchObject({ status: 'open' });
+    expect(
+      dataCheckRecheckResponseSchema.parse({
+        status: 'resolved',
+        issue: { ...issue, status: 'handled', handledAt: timestamp },
+        context: null,
+      }),
+    ).toMatchObject({ status: 'resolved' });
   });
 });

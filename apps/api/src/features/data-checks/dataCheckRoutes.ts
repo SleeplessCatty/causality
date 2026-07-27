@@ -1,10 +1,14 @@
 import {
   apiErrorSchema,
+  dataCheckActionContextSchema,
+  dataCheckActionRequestSchema,
+  dataCheckActionResponseSchema,
   dataCheckHandlingRequestSchema,
   dataCheckIssueListQuerySchema,
   dataCheckIssueListResponseSchema,
   dataCheckIssueSchema,
   dataCheckLatestResponseSchema,
+  dataCheckRecheckResponseSchema,
 } from '@causality/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Pool } from 'pg';
@@ -16,6 +20,7 @@ import {
 import { z } from 'zod';
 
 import { DataCheckCoordinator } from './dataCheckCoordinator.js';
+import { DataCheckActionService } from './dataCheckActionService.js';
 import { DataCheckRepositoryError, PostgresDataCheckRepository } from './dataCheckRepository.js';
 import { createDataCheckRules } from './dataCheckRules.js';
 import { DataCheckService } from './dataCheckService.js';
@@ -23,6 +28,7 @@ import { SemanticDuplicateRule } from './semanticDuplicateRule.js';
 import type { SemanticWorkerClient } from '../semantic/semanticWorkerClient.js';
 
 const issueParamsSchema = z.object({ issueId: z.uuid() }).strict();
+const actionContextQuerySchema = z.object({ snapshotId: z.uuid() }).strict();
 
 function sendDataCheckError(error: unknown, reply: FastifyReply) {
   if (error instanceof DataCheckRepositoryError) {
@@ -45,7 +51,8 @@ export function registerDataCheckRoutes(
   const scanner = new DataCheckService(pool, createDataCheckRules(), {
     semanticRule: new SemanticDuplicateRule(pool, semanticWorkerClient),
   });
-  const coordinator = new DataCheckCoordinator(repository, scanner);
+  const actionService = new DataCheckActionService(pool);
+  const coordinator = new DataCheckCoordinator(repository, scanner, actionService);
 
   app.addHook('onReady', async () => {
     await coordinator.recoverInterrupted();
@@ -66,6 +73,81 @@ export function registerDataCheckRoutes(
       },
     },
     async (_request, reply) => reply.status(202).send(await coordinator.start()),
+  );
+
+  routes.get(
+    '/api/data-checks/issues/:issueId/action-context',
+    {
+      schema: {
+        tags: ['data-checks'],
+        params: issueParamsSchema,
+        querystring: actionContextQuerySchema,
+        response: {
+          200: dataCheckActionContextSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await coordinator.actionContext(request.params.issueId, request.query.snapshotId);
+      } catch (error) {
+        return sendDataCheckError(error, reply);
+      }
+    },
+  );
+
+  routes.post(
+    '/api/data-checks/issues/:issueId/actions',
+    {
+      schema: {
+        tags: ['data-checks'],
+        params: issueParamsSchema,
+        body: dataCheckActionRequestSchema,
+        response: {
+          200: dataCheckActionResponseSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await coordinator.applyAction(request.params.issueId, request.body);
+      } catch (error) {
+        return sendDataCheckError(error, reply);
+      }
+    },
+  );
+
+  routes.post(
+    '/api/data-checks/issues/:issueId/recheck',
+    {
+      schema: {
+        tags: ['data-checks'],
+        params: issueParamsSchema,
+        body: dataCheckHandlingRequestSchema,
+        response: {
+          200: dataCheckRecheckResponseSchema,
+          400: apiErrorSchema,
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await coordinator.recheckIssue(request.params.issueId, request.body.snapshotId);
+      } catch (error) {
+        return sendDataCheckError(error, reply);
+      }
+    },
   );
 
   routes.get(

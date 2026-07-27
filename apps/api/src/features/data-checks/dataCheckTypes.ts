@@ -1,9 +1,13 @@
 import type {
+  DataCheckActionContext,
   DataCheckActionMode,
+  DataCheckActionRequest,
+  DataCheckActionResponse,
   DataCheckIssue,
   DataCheckIssueListQuery,
   DataCheckIssueListResponse,
   DataCheckLatestResponse,
+  DataCheckRecheckResponse,
   DataCheckSemanticReason,
   DataCheckSemanticStatus,
   DataCheckSeverity,
@@ -75,4 +79,10 @@ export interface DataCheckRepository {
 
 export interface DataCheckScanner {
   run(): Promise<DataCheckScanResult>;
+}
+
+export interface DataCheckActionHandler {
+  context(issueId: string, snapshotId: string): Promise<DataCheckActionContext>;
+  apply(issueId: string, request: DataCheckActionRequest): Promise<DataCheckActionResponse>;
+  recheck(issueId: string, snapshotId: string): Promise<DataCheckRecheckResponse>;
 }

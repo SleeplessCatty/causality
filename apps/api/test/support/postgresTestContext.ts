@@ -10,6 +10,7 @@ const allowedDatabaseNames = new Set([
   'causality_cases_test',
   'causality_core_model_test',
   'causality_data_checks_test',
+  'causality_data_check_actions_test',
   'causality_data_transfer_test',
   'causality_data_transfer_history_test',
   'causality_data_transfer_export_test',

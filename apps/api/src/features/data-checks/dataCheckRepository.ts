@@ -19,7 +19,11 @@ const dataCheckLockKey = 2_026_072_301;
 const issuePageSize = 50;
 
 export type DataCheckRepositoryErrorCode =
-  'DATA_CHECK_ISSUE_NOT_FOUND' | 'DATA_CHECK_ISSUE_STALE' | 'DATA_CHECK_AUTO_HANDLE_UNSAFE';
+  | 'DATA_CHECK_ISSUE_NOT_FOUND'
+  | 'DATA_CHECK_ISSUE_STALE'
+  | 'DATA_CHECK_AUTO_HANDLE_UNSAFE'
+  | 'DATA_CHECK_ACTION_NOT_ALLOWED'
+  | 'DATA_CHECK_ACTION_CONFLICT';
 
 export class DataCheckRepositoryError extends Error {
   public constructor(
@@ -50,7 +54,7 @@ interface StateRow {
   semantic_reason: DataCheckSemanticReason;
 }
 
-interface IssueRow {
+export interface DataCheckIssueRow {
   id: string;
   snapshot_id: string;
   severity: DataCheckIssue['severity'];
@@ -86,7 +90,7 @@ from data_check_state
 where singleton_key = true
 `;
 
-const issueSelect = `
+export const dataCheckIssueSelect = `
 select id,
        snapshot_id,
        severity,
@@ -145,7 +149,7 @@ function mapLatest(row: StateRow): DataCheckLatestResponse {
   };
 }
 
-function mapIssue(row: IssueRow): DataCheckIssue {
+export function mapDataCheckIssue(row: DataCheckIssueRow): DataCheckIssue {
   return {
     id: row.id,
     snapshotId: row.snapshot_id,
@@ -229,11 +233,11 @@ async function insertIssues(
   );
 }
 
-async function readCurrentIssueForUpdate(
+export async function readCurrentIssueForUpdate(
   client: PoolClient,
   issueId: string,
   snapshotId: string,
-): Promise<IssueRow> {
+): Promise<DataCheckIssueRow> {
   const state = await client.query<{ last_snapshot_id: string | null }>(
     `select last_snapshot_id
      from data_check_state
@@ -244,8 +248,8 @@ async function readCurrentIssueForUpdate(
     throw new DataCheckRepositoryError('DATA_CHECK_ISSUE_STALE', '该问题不属于最近一次检查结果');
   }
 
-  const issue = await client.query<IssueRow>(
-    `${issueSelect}
+  const issue = await client.query<DataCheckIssueRow>(
+    `${dataCheckIssueSelect}
      where id = $1 and snapshot_id = $2
      for update`,
     [issueId, snapshotId],
@@ -257,10 +261,13 @@ async function readCurrentIssueForUpdate(
   return row;
 }
 
-async function markIssueHandled(client: PoolClient, row: IssueRow): Promise<DataCheckIssue> {
-  if (row.status === 'handled') return mapIssue(row);
+export async function markIssueHandled(
+  client: PoolClient,
+  row: DataCheckIssueRow,
+): Promise<DataCheckIssue> {
+  if (row.status === 'handled') return mapDataCheckIssue(row);
 
-  const updated = await client.query<IssueRow>(
+  const updated = await client.query<DataCheckIssueRow>(
     `update data_check_issues
      set status = 'handled', handled_at = clock_timestamp()
      where id = $1
@@ -284,7 +291,7 @@ async function markIssueHandled(client: PoolClient, row: IssueRow): Promise<Data
          handled_count = handled_count + 1
      where singleton_key = true`,
   );
-  return mapIssue(updated.rows[0]!);
+  return mapDataCheckIssue(updated.rows[0]!);
 }
 
 async function deleteMissingAlias(client: PoolClient, targetId: string): Promise<boolean> {
@@ -432,7 +439,10 @@ async function resequenceKeywords(client: PoolClient, eventId: string): Promise<
   return true;
 }
 
-async function applyAutomaticAction(client: PoolClient, issue: IssueRow): Promise<boolean> {
+async function applyAutomaticAction(
+  client: PoolClient,
+  issue: DataCheckIssueRow,
+): Promise<boolean> {
   switch (issue.issue_type) {
     case 'delete_missing_alias':
       return deleteMissingAlias(client, issue.target_id);
@@ -620,8 +630,8 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
       const totalItems = Number(count.rows[0]?.total ?? 0);
       const totalPages = Math.max(1, Math.ceil(totalItems / issuePageSize));
       const page = Math.min(query.page, totalPages);
-      const issues = await client.query<IssueRow>(
-        `${issueSelect}
+      const issues = await client.query<DataCheckIssueRow>(
+        `${dataCheckIssueSelect}
          where ${filter}
          order by case severity when 'error' then 0 else 1 end,
                   issue_type,
@@ -632,7 +642,7 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
       );
       await client.query('commit');
       return {
-        items: issues.rows.map(mapIssue),
+        items: issues.rows.map(mapDataCheckIssue),
         page,
         pageSize: issuePageSize,
         totalItems,
@@ -669,7 +679,7 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
       const issue = await readCurrentIssueForUpdate(client, issueId, snapshotId);
       if (issue.status === 'handled') {
         await client.query('commit');
-        return mapIssue(issue);
+        return mapDataCheckIssue(issue);
       }
       if (issue.action_mode !== 'auto' || !(await applyAutomaticAction(client, issue))) {
         throw new DataCheckRepositoryError(

@@ -134,6 +134,142 @@ export const dataCheckIssueListResponseSchema = z
 
 export const dataCheckHandlingRequestSchema = z.object({ snapshotId: z.uuid() }).strict();
 
+const mergeActionRequestSchema = z
+  .object({
+    type: z.literal('merge'),
+    snapshotId: z.uuid(),
+    keepId: z.uuid(),
+    mergeId: z.uuid(),
+  })
+  .strict()
+  .refine((value) => value.keepId !== value.mergeId, {
+    path: ['mergeId'],
+    message: '合并记录必须是不同记录',
+  });
+
+export const dataCheckActionRequestSchema = z.discriminatedUnion('type', [
+  mergeActionRequestSchema,
+  z.object({ type: z.literal('cleanup'), snapshotId: z.uuid() }).strict(),
+  z.object({ type: z.literal('delete_relation'), snapshotId: z.uuid() }).strict(),
+  z.object({ type: z.literal('repair_timestamp'), snapshotId: z.uuid() }).strict(),
+  z.object({ type: z.literal('ignore'), snapshotId: z.uuid() }).strict(),
+]);
+
+export const dataCheckDialogKindSchema = z.enum([
+  'merge',
+  'cleanup',
+  'delete_relation',
+  'repair_timestamp',
+  'edit',
+  'ignore_only',
+]);
+export const dataCheckAllowedActionSchema = z.enum([
+  'merge',
+  'cleanup',
+  'delete_relation',
+  'repair_timestamp',
+  'ignore',
+  'open_edit',
+]);
+
+export const dataCheckActionRecordSchema = z
+  .object({
+    id: z.string().trim().min(1).max(100),
+    targetType: dataCheckTargetTypeSchema,
+    title: z.string().trim().min(1).max(100),
+    primaryText: z.string().max(4_000),
+    secondaryText: z.array(z.string().max(4_000)).max(20),
+    detailPath: z.string().trim().min(1).max(300).nullable(),
+    relationCount: z.number().int().nonnegative(),
+    caseCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const dataCheckActionImpactSchema = z
+  .object({
+    relationsMoved: z.number().int().nonnegative(),
+    relationsDeleted: z.number().int().nonnegative(),
+    relationCaseLinksMoved: z.number().int().nonnegative(),
+    relationCaseLinksDeleted: z.number().int().nonnegative(),
+    recordsDeleted: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const dataCheckActionOptionSchema = z
+  .object({
+    type: dataCheckAllowedActionSchema,
+    label: z.string().trim().min(1).max(100),
+    keepId: z.uuid().nullable(),
+    mergeId: z.uuid().nullable(),
+    editPath: z.string().trim().min(1).max(300).nullable(),
+    impact: dataCheckActionImpactSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.type === 'merge') {
+      if (!value.keepId || !value.mergeId || value.keepId === value.mergeId) {
+        context.addIssue({
+          code: 'custom',
+          path: ['keepId'],
+          message: '合并操作必须指定两个不同记录',
+        });
+      }
+      if (value.editPath !== null) {
+        context.addIssue({ code: 'custom', path: ['editPath'], message: '合并操作不能打开编辑页' });
+      }
+      return;
+    }
+    if (value.keepId !== null || value.mergeId !== null) {
+      context.addIssue({ code: 'custom', path: ['keepId'], message: '非合并操作不能指定记录对' });
+    }
+    if ((value.type === 'open_edit') !== (value.editPath !== null)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['editPath'],
+        message: '编辑操作必须且只能指定编辑路径',
+      });
+    }
+  });
+
+export const dataCheckActionContextSchema = z
+  .object({
+    snapshotId: z.uuid(),
+    issueId: z.uuid(),
+    issueType: z.string().trim().min(1).max(80),
+    status: dataCheckIssueStatusSchema,
+    dialogKind: dataCheckDialogKindSchema,
+    records: z.array(dataCheckActionRecordSchema).max(2),
+    actions: z.array(dataCheckActionOptionSchema).max(10),
+    message: z.string().trim().min(1).max(300).nullable(),
+  })
+  .strict();
+
+export const dataCheckActionResponseSchema = z
+  .object({
+    issue: dataCheckIssueSchema,
+    affectedEventIds: z.array(z.uuid()),
+    affectedCaseIds: z.array(z.uuid()),
+    affectedRelationIds: z.array(z.uuid()),
+  })
+  .strict();
+
+export const dataCheckRecheckResponseSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('resolved'),
+      issue: dataCheckIssueSchema,
+      context: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('open'),
+      issue: dataCheckIssueSchema,
+      context: dataCheckActionContextSchema,
+    })
+    .strict(),
+]);
+
 export type DataCheckRunStatus = z.infer<typeof dataCheckRunStatusSchema>;
 export type DataCheckSeverity = z.infer<typeof dataCheckSeveritySchema>;
 export type DataCheckActionMode = z.infer<typeof dataCheckActionModeSchema>;
@@ -149,3 +285,12 @@ export type DataCheckIssue = z.infer<typeof dataCheckIssueSchema>;
 export type DataCheckIssueListQuery = z.infer<typeof dataCheckIssueListQuerySchema>;
 export type DataCheckIssueListResponse = z.infer<typeof dataCheckIssueListResponseSchema>;
 export type DataCheckHandlingRequest = z.infer<typeof dataCheckHandlingRequestSchema>;
+export type DataCheckActionRequest = z.infer<typeof dataCheckActionRequestSchema>;
+export type DataCheckDialogKind = z.infer<typeof dataCheckDialogKindSchema>;
+export type DataCheckAllowedAction = z.infer<typeof dataCheckAllowedActionSchema>;
+export type DataCheckActionRecord = z.infer<typeof dataCheckActionRecordSchema>;
+export type DataCheckActionImpact = z.infer<typeof dataCheckActionImpactSchema>;
+export type DataCheckActionOption = z.infer<typeof dataCheckActionOptionSchema>;
+export type DataCheckActionContext = z.infer<typeof dataCheckActionContextSchema>;
+export type DataCheckActionResponse = z.infer<typeof dataCheckActionResponseSchema>;
+export type DataCheckRecheckResponse = z.infer<typeof dataCheckRecheckResponseSchema>;
