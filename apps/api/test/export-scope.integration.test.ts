@@ -53,8 +53,8 @@ async function seedGraph(pool: Pool): Promise<void> {
   );
   await pool.query(
     `insert into causal_relations (id, cause_event_id, effect_event_id, confidence) values
-       ($1, $2, $3, 80), ($4, $3, $5, 80), ($6, $5, $2, 80),
-       ($7, $8, $3, 80), ($9, $5, $10, 80)`,
+       ($1, $2, $3, 80), ($4, $5, $6, 80), ($7, $8, $9, 80),
+       ($10, $11, $12, 80), ($13, $14, $15, 80)`,
     [
       relationIds.ab,
       eventIds.a,
@@ -80,7 +80,7 @@ async function seedGraph(pool: Pool): Promise<void> {
   );
   await pool.query(
     `insert into causal_relation_cases (causal_relation_id, concrete_case_id) values
-       ($1, $2), ($3, $2), ($4, $5), ($6, $5), ($9, $10)`,
+       ($1, $2), ($3, $4), ($5, $6), ($7, $8), ($9, $10)`,
     [
       relationIds.ab,
       caseIds.one,
@@ -99,11 +99,11 @@ async function seedGraph(pool: Pool): Promise<void> {
 async function materializedIds(client: PoolClient, input: ExportPreviewInput) {
   const repository = new PostgresExportScopeRepository();
   const counts = await repository.materialize(client, input);
-  const [events, relations, cases] = await Promise.all([
-    client.query<{ id: string }>('select id from export_scope_events order by id'),
-    client.query<{ id: string }>('select id from export_scope_relations order by id'),
-    client.query<{ id: string }>('select id from export_scope_cases order by id'),
-  ]);
+  const events = await client.query<{ id: string }>('select id from export_scope_events order by id');
+  const relations = await client.query<{ id: string }>(
+    'select id from export_scope_relations order by id',
+  );
+  const cases = await client.query<{ id: string }>('select id from export_scope_cases order by id');
   return {
     counts,
     events: events.rows.map((row) => row.id),
