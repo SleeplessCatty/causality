@@ -1,7 +1,9 @@
 import type {
+  DataCheckActionMode,
   DataCheckIssue,
   DataCheckIssueListQuery,
   DataCheckIssueListResponse,
+  DataCheckIssueType,
   DataCheckLatestResponse,
   DataCheckSemanticReason,
   DataCheckSemanticStatus,
@@ -14,6 +16,7 @@ import type {
   DataCheckScanResult,
   DataCheckStartResult,
 } from './dataCheckTypes.js';
+import { loadDataCheckIssueSources } from './dataCheckIssueSource.js';
 
 const dataCheckLockKey = 2_026_072_301;
 const issuePageSize = 50;
@@ -58,10 +61,10 @@ export interface DataCheckIssueRow {
   id: string;
   snapshot_id: string;
   severity: DataCheckIssue['severity'];
-  issue_type: string;
+  issue_type: DataCheckIssueType;
   description: string;
   suggestion: string;
-  action_mode: DataCheckIssue['actionMode'];
+  action_mode: DataCheckActionMode;
   status: DataCheckIssue['status'];
   target_type: DataCheckIssue['targetType'];
   target_id: string;
@@ -157,7 +160,6 @@ export function mapDataCheckIssue(row: DataCheckIssueRow): DataCheckIssue {
     issueType: row.issue_type,
     description: row.description,
     suggestion: row.suggestion,
-    actionMode: row.action_mode,
     status: row.status,
     targetType: row.target_type,
     targetId: row.target_id,
@@ -640,9 +642,25 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
          offset $5`,
         [...parameters, (page - 1) * issuePageSize],
       );
+      const sources = await loadDataCheckIssueSources(
+        client,
+        issues.rows.map((row) => ({
+          id: row.id,
+          issueType: row.issue_type,
+          targetType: row.target_type,
+          targetId: row.target_id,
+          relatedId: row.related_id,
+        })),
+      );
       await client.query('commit');
       return {
-        items: issues.rows.map(mapDataCheckIssue),
+        items: issues.rows.map((row) => {
+          const source = sources.get(row.id);
+          if (!source) {
+            throw new Error(`Missing data-check issue source for issue ${row.id}`);
+          }
+          return { ...mapDataCheckIssue(row), source };
+        }),
         page,
         pageSize: issuePageSize,
         totalItems,

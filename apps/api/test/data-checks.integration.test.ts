@@ -1,6 +1,7 @@
 import type {
   DataCheckIssue,
   DataCheckIssueListResponse,
+  DataCheckIssueType,
   DataCheckLatestResponse,
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
@@ -224,7 +225,7 @@ describe.sequential('data-check REST API and rules', () => {
     const repository = new PostgresDataCheckRepository(pool!);
     const firstSnapshot = 'a1000000-0000-4000-8000-000000000010';
     const secondSnapshot = 'a1000000-0000-4000-8000-000000000011';
-    const result = (id: string, issueType: string): DataCheckScanResult => ({
+    const result = (id: string, issueType: DataCheckIssueType): DataCheckScanResult => ({
       snapshotId: id,
       checkedAt: new Date('2026-07-23T10:00:00.000Z'),
       orphanCounts: { events: 1, relations: 2, cases: 3 },
@@ -244,10 +245,10 @@ describe.sequential('data-check REST API and rules', () => {
       semantic: { status: 'skipped', reason: 'not_recorded', issueCount: 0 },
     });
 
-    await repository.replaceSnapshot(result(firstSnapshot, 'first_snapshot_issue'));
-    await repository.replaceSnapshot(result(secondSnapshot, 'second_snapshot_issue'));
+    await repository.replaceSnapshot(result(firstSnapshot, 'invalid_event_name'));
+    await repository.replaceSnapshot(result(secondSnapshot, 'invalid_event_description'));
     const replaced = await repository.listIssues({ page: 1 });
-    expect(replaced.items.map((item) => item.issueType)).toEqual(['second_snapshot_issue']);
+    expect(replaced.items.map((item) => item.issueType)).toEqual(['invalid_event_description']);
     expect(replaced.items[0]?.snapshotId).toBe(secondSnapshot);
 
     const failed = await repository.markFailure('规则执行失败');
@@ -255,6 +256,97 @@ describe.sequential('data-check REST API and rules', () => {
     expect(failed.snapshot?.snapshotId).toBe(secondSnapshot);
     expect(failed.latestFailure?.message).toBe('规则执行失败');
     expect((await repository.listIssues({ page: 1 })).items).toEqual(replaced.items);
+  });
+
+  it('returns readable sources for every source layout without exposing ids as labels', async () => {
+    const currentSnapshot = 'a1000000-0000-4000-8000-000000000019';
+    const causeId = '12000000-0000-4000-8000-000000000001';
+    const effectId = '12000000-0000-4000-8000-000000000002';
+    const firstCaseId = '32000000-0000-4000-8000-000000000001';
+    const secondCaseId = '32000000-0000-4000-8000-000000000002';
+    const relationId = '22000000-0000-4000-8000-000000000001';
+    const aliasId = '42000000-0000-4000-8000-000000000001';
+    await pool!.query(
+      `insert into abstract_events (id, name)
+       values ($1, '供应中断'), ($2, '物流周期延长')`,
+      [causeId, effectId],
+    );
+    await pool!.query(
+      `insert into concrete_cases (id, content)
+       values ($1, '港口拥堵造成交付延迟'), ($2, '航线调整造成运输周期增加')`,
+      [firstCaseId, secondCaseId],
+    );
+    await pool!.query(
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $2, $3, 60)`,
+      [relationId, causeId, effectId],
+    );
+    await pool!.query(
+      `insert into event_aliases (id, event_id, alias)
+       values ($1, $2, '供应受阻')`,
+      [aliasId, causeId],
+    );
+    await pool!.query(`delete from data_check_issues`);
+    await pool!.query(
+      `insert into data_check_issues (
+         snapshot_id, severity, issue_type, description, suggestion,
+         action_mode, target_type, target_id, related_id
+       ) values
+         ($1, 'warning', 'duplicate_event_name', '事件重复', '选择保留事件',
+          'manual', 'event', $2, $3),
+         ($1, 'warning', 'duplicate_case_content', '案例重复', '选择保留案例',
+          'manual', 'case', $4, $5),
+         ($1, 'error', 'relation_self_loop', '关系形成自环', '删除关系',
+          'manual', 'relation', $6, null),
+         ($1, 'error', 'invalid_alias_text', '别名无效', '编辑所属事件',
+          'manual', 'alias', $7, $2),
+         ($1, 'error', 'delete_missing_relation_case', '关联失效', '清理关联',
+          'auto', 'relation_case', '22000000-0000-4000-8000-000000000099',
+          '32000000-0000-4000-8000-000000000099')`,
+      [currentSnapshot, causeId, effectId, firstCaseId, secondCaseId, relationId, aliasId],
+    );
+    await setCurrentSnapshot(currentSnapshot, { errors: 3, warnings: 2, open: 5 });
+
+    const response = await app!.inject({
+      method: 'GET',
+      url: '/api/data-checks/latest/issues?page=1',
+    });
+    expect(response.statusCode).toBe(200);
+    const result = response.json<DataCheckIssueListResponse>();
+    const byType = new Map(result.items.map((item) => [item.issueType, item.source]));
+
+    expect(byType.get('duplicate_event_name')).toMatchObject({
+      displayKind: 'pair',
+      items: [
+        { label: '供应中断', detailPath: `/events/${causeId}` },
+        { label: '物流周期延长', detailPath: `/events/${effectId}` },
+      ],
+    });
+    expect(byType.get('duplicate_case_content')).toMatchObject({
+      displayKind: 'pair',
+      items: [
+        { label: '港口拥堵造成交付延迟', detailPath: `/cases/${firstCaseId}` },
+        { label: '航线调整造成运输周期增加', detailPath: `/cases/${secondCaseId}` },
+      ],
+    });
+    expect(byType.get('relation_self_loop')).toMatchObject({
+      displayKind: 'relation',
+      relationDetailPaths: [`/relations/${relationId}`],
+    });
+    expect(byType.get('invalid_alias_text')).toMatchObject({
+      displayKind: 'owned_value',
+      items: [
+        { label: '供应中断', detailPath: `/events/${causeId}` },
+        { label: '供应受阻', detailPath: null },
+      ],
+    });
+    expect(byType.get('delete_missing_relation_case')).toMatchObject({
+      displayKind: 'broken_reference',
+      items: [{ type: 'missing', detailPath: null }],
+    });
+    expect(
+      result.items.flatMap((item) => item.source.items).map((item) => item.label),
+    ).not.toContain('22000000-0000-4000-8000-000000000099');
   });
 
   it('filters and clamps fixed 50-row issue pages from the current snapshot', async () => {
@@ -267,7 +359,10 @@ describe.sequential('data-check REST API and rules', () => {
        )
        select $1,
               case when number <= 51 then 'error' else 'warning' end,
-              case when number % 2 = 0 then 'even_issue' else 'odd_issue' end,
+              case
+                when number % 2 = 0 then 'invalid_event_name'
+                else 'invalid_event_description'
+              end,
               '分页测试问题',
               '手动处理',
               'manual',
@@ -303,7 +398,7 @@ describe.sequential('data-check REST API and rules', () => {
     const byType = (
       await app!.inject({
         method: 'GET',
-        url: '/api/data-checks/latest/issues?page=1&issueType=even_issue',
+        url: '/api/data-checks/latest/issues?page=1&issueType=invalid_event_name',
       })
     ).json<DataCheckIssueListResponse>();
     expect(byType.totalItems).toBe(26);
