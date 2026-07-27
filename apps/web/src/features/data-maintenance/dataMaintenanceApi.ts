@@ -3,14 +3,12 @@ import {
   dataCheckActionResponseSchema,
   dataCheckIssueListResponseSchema,
   dataCheckLatestResponseSchema,
-  dataCheckRecheckResponseSchema,
   type DataCheckActionContext,
   type DataCheckActionRequest,
   type DataCheckActionResponse,
   type DataCheckIssueListQuery,
   type DataCheckIssueListResponse,
   type DataCheckLatestResponse,
-  type DataCheckRecheckResponse,
 } from '@causality/contracts';
 
 import { requestJson } from '../../shared/api/httpClient';
@@ -63,18 +61,6 @@ export async function applyDataCheckAction(
     await requestJson(`/api/data-checks/issues/${issueId}/actions`, {
       method: 'POST',
       body: JSON.stringify(request),
-    }),
-  );
-}
-
-export async function recheckDataCheckIssue(
-  issueId: string,
-  snapshotId: string,
-): Promise<DataCheckRecheckResponse> {
-  return dataCheckRecheckResponseSchema.parse(
-    await requestJson(`/api/data-checks/issues/${issueId}/recheck`, {
-      method: 'POST',
-      body: JSON.stringify({ snapshotId }),
     }),
   );
 }

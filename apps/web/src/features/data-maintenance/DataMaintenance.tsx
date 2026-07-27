@@ -1,25 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router';
+import { useEffect, useRef } from 'react';
 
-import type { DataCheckLatestResponse } from '@causality/contracts';
-import { getDataCheckReturnState } from '../../shared/navigation/listReturn';
 import { getReadiness } from '../system-status/systemStatusApi';
-import { DataCheckIssueDialog } from './DataCheckIssueDialog';
 import { DataCheckPanel } from './DataCheckPanel';
-import { getLatestDataCheck, recheckDataCheckIssue, startDataCheck } from './dataMaintenanceApi';
+import { getLatestDataCheck, startDataCheck } from './dataMaintenanceApi';
 import { useDataCheckQueryState } from './useDataCheckQueryState';
 
 export function DataMaintenance() {
   const queryClient = useQueryClient();
-  const location = useLocation();
   const queryState = useDataCheckQueryState();
   const previousSnapshotId = useRef<string | null>(null);
-  const consumedRecheck = useRef<string | null>(null);
-  const [queuedRecheck, setQueuedRecheck] = useState<{
-    issueId: string;
-    snapshotId: string;
-  } | null>(null);
   const readiness = useQuery({
     queryKey: ['system', 'readiness'],
     queryFn: ({ signal }) => getReadiness(signal),
@@ -33,24 +23,6 @@ export function DataMaintenance() {
     mutationFn: startDataCheck,
     onSuccess: (latest) => {
       queryClient.setQueryData(['data-checks', 'latest'], latest);
-    },
-  });
-  const recheckIssue = useMutation({
-    mutationFn: ({ issueId, snapshotId }: { issueId: string; snapshotId: string }) =>
-      recheckDataCheckIssue(issueId, snapshotId),
-    onSuccess: async (result) => {
-      if (result.status === 'open') {
-        queryClient.setQueryData(
-          ['data-checks', 'action-context', result.issue.id, result.issue.snapshotId],
-          result.context,
-        );
-      } else {
-        queryState.closeIssue();
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['data-checks', 'latest'] }),
-        queryClient.invalidateQueries({ queryKey: ['data-checks', 'issues'] }),
-      ]);
     },
   });
 
@@ -67,115 +39,16 @@ export function DataMaintenance() {
     !readiness.isPending && readiness.data?.status !== 'ready'
       ? '数据库不可用，无法执行检查'
       : null;
-
   const snapshotId = dataCheck.data?.snapshot?.snapshotId ?? null;
   const latestSnapshotFresh = dataCheck.isSuccess && dataCheck.isFetchedAfterMount;
-  const dataCheckReturn = getDataCheckReturnState(location.state);
-  const returnIssueId = dataCheckReturn?.dataCheckIssueId ?? null;
-  const returnSnapshotId = dataCheckReturn?.dataCheckSnapshotId ?? null;
-  const returnMode = dataCheckReturn?.dataCheckReturnMode ?? null;
-  const returnPathIssueId = dataCheckReturn
-    ? new URL(dataCheckReturn.dataCheckReturnPath, 'http://local.invalid').searchParams.get('issue')
-    : null;
-  const staleReturnState =
-    latestSnapshotFresh &&
-    snapshotId !== null &&
-    returnIssueId === queryState.issueId &&
-    returnSnapshotId !== null &&
-    returnSnapshotId !== snapshotId;
-  const snapshotChanged =
-    latestSnapshotFresh &&
-    snapshotId !== null &&
-    previousSnapshotId.current !== null &&
-    previousSnapshotId.current !== snapshotId;
+
   useEffect(() => {
     if (!snapshotId || !latestSnapshotFresh) return;
-    if (
-      staleReturnState ||
-      (previousSnapshotId.current && previousSnapshotId.current !== snapshotId)
-    ) {
+    if (previousSnapshotId.current && previousSnapshotId.current !== snapshotId) {
       queryState.resetForSnapshot();
-      setQueuedRecheck(null);
     }
     previousSnapshotId.current = snapshotId;
-  }, [latestSnapshotFresh, queryState.resetForSnapshot, snapshotId, staleReturnState]);
-
-  useEffect(() => {
-    if (
-      !latestSnapshotFresh ||
-      !queryState.recheck ||
-      !queryState.issueId ||
-      !snapshotId ||
-      staleReturnState
-    )
-      return;
-    if (
-      returnMode !== 'saved' ||
-      returnIssueId !== queryState.issueId ||
-      returnPathIssueId !== queryState.issueId ||
-      returnSnapshotId !== snapshotId
-    ) {
-      queryState.resetForSnapshot();
-      return;
-    }
-    const marker = `${snapshotId}:${queryState.issueId}:${location.key}`;
-    if (consumedRecheck.current === marker) return;
-    consumedRecheck.current = marker;
-    setQueuedRecheck({ issueId: queryState.issueId, snapshotId });
-    queryState.consumeRecheck();
-  }, [
-    latestSnapshotFresh,
-    location.key,
-    queryState.consumeRecheck,
-    queryState.issueId,
-    queryState.recheck,
-    queryState.resetForSnapshot,
-    returnIssueId,
-    returnMode,
-    returnPathIssueId,
-    returnSnapshotId,
-    snapshotId,
-    staleReturnState,
-  ]);
-
-  useEffect(() => {
-    if (!queuedRecheck || !latestSnapshotFresh) return;
-    if (queryState.recheck || new URLSearchParams(location.search).has('recheck')) return;
-    const currentLatestSnapshotId =
-      queryClient.getQueryData<DataCheckLatestResponse>(['data-checks', 'latest'])?.snapshot
-        ?.snapshotId ?? null;
-    const committedReturnMatches =
-      snapshotId === queuedRecheck.snapshotId &&
-      currentLatestSnapshotId === queuedRecheck.snapshotId &&
-      queryState.issueId === queuedRecheck.issueId &&
-      returnMode === 'saved' &&
-      returnIssueId === queuedRecheck.issueId &&
-      returnPathIssueId === queuedRecheck.issueId &&
-      returnSnapshotId === queuedRecheck.snapshotId;
-    if (!committedReturnMatches) {
-      setQueuedRecheck(null);
-      queryState.resetForSnapshot();
-      return;
-    }
-    recheckIssue.mutate(queuedRecheck);
-    setQueuedRecheck(null);
-  }, [
-    latestSnapshotFresh,
-    location.search,
-    queryClient,
-    queryState.issueId,
-    queryState.recheck,
-    queryState.resetForSnapshot,
-    queuedRecheck,
-    recheckIssue,
-    returnIssueId,
-    returnMode,
-    returnPathIssueId,
-    returnSnapshotId,
-    snapshotId,
-  ]);
-
-  const recheckPending = queryState.recheck || queuedRecheck !== null || recheckIssue.isPending;
+  }, [latestSnapshotFresh, queryState.resetForSnapshot, snapshotId]);
 
   return (
     <div className="data-maintenance-workspace">
@@ -194,26 +67,11 @@ export function DataMaintenance() {
         error={
           startCheck.error instanceof Error
             ? startCheck.error.message
-            : recheckIssue.error instanceof Error
-              ? recheckIssue.error.message
-              : dataCheck.error instanceof Error
-                ? dataCheck.error.message
-                : readinessError
+            : dataCheck.error instanceof Error
+              ? dataCheck.error.message
+              : readinessError
         }
       />
-      {queryState.issueId &&
-      snapshotId &&
-      latestSnapshotFresh &&
-      !staleReturnState &&
-      !snapshotChanged ? (
-        <DataCheckIssueDialog
-          key={queryState.issueId}
-          issueId={queryState.issueId}
-          snapshotId={snapshotId}
-          externalPending={recheckPending}
-          onClose={queryState.closeIssue}
-        />
-      ) : null}
     </div>
   );
 }

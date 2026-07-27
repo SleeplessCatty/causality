@@ -1,4 +1,8 @@
-import type { DataCheckIssueStatus, DataCheckSeverity } from '@causality/contracts';
+import type {
+  DataCheckIssueStatus,
+  DataCheckIssueType,
+  DataCheckSeverity,
+} from '@causality/contracts';
 import { useCallback, useEffect } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 
@@ -31,26 +35,28 @@ export const dataCheckIssueTypeOptions = [
   ['cross_event_shared_alias', '跨事件共享别名'],
   ['semantic_duplicate_event', '语义重复事件'],
   ['semantic_duplicate_case', '语义重复案例'],
-] as const;
+] as const satisfies ReadonlyArray<readonly [DataCheckIssueType, string]>;
 
-const issueTypes = new Set<string>(dataCheckIssueTypeOptions.map(([value]) => value));
+const issueTypes = new Set<DataCheckIssueType>(dataCheckIssueTypeOptions.map(([value]) => value));
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function dataCheckIssueTypeLabel(issueType: DataCheckIssueType): string {
+  return dataCheckIssueTypeOptions.find(([value]) => value === issueType)?.[1] ?? issueType;
+}
 
 export interface DataCheckQueryState {
   page: number;
   severity: DataCheckSeverity | '';
-  issueType: string;
+  issueType: DataCheckIssueType | '';
   status: DataCheckIssueStatus | '';
-  issueId: string | null;
-  recheck: boolean;
+  expandedId: string | null;
   changePage(page: number): void;
   changeSeverity(value: DataCheckSeverity | ''): void;
-  changeIssueType(value: string): void;
+  changeIssueType(value: DataCheckIssueType | ''): void;
   changeStatus(value: DataCheckIssueStatus | ''): void;
-  openIssue(issueId: string): void;
-  closeIssue(): void;
+  toggleExpanded(issueId: string): void;
+  clearExpanded(): void;
   resetForSnapshot(): void;
-  consumeRecheck(): void;
 }
 
 export function useDataCheckQueryState(): DataCheckQueryState {
@@ -62,13 +68,15 @@ export function useDataCheckQueryState(): DataCheckQueryState {
   const severity: DataCheckSeverity | '' =
     rawSeverity === 'error' || rawSeverity === 'warning' ? rawSeverity : '';
   const rawIssueType = searchParameters.get('issueType');
-  const issueType = rawIssueType && issueTypes.has(rawIssueType) ? rawIssueType : '';
+  const issueType: DataCheckIssueType | '' =
+    rawIssueType && issueTypes.has(rawIssueType as DataCheckIssueType)
+      ? (rawIssueType as DataCheckIssueType)
+      : '';
   const rawStatus = searchParameters.get('status');
   const status: DataCheckIssueStatus | '' =
     rawStatus === 'open' || rawStatus === 'handled' ? rawStatus : '';
-  const rawIssueId = searchParameters.get('issue');
-  const issueId = rawIssueId && uuidPattern.test(rawIssueId) ? rawIssueId : null;
-  const recheck = searchParameters.get('recheck') === '1' && issueId !== null;
+  const rawExpandedId = searchParameters.get('expanded');
+  const expandedId = rawExpandedId && uuidPattern.test(rawExpandedId) ? rawExpandedId : null;
 
   useEffect(() => {
     const next = new URLSearchParams(searchParameters);
@@ -76,21 +84,20 @@ export function useDataCheckQueryState(): DataCheckQueryState {
     if (rawSeverity !== null && !severity) next.delete('severity');
     if (rawIssueType !== null && !issueType) next.delete('issueType');
     if (rawStatus !== null && !status) next.delete('status');
-    if (rawIssueId !== null && !issueId) next.delete('issue');
-    if (searchParameters.has('recheck') && !recheck) next.delete('recheck');
-    if (next.toString() !== searchParameters.toString())
+    if (rawExpandedId !== null && !expandedId) next.delete('expanded');
+    if (next.toString() !== searchParameters.toString()) {
       setSearchParameters(next, { replace: true, state: location.state });
+    }
   }, [
-    issueId,
+    expandedId,
     issueType,
     location.state,
     page,
-    rawIssueId,
+    rawExpandedId,
     rawIssueType,
     rawPage,
     rawSeverity,
     rawStatus,
-    recheck,
     searchParameters,
     setSearchParameters,
     severity,
@@ -99,84 +106,87 @@ export function useDataCheckQueryState(): DataCheckQueryState {
 
   const updateFilter = useCallback(
     (key: 'severity' | 'issueType' | 'status', value: string) => {
-      setSearchParameters((current) => {
-        const next = new URLSearchParams(current);
-        if (value) next.set(key, value);
-        else next.delete(key);
-        next.delete('page');
-        return next;
-      });
+      setSearchParameters(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (value) next.set(key, value);
+          else next.delete(key);
+          next.delete('page');
+          next.delete('expanded');
+          return next;
+        },
+        { replace: true },
+      );
     },
     [setSearchParameters],
   );
 
   const changePage = useCallback(
     (nextPage: number) => {
-      setSearchParameters((current) => {
-        const next = new URLSearchParams(current);
-        if (nextPage <= 1) next.delete('page');
-        else next.set('page', String(nextPage));
-        return next;
-      });
+      setSearchParameters(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (nextPage <= 1) next.delete('page');
+          else next.set('page', String(nextPage));
+          next.delete('expanded');
+          return next;
+        },
+        { replace: true },
+      );
     },
     [setSearchParameters],
   );
-  const openIssue = useCallback(
+
+  const toggleExpanded = useCallback(
     (nextIssueId: string) => {
-      setSearchParameters((current) => {
-        const next = new URLSearchParams(current);
-        next.set('issue', nextIssueId);
-        next.delete('recheck');
-        return next;
-      });
+      setSearchParameters(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (next.get('expanded') === nextIssueId) next.delete('expanded');
+          else next.set('expanded', nextIssueId);
+          return next;
+        },
+        { replace: true },
+      );
     },
     [setSearchParameters],
   );
-  const closeIssue = useCallback(() => {
-    setSearchParameters((current) => {
-      const next = new URLSearchParams(current);
-      next.delete('issue');
-      next.delete('recheck');
-      return next;
-    });
-  }, [setSearchParameters]);
-  const resetForSnapshot = useCallback(() => {
+
+  const clearExpanded = useCallback(() => {
     setSearchParameters(
       (current) => {
         const next = new URLSearchParams(current);
-        next.delete('page');
-        next.delete('issue');
-        next.delete('recheck');
+        next.delete('expanded');
         return next;
       },
       { replace: true },
     );
   }, [setSearchParameters]);
-  const consumeRecheck = useCallback(() => {
+
+  const resetForSnapshot = useCallback(() => {
     setSearchParameters(
       (current) => {
         const next = new URLSearchParams(current);
-        next.delete('recheck');
+        next.delete('page');
+        next.delete('expanded');
         return next;
       },
-      { replace: true, state: location.state },
+      { replace: true },
     );
-  }, [location.state, setSearchParameters]);
+  }, [setSearchParameters]);
 
   return {
     page,
     severity,
     issueType,
     status,
-    issueId,
-    recheck,
+    expandedId,
     changePage,
     changeSeverity: useCallback((value) => updateFilter('severity', value), [updateFilter]),
     changeIssueType: useCallback((value) => updateFilter('issueType', value), [updateFilter]),
     changeStatus: useCallback((value) => updateFilter('status', value), [updateFilter]),
-    openIssue,
-    closeIssue,
+    toggleExpanded,
+    clearExpanded,
     resetForSnapshot,
-    consumeRecheck,
   };
 }

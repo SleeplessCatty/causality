@@ -1,13 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
+import { Fragment } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 
-import type { DataCheckIssue, DataCheckIssueListQuery } from '@causality/contracts';
+import type { DataCheckIssueListQuery } from '@causality/contracts';
 import { AppSelect } from '../../shared/controls/AppSelect';
-import { listRecordDomId, useListRecordFocus } from '../../shared/navigation/useListRecordFocus';
 import { useListPageCorrection } from '../../shared/lists/useListQueryState';
 import { ListPagination } from '../../shared/pagination/ListPagination';
+import { DataCheckExpandedRow } from './DataCheckExpandedRow';
+import { DataCheckIssueSource } from './DataCheckIssueSource';
 import { getDataCheckIssues } from './dataMaintenanceApi';
-import { dataCheckIssueTypeOptions, type DataCheckQueryState } from './useDataCheckQueryState';
+import {
+  dataCheckIssueTypeLabel,
+  dataCheckIssueTypeOptions,
+  type DataCheckQueryState,
+} from './useDataCheckQueryState';
 
 interface DataCheckIssueTableProps {
   snapshotId: string | null;
@@ -27,32 +33,23 @@ const statusOptions = [
 ];
 
 const issueFilterOptions = [
-  { value: '', label: '全部' },
+  { value: '' as const, label: '全部' },
   ...dataCheckIssueTypeOptions.map(([value, label]) => ({ value, label })),
 ];
 
-function IssueDescription({ issue }: { issue: DataCheckIssue }) {
+function SeverityBadge({ severity }: { severity: 'error' | 'warning' }) {
+  const label = severity === 'error' ? '错误' : '警告';
   return (
-    <div className="data-check-issue__description">
-      <span
-        className={`data-check-severity data-check-severity--${issue.severity}`}
-        aria-label={issue.severity === 'error' ? '错误' : '警告'}
-      >
-        {issue.severity === 'error' ? '错误' : '警告'}
-      </span>
-      <span>{issue.description}</span>
-      <div className="data-check-issue__references">
-        <code>{issue.targetId}</code>
-        {issue.relatedId ? <code>{issue.relatedId}</code> : null}
-      </div>
-    </div>
+    <span className={`data-check-severity data-check-severity--${severity}`} aria-label={label}>
+      {label}
+    </span>
   );
 }
 
 export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTableProps) {
   const location = useLocation();
   const [, setSearchParameters] = useSearchParams();
-  const { page, severity, issueType, status, issueId } = queryState;
+  const { page, severity, issueType, status, expandedId } = queryState;
   const queryKey = [
     'data-checks',
     'issues',
@@ -79,7 +76,6 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
     setSearchParameters,
     navigationState: location.state,
   });
-  useListRecordFocus(data?.items.map((current) => current.id) ?? [], issueId ?? undefined);
 
   return (
     <section className="data-check-issues" aria-labelledby="data-check-issues-title">
@@ -118,56 +114,69 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
         <table className="data-check-table">
           <thead>
             <tr>
-              <th>问题描述</th>
-              <th>处理建议</th>
-              <th>执行入口</th>
+              <th scope="col">严重程度</th>
+              <th scope="col">问题类型</th>
+              <th scope="col">问题来源</th>
+              <th scope="col">处理入口</th>
             </tr>
           </thead>
           <tbody>
             {issues.isPending && snapshotId ? (
               <tr>
-                <td colSpan={3}>正在加载检查问题…</td>
+                <td colSpan={4}>正在加载检查问题…</td>
               </tr>
             ) : null}
             {issues.isError ? (
               <tr>
-                <td className="data-check-table__error" colSpan={3}>
+                <td className="data-check-table__error" colSpan={4}>
                   检查问题加载失败
                 </td>
               </tr>
             ) : null}
             {!issues.isPending && !issues.isError && (data?.items.length ?? 0) === 0 ? (
               <tr>
-                <td className="data-check-table__empty" colSpan={3}>
+                <td className="data-check-table__empty" colSpan={4}>
                   {snapshotId ? '当前条件下没有检查问题' : '尚无可展示的检查问题'}
                 </td>
               </tr>
             ) : null}
-            {data?.items.map((current) => (
-              <tr
-                id={listRecordDomId(current.id)}
-                data-current={current.id === issueId ? 'true' : undefined}
-                key={current.id}
-              >
-                <td>
-                  <IssueDescription issue={current} />
-                </td>
-                <td>{current.suggestion}</td>
-                <td>
-                  {current.status === 'handled' ? (
-                    <span className="data-check-handled">已处理</span>
-                  ) : (
-                    <button
-                      className="button button--secondary"
-                      type="button"
-                      onClick={() => queryState.openIssue(current.id)}
-                    >
-                      操作
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {data?.items.map((current) => {
+              const expanded = current.status === 'open' && expandedId === current.id;
+              return (
+                <Fragment key={current.id}>
+                  <tr className={expanded ? 'data-check-row--expanded' : undefined}>
+                    <td>
+                      <SeverityBadge severity={current.severity} />
+                    </td>
+                    <td>{dataCheckIssueTypeLabel(current.issueType)}</td>
+                    <td>
+                      <DataCheckIssueSource source={current.source} />
+                    </td>
+                    <td className="data-check-row-actions">
+                      {current.status === 'handled' ? (
+                        <span className="data-check-handled">已处理</span>
+                      ) : (
+                        <button
+                          className="text-button"
+                          type="button"
+                          aria-expanded={expanded}
+                          onClick={() => queryState.toggleExpanded(current.id)}
+                        >
+                          {expanded ? '收起' : '展开'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {expanded && snapshotId ? (
+                    <tr className="data-check-expanded-row">
+                      <td colSpan={4}>
+                        <DataCheckExpandedRow issue={current} snapshotId={snapshotId} />
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
