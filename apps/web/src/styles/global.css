@@ -945,33 +945,77 @@ a {
 }
 
 .data-check-expanded {
+  display: grid;
   min-height: 74px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 14px 16px 16px;
   border-top: 1px solid #dfe7e2;
   color: var(--muted);
   font-size: 11px;
 }
 
-.data-check-dialog {
-  width: min(760px, calc(100vw - 32px));
-  max-height: min(760px, calc(100vh - 32px));
-  overflow-y: auto;
+.data-check-issue-summary {
+  display: grid;
+  gap: 7px;
 }
 
-.data-check-dialog > p {
+.data-check-issue-summary section {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+}
+
+.data-check-issue-summary h4,
+.data-check-issue-summary p,
+.data-check-action-plan h4 {
+  margin: 0;
+}
+
+.data-check-issue-summary h4,
+.data-check-action-plan h4 {
+  color: #29483b;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.data-check-issue-summary p {
+  color: #42574c;
+  line-height: 1.55;
+}
+
+.data-check-action-loading {
+  min-height: 56px;
+  padding: 18px 12px;
+  border: 1px dashed #d6dfd9;
+  border-radius: 6px;
+  background: #fbfcfb;
   color: var(--muted);
 }
 
-.data-check-merge-records,
-.data-check-dialog__records {
+.data-check-action-plan {
+  display: grid;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid #dce5df;
+  border-radius: 7px;
+  background: white;
+}
+
+.data-check-action-plan > strong {
+  color: #29483b;
+  font-size: 12px;
+}
+
+.data-check-action-plan--danger {
+  border-color: #ecd5d0;
+  background: #fffafa;
+}
+
+.data-check-merge-records {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 12px;
-}
-
-.data-check-dialog__records {
-  grid-template-columns: 1fr;
 }
 
 .data-check-record-card {
@@ -990,15 +1034,15 @@ a {
   font-weight: 750;
 }
 
-.data-check-record-card h3,
+.data-check-record-card h5,
 .data-check-record-card p,
 .data-check-record-card ul {
   margin: 0;
 }
 
-.data-check-record-card h3 {
+.data-check-record-card h5 {
   color: #244638;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .data-check-record-card p,
@@ -1021,7 +1065,6 @@ a {
 .data-check-merge-directions {
   display: grid;
   gap: 7px;
-  margin-top: 12px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1043,31 +1086,40 @@ a {
   font-size: 11px;
 }
 
-.data-check-merge-impact {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, auto));
-  gap: 5px 12px;
-  margin-top: 10px;
+.data-check-action-impact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
   padding: 9px 11px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--neutral-soft);
   color: #43574c;
   font-size: 10px;
 }
 
-.data-check-merge-impact strong {
-  grid-column: 1 / -1;
-  color: #29483b;
+.data-check-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
 }
 
-.data-check-dialog .delete-dialog__actions {
-  flex-wrap: wrap;
+.data-check-panel-actions .button {
+  min-width: 88px;
 }
 
-.data-check-dialog__ignore {
-  margin-right: auto;
-  padding-right: 12px;
-  border-right: 1px solid var(--border);
+.data-check-action-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 0;
+}
+
+.data-check-action-error--stale {
+  border-color: #ead9ae;
+  background: #fff9e9;
+  color: #7a5a19;
 }
 
 @media (prefers-reduced-motion: reduce) {

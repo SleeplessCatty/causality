@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useIsMutating, useQuery } from '@tanstack/react-query';
 import { Fragment } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 
@@ -69,6 +69,8 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
     },
   });
   const data = issues.data;
+  const issueActionPending =
+    useIsMutating({ mutationKey: ['data-checks', 'issue-action'] }) > 0;
   useListPageCorrection({
     requestedPage: page,
     responsePage: data?.page,
@@ -160,6 +162,7 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
                           className="text-button"
                           type="button"
                           aria-expanded={expanded}
+                          disabled={issueActionPending}
                           onClick={() => queryState.toggleExpanded(current.id)}
                         >
                           {expanded ? '收起' : '展开'}
@@ -170,7 +173,11 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
                   {expanded && snapshotId ? (
                     <tr className="data-check-expanded-row">
                       <td colSpan={4}>
-                        <DataCheckExpandedRow issue={current} snapshotId={snapshotId} />
+                        <DataCheckExpandedRow
+                          issue={current}
+                          snapshotId={snapshotId}
+                          onHandled={queryState.clearExpanded}
+                        />
                       </td>
                     </tr>
                   ) : null}
