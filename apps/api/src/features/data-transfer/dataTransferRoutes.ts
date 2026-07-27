@@ -2,6 +2,9 @@ import path from 'node:path';
 
 import {
   apiErrorSchema,
+  exportAvailabilityResponseSchema,
+  exportPreviewInputSchema,
+  exportPreviewResponseSchema,
   importBatchListResponseSchema,
   importBatchSummarySchema,
   importDetailQuerySchema,
@@ -30,6 +33,18 @@ import {
   type ImportHistoryRepository,
 } from './importHistoryRepository.js';
 import { ImportService } from './importService.js';
+import {
+  ExportRequestError,
+} from './exportRequestRepository.js';
+import {
+  ExportScopeError,
+} from './exportScopeRepository.js';
+import {
+  createExportService,
+  ExportService,
+  ExportServiceError,
+  type ExportServiceOptions,
+} from './exportService.js';
 
 const DEFAULT_IMPORT_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -37,6 +52,8 @@ export interface DataTransferRouteOptions {
   importTimeoutMs?: number;
   importRepository?: ImportRepository;
   historyRepository?: ImportHistoryRepository;
+  exportService?: ExportService;
+  exportServiceOptions?: ExportServiceOptions;
 }
 
 class UploadValidationError extends Error {
@@ -58,11 +75,27 @@ function sanitizeFilename(filename: string): string {
 
 function sendApiError(
   reply: FastifyReply,
-  status: 400 | 408 | 409 | 413,
+  status: 400 | 408 | 409 | 410 | 413,
   code: ApiErrorCode,
   message: string,
 ) {
   return reply.status(status).send({ code, message });
+}
+
+function sendExportError(error: unknown, reply: FastifyReply) {
+  if (
+    error instanceof ExportServiceError ||
+    error instanceof ExportRequestError ||
+    error instanceof ExportScopeError
+  ) {
+    return sendApiError(
+      reply,
+      error.code === 'EXPORT_TOKEN_EXPIRED' ? 410 : 400,
+      error.code,
+      error.message,
+    );
+  }
+  throw error;
 }
 
 function multipartErrorCode(error: unknown): string | undefined {
@@ -138,8 +171,56 @@ export function registerDataTransferRoutes(
     options.importRepository ?? new PostgresImportRepository(pool),
   );
   const historyRepository = options.historyRepository ?? new PostgresImportHistoryRepository(pool);
+  const exportService =
+    options.exportService ?? createExportService(pool, options.exportServiceOptions);
   const importTimeoutMs = options.importTimeoutMs ?? DEFAULT_IMPORT_TIMEOUT_MS;
   const batchParamsSchema = z.object({ batchId: z.uuid() }).strict();
+  const exportTokenParamsSchema = z.object({ token: z.string().min(1).max(512) }).strict();
+
+  routes.post(
+    '/api/data-transfers/exports/preview',
+    {
+      schema: {
+        tags: ['data-transfers'],
+        body: exportPreviewInputSchema,
+        response: {
+          200: exportPreviewResponseSchema,
+          400: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await exportService.previewExport(request.body);
+      } catch (error) {
+        return sendExportError(error, reply);
+      }
+    },
+  );
+
+  routes.get(
+    '/api/data-transfers/exports/:token/availability',
+    {
+      schema: {
+        tags: ['data-transfers'],
+        params: exportTokenParamsSchema,
+        response: {
+          200: exportAvailabilityResponseSchema,
+          400: apiErrorSchema,
+          410: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await exportService.checkExportAvailability(request.params.token);
+      } catch (error) {
+        return sendExportError(error, reply);
+      }
+    },
+  );
 
   routes.post(
     '/api/data-transfers/imports',
