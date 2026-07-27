@@ -3,22 +3,21 @@ import type {
   DataCheckActionImpact,
   DataCheckActionOption,
   DataCheckActionRecord,
-  DataCheckDialogKind,
   DataCheckIssue,
+  DataCheckIssueType,
+  DataCheckPanelKind,
   DataCheckTargetType,
 } from '@causality/contracts';
-import {
-  caseDetailSchema,
-  eventDetailSchema,
-  relationDetailSchema,
-} from '@causality/contracts';
+import { dataCheckIssueTypes } from '@causality/contracts';
 import { buildSemanticDocument, hashSemanticDocument } from '@causality/semantic-core';
 import type { PoolClient } from 'pg';
+
+import { authorizeDataCheckActions } from './dataCheckActionKey.js';
 
 export type DataCheckIssueEvaluation = 'present' | 'resolved' | 'missing' | 'unavailable';
 
 export interface DataCheckIssueEvaluator {
-  readonly dialogKind: DataCheckDialogKind;
+  readonly panelKind: DataCheckPanelKind;
   loadContext(client: PoolClient, issue: DataCheckIssue): Promise<DataCheckActionRecord[]>;
   evaluate(client: PoolClient, issue: DataCheckIssue): Promise<DataCheckIssueEvaluation>;
   buildActions(
@@ -28,36 +27,7 @@ export interface DataCheckIssueEvaluator {
   ): Promise<DataCheckActionOption[]>;
 }
 
-export const knownDataCheckIssueTypes = [
-  'duplicate_event_name',
-  'duplicate_case_content',
-  'duplicate_relation_direction',
-  'semantic_duplicate_event',
-  'semantic_duplicate_case',
-  'cross_event_alias_name',
-  'cross_event_shared_alias',
-  'delete_missing_alias',
-  'delete_missing_keyword',
-  'delete_missing_relation_case',
-  'delete_duplicate_alias',
-  'delete_duplicate_keyword',
-  'resequence_keywords',
-  'relation_self_loop',
-  'missing_relation_cause_event',
-  'missing_relation_effect_event',
-  'invalid_event_timestamp_order',
-  'invalid_relation_timestamp_order',
-  'invalid_case_timestamp_order',
-  'invalid_event_name',
-  'invalid_case_content',
-  'invalid_alias_text',
-  'invalid_keyword_text',
-  'invalid_event_description',
-  'invalid_relation_description',
-  'relation_confidence_range',
-] as const;
-type KnownDataCheckIssueType = (typeof knownDataCheckIssueTypes)[number];
-type KnownIssueEvaluatorRegistry = Record<KnownDataCheckIssueType, DataCheckIssueEvaluator>;
+export const knownDataCheckIssueTypes = dataCheckIssueTypes;
 
 const zeroImpact: DataCheckActionImpact = {
   relationsMoved: 0,
@@ -65,6 +35,7 @@ const zeroImpact: DataCheckActionImpact = {
   relationCaseLinksMoved: 0,
   relationCaseLinksDeleted: 0,
   recordsDeleted: 0,
+  recordsUpdated: 0,
 };
 
 function action(
@@ -77,19 +48,10 @@ function action(
     label,
     keepId: null,
     mergeId: null,
-    editPath: null,
+    actionKey: null,
     impact: zeroImpact,
     ...values,
   };
-}
-
-const editableDetailPathPattern =
-  /^\/(?:events|cases|relations)\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function editPathFor(record: DataCheckActionRecord): string | null {
-  return record.detailPath && editableDetailPathPattern.test(record.detailPath)
-    ? `${record.detailPath}/edit`
-    : null;
 }
 
 interface RecordRow {
@@ -257,173 +219,6 @@ async function loadRecord(
     : null;
 }
 
-async function canLoadEventDetail(client: PoolClient, eventId: string): Promise<boolean> {
-  const result = await client.query<{
-    id: string;
-    name: string;
-    description: string | null;
-    created_at: Date;
-    updated_at: Date;
-    aliases: string[];
-    keywords: string[];
-    relation_count: number;
-  }>(
-    `select event.id::text,
-            event.name,
-            event.description,
-            event.created_at,
-            event.updated_at,
-            coalesce(
-              (
-                select array_agg(alias.alias order by alias.normalized_alias, alias.id)
-                from event_aliases alias where alias.event_id = event.id
-              ),
-              array[]::varchar[]
-            ) as aliases,
-            coalesce(
-              (
-                select array_agg(keyword.keyword order by keyword.position, keyword.id)
-                from event_keywords keyword where keyword.event_id = event.id
-              ),
-              array[]::varchar[]
-            ) as keywords,
-            (
-              select count(*)::int from causal_relations relation
-              where relation.cause_event_id = event.id or relation.effect_event_id = event.id
-            ) as relation_count
-     from abstract_events event
-     where event.id::text = $1`,
-    [eventId],
-  );
-  const row = result.rows[0];
-  return Boolean(
-    row &&
-      eventDetailSchema.safeParse({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        aliases: row.aliases,
-        keywords: row.keywords,
-        relationCount: Number(row.relation_count),
-        listPage: 1,
-        createdAt: row.created_at.toISOString(),
-        updatedAt: row.updated_at.toISOString(),
-      }).success,
-  );
-}
-
-async function canLoadCaseDetail(client: PoolClient, caseId: string): Promise<boolean> {
-  const result = await client.query<{
-    id: string;
-    content: string;
-    created_at: Date;
-    updated_at: Date;
-    relation_count: number;
-  }>(
-    `select concrete_case.id::text,
-            concrete_case.content,
-            concrete_case.created_at,
-            concrete_case.updated_at,
-            count(link.causal_relation_id)::int as relation_count
-     from concrete_cases concrete_case
-     left join causal_relation_cases link on link.concrete_case_id = concrete_case.id
-     where concrete_case.id::text = $1
-     group by concrete_case.id`,
-    [caseId],
-  );
-  const row = result.rows[0];
-  return Boolean(
-    row &&
-      caseDetailSchema.safeParse({
-        id: row.id,
-        content: row.content,
-        relationCount: Number(row.relation_count),
-        listPage: 1,
-        createdAt: row.created_at.toISOString(),
-        updatedAt: row.updated_at.toISOString(),
-      }).success,
-  );
-}
-
-async function canLoadRelationDetail(client: PoolClient, relationId: string): Promise<boolean> {
-  const result = await client.query<{
-    id: string;
-    cause_event_id: string;
-    cause_event_name: string;
-    effect_event_id: string;
-    effect_event_name: string;
-    confidence: number;
-    description: string | null;
-    created_at: Date;
-    updated_at: Date;
-    case_count: number;
-  }>(
-    `select relation.id::text,
-            cause.id::text as cause_event_id,
-            cause.name as cause_event_name,
-            effect.id::text as effect_event_id,
-            effect.name as effect_event_name,
-            relation.confidence,
-            relation.description,
-            relation.created_at,
-            relation.updated_at,
-            count(link.concrete_case_id)::int as case_count
-     from causal_relations relation
-     join abstract_events cause on cause.id = relation.cause_event_id
-     join abstract_events effect on effect.id = relation.effect_event_id
-     left join causal_relation_cases link on link.causal_relation_id = relation.id
-     where relation.id::text = $1
-     group by relation.id, cause.id, effect.id`,
-    [relationId],
-  );
-  const row = result.rows[0];
-  if (!row) return false;
-  const cases = await client.query<{ id: string; content: string }>(
-    `select concrete_case.id::text, concrete_case.content
-     from causal_relation_cases link
-     join concrete_cases concrete_case on concrete_case.id = link.concrete_case_id
-     where link.causal_relation_id::text = $1
-     order by link.linked_at desc, concrete_case.id desc
-     limit 5`,
-    [relationId],
-  );
-  return relationDetailSchema.safeParse({
-    id: row.id,
-    causeEvent: { id: row.cause_event_id, name: row.cause_event_name },
-    effectEvent: { id: row.effect_event_id, name: row.effect_event_name },
-    confidence: Number(row.confidence),
-    description: row.description,
-    caseCount: Number(row.case_count),
-    listPage: 1,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
-    recentCases: cases.rows,
-  }).success;
-}
-
-async function canOpenStrictDetail(
-  client: PoolClient,
-  record: DataCheckActionRecord,
-): Promise<boolean> {
-  if (!record.detailPath) return false;
-  if (record.targetType === 'event') return canLoadEventDetail(client, record.id);
-  if (record.targetType === 'case') return canLoadCaseDetail(client, record.id);
-  if (record.targetType === 'relation') return canLoadRelationDetail(client, record.id);
-  if (record.targetType === 'alias' || record.targetType === 'keyword') {
-    const table = record.targetType === 'alias' ? 'event_aliases' : 'event_keywords';
-    const owner = await client.query<{ event_id: string }>(
-      `select event_id::text from ${table} where id::text = $1`,
-      [record.id],
-    );
-    const eventId = owner.rows[0]?.event_id;
-    return eventId ? canLoadEventDetail(client, eventId) : false;
-  }
-  if (record.targetType === 'relation_case') {
-    return canLoadRelationDetail(client, record.id);
-  }
-  return false;
-}
-
 async function targetExists(client: PoolClient, issue: DataCheckIssue): Promise<boolean> {
   if (issue.targetType === 'relation_case') {
     if (!issue.relatedId) return false;
@@ -553,6 +348,7 @@ async function mergeImpact(
       relationCaseLinksMoved: Number(row.links_moved),
       relationCaseLinksDeleted: Number(row.links_deleted),
       recordsDeleted: 1,
+      recordsUpdated: 0,
     };
   }
   const table =
@@ -587,7 +383,7 @@ async function mergeImpact(
 
 function mergeEvaluator(predicateSql: string): DataCheckIssueEvaluator {
   return {
-    dialogKind: 'merge',
+    panelKind: 'merge',
     loadContext: loadPairContext,
     evaluate: (client, issue) => evaluateSql(client, issue, predicateSql),
     async buildActions(client, issue, records) {
@@ -601,23 +397,16 @@ function mergeEvaluator(predicateSql: string): DataCheckIssueEvaluator {
           action('merge', direction.label, {
             keepId: direction.keepId,
             mergeId: direction.mergeId,
-            impact: await mergeImpact(client, issue.targetType, direction.keepId, direction.mergeId),
+            impact: await mergeImpact(
+              client,
+              issue.targetType,
+              direction.keepId,
+              direction.mergeId,
+            ),
           }),
         ),
       );
-      const edit = (
-        await Promise.all(
-          records.map(async (record, index) => {
-            const editPath = editPathFor(record);
-            return editPath && (await canOpenStrictDetail(client, record))
-              ? action('open_edit', `编辑记录 ${index === 0 ? 'A' : 'B'}`, {
-                  editPath,
-                })
-              : null;
-          }),
-        )
-      ).filter((option): option is DataCheckActionOption => option !== null);
-      return [...options, ...edit, action('ignore', '忽略此问题')];
+      return [...options, action('ignore', '忽略此问题')];
     },
   };
 }
@@ -740,11 +529,7 @@ function semanticMergeEvaluator(entityType: 'event' | 'case'): DataCheckIssueEva
            and entity_type = $2
            and entity_id::text = any($3::text[])
          order by entity_id`,
-        [
-          currentState.active_model_code,
-          entityType,
-          [issue.targetId, issue.relatedId].sort(),
-        ],
+        [currentState.active_model_code, entityType, [issue.targetId, issue.relatedId].sort()],
       );
       const hashes = new Map(embeddings.rows.map((row) => [row.entity_id, row.source_hash]));
       if (
@@ -766,7 +551,7 @@ function semanticMergeEvaluator(entityType: 'event' | 'case'): DataCheckIssueEva
 
 function cleanupEvaluator(predicateSql: string, recordsDeleted = 1): DataCheckIssueEvaluator {
   return {
-    dialogKind: 'cleanup',
+    panelKind: 'cleanup',
     loadContext: loadDefaultContext,
     evaluate: (client, issue) => evaluateSql(client, issue, predicateSql),
     async buildActions() {
@@ -780,17 +565,17 @@ function cleanupEvaluator(predicateSql: string, recordsDeleted = 1): DataCheckIs
   };
 }
 
-function editableEvaluator(
-  dialogKind: Extract<DataCheckDialogKind, 'edit' | 'delete_relation' | 'repair_timestamp'>,
+function standardEvaluator(
+  panelKind: Extract<DataCheckPanelKind, 'manual' | 'delete_relation' | 'repair_timestamp'>,
   predicateSql: string,
 ): DataCheckIssueEvaluator {
   return {
-    dialogKind,
+    panelKind,
     loadContext: loadDefaultContext,
     evaluate: (client, issue) => evaluateSql(client, issue, predicateSql),
-    async buildActions(client, issue, records) {
+    async buildActions(client, issue) {
       const options: DataCheckActionOption[] = [];
-      if (dialogKind === 'delete_relation') {
+      if (panelKind === 'delete_relation') {
         const links = await client.query<{ count: number }>(
           `select count(*)::int as count
            from causal_relation_cases where causal_relation_id::text = $1`,
@@ -805,13 +590,12 @@ function editableEvaluator(
             },
           }),
         );
-      } else if (dialogKind === 'repair_timestamp') {
-        options.push(action('repair_timestamp', '修复时间顺序'));
-      }
-      const record = records[0];
-      const editPath = record ? editPathFor(record) : null;
-      if (record && editPath && (await canOpenStrictDetail(client, record))) {
-        options.push(action('open_edit', '打开详情编辑', { editPath }));
+      } else if (panelKind === 'repair_timestamp') {
+        options.push(
+          action('repair_timestamp', '修复时间顺序', {
+            impact: { ...zeroImpact, recordsUpdated: 1 },
+          }),
+        );
       }
       options.push(action('ignore', '忽略此问题'));
       return options;
@@ -839,7 +623,7 @@ const duplicateRelationPredicate = `
     and target.cause_event_id = related.cause_event_id
     and target.effect_event_id = related.effect_event_id
 `;
-export const issueEvaluatorRegistry: KnownIssueEvaluatorRegistry = {
+export const issueEvaluatorRegistry = {
   duplicate_event_name: mergeEvaluator(duplicateEventPredicate),
   duplicate_case_content: mergeEvaluator(duplicateCasePredicate),
   duplicate_relation_direction: mergeEvaluator(duplicateRelationPredicate),
@@ -890,112 +674,89 @@ export const issueEvaluatorRegistry: KnownIssueEvaluatorRegistry = {
       and target.event_id = retained.event_id
       and target.normalized_keyword = retained.normalized_keyword
   `),
-  resequence_keywords: cleanupEvaluator(`
+  resequence_keywords: cleanupEvaluator(
+    `
     select 1 from event_keywords
     where event_id::text = $1
     group by event_id
     having min(position) <> 1 or max(position) > 20 or max(position) <> count(*)
        or count(distinct position) <> count(*)
-  `, 0),
+  `,
+    0,
+  ),
 
-  relation_self_loop: editableEvaluator(
+  relation_self_loop: standardEvaluator(
     'delete_relation',
     `select 1 from causal_relations where id::text = $1 and cause_event_id = effect_event_id`,
   ),
-  missing_relation_cause_event: editableEvaluator(
+  missing_relation_cause_event: standardEvaluator(
     'delete_relation',
     `select 1 from causal_relations relation
      left join abstract_events event on event.id = relation.cause_event_id
      where relation.id::text = $1 and event.id is null`,
   ),
-  missing_relation_effect_event: editableEvaluator(
+  missing_relation_effect_event: standardEvaluator(
     'delete_relation',
     `select 1 from causal_relations relation
      left join abstract_events event on event.id = relation.effect_event_id
      where relation.id::text = $1 and event.id is null`,
   ),
 
-  invalid_event_timestamp_order: editableEvaluator(
+  invalid_event_timestamp_order: standardEvaluator(
     'repair_timestamp',
     `select 1 from abstract_events where id::text = $1 and updated_at < created_at`,
   ),
-  invalid_relation_timestamp_order: editableEvaluator(
+  invalid_relation_timestamp_order: standardEvaluator(
     'repair_timestamp',
     `select 1 from causal_relations where id::text = $1 and updated_at < created_at`,
   ),
-  invalid_case_timestamp_order: editableEvaluator(
+  invalid_case_timestamp_order: standardEvaluator(
     'repair_timestamp',
     `select 1 from concrete_cases where id::text = $1 and updated_at < created_at`,
   ),
 
-  invalid_event_name: editableEvaluator(
-    'edit',
+  invalid_event_name: standardEvaluator(
+    'manual',
     `select 1 from abstract_events
      where id::text = $1 and (name <> btrim(name) or char_length(btrim(name)) not between 1 and 50)`,
   ),
-  invalid_case_content: editableEvaluator(
-    'edit',
+  invalid_case_content: standardEvaluator(
+    'manual',
     `select 1 from concrete_cases
      where id::text = $1
        and (content <> btrim(content) or char_length(btrim(content)) not between 1 and 100)`,
   ),
-  invalid_alias_text: editableEvaluator(
-    'edit',
+  invalid_alias_text: standardEvaluator(
+    'manual',
     `select 1 from event_aliases
      where id::text = $1
        and (alias <> btrim(alias) or char_length(btrim(alias)) not between 1 and 80)`,
   ),
-  invalid_keyword_text: editableEvaluator(
-    'edit',
+  invalid_keyword_text: standardEvaluator(
+    'manual',
     `select 1 from event_keywords
      where id::text = $1
        and (keyword <> btrim(keyword) or char_length(btrim(keyword)) not between 1 and 50)`,
   ),
-  invalid_event_description: editableEvaluator(
-    'edit',
+  invalid_event_description: standardEvaluator(
+    'manual',
     `select 1 from abstract_events
      where id::text = $1 and description is not null and btrim(description) = ''`,
   ),
-  invalid_relation_description: editableEvaluator(
-    'edit',
+  invalid_relation_description: standardEvaluator(
+    'manual',
     `select 1 from causal_relations
      where id::text = $1 and description is not null and btrim(description) = ''`,
   ),
-  relation_confidence_range: editableEvaluator(
-    'edit',
+  relation_confidence_range: standardEvaluator(
+    'manual',
     `select 1 from causal_relations
      where id::text = $1 and (confidence < 0 or confidence > 100)`,
   ),
-};
+} satisfies Record<DataCheckIssueType, DataCheckIssueEvaluator>;
 
-function fallbackEvaluator(targetType: DataCheckTargetType): DataCheckIssueEvaluator {
-  const safeDetail = targetType === 'event' || targetType === 'case' || targetType === 'relation';
-  return {
-    dialogKind: safeDetail ? 'edit' : 'ignore_only',
-    loadContext: loadDefaultContext,
-    async evaluate(client, issue) {
-      return (await targetExists(client, issue)) ? 'present' : 'missing';
-    },
-    async buildActions(client, _issue, records) {
-      const options: DataCheckActionOption[] = [];
-      const record = records[0];
-      const editPath = record ? editPathFor(record) : null;
-      if (record && editPath && (await canOpenStrictDetail(client, record))) {
-        options.push(action('open_edit', '打开详情编辑', { editPath }));
-      }
-      options.push(action('ignore', '忽略此问题'));
-      return options;
-    },
-  };
-}
-
-export function getDataCheckIssueEvaluator(
-  issueType: string,
-  targetType: DataCheckTargetType,
-): DataCheckIssueEvaluator {
-  return Object.hasOwn(issueEvaluatorRegistry, issueType)
-    ? issueEvaluatorRegistry[issueType as KnownDataCheckIssueType]
-    : fallbackEvaluator(targetType);
+export function getDataCheckIssueEvaluator(issueType: DataCheckIssueType): DataCheckIssueEvaluator {
+  return issueEvaluatorRegistry[issueType];
 }
 
 export async function buildDataCheckActionContext(
@@ -1003,14 +764,14 @@ export async function buildDataCheckActionContext(
   issue: DataCheckIssue,
   evaluation?: DataCheckIssueEvaluation,
 ): Promise<DataCheckActionContext> {
-  const evaluator = getDataCheckIssueEvaluator(issue.issueType, issue.targetType);
+  const evaluator = getDataCheckIssueEvaluator(issue.issueType);
   if (issue.status === 'handled') {
     return {
       snapshotId: issue.snapshotId,
       issueId: issue.id,
       issueType: issue.issueType,
       status: 'handled',
-      dialogKind: evaluator.dialogKind,
+      panelKind: evaluator.panelKind,
       records: await evaluator.loadContext(client, issue),
       actions: [],
       message: '此问题已处理',
@@ -1024,37 +785,30 @@ export async function buildDataCheckActionContext(
       issueId: issue.id,
       issueType: issue.issueType,
       status: issue.status,
-      dialogKind: evaluator.dialogKind,
+      panelKind: evaluator.panelKind,
       records,
       actions: [],
       message:
         currentEvaluation === 'missing'
-          ? '目标记录已不存在，请重新检查'
+          ? '目标记录已不存在，请重新执行完整数据检查'
           : currentEvaluation === 'unavailable'
-            ? '语义索引尚未提供最新结果，请稍后重新检查'
-            : '数据已变化，请重新检查此问题',
+            ? '语义索引尚未提供最新结果，请稍后重新执行完整数据检查'
+            : '数据已变化，请重新执行完整数据检查',
     };
   }
-  const actions = await evaluator.buildActions(client, issue, records);
-  const strictDetailRecordCount =
-    evaluator.dialogKind === 'cleanup'
-      ? 0
-      : records.filter((record) => record.detailPath !== null).length;
-  const openEditCount = actions.filter((option) => option.type === 'open_edit').length;
-  const message =
-    strictDetailRecordCount > openEditCount
-      ? openEditCount === 0
-        ? '当前记录不符合严格详情页加载约束，暂时无法打开编辑页'
-        : '部分记录不符合严格详情页加载约束，相关编辑入口已隐藏'
-      : null;
+  const actions = authorizeDataCheckActions(
+    issue,
+    records,
+    await evaluator.buildActions(client, issue, records),
+  );
   return {
     snapshotId: issue.snapshotId,
     issueId: issue.id,
     issueType: issue.issueType,
     status: issue.status,
-    dialogKind: evaluator.dialogKind,
+    panelKind: evaluator.panelKind,
     records,
     actions,
-    message,
+    message: null,
   };
 }

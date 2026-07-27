@@ -1,8 +1,4 @@
-import type {
-  DataCheckIssue,
-  DataCheckIssueListQuery,
-  DataCheckLatestResponse,
-} from '@causality/contracts';
+import type { DataCheckIssueListQuery, DataCheckLatestResponse } from '@causality/contracts';
 import type { Pool, PoolClient, QueryResult } from 'pg';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -16,7 +12,6 @@ import type {
 } from '../src/features/data-checks/dataCheckTypes.js';
 
 const snapshotId = 'a1000000-0000-4000-8000-000000000001';
-const issueId = 'b1000000-0000-4000-8000-000000000001';
 
 function latest(status: DataCheckLatestResponse['task']['status']): DataCheckLatestResponse {
   return {
@@ -28,23 +23,6 @@ function latest(status: DataCheckLatestResponse['task']['status']): DataCheckLat
     },
     snapshot: null,
     latestFailure: null,
-  };
-}
-
-function issue(status: DataCheckIssue['status'] = 'open'): DataCheckIssue {
-  return {
-    id: issueId,
-    snapshotId,
-    severity: 'error',
-    issueType: 'relation_self_loop',
-    description: '因果关系的原因事件与结果事件相同',
-    suggestion: '编辑或删除该因果关系',
-    actionMode: 'manual',
-    status,
-    targetType: 'relation',
-    targetId: 'c1000000-0000-4000-8000-000000000001',
-    relatedId: null,
-    handledAt: status === 'handled' ? '2026-07-23T09:01:00.000Z' : null,
   };
 }
 
@@ -78,8 +56,6 @@ function createRepository(): DataCheckRepository {
     markFailure: vi.fn(),
     recoverInterrupted: vi.fn(),
     listIssues: vi.fn(),
-    autoHandle: vi.fn(),
-    manualHandle: vi.fn(),
   };
 }
 
@@ -158,32 +134,6 @@ describe('DataCheckCoordinator', () => {
     await expect(coordinator.latest()).resolves.toEqual(latest('succeeded'));
     await expect(coordinator.listIssues(query)).resolves.toEqual(response);
     expect(scanner.run).not.toHaveBeenCalled();
-  });
-
-  it('delegates idempotent manual handling for the current snapshot', async () => {
-    const repository = createRepository();
-    const scanner = createScanner();
-    vi.mocked(repository.manualHandle).mockResolvedValue(issue('handled'));
-
-    const coordinator = new DataCheckCoordinator(repository, scanner);
-
-    await expect(coordinator.manualHandle(issueId, snapshotId)).resolves.toEqual(issue('handled'));
-    expect(repository.manualHandle).toHaveBeenCalledWith(issueId, snapshotId);
-  });
-
-  it('returns auto-handler revalidation results and preserves repository errors', async () => {
-    const repository = createRepository();
-    const scanner = createScanner();
-    const unsafe = new Error('DATA_CHECK_AUTO_HANDLE_UNSAFE');
-    vi.mocked(repository.autoHandle)
-      .mockResolvedValueOnce(issue('handled'))
-      .mockRejectedValueOnce(unsafe);
-
-    const coordinator = new DataCheckCoordinator(repository, scanner);
-
-    await expect(coordinator.autoHandle(issueId, snapshotId)).resolves.toEqual(issue('handled'));
-    await expect(coordinator.autoHandle(issueId, snapshotId)).rejects.toBe(unsafe);
-    expect(repository.autoHandle).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -272,7 +222,11 @@ describe('DataCheckService', () => {
     const result = await service.run();
 
     expect(result.issues).toEqual(scanResult().issues);
-    expect(result.semantic).toEqual({ status: 'failed', reason: 'internal_failure', issueCount: 0 });
+    expect(result.semantic).toEqual({
+      status: 'failed',
+      reason: 'internal_failure',
+      issueCount: 0,
+    });
     expect(deterministic.scan).toHaveBeenCalledOnce();
   });
 });

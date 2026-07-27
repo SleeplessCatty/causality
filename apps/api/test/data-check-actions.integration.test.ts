@@ -2,7 +2,6 @@ import type {
   DataCheckActionContext,
   DataCheckActionResponse,
   DataCheckIssue,
-  DataCheckRecheckResponse,
 } from '@causality/contracts';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -82,7 +81,7 @@ describe.sequential('typed data-check governance actions', () => {
 
   async function currentIssue(values: {
     issueId: string;
-    issueType: string;
+    issueType: DataCheckIssue['issueType'];
     targetType: DataCheckIssue['targetType'];
     targetId: string;
     relatedId?: string | null;
@@ -141,10 +140,33 @@ describe.sequential('typed data-check governance actions', () => {
     issueId: string,
     payload: Record<string, unknown>,
   ): Promise<ReturnType<NonNullable<typeof context>['app']['inject']>> {
+    let authorizedPayload = payload;
+    if (
+      payload.type !== 'ignore' &&
+      typeof payload.type === 'string' &&
+      typeof payload.snapshotId === 'string' &&
+      typeof payload.actionKey !== 'string'
+    ) {
+      const response = await context!.app.inject({
+        method: 'GET',
+        url: `/api/data-checks/issues/${issueId}/action-context?snapshotId=${payload.snapshotId}`,
+      });
+      const actionContext = response.json<DataCheckActionContext>();
+      const option = actionContext.actions.find(
+        (candidate) =>
+          candidate.type === payload.type &&
+          (candidate.type !== 'merge' ||
+            (candidate.keepId === payload.keepId && candidate.mergeId === payload.mergeId)),
+      );
+      authorizedPayload = {
+        ...payload,
+        actionKey: option?.actionKey ?? '0'.repeat(64),
+      };
+    }
     return context!.app.inject({
       method: 'POST',
       url: `/api/data-checks/issues/${issueId}/actions`,
-      payload,
+      payload: authorizedPayload,
     });
   }
 
@@ -171,7 +193,7 @@ describe.sequential('typed data-check governance actions', () => {
     });
     expect(changed.statusCode).toBe(200);
     const changedContext = changed.json<DataCheckActionContext>();
-    expect(changedContext.dialogKind).toBe('merge');
+    expect(changedContext.panelKind).toBe('merge');
     expect(changedContext.records).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: eventA, primaryText: '最新事件名称', relationCount: 1 }),
@@ -181,8 +203,7 @@ describe.sequential('typed data-check governance actions', () => {
       expect.arrayContaining([
         expect.objectContaining({ type: 'merge', keepId: eventA, mergeId: eventB }),
         expect.objectContaining({ type: 'merge', keepId: eventB, mergeId: eventA }),
-        expect.objectContaining({ type: 'open_edit', editPath: `/events/${eventA}/edit` }),
-        expect.objectContaining({ type: 'open_edit', editPath: `/events/${eventB}/edit` }),
+        expect.objectContaining({ type: 'ignore', actionKey: null }),
       ]),
     );
 
@@ -222,12 +243,62 @@ describe.sequential('typed data-check governance actions', () => {
       url: `/api/data-checks/issues/${deletedIssue}/action-context?snapshotId=${snapshotId}`,
     });
     expect(deleted.json<DataCheckActionContext>()).toMatchObject({
-      status: 'handled',
+      status: 'open',
       actions: [],
+      message: expect.stringContaining('完整数据检查'),
     });
+    expect(
+      (
+        await pool!.query<{ status: string }>(
+          `select status from data_check_issues where id = $1`,
+          [deletedIssue],
+        )
+      ).rows[0]?.status,
+    ).toBe('open');
   });
 
-  it('disables stale actions until recheck and exposes a safe unknown-type fallback', async () => {
+  it('rejects an action key after relevant context data changes', async () => {
+    await pool!.query(
+      `insert into abstract_events (id, name) values ($1, '重复名称'), ($2, '重复名称')`,
+      [eventA, eventB],
+    );
+    const issueId = 'b2000000-0000-4000-8000-000000000009';
+    await currentIssue({
+      issueId,
+      issueType: 'duplicate_event_name',
+      targetType: 'event',
+      targetId: eventA,
+      relatedId: eventB,
+    });
+    const contextResponse = await context!.app.inject({
+      method: 'GET',
+      url: `/api/data-checks/issues/${issueId}/action-context?snapshotId=${snapshotId}`,
+    });
+    const merge = contextResponse
+      .json<DataCheckActionContext>()
+      .actions.find(
+        (option) =>
+          option.type === 'merge' && option.keepId === eventA && option.mergeId === eventB,
+      );
+    expect(merge?.actionKey).toMatch(/^[0-9a-f]{64}$/);
+
+    await pool!.query(`update abstract_events set description = '已变化' where id = $1`, [eventA]);
+    const response = await context!.app.inject({
+      method: 'POST',
+      url: `/api/data-checks/issues/${issueId}/actions`,
+      payload: {
+        type: 'merge',
+        snapshotId,
+        keepId: eventA,
+        mergeId: eventB,
+        actionKey: merge!.actionKey,
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: 'DATA_CHECK_ACTION_CONFLICT' });
+  });
+
+  it('disables stale actions until the next full check', async () => {
     await pool!.query(
       `insert into abstract_events (id, name) values ($1, '重复名称'), ($2, '重复名称')`,
       [eventA, eventB],
@@ -246,27 +317,10 @@ describe.sequential('typed data-check governance actions', () => {
       url: `/api/data-checks/issues/${issueId}/action-context?snapshotId=${snapshotId}`,
     });
     expect(stale.json<DataCheckActionContext>()).toMatchObject({
-      dialogKind: 'merge',
+      panelKind: 'merge',
       status: 'open',
       actions: [],
-      message: '数据已变化，请重新检查此问题',
-    });
-
-    await pool!.query(`delete from data_check_issues`);
-    const unknownIssue = 'b2000000-0000-4000-8000-000000000011';
-    await currentIssue({
-      issueId: unknownIssue,
-      issueType: 'future_issue',
-      targetType: 'event',
-      targetId: eventA,
-    });
-    const unknown = await context!.app.inject({
-      method: 'GET',
-      url: `/api/data-checks/issues/${unknownIssue}/action-context?snapshotId=${snapshotId}`,
-    });
-    expect(unknown.json<DataCheckActionContext>()).toMatchObject({
-      dialogKind: 'edit',
-      actions: [{ type: 'open_edit', editPath: `/events/${eventA}/edit` }, { type: 'ignore' }],
+      message: '数据已变化，请重新执行完整数据检查',
     });
   });
 
@@ -291,8 +345,10 @@ describe.sequential('typed data-check governance actions', () => {
     expect(malformedContext.records).toEqual([
       expect.objectContaining({ id: eventA, primaryText: '   ', secondaryText: ['   '] }),
     ]);
-    expect(malformedContext.actions.some((option) => option.type === 'open_edit')).toBe(false);
-    expect(malformedContext.message).toContain('详情页');
+    expect(malformedContext.actions).toEqual([
+      expect.objectContaining({ type: 'ignore', actionKey: null }),
+    ]);
+    expect(malformedContext.message).toBeNull();
 
     await pool!.query(`delete from data_check_issues`);
     await pool!.query(`insert into concrete_cases (id, content) values ($1, '仍存在的案例')`, [
@@ -333,7 +389,7 @@ describe.sequential('typed data-check governance actions', () => {
     );
   });
 
-  it('suppresses strict detail actions for records the current detail contracts cannot load', async () => {
+  it('keeps malformed records readable without creating edit actions', async () => {
     await pool!.query(
       `insert into abstract_events (id, name) values
        ($1, '   '),
@@ -344,10 +400,10 @@ describe.sequential('typed data-check governance actions', () => {
     await pool!.query(`insert into concrete_cases (id, content) values ($1, '   ')`, [caseA]);
     const aliasId = '42000000-0000-4000-8000-000000000010';
     const keywordId = '52000000-0000-4000-8000-000000000010';
-    await pool!.query(
-      `insert into event_aliases (id, event_id, alias) values ($1, $2, '   ')`,
-      [aliasId, eventB],
-    );
+    await pool!.query(`insert into event_aliases (id, event_id, alias) values ($1, $2, '   ')`, [
+      aliasId,
+      eventB,
+    ]);
     await pool!.query(
       `insert into event_keywords (id, event_id, keyword, position) values ($1, $2, '   ', 1)`,
       [keywordId, eventC],
@@ -430,8 +486,12 @@ describe.sequential('typed data-check governance actions', () => {
       expect(response.statusCode).toBe(200);
       const actionContext = response.json<DataCheckActionContext>();
       expect(actionContext.records).not.toEqual([]);
-      expect(actionContext.actions.some((option) => option.type === 'open_edit')).toBe(false);
-      expect(actionContext.message).toContain('详情页');
+      expect(
+        actionContext.actions.every((option) =>
+          ['ignore', 'delete_relation'].includes(option.type),
+        ),
+      ).toBe(true);
+      expect(actionContext.message).toBeNull();
     }
 
     const rechecked = await context!.app.inject({
@@ -439,14 +499,7 @@ describe.sequential('typed data-check governance actions', () => {
       url: `/api/data-checks/issues/${cases[0].issueId}/recheck`,
       payload: { snapshotId },
     });
-    expect(rechecked.statusCode).toBe(200);
-    expect(rechecked.json<DataCheckRecheckResponse>()).toMatchObject({
-      status: 'open',
-      context: {
-        records: [expect.objectContaining({ id: eventA, primaryText: '   ' })],
-        message: expect.stringContaining('详情页'),
-      },
-    });
+    expect(rechecked.statusCode).toBe(404);
 
     await pool!.query(`insert into abstract_events (id, name) values ($1, '完整详情事件')`, [
       eventD,
@@ -476,43 +529,38 @@ describe.sequential('typed data-check governance actions', () => {
       [relationB, caseB],
     );
 
-    const loadableFallbackCases = [
+    const resolvedCases = [
       {
         issueId: 'b2000000-0000-4000-8000-00000000001b',
+        issueType: 'invalid_alias_text',
         targetType: 'alias',
         targetId: validAliasId,
-        editPath: `/events/${eventD}/edit`,
       },
       {
         issueId: 'b2000000-0000-4000-8000-00000000001c',
+        issueType: 'invalid_keyword_text',
         targetType: 'keyword',
         targetId: validKeywordId,
-        editPath: `/events/${eventD}/edit`,
       },
       {
         issueId: 'b2000000-0000-4000-8000-00000000001d',
+        issueType: 'delete_missing_relation_case',
         targetType: 'relation_case',
         targetId: relationB,
         relatedId: caseB,
-        editPath: `/relations/${relationB}/edit`,
       },
     ] as const;
 
-    for (const values of loadableFallbackCases) {
-      await currentIssue({
-        ...values,
-        issueType: 'future_unknown_data_check',
-      });
+    for (const values of resolvedCases) {
+      await currentIssue(values);
       const response = await context!.app.inject({
         method: 'GET',
         url: `/api/data-checks/issues/${values.issueId}/action-context?snapshotId=${snapshotId}`,
       });
       expect(response.statusCode).toBe(200);
       expect(response.json<DataCheckActionContext>()).toMatchObject({
-        actions: expect.arrayContaining([
-          expect.objectContaining({ type: 'open_edit', editPath: values.editPath }),
-        ]),
-        message: null,
+        actions: [],
+        message: expect.stringContaining('完整数据检查'),
       });
     }
   });
@@ -614,17 +662,7 @@ describe.sequential('typed data-check governance actions', () => {
          ($6, $5, $7, 60),
          ($8, $2, $5, 50),
          ($9, $3, $5, 40)`,
-        [
-          relationA,
-          keepId,
-          eventC,
-          relationB,
-          mergeId,
-          relationC,
-          eventD,
-          relationD,
-          relationE,
-        ],
+        [relationA, keepId, eventC, relationB, mergeId, relationC, eventD, relationD, relationE],
       );
       await pool!.query(
         `insert into causal_relation_cases (causal_relation_id, concrete_case_id) values
@@ -663,10 +701,10 @@ describe.sequential('typed data-check governance actions', () => {
       });
       expect(
         (
-          await pool!.query(`select id::text from abstract_events where id in ($1, $2) order by id`, [
-            keepId,
-            mergeId,
-          ])
+          await pool!.query(
+            `select id::text from abstract_events where id in ($1, $2) order by id`,
+            [keepId, mergeId],
+          )
         ).rows,
       ).toEqual([{ id: keepId }]);
       expect(
@@ -684,9 +722,9 @@ describe.sequential('typed data-check governance actions', () => {
           )
         ).rows,
       ).toEqual([{ case_id: caseA }, { case_id: caseB }]);
-      expect(
-        await pool!.query(`select count(*)::int as count from concrete_cases`),
-      ).toMatchObject({ rows: [{ count: 3 }] });
+      expect(await pool!.query(`select count(*)::int as count from concrete_cases`)).toMatchObject({
+        rows: [{ count: 3 }],
+      });
       expect(
         (
           await pool!.query(
@@ -808,9 +846,7 @@ describe.sequential('typed data-check governance actions', () => {
         mergeId: eventA,
       }),
     ]);
-    expect(
-      results.map((result) => ({ statusCode: result.statusCode, body: result.body })),
-    ).toEqual(
+    expect(results.map((result) => ({ statusCode: result.statusCode, body: result.body }))).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ statusCode: 200 }),
         expect.objectContaining({ statusCode: 409 }),
@@ -842,12 +878,17 @@ describe.sequential('typed data-check governance actions', () => {
     });
     expect(staleRelated.statusCode).toBe(409);
     expect(
-      (await pool!.query(`select count(*)::int as count from abstract_events where id = $1`, [eventC]))
-        .rows[0]?.count,
+      (
+        await pool!.query(`select count(*)::int as count from abstract_events where id = $1`, [
+          eventC,
+        ])
+      ).rows[0]?.count,
     ).toBe(1);
 
     await pool!.query(`delete from data_check_issues`);
-    await pool!.query(`insert into abstract_events (id, name) values ($1, '恢复第四事件')`, [eventD]);
+    await pool!.query(`insert into abstract_events (id, name) values ($1, '恢复第四事件')`, [
+      eventD,
+    ]);
     await pool!.query(
       `insert into event_aliases (event_id, alias) values ($1, '目标失效别名'), ($2, '目标失效别名')`,
       [eventC, eventD],
@@ -869,12 +910,15 @@ describe.sequential('typed data-check governance actions', () => {
     });
     expect(staleTarget.statusCode).toBe(409);
     expect(
-      (await pool!.query(`select count(*)::int as count from abstract_events where id = $1`, [eventD]))
-        .rows[0]?.count,
+      (
+        await pool!.query(`select count(*)::int as count from abstract_events where id = $1`, [
+          eventD,
+        ])
+      ).rows[0]?.count,
     ).toBe(1);
   });
 
-  it('applies whitelisted cleanup, deletion, timestamp repair, ignore, and single-issue recheck', async () => {
+  it('applies whitelisted cleanup, deletion, timestamp repair, and ignore', async () => {
     await insertEvents();
     const aliasId = '42000000-0000-4000-8000-000000000001';
     await pool!.query(`insert into event_aliases (id, event_id, alias) values ($1, $2, '待清理')`, [
@@ -903,8 +947,11 @@ describe.sequential('typed data-check governance actions', () => {
     });
     expect(cleanupResponse.statusCode, cleanupResponse.body).toBe(200);
     expect(
-      (await pool!.query(`select count(*)::int as count from event_aliases where id = $1`, [aliasId]))
-        .rows[0]?.count,
+      (
+        await pool!.query(`select count(*)::int as count from event_aliases where id = $1`, [
+          aliasId,
+        ])
+      ).rows[0]?.count,
     ).toBe(0);
 
     await pool!.query(`delete from data_check_issues`);
@@ -931,9 +978,10 @@ describe.sequential('typed data-check governance actions', () => {
 
     await pool!.query(`delete from data_check_issues`);
     const repairIssue = 'b2000000-0000-4000-8000-000000000052';
-    await pool!.query(`update abstract_events set updated_at = created_at - interval '1 day' where id = $1`, [
-      eventC,
-    ]);
+    await pool!.query(
+      `update abstract_events set updated_at = created_at - interval '1 day' where id = $1`,
+      [eventC],
+    );
     await currentIssue({
       issueId: repairIssue,
       issueType: 'invalid_event_timestamp_order',
@@ -961,13 +1009,14 @@ describe.sequential('typed data-check governance actions', () => {
     const ignoredIssue = 'b2000000-0000-4000-8000-000000000053';
     await currentIssue({
       issueId: ignoredIssue,
-      issueType: 'future_issue',
+      issueType: 'invalid_event_description',
       targetType: 'event',
       targetId: eventD,
     });
     expect(
-      (await postAction(ignoredIssue, { type: 'ignore', snapshotId })).json<DataCheckActionResponse>()
-        .issue.status,
+      (
+        await postAction(ignoredIssue, { type: 'ignore', snapshotId })
+      ).json<DataCheckActionResponse>().issue.status,
     ).toBe('handled');
     expect(
       (
@@ -997,30 +1046,26 @@ describe.sequential('typed data-check governance actions', () => {
       url: `/api/data-checks/issues/${recheckIssue}/recheck`,
       payload: { snapshotId },
     });
-    expect(open.json<DataCheckRecheckResponse>().status).toBe('open');
+    expect(open.statusCode).toBe(404);
     await pool!.query(`update abstract_events set name = '已改变名称' where id = $1`, [eventD]);
     const resolved = await context!.app.inject({
       method: 'POST',
       url: `/api/data-checks/issues/${recheckIssue}/recheck`,
       payload: { snapshotId },
     });
-    expect(resolved.json<DataCheckRecheckResponse>()).toMatchObject({
-      status: 'resolved',
-      issue: { status: 'handled' },
-      context: null,
-    });
+    expect(resolved.statusCode).toBe(404);
     const stale = await context!.app.inject({
       method: 'POST',
       url: `/api/data-checks/issues/${recheckIssue}/recheck`,
       payload: { snapshotId: 'a2000000-0000-4000-8000-000000000099' },
     });
-    expect(stale.statusCode).toBe(409);
+    expect(stale.statusCode).toBe(404);
 
     await pool!.query(`delete from data_check_issues`);
     const missingIssue = 'b2000000-0000-4000-8000-000000000055';
     await currentIssue({
       issueId: missingIssue,
-      issueType: 'future_issue',
+      issueType: 'invalid_event_name',
       targetType: 'event',
       targetId: eventC,
     });
@@ -1030,10 +1075,15 @@ describe.sequential('typed data-check governance actions', () => {
       url: `/api/data-checks/issues/${missingIssue}/recheck`,
       payload: { snapshotId },
     });
-    expect(missing.json<DataCheckRecheckResponse>()).toMatchObject({
-      status: 'resolved',
-      issue: { status: 'handled' },
-      context: null,
-    });
+    expect(missing.statusCode).toBe(404);
+
+    for (const suffix of ['auto-handle', 'manual-handle']) {
+      const legacy = await context!.app.inject({
+        method: 'POST',
+        url: `/api/data-checks/issues/${missingIssue}/${suffix}`,
+        payload: { snapshotId },
+      });
+      expect(legacy.statusCode).toBe(404);
+    }
   });
 });

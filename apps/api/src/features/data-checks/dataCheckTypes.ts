@@ -3,11 +3,9 @@ import type {
   DataCheckActionMode,
   DataCheckActionRequest,
   DataCheckActionResponse,
-  DataCheckIssue,
   DataCheckIssueListQuery,
   DataCheckIssueListResponse,
   DataCheckLatestResponse,
-  DataCheckRecheckResponse,
   DataCheckSemanticReason,
   DataCheckSemanticStatus,
   DataCheckSeverity,
@@ -73,8 +71,6 @@ export interface DataCheckRepository {
   markFailure(message: string): Promise<DataCheckLatestResponse>;
   recoverInterrupted(): Promise<DataCheckLatestResponse>;
   listIssues(query: DataCheckIssueListQuery): Promise<DataCheckIssueListResponse>;
-  autoHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue>;
-  manualHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue>;
 }
 
 export interface DataCheckScanner {
@@ -84,5 +80,4 @@ export interface DataCheckScanner {
 export interface DataCheckActionHandler {
   context(issueId: string, snapshotId: string): Promise<DataCheckActionContext>;
   apply(issueId: string, request: DataCheckActionRequest): Promise<DataCheckActionResponse>;
-  recheck(issueId: string, snapshotId: string): Promise<DataCheckRecheckResponse>;
 }

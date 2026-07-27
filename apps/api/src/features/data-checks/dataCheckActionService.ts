@@ -3,7 +3,6 @@ import type {
   DataCheckActionRequest,
   DataCheckActionResponse,
   DataCheckIssue,
-  DataCheckRecheckResponse,
   DataCheckTargetType,
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
@@ -12,10 +11,12 @@ import {
   buildDataCheckActionContext,
   getDataCheckIssueEvaluator,
 } from './dataCheckIssueEvaluator.js';
+import { authorizeDataCheckActions } from './dataCheckActionKey.js';
 import {
   DataCheckRepositoryError,
   mapDataCheckIssue,
   markIssueHandled,
+  readCurrentIssue,
   readCurrentIssueForUpdate,
 } from './dataCheckRepository.js';
 
@@ -68,7 +69,10 @@ async function lockRows(
   }
 }
 
-async function linkedCaseIds(client: PoolClient, relationIds: readonly string[]): Promise<string[]> {
+async function linkedCaseIds(
+  client: PoolClient,
+  relationIds: readonly string[],
+): Promise<string[]> {
   if (relationIds.length === 0) return [];
   const result = await client.query<{ id: string }>(
     `select distinct concrete_case_id::text as id
@@ -197,7 +201,9 @@ async function mergeEvents(
   client: PoolClient,
   keepId: string,
   mergeId: string,
-): Promise<Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>> {
+): Promise<
+  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
+> {
   await lockRows(client, 'abstract_events', [keepId, mergeId]);
   const lockedRelations = await client.query<{ id: string }>(
     `with redirected as (
@@ -295,7 +301,9 @@ async function mergeCases(
   client: PoolClient,
   keepId: string,
   mergeId: string,
-): Promise<Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>> {
+): Promise<
+  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
+> {
   await lockRows(client, 'concrete_cases', [keepId, mergeId]);
   const relations = await client.query<{ id: string }>(
     `select causal_relation_id::text as id
@@ -326,7 +334,9 @@ async function mergeRelations(
   client: PoolClient,
   keepId: string,
   mergeId: string,
-): Promise<Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>> {
+): Promise<
+  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
+> {
   await lockRows(client, 'causal_relations', [keepId, mergeId]);
   const rows = await client.query<{
     id: string;
@@ -359,7 +369,9 @@ async function applyMerge(
   client: PoolClient,
   issue: DataCheckIssue,
   action: Extract<DataCheckActionRequest, { type: 'merge' }>,
-): Promise<Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>> {
+): Promise<
+  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
+> {
   assertMergePairMembership(issue, action.keepId, action.mergeId);
   if (issue.targetType === 'event') return mergeEvents(client, action.keepId, action.mergeId);
   if (issue.targetType === 'case') return mergeCases(client, action.keepId, action.mergeId);
@@ -401,7 +413,9 @@ async function resequenceKeywords(client: PoolClient, eventId: string): Promise<
 async function applyCleanup(
   client: PoolClient,
   issue: DataCheckIssue,
-): Promise<Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>> {
+): Promise<
+  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
+> {
   switch (issue.issueType) {
     case 'delete_missing_alias':
       await client.query(`delete from event_aliases where id::text = $1`, [issue.targetId]);
@@ -453,12 +467,16 @@ async function applyCleanup(
 async function deleteRelation(
   client: PoolClient,
   issue: DataCheckIssue,
-): Promise<Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>> {
+): Promise<
+  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
+> {
   if (
     issue.targetType !== 'relation' ||
-    !['relation_self_loop', 'missing_relation_cause_event', 'missing_relation_effect_event'].includes(
-      issue.issueType,
-    )
+    ![
+      'relation_self_loop',
+      'missing_relation_cause_event',
+      'missing_relation_effect_event',
+    ].includes(issue.issueType)
   ) {
     return notAllowed('当前问题类型不允许删除因果关系');
   }
@@ -475,9 +493,7 @@ async function deleteRelation(
   await client.query(`delete from causal_relations where id::text = $1`, [issue.targetId]);
   return {
     affectedEventIds: relation.rows[0]
-      ? [
-          ...new Set([relation.rows[0].cause_event_id, relation.rows[0].effect_event_id]),
-        ].sort()
+      ? [...new Set([relation.rows[0].cause_event_id, relation.rows[0].effect_event_id])].sort()
       : [],
     affectedCaseIds,
     affectedRelationIds: [issue.targetId],
@@ -487,10 +503,15 @@ async function deleteRelation(
 async function repairTimestamp(
   client: PoolClient,
   issue: DataCheckIssue,
-): Promise<Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>> {
+): Promise<
+  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
+> {
   const whitelist: Record<
     string,
-    { table: 'abstract_events' | 'causal_relations' | 'concrete_cases'; targetType: DataCheckTargetType }
+    {
+      table: 'abstract_events' | 'causal_relations' | 'concrete_cases';
+      targetType: DataCheckTargetType;
+    }
   > = {
     invalid_event_timestamp_order: { table: 'abstract_events', targetType: 'event' },
     invalid_relation_timestamp_order: { table: 'causal_relations', targetType: 'relation' },
@@ -514,16 +535,25 @@ async function repairTimestamp(
   };
 }
 
-function actionAllowed(
-  actions: readonly { type: string; keepId: string | null; mergeId: string | null }[],
+function assertActionAllowed(
+  actions: readonly {
+    type: string;
+    keepId: string | null;
+    mergeId: string | null;
+    actionKey: string | null;
+  }[],
   request: DataCheckActionRequest,
-): boolean {
-  return actions.some(
+): void {
+  const option = actions.find(
     (option) =>
       option.type === request.type &&
       (request.type !== 'merge' ||
         (option.keepId === request.keepId && option.mergeId === request.mergeId)),
   );
+  if (!option) notAllowed();
+  if (request.type !== 'ignore' && option.actionKey !== request.actionKey) {
+    unsafe('数据已变化，请重新加载处理方案');
+  }
 }
 
 function isSerializationFailure(error: unknown): boolean {
@@ -541,19 +571,9 @@ export class DataCheckActionService {
   public async context(issueId: string, snapshotId: string): Promise<DataCheckActionContext> {
     const client = await this.pool.connect();
     try {
-      await client.query('begin isolation level serializable');
-      const row = await readCurrentIssueForUpdate(client, issueId, snapshotId);
-      let issue = mapDataCheckIssue(row);
-      if (issue.status === 'open') {
-        const evaluator = getDataCheckIssueEvaluator(issue.issueType, issue.targetType);
-        const evaluation = await evaluator.evaluate(client, issue);
-        if (evaluation === 'missing') {
-          issue = await markIssueHandled(client, row);
-        }
-        const context = await buildDataCheckActionContext(client, issue, evaluation);
-        await client.query('commit');
-        return context;
-      }
+      await client.query('begin transaction isolation level repeatable read read only');
+      const row = await readCurrentIssue(client, issueId, snapshotId);
+      const issue = mapDataCheckIssue(row);
       const context = await buildDataCheckActionContext(client, issue);
       await client.query('commit');
       return context;
@@ -565,7 +585,10 @@ export class DataCheckActionService {
     }
   }
 
-  public async apply(issueId: string, request: DataCheckActionRequest): Promise<DataCheckActionResponse> {
+  public async apply(
+    issueId: string,
+    request: DataCheckActionRequest,
+  ): Promise<DataCheckActionResponse> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const client = await this.pool.connect();
       try {
@@ -583,12 +606,16 @@ export class DataCheckActionService {
             affectedRelationIds: [],
           };
         }
-        const evaluator = getDataCheckIssueEvaluator(issue.issueType, issue.targetType);
+        const evaluator = getDataCheckIssueEvaluator(issue.issueType);
         const evaluation = await evaluator.evaluate(client, issue);
         if (evaluation !== 'present') unsafe();
         const records = await evaluator.loadContext(client, issue);
-        const allowedActions = await evaluator.buildActions(client, issue, records);
-        if (!actionAllowed(allowedActions, request)) notAllowed();
+        const allowedActions = authorizeDataCheckActions(
+          issue,
+          records,
+          await evaluator.buildActions(client, issue, records),
+        );
+        assertActionAllowed(allowedActions, request);
 
         let affected: Pick<
           DataCheckActionResponse,
@@ -621,33 +648,5 @@ export class DataCheckActionService {
       }
     }
     return unsafe();
-  }
-
-  public async recheck(issueId: string, snapshotId: string): Promise<DataCheckRecheckResponse> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('begin isolation level serializable');
-      const row = await readCurrentIssueForUpdate(client, issueId, snapshotId);
-      const issue = mapDataCheckIssue(row);
-      if (issue.status === 'handled') {
-        await client.query('commit');
-        return { status: 'resolved', issue, context: null };
-      }
-      const evaluator = getDataCheckIssueEvaluator(issue.issueType, issue.targetType);
-      const evaluation = await evaluator.evaluate(client, issue);
-      if (evaluation === 'resolved' || evaluation === 'missing') {
-        const handled = await markIssueHandled(client, row);
-        await client.query('commit');
-        return { status: 'resolved', issue: handled, context: null };
-      }
-      const context = await buildDataCheckActionContext(client, issue, evaluation);
-      await client.query('commit');
-      return { status: 'open', issue, context };
-    } catch (error) {
-      await client.query('rollback');
-      throw error;
-    } finally {
-      client.release();
-    }
   }
 }

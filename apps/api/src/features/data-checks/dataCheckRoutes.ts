@@ -3,12 +3,9 @@ import {
   dataCheckActionContextSchema,
   dataCheckActionRequestSchema,
   dataCheckActionResponseSchema,
-  dataCheckHandlingRequestSchema,
   dataCheckIssueListQuerySchema,
   dataCheckIssueListResponseSchema,
-  dataCheckIssueSchema,
   dataCheckLatestResponseSchema,
-  dataCheckRecheckResponseSchema,
 } from '@causality/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { Pool } from 'pg';
@@ -125,31 +122,6 @@ export function registerDataCheckRoutes(
     },
   );
 
-  routes.post(
-    '/api/data-checks/issues/:issueId/recheck',
-    {
-      schema: {
-        tags: ['data-checks'],
-        params: issueParamsSchema,
-        body: dataCheckHandlingRequestSchema,
-        response: {
-          200: dataCheckRecheckResponseSchema,
-          400: apiErrorSchema,
-          404: apiErrorSchema,
-          409: apiErrorSchema,
-          500: apiErrorSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      try {
-        return await coordinator.recheckIssue(request.params.issueId, request.body.snapshotId);
-      } catch (error) {
-        return sendDataCheckError(error, reply);
-      }
-    },
-  );
-
   routes.get(
     '/api/data-checks/latest',
     {
@@ -178,56 +150,6 @@ export function registerDataCheckRoutes(
       },
     },
     async (request) => coordinator.listIssues(request.query),
-  );
-
-  routes.post(
-    '/api/data-checks/issues/:issueId/auto-handle',
-    {
-      schema: {
-        tags: ['data-checks'],
-        params: issueParamsSchema,
-        body: dataCheckHandlingRequestSchema,
-        response: {
-          200: dataCheckIssueSchema,
-          400: apiErrorSchema,
-          404: apiErrorSchema,
-          409: apiErrorSchema,
-          500: apiErrorSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      try {
-        return await coordinator.autoHandle(request.params.issueId, request.body.snapshotId);
-      } catch (error) {
-        return sendDataCheckError(error, reply);
-      }
-    },
-  );
-
-  routes.post(
-    '/api/data-checks/issues/:issueId/manual-handle',
-    {
-      schema: {
-        tags: ['data-checks'],
-        params: issueParamsSchema,
-        body: dataCheckHandlingRequestSchema,
-        response: {
-          200: dataCheckIssueSchema,
-          400: apiErrorSchema,
-          404: apiErrorSchema,
-          409: apiErrorSchema,
-          500: apiErrorSchema,
-        },
-      },
-    },
-    async (request, reply) => {
-      try {
-        return await coordinator.manualHandle(request.params.issueId, request.body.snapshotId);
-      } catch (error) {
-        return sendDataCheckError(error, reply);
-      }
-    },
   );
 
   return coordinator;

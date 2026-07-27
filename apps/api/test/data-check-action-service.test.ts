@@ -1,10 +1,18 @@
-import type { DataCheckIssue } from '@causality/contracts';
+import {
+  dataCheckIssueTypes,
+  type DataCheckActionRecord,
+  type DataCheckIssue,
+} from '@causality/contracts';
+import type { PoolClient } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 import {
+  authorizeDataCheckActions,
+  createDataCheckActionKey,
+} from '../src/features/data-checks/dataCheckActionKey.js';
+import {
   getDataCheckIssueEvaluator,
   issueEvaluatorRegistry,
-  knownDataCheckIssueTypes,
 } from '../src/features/data-checks/dataCheckIssueEvaluator.js';
 import { assertMergePairMembership } from '../src/features/data-checks/dataCheckActionService.js';
 
@@ -21,7 +29,6 @@ function issue(overrides: Partial<DataCheckIssue> = {}): DataCheckIssue {
     issueType: 'duplicate_event_name',
     description: '存在标准化名称相同的原子事件',
     suggestion: '比较后手动合并或重命名事件',
-    actionMode: 'manual',
     status: 'open',
     targetType: 'event',
     targetId,
@@ -33,9 +40,7 @@ function issue(overrides: Partial<DataCheckIssue> = {}): DataCheckIssue {
 
 describe('data-check action service authorization', () => {
   it('keeps one closed evaluator entry for every known issue type', () => {
-    expect(Object.keys(issueEvaluatorRegistry).sort()).toEqual(
-      [...knownDataCheckIssueTypes].sort(),
-    );
+    expect(Object.keys(issueEvaluatorRegistry).sort()).toEqual([...dataCheckIssueTypes].sort());
   });
 
   it.each([
@@ -56,30 +61,87 @@ describe('data-check action service authorization', () => {
     ['invalid_event_timestamp_order', 'repair_timestamp'],
     ['invalid_relation_timestamp_order', 'repair_timestamp'],
     ['invalid_case_timestamp_order', 'repair_timestamp'],
-    ['invalid_event_name', 'edit'],
-    ['invalid_relation_description', 'edit'],
-    ['relation_confidence_range', 'edit'],
-  ] as const)('maps %s to the explicit %s dialog', (issueType, dialogKind) => {
-    expect(issueEvaluatorRegistry[issueType]?.dialogKind).toBe(dialogKind);
+    ['invalid_event_name', 'manual'],
+    ['invalid_relation_description', 'manual'],
+    ['relation_confidence_range', 'manual'],
+  ] as const)('maps %s to the explicit %s panel', (issueType, panelKind) => {
+    expect(issueEvaluatorRegistry[issueType]?.panelKind).toBe(panelKind);
   });
 
-  it('uses a safe fallback for unknown issue types', () => {
-    expect(getDataCheckIssueEvaluator('future_issue', 'event').dialogKind).toBe('edit');
-    expect(getDataCheckIssueEvaluator('future_issue', 'alias').dialogKind).toBe('ignore_only');
+  it('offers only ignore for manual issues', async () => {
+    const evaluator = getDataCheckIssueEvaluator('relation_confidence_range');
+    await expect(
+      evaluator.buildActions(
+        {} as PoolClient,
+        issue({ issueType: 'relation_confidence_range' }),
+        [],
+      ),
+    ).resolves.toEqual([expect.objectContaining({ type: 'ignore', actionKey: null })]);
   });
 
   it('accepts both issue-record merge directions and rejects arbitrary pairs', () => {
     expect(() => assertMergePairMembership(issue(), targetId, relatedId)).not.toThrow();
     expect(() => assertMergePairMembership(issue(), relatedId, targetId)).not.toThrow();
     expect(() =>
-      assertMergePairMembership(
-        issue(),
-        targetId,
-        '11000000-0000-4000-8000-000000000099',
-      ),
+      assertMergePairMembership(issue(), targetId, '11000000-0000-4000-8000-000000000099'),
     ).toThrow(/当前问题/);
     expect(() =>
       assertMergePairMembership(issue({ relatedId: null }), targetId, relatedId),
     ).toThrow(/当前问题/);
+  });
+
+  it('creates deterministic action keys from current issue evidence', () => {
+    const records: DataCheckActionRecord[] = [
+      {
+        id: targetId,
+        targetType: 'event',
+        title: '原子事件',
+        primaryText: '供应中断',
+        secondaryText: [],
+        detailPath: `/events/${targetId}`,
+        relationCount: 1,
+        caseCount: 0,
+      },
+    ];
+    const unsigned = {
+      type: 'cleanup' as const,
+      label: '清理此问题',
+      keepId: null,
+      mergeId: null,
+      impact: {
+        relationsMoved: 0,
+        relationsDeleted: 0,
+        relationCaseLinksMoved: 0,
+        relationCaseLinksDeleted: 0,
+        recordsDeleted: 1,
+        recordsUpdated: 0,
+      },
+    };
+
+    const first = createDataCheckActionKey(issue(), records, unsigned);
+    const second = createDataCheckActionKey(issue(), records, unsigned);
+    const changed = createDataCheckActionKey(
+      issue(),
+      [{ ...records[0]!, primaryText: '供应中断（已变化）' }],
+      unsigned,
+    );
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    expect(second).toBe(first);
+    expect(changed).not.toBe(first);
+    expect(
+      authorizeDataCheckActions(issue(), records, [
+        { ...unsigned, actionKey: null },
+        {
+          ...unsigned,
+          type: 'ignore',
+          label: '忽略此问题',
+          impact: { ...unsigned.impact, recordsDeleted: 0 },
+          actionKey: null,
+        },
+      ]),
+    ).toEqual([
+      expect.objectContaining({ type: 'cleanup', actionKey: first }),
+      expect.objectContaining({ type: 'ignore', actionKey: null }),
+    ]);
   });
 });

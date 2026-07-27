@@ -2,11 +2,9 @@ import type {
   DataCheckActionContext,
   DataCheckActionRequest,
   DataCheckActionResponse,
-  DataCheckIssue,
   DataCheckIssueListQuery,
   DataCheckIssueListResponse,
   DataCheckLatestResponse,
-  DataCheckRecheckResponse,
 } from '@causality/contracts';
 
 import type {
@@ -46,14 +44,6 @@ export class DataCheckCoordinator {
     return this.repository.listIssues(query);
   }
 
-  public autoHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue> {
-    return this.repository.autoHandle(issueId, snapshotId);
-  }
-
-  public manualHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue> {
-    return this.repository.manualHandle(issueId, snapshotId);
-  }
-
   public actionContext(issueId: string, snapshotId: string): Promise<DataCheckActionContext> {
     if (!this.actionService) throw new Error('Data-check action service is not configured');
     return this.actionService.context(issueId, snapshotId);
@@ -65,11 +55,6 @@ export class DataCheckCoordinator {
   ): Promise<DataCheckActionResponse> {
     if (!this.actionService) throw new Error('Data-check action service is not configured');
     return this.actionService.apply(issueId, request);
-  }
-
-  public recheckIssue(issueId: string, snapshotId: string): Promise<DataCheckRecheckResponse> {
-    if (!this.actionService) throw new Error('Data-check action service is not configured');
-    return this.actionService.recheck(issueId, snapshotId);
   }
 
   public recoverInterrupted(): Promise<DataCheckLatestResponse> {

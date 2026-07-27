@@ -263,6 +263,32 @@ export async function readCurrentIssueForUpdate(
   return row;
 }
 
+export async function readCurrentIssue(
+  client: PoolClient,
+  issueId: string,
+  snapshotId: string,
+): Promise<DataCheckIssueRow> {
+  const state = await client.query<{ last_snapshot_id: string | null }>(
+    `select last_snapshot_id
+     from data_check_state
+     where singleton_key = true`,
+  );
+  if (state.rows[0]?.last_snapshot_id !== snapshotId) {
+    throw new DataCheckRepositoryError('DATA_CHECK_ISSUE_STALE', '该问题不属于最近一次检查结果');
+  }
+
+  const issue = await client.query<DataCheckIssueRow>(
+    `${dataCheckIssueSelect}
+     where id = $1 and snapshot_id = $2`,
+    [issueId, snapshotId],
+  );
+  const row = issue.rows[0];
+  if (!row) {
+    throw new DataCheckRepositoryError('DATA_CHECK_ISSUE_NOT_FOUND', '检查问题不存在');
+  }
+  return row;
+}
+
 export async function markIssueHandled(
   client: PoolClient,
   row: DataCheckIssueRow,
@@ -294,173 +320,6 @@ export async function markIssueHandled(
      where singleton_key = true`,
   );
   return mapDataCheckIssue(updated.rows[0]!);
-}
-
-async function deleteMissingAlias(client: PoolClient, targetId: string): Promise<boolean> {
-  const result = await client.query<{ id: string; reference_missing: boolean }>(
-    `select alias.id, (event.id is null) as reference_missing
-     from event_aliases alias
-     left join abstract_events event on event.id = alias.event_id
-     where alias.id = $1
-     for update of alias`,
-    [targetId],
-  );
-  const row = result.rows[0];
-  if (!row) return true;
-  if (!row.reference_missing) return false;
-  await client.query(`delete from event_aliases where id = $1`, [targetId]);
-  return true;
-}
-
-async function deleteMissingKeyword(client: PoolClient, targetId: string): Promise<boolean> {
-  const result = await client.query<{ id: string; reference_missing: boolean }>(
-    `select keyword.id, (event.id is null) as reference_missing
-     from event_keywords keyword
-     left join abstract_events event on event.id = keyword.event_id
-     where keyword.id = $1
-     for update of keyword`,
-    [targetId],
-  );
-  const row = result.rows[0];
-  if (!row) return true;
-  if (!row.reference_missing) return false;
-  await client.query(`delete from event_keywords where id = $1`, [targetId]);
-  return true;
-}
-
-async function deleteMissingRelationCase(
-  client: PoolClient,
-  relationId: string,
-  caseId: string | null,
-): Promise<boolean> {
-  if (!caseId) return false;
-  const result = await client.query<{
-    causal_relation_id: string;
-    concrete_case_id: string;
-    reference_missing: boolean;
-  }>(
-    `select relation_case.causal_relation_id,
-            relation_case.concrete_case_id,
-            (relation.id is null or concrete_case.id is null) as reference_missing
-     from causal_relation_cases relation_case
-     left join causal_relations relation on relation.id = relation_case.causal_relation_id
-     left join concrete_cases concrete_case on concrete_case.id = relation_case.concrete_case_id
-     where relation_case.causal_relation_id = $1
-       and relation_case.concrete_case_id = $2
-     for update of relation_case`,
-    [relationId, caseId],
-  );
-  const row = result.rows[0];
-  if (!row) return true;
-  if (!row.reference_missing) return false;
-  await client.query(
-    `delete from causal_relation_cases
-     where causal_relation_id = $1 and concrete_case_id = $2`,
-    [relationId, caseId],
-  );
-  return true;
-}
-
-async function deleteDuplicateAlias(client: PoolClient, targetId: string): Promise<boolean> {
-  const result = await client.query<{ duplicate_exists: boolean }>(
-    `select exists (
-       select 1
-       from event_aliases retained
-       where retained.event_id = target.event_id
-         and retained.normalized_alias = target.normalized_alias
-         and (retained.created_at, retained.id) < (target.created_at, target.id)
-     ) as duplicate_exists
-     from event_aliases target
-     where target.id = $1
-     for update of target`,
-    [targetId],
-  );
-  const row = result.rows[0];
-  if (!row) return true;
-  if (!row.duplicate_exists) return false;
-  await client.query(`delete from event_aliases where id = $1`, [targetId]);
-  return true;
-}
-
-async function deleteDuplicateKeyword(client: PoolClient, targetId: string): Promise<boolean> {
-  const result = await client.query<{ event_id: string; duplicate_exists: boolean }>(
-    `select target.event_id,
-            exists (
-       select 1
-       from event_keywords retained
-       where retained.event_id = target.event_id
-         and retained.normalized_keyword = target.normalized_keyword
-         and (retained.position, retained.id) < (target.position, target.id)
-     ) as duplicate_exists
-     from event_keywords target
-     where target.id = $1
-     for update of target`,
-    [targetId],
-  );
-  const row = result.rows[0];
-  if (!row) return true;
-  if (!row.duplicate_exists) return false;
-  await client.query(`delete from event_keywords where id = $1`, [targetId]);
-  return resequenceKeywords(client, row.event_id);
-}
-
-interface KeywordRow {
-  id: string;
-  event_id: string;
-  keyword: string;
-  position: number;
-}
-
-async function resequenceKeywords(client: PoolClient, eventId: string): Promise<boolean> {
-  const result = await client.query<KeywordRow>(
-    `select id, event_id, keyword, position
-     from event_keywords
-     where event_id = $1
-     order by position, id
-     for update`,
-    [eventId],
-  );
-  if (result.rows.length > 20) return false;
-  const valid = result.rows.every((row, index) => Number(row.position) === index + 1);
-  if (valid) return true;
-  if (result.rows.length === 0) return true;
-
-  await client.query(`delete from event_keywords where event_id = $1`, [eventId]);
-  await client.query(
-    `insert into event_keywords (id, event_id, keyword, position)
-     select keyword.id, keyword.event_id, keyword.keyword, keyword.position
-     from unnest($1::uuid[], $2::uuid[], $3::text[], $4::int[])
-       as keyword(id, event_id, keyword, position)`,
-    [
-      result.rows.map((row) => row.id),
-      result.rows.map((row) => row.event_id),
-      result.rows.map((row) => row.keyword),
-      result.rows.map((_row, index) => index + 1),
-    ],
-  );
-  return true;
-}
-
-async function applyAutomaticAction(
-  client: PoolClient,
-  issue: DataCheckIssueRow,
-): Promise<boolean> {
-  switch (issue.issue_type) {
-    case 'delete_missing_alias':
-      return deleteMissingAlias(client, issue.target_id);
-    case 'delete_missing_keyword':
-      return deleteMissingKeyword(client, issue.target_id);
-    case 'delete_missing_relation_case':
-      return deleteMissingRelationCase(client, issue.target_id, issue.related_id);
-    case 'delete_duplicate_alias':
-      return deleteDuplicateAlias(client, issue.target_id);
-    case 'delete_duplicate_keyword':
-      return deleteDuplicateKeyword(client, issue.target_id);
-    case 'resequence_keywords':
-      return resequenceKeywords(client, issue.target_id);
-    default:
-      return false;
-  }
 }
 
 export class PostgresDataCheckRepository implements DataCheckRepository {
@@ -666,48 +525,6 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
         totalItems,
         totalPages,
       };
-    } catch (error) {
-      await client.query('rollback');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  public async manualHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('begin');
-      const issue = await readCurrentIssueForUpdate(client, issueId, snapshotId);
-      const handled = await markIssueHandled(client, issue);
-      await client.query('commit');
-      return handled;
-    } catch (error) {
-      await client.query('rollback');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  public async autoHandle(issueId: string, snapshotId: string): Promise<DataCheckIssue> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('begin');
-      const issue = await readCurrentIssueForUpdate(client, issueId, snapshotId);
-      if (issue.status === 'handled') {
-        await client.query('commit');
-        return mapDataCheckIssue(issue);
-      }
-      if (issue.action_mode !== 'auto' || !(await applyAutomaticAction(client, issue))) {
-        throw new DataCheckRepositoryError(
-          'DATA_CHECK_AUTO_HANDLE_UNSAFE',
-          '数据已变化，无法安全自动处理该问题',
-        );
-      }
-      const handled = await markIssueHandled(client, issue);
-      await client.query('commit');
-      return handled;
     } catch (error) {
       await client.query('rollback');
       throw error;
