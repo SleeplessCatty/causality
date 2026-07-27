@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router';
+import { useLocation, useSearchParams } from 'react-router';
 
 import type { DataCheckIssue, DataCheckIssueListQuery } from '@causality/contracts';
 import { AppSelect } from '../../shared/controls/AppSelect';
@@ -50,6 +50,7 @@ function IssueDescription({ issue }: { issue: DataCheckIssue }) {
 }
 
 export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTableProps) {
+  const location = useLocation();
   const [, setSearchParameters] = useSearchParams();
   const { page, severity, issueType, status, issueId } = queryState;
   const queryKey = [
@@ -76,6 +77,7 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
     responsePage: data?.page,
     isPlaceholderData: issues.isPlaceholderData,
     setSearchParameters,
+    navigationState: location.state,
   });
   useListRecordFocus(data?.items.map((current) => current.id) ?? [], issueId ?? undefined);
 

@@ -1,6 +1,6 @@
 import type { DataCheckIssueStatus, DataCheckSeverity } from '@causality/contracts';
 import { useCallback, useEffect } from 'react';
-import { useSearchParams } from 'react-router';
+import { useLocation, useSearchParams } from 'react-router';
 
 import { readListPage } from '../../shared/pagination/ListPagination';
 
@@ -54,6 +54,7 @@ export interface DataCheckQueryState {
 }
 
 export function useDataCheckQueryState(): DataCheckQueryState {
+  const location = useLocation();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const rawPage = searchParameters.get('page');
   const page = readListPage(rawPage);
@@ -157,9 +158,9 @@ export function useDataCheckQueryState(): DataCheckQueryState {
         next.delete('recheck');
         return next;
       },
-      { replace: true },
+      { replace: true, state: location.state },
     );
-  }, [setSearchParameters]);
+  }, [location.state, setSearchParameters]);
 
   return {
     page,

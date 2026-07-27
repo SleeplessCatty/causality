@@ -100,6 +100,7 @@ interface ListPageCorrectionOptions {
   responsePage: number | undefined;
   isPlaceholderData: boolean;
   setSearchParameters: ReturnType<typeof useSearchParams>[1];
+  navigationState?: unknown;
 }
 
 export function useListPageCorrection({
@@ -107,6 +108,7 @@ export function useListPageCorrection({
   responsePage,
   isPlaceholderData,
   setSearchParameters,
+  navigationState,
 }: ListPageCorrectionOptions): void {
   useEffect(() => {
     if (responsePage === undefined || isPlaceholderData || responsePage === requestedPage) return;
@@ -116,7 +118,13 @@ export function useListPageCorrection({
         next.set('page', String(responsePage));
         return next;
       },
-      { replace: true },
+      { replace: true, state: navigationState },
     );
-  }, [isPlaceholderData, requestedPage, responsePage, setSearchParameters]);
+  }, [
+    isPlaceholderData,
+    navigationState,
+    requestedPage,
+    responsePage,
+    setSearchParameters,
+  ]);
 }
