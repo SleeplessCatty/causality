@@ -1,0 +1,58 @@
+import {
+  importBatchListResponseSchema,
+  importBatchSummarySchema,
+  importRecordListResponseSchema,
+  importUploadResponseSchema,
+  type ImportBatchListResponse,
+  type ImportBatchSummary,
+  type ImportRecordListResponse,
+  type ImportRecordType,
+} from '@causality/contracts';
+
+import { requestJson, requestMultipartJson } from '../../shared/api/httpClient';
+
+const importTimeoutMilliseconds = 5 * 60 * 1_000;
+
+export async function uploadImport(file: File, signal: AbortSignal): Promise<ImportBatchSummary> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = importUploadResponseSchema.parse(
+    await requestMultipartJson(
+      '/api/data-transfers/imports',
+      form,
+      signal,
+      importTimeoutMilliseconds,
+    ),
+  );
+  return response.batch;
+}
+
+export async function getImportHistory(
+  page: number,
+  signal?: AbortSignal,
+): Promise<ImportBatchListResponse> {
+  return importBatchListResponseSchema.parse(
+    await requestJson(`/api/data-transfers/imports?page=${page}`, {}, signal),
+  );
+}
+
+export async function getImportBatch(
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<ImportBatchSummary> {
+  return importBatchSummarySchema.parse(
+    await requestJson(`/api/data-transfers/imports/${batchId}`, {}, signal),
+  );
+}
+
+export async function getImportRecords(
+  batchId: string,
+  type: ImportRecordType,
+  page: number,
+  signal?: AbortSignal,
+): Promise<ImportRecordListResponse> {
+  const parameters = new URLSearchParams({ type, page: String(page) });
+  return importRecordListResponseSchema.parse(
+    await requestJson(`/api/data-transfers/imports/${batchId}/records?${parameters}`, {}, signal),
+  );
+}

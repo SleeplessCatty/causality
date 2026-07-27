@@ -1070,11 +1070,11 @@ git commit -m "refactor: add reusable transfer UI primitives"
 - `uploadCsv(file, signal)` uses a five-minute multipart request.
 - Import errors use `useAutoDismissError` and remain retryable with the selected `File`.
 
-- [ ] **Step 1: Write failing API adapter tests**
+- [x] **Step 1: Write failing API adapter tests**
 
 Mock the shared client and assert correct endpoints, page parameters, schema parsing, multipart field name `file`, AbortSignal propagation, and five-minute timeout.
 
-- [ ] **Step 2: Implement the API adapter**
+- [x] **Step 2: Implement the API adapter**
 
 Expose:
 
@@ -1085,7 +1085,7 @@ getImportBatch(batchId, signal): Promise<ImportBatchSummary>
 getImportRecords(batchId, type, page, signal): Promise<ImportRecordListResponse>
 ```
 
-- [ ] **Step 3: Write failing page tests**
+- [x] **Step 3: Write failing page tests**
 
 Assert:
 
@@ -1100,7 +1100,7 @@ Assert:
 - `OverflowText` wraps file names, event names, case content, and relation text;
 - back navigation restores the history page and focused row.
 
-- [ ] **Step 4: Implement navigation protection**
+- [x] **Step 4: Implement navigation protection**
 
 Create an import-only hook that combines React Router blocking with `beforeunload`. While uploading:
 
@@ -1110,15 +1110,15 @@ Create an import-only hook that combines React Router blocking with `beforeunloa
 
 Use `AppDialog` for in-app confirmation. Confirm aborts the request before continuing navigation; cancel keeps the request alive.
 
-- [ ] **Step 5: Implement the import page**
+- [x] **Step 5: Implement the import page**
 
 Use a normal `.page-heading`, a compact white 8px card, `AppTabs`, the existing button variants, and the data-maintenance max width. During this intermediate task, expose only the functional Import tab; Task 9 adds Export atomically, so no disabled or “coming soon” production placeholder is introduced. Do not create a canvas layout or new color palette.
 
-- [ ] **Step 6: Implement history and detail**
+- [x] **Step 6: Implement history and detail**
 
 Map UI tabs exactly as `events → event`, `cases → case`, `relations → relation`, and `relationCases → relation_case`. Use `keepPreviousData` for page transitions, disable pagination during fetch, call `scrollMainContentToTop` on navigation, correct invalid server-returned page values in the URL, and use the standard detail heading/back-link/button heights.
 
-- [ ] **Step 7: Run Web tests**
+- [x] **Step 7: Run Web tests**
 
 Run:
 
@@ -1130,7 +1130,7 @@ pnpm --filter @causality/web build
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit locally**
+- [x] **Step 8: Commit locally**
 
 ```bash
 git add apps/web/src/features/data-transfer apps/web/src/app apps/web/src/main.tsx

@@ -1,0 +1,241 @@
+.data-transfer-page,
+.data-transfer-detail-page {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.data-transfer-surface {
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 97%);
+  box-shadow: 0 10px 28px rgb(35 50 41 / 6%);
+}
+
+.data-transfer-surface > .app-tabs > .app-tabs__list {
+  padding: 0 20px;
+}
+
+.data-transfer-surface > .app-tabs > .app-tabs__panel {
+  padding: 18px 20px 20px;
+}
+
+.data-transfer-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.data-transfer-section-heading h2 {
+  margin: 0;
+  color: #183d30;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.data-transfer-section-heading p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.data-transfer-import-card {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-transfer-import-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.data-transfer-file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.data-transfer-selected-file {
+  display: flex;
+  min-width: 0;
+  height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 13px;
+  border: 1px solid #cfd9d2;
+  border-radius: 6px;
+  background: #fafcfb;
+  color: #56645c;
+  font-size: 12px;
+}
+
+.data-transfer-selected-file strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #263b31;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-transfer-selected-file span:last-child {
+  flex: none;
+}
+
+.data-transfer-import-error {
+  margin: 12px 0 0;
+}
+
+.data-transfer-import-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.data-transfer-history {
+  padding-top: 18px;
+}
+
+.data-transfer-history-empty {
+  margin-top: 14px;
+}
+
+.data-transfer-table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.data-transfer-history-table {
+  min-width: 980px;
+}
+
+.data-transfer-history-table th,
+.data-transfer-history-table td {
+  width: auto;
+  padding-right: 11px;
+  padding-left: 11px;
+  white-space: nowrap;
+}
+
+.data-transfer-history-table th:nth-child(1) {
+  width: 15%;
+}
+
+.data-transfer-history-table th:nth-child(2) {
+  width: 17%;
+}
+
+.data-transfer-history-table th:nth-child(3) {
+  width: 13%;
+}
+
+.data-transfer-history-table th:nth-child(n + 4):nth-child(-n + 7) {
+  width: 12%;
+}
+
+.data-transfer-history-table th:last-child {
+  width: 8%;
+}
+
+.data-transfer-history-table td .overflow-text {
+  display: block;
+}
+
+.data-transfer-history-table td:last-child {
+  text-align: center;
+}
+
+.data-transfer-history-table td:nth-child(n + 4):nth-child(-n + 7) {
+  font-size: 12px;
+}
+
+.data-transfer-detail-page {
+  max-width: 1180px;
+}
+
+.data-transfer-detail-heading h1 {
+  max-width: 920px;
+}
+
+.data-transfer-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 24px 0 0;
+  border-top: 1px solid #d8e0da;
+  border-left: 1px solid #d8e0da;
+  background: white;
+}
+
+.data-transfer-summary-grid > div {
+  min-width: 0;
+  padding: 16px 18px;
+  border-right: 1px solid #d8e0da;
+  border-bottom: 1px solid #d8e0da;
+}
+
+.data-transfer-summary-grid dt {
+  color: #6a766f;
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+}
+
+.data-transfer-summary-grid dd {
+  margin: 8px 0 0;
+  color: #26382f;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.data-transfer-detail-records {
+  margin-top: 22px;
+}
+
+.data-transfer-record-table th,
+.data-transfer-record-table td {
+  width: auto;
+}
+
+.data-transfer-record-table th:first-child,
+.data-transfer-record-table td:first-child {
+  width: 90px;
+}
+
+.data-transfer-record-table th:nth-child(2),
+.data-transfer-record-table td:nth-child(2) {
+  width: 120px;
+}
+
+.data-transfer-record-table th:last-child,
+.data-transfer-record-table td:last-child {
+  width: auto;
+}
+
+.data-transfer-record-table td:last-child .overflow-text {
+  display: block;
+}
+
+.data-transfer-outcome {
+  display: inline-flex;
+  min-width: 48px;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.data-transfer-outcome--created {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.data-transfer-outcome--reused {
+  background: var(--neutral-soft);
+  color: var(--neutral);
+}

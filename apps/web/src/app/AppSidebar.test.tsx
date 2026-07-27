@@ -10,6 +10,7 @@ const navigationLabels = [
   '具体案例',
   '因果图',
   '数据维护',
+  '导入导出',
   '参数配置',
   '系统状态',
 ];
@@ -32,6 +33,9 @@ describe('AppSidebar', () => {
     }
     const links = screen.getAllByRole('link');
     expect(links.indexOf(screen.getByRole('link', { name: '数据维护' }))).toBeLessThan(
+      links.indexOf(screen.getByRole('link', { name: '导入导出' })),
+    );
+    expect(links.indexOf(screen.getByRole('link', { name: '导入导出' }))).toBeLessThan(
       links.indexOf(screen.getByRole('link', { name: '参数配置' })),
     );
     expect(links.indexOf(screen.getByRole('link', { name: '参数配置' }))).toBeLessThan(

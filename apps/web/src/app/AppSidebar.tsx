@@ -77,6 +77,16 @@ const navigationItems: NavigationItem[] = [
     ),
   },
   {
+    to: '/data-transfer',
+    label: '导入导出',
+    icon: (
+      <svg {...iconProps}>
+        <path d="M5 4.5h14v15H5z" />
+        <path d="M9 8.5h6M12 6v7M9.5 10.5 12 13l2.5-2.5M8.5 16h7" />
+      </svg>
+    ),
+  },
+  {
     to: '/settings',
     label: '参数配置',
     icon: (

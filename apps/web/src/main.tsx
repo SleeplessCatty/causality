@@ -6,6 +6,7 @@ import { AppProviders } from './app/AppProviders';
 import { router } from './app/router';
 import './styles/global.css';
 import './styles/events.css';
+import './features/data-transfer/dataTransfer.css';
 
 const rootElement = document.getElementById('root');
 

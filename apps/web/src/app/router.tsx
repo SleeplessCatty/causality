@@ -125,6 +125,20 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'data-transfer',
+        lazy: lazyPage(
+          () => import('../features/data-transfer/DataTransferPage'),
+          (module) => module.DataTransferPage,
+        ),
+      },
+      {
+        path: 'data-transfer/imports/:batchId',
+        lazy: lazyPage(
+          () => import('../features/data-transfer/pages/ImportDetailPage'),
+          (module) => module.ImportDetailPage,
+        ),
+      },
+      {
         path: 'settings',
         lazy: lazyPage(
           () => import('../features/parameter-settings/ParameterSettings'),
