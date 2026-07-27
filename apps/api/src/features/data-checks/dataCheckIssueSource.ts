@@ -5,6 +5,8 @@ import type {
 } from '@causality/contracts';
 import type { PoolClient } from 'pg';
 
+import { getDataCheckIssueSourceStrategy } from './dataCheckIssueCatalog.js';
+
 export interface DataCheckIssueSourceInput {
   id: string;
   issueType: DataCheckIssueType;
@@ -64,42 +66,6 @@ interface SourceFacts {
 
 type SourceItem = DataCheckIssueSource['items'][number];
 type SourceRole = SourceItem['role'];
-
-const eventPairTypes = new Set<DataCheckIssueType>([
-  'duplicate_event_name',
-  'cross_event_alias_name',
-  'cross_event_shared_alias',
-  'semantic_duplicate_event',
-]);
-const casePairTypes = new Set<DataCheckIssueType>([
-  'duplicate_case_content',
-  'semantic_duplicate_case',
-]);
-const relationTypes = new Set<DataCheckIssueType>([
-  'relation_self_loop',
-  'relation_confidence_range',
-  'invalid_relation_description',
-  'invalid_relation_timestamp_order',
-]);
-const aliasTypes = new Set<DataCheckIssueType>([
-  'delete_missing_alias',
-  'delete_duplicate_alias',
-  'invalid_alias_text',
-]);
-const keywordTypes = new Set<DataCheckIssueType>([
-  'delete_missing_keyword',
-  'delete_duplicate_keyword',
-  'invalid_keyword_text',
-]);
-const eventTypes = new Set<DataCheckIssueType>([
-  'invalid_event_name',
-  'invalid_event_description',
-  'invalid_event_timestamp_order',
-]);
-const caseTypes = new Set<DataCheckIssueType>([
-  'invalid_case_content',
-  'invalid_case_timestamp_order',
-]);
 
 function unique(values: Iterable<string | null>): string[] {
   return [...new Set([...values].filter((value): value is string => Boolean(value)))].sort();
@@ -200,7 +166,8 @@ function ownedValueSource(
 }
 
 function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): DataCheckIssueSource {
-  if (eventPairTypes.has(issue.issueType)) {
+  const strategy = getDataCheckIssueSourceStrategy(issue.issueType);
+  if (strategy === 'event_pair') {
     return pairSource(
       eventItem(facts, issue.targetId, 'target'),
       issue.relatedId
@@ -208,7 +175,7 @@ function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): Data
         : missingItem('related', '相关原子事件已不存在'),
     );
   }
-  if (casePairTypes.has(issue.issueType)) {
+  if (strategy === 'case_pair') {
     return pairSource(
       caseItem(facts, issue.targetId, 'target'),
       issue.relatedId
@@ -216,7 +183,7 @@ function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): Data
         : missingItem('related', '相关具体案例已不存在'),
     );
   }
-  if (issue.issueType === 'duplicate_relation_direction') {
+  if (strategy === 'duplicate_relation') {
     const relation = facts.relations.get(issue.targetId);
     const paths = unique([issue.targetId, issue.relatedId])
       .filter((id) => {
@@ -226,20 +193,17 @@ function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): Data
       .map((id) => `/relations/${id}`);
     return relationSource(relation, paths, !issue.relatedId, '2 条同方向关系');
   }
-  if (
-    issue.issueType === 'missing_relation_cause_event' ||
-    issue.issueType === 'missing_relation_effect_event'
-  ) {
+  if (strategy === 'broken_relation') {
     return relationSource(facts.relations.get(issue.targetId), [], true);
   }
-  if (relationTypes.has(issue.issueType)) {
+  if (strategy === 'relation') {
     return relationSource(
       facts.relations.get(issue.targetId),
       [`/relations/${issue.targetId}`],
       false,
     );
   }
-  if (aliasTypes.has(issue.issueType)) {
+  if (strategy === 'alias') {
     const alias = facts.aliases.get(issue.targetId);
     if (!alias) {
       return {
@@ -259,7 +223,7 @@ function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): Data
       issue.issueType === 'delete_missing_alias',
     );
   }
-  if (keywordTypes.has(issue.issueType)) {
+  if (strategy === 'keyword') {
     const keyword = facts.keywords.get(issue.targetId);
     if (!keyword) {
       return {
@@ -279,7 +243,7 @@ function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): Data
       issue.issueType === 'delete_missing_keyword',
     );
   }
-  if (issue.issueType === 'resequence_keywords') {
+  if (strategy === 'event_keywords') {
     const item = eventItem(facts, issue.targetId, 'target');
     return {
       displayKind: item.type === 'missing' ? 'broken_reference' : 'single',
@@ -288,7 +252,7 @@ function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): Data
       auxiliaryText: `${facts.keywordCounts.get(issue.targetId) ?? 0} 个关键词`,
     };
   }
-  if (eventTypes.has(issue.issueType)) {
+  if (strategy === 'event') {
     const item = eventItem(facts, issue.targetId, 'target');
     return {
       displayKind: item.type === 'missing' ? 'broken_reference' : 'single',
@@ -297,7 +261,7 @@ function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): Data
       auxiliaryText: null,
     };
   }
-  if (caseTypes.has(issue.issueType)) {
+  if (strategy === 'case') {
     const item = caseItem(facts, issue.targetId, 'target');
     return {
       displayKind: item.type === 'missing' ? 'broken_reference' : 'single',
@@ -306,7 +270,7 @@ function buildSource(issue: DataCheckIssueSourceInput, facts: SourceFacts): Data
       auxiliaryText: null,
     };
   }
-  if (issue.issueType === 'delete_missing_relation_case') {
+  if (strategy === 'relation_case') {
     if (!issue.relatedId) {
       return {
         displayKind: 'broken_reference',

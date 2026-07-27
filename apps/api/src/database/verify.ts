@@ -274,7 +274,7 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
            (select count(*)::int
             from import_records
             where jsonb_typeof(text_snapshot) <> 'object'
-               or text_snapshot ->> 'type' <> record_type
+               or text_snapshot ->> 'type' is distinct from record_type
                or (
                  record_type = 'event'
                  and nullif(btrim(text_snapshot ->> 'eventName'), '') is null

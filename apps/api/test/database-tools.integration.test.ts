@@ -159,6 +159,53 @@ describe.sequential('database data tools', () => {
     expect(report.valid).toBe(true);
   });
 
+  it('reports import snapshots whose declared type is missing, null, or mismatched', async () => {
+    const client = await pool!.connect();
+    try {
+      await client.query('begin');
+      const batch = await client.query<{ id: string }>(
+        `insert into import_batches (
+           filename,
+           record_types,
+           event_created,
+           event_reused,
+           case_created,
+           case_reused,
+           relation_created,
+           relation_reused,
+           relation_case_created,
+           relation_case_reused
+         )
+         values ('missing-type.csv', array['event']::varchar[], 1, 0, 0, 0, 0, 0, 0, 0)
+         returning id`,
+      );
+      await client.query(
+        `insert into import_records (
+           batch_id,
+           source_sequence,
+           item_sequence,
+           record_type,
+           outcome,
+           primary_record_id,
+           text_snapshot
+         )
+         values
+           ($1, 1, 1, 'event', 'created', gen_random_uuid(), '{"eventName":"缺少类型"}'),
+           ($1, 2, 1, 'event', 'created', gen_random_uuid(), '{"type":null,"eventName":"空类型"}'),
+           ($1, 3, 1, 'event', 'created', gen_random_uuid(), '{"type":"case","eventName":"错误类型"}')`,
+        [batch.rows[0]!.id],
+      );
+
+      const report = await verifyDatabase(client);
+
+      expect(report.dataTransfer.invalidImportRecordSnapshots).toBe(3);
+      expect(report.valid).toBe(false);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
+
   it('reports missing semantic storage instead of throwing a generic verification failure', async () => {
     const client = await pool!.connect();
     try {

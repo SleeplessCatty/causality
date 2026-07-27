@@ -13,6 +13,10 @@ import {
   dataCheckIssueSchema,
   dataCheckLatestResponseSchema,
   dataCheckSnapshotSummarySchema,
+  dataCheckIssueTypeLabel,
+  dataCheckIssueTypeLabels,
+  dataCheckIssueTypeOptions,
+  dataCheckIssueTypes,
 } from '../src/index.js';
 
 const snapshotId = '11111111-1111-4111-8111-111111111111';
@@ -49,35 +53,6 @@ const issue = {
   handledAt: null,
 };
 
-const issueTypes = [
-  'missing_relation_cause_event',
-  'missing_relation_effect_event',
-  'delete_missing_alias',
-  'delete_missing_keyword',
-  'delete_missing_relation_case',
-  'relation_self_loop',
-  'relation_confidence_range',
-  'duplicate_relation_direction',
-  'duplicate_event_name',
-  'duplicate_case_content',
-  'delete_duplicate_alias',
-  'delete_duplicate_keyword',
-  'resequence_keywords',
-  'invalid_event_name',
-  'invalid_case_content',
-  'invalid_alias_text',
-  'invalid_keyword_text',
-  'invalid_event_description',
-  'invalid_relation_description',
-  'invalid_event_timestamp_order',
-  'invalid_relation_timestamp_order',
-  'invalid_case_timestamp_order',
-  'cross_event_alias_name',
-  'cross_event_shared_alias',
-  'semantic_duplicate_event',
-  'semantic_duplicate_case',
-] as const;
-
 const source = {
   displayKind: 'pair',
   items: [
@@ -100,9 +75,9 @@ const source = {
 
 describe('data-check contracts', () => {
   it('closes the supported issue taxonomy and source display shapes', () => {
-    expect(issueTypes.every((value) => dataCheckIssueTypeSchema.safeParse(value).success)).toBe(
-      true,
-    );
+    expect(
+      dataCheckIssueTypes.every((value) => dataCheckIssueTypeSchema.safeParse(value).success),
+    ).toBe(true);
     expect(dataCheckIssueTypeSchema.safeParse('unknown_issue').success).toBe(false);
     expect(
       dataCheckIssueSourceSchema.parse({
@@ -156,6 +131,17 @@ describe('data-check contracts', () => {
         auxiliaryText: null,
       }).success,
     ).toBe(false);
+  });
+
+  it('provides one presentation label for every supported issue type', () => {
+    expect(Object.keys(dataCheckIssueTypeLabels)).toEqual(dataCheckIssueTypes);
+    expect(dataCheckIssueTypeOptions).toEqual(
+      dataCheckIssueTypes.map((issueType) => ({
+        value: issueType,
+        label: dataCheckIssueTypeLabels[issueType],
+      })),
+    );
+    expect(dataCheckIssueTypeLabel('semantic_duplicate_event')).toBe('语义重复事件');
   });
 
   it('normalizes fixed-size issue filters', () => {

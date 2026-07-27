@@ -1,0 +1,152 @@
+.eyebrow {
+  margin: 0 0 18px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.status-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface), transparent 4%);
+  box-shadow: 0 20px 60px rgb(35 50 41 / 8%);
+  overflow: hidden;
+}
+
+.status-card__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 30px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.status-card__heading .eyebrow {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.status-card h2 {
+  margin: 0;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+}
+
+.status-card button {
+  min-width: 92px;
+  padding: 9px 13px;
+  border: 1px solid #cfd7d1;
+  border-radius: 7px;
+  background: white;
+  color: #34443a;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.status-card button:hover:not(:disabled) {
+  border-color: #9caaa1;
+  background: #f8faf8;
+}
+
+.status-card button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent), transparent 72%);
+  outline-offset: 2px;
+}
+
+.status-card button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.status-list {
+  padding: 10px 30px 14px;
+}
+
+.status-row {
+  display: flex;
+  min-height: 86px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid #edf0ed;
+}
+
+.status-row:last-child {
+  border-bottom: 0;
+}
+
+.status-row strong,
+.status-row > div > span {
+  display: block;
+}
+
+.status-row strong {
+  margin-bottom: 5px;
+  font-size: 15px;
+  font-weight: 680;
+}
+
+.status-row > div > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 112px;
+  justify-content: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.status-row--semantic-worker .status-value {
+  min-width: 210px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-value--neutral {
+  color: var(--neutral);
+  background: var(--neutral-soft);
+}
+
+.status-value--positive {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.status-value--negative {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.product-main > .status-card {
+  max-width: 960px;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgb(35 50 41 / 7%);
+}
+
+.product-main .status-card__heading {
+  padding: 18px 20px 16px;
+}
+
+.product-main .status-list {
+  padding: 6px 20px 10px;
+}
+
+.product-main .status-row {
+  min-height: 66px;
+}

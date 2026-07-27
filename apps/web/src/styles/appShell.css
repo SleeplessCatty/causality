@@ -1,0 +1,230 @@
+.product-shell {
+  --sidebar-width-expanded: 184px;
+  --sidebar-width-collapsed: 56px;
+
+  display: grid;
+  grid-template-columns: var(--sidebar-width-expanded) minmax(0, 1fr);
+  width: 100%;
+  min-height: 100vh;
+  color: var(--ink);
+  transition: grid-template-columns 180ms ease;
+}
+
+.product-shell.is-sidebar-collapsed {
+  grid-template-columns: var(--sidebar-width-collapsed) minmax(0, 1fr);
+}
+
+.app-sidebar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  min-width: 0;
+  flex-direction: column;
+  padding: 15px 10px 12px;
+  border-right: 1px solid #dce3de;
+  background: rgb(255 255 255 / 97%);
+  overflow: visible;
+}
+
+.app-sidebar__brand {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 5px;
+  color: #143d2f;
+  font-size: 18px;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-sidebar__brand-mark {
+  display: grid;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 2px solid #176348;
+  border-radius: 6px;
+  font-family: Georgia, serif;
+  font-size: 21px;
+}
+
+.app-sidebar__brand-name,
+.app-sidebar__label,
+.app-sidebar__toggle-label {
+  opacity: 1;
+  overflow: hidden;
+  transition: opacity 120ms ease;
+}
+
+.app-sidebar__navigation {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 26px;
+}
+
+.app-sidebar__link,
+.app-sidebar__toggle {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 42px;
+  align-items: center;
+  gap: 11px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #65736b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.app-sidebar__link:hover {
+  background: #f1f5f2;
+  color: #234c3d;
+}
+
+.app-sidebar__link.is-active {
+  background: #e7f1ec;
+  color: #174f3a;
+}
+
+.app-sidebar__icon {
+  display: grid;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+}
+
+.app-sidebar__icon svg,
+.app-sidebar__toggle svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.app-sidebar__toggle {
+  flex: 0 0 auto;
+  border: 1px solid #dce4df;
+  color: #53665c;
+}
+
+.app-sidebar__toggle:hover:not(:disabled) {
+  border-color: #afbeb5;
+  background: #f5f8f6;
+  color: #234c3d;
+}
+
+.app-sidebar__toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.is-sidebar-collapsed .app-sidebar {
+  padding-inline: 6px;
+}
+
+.is-sidebar-collapsed .app-sidebar__brand {
+  padding-inline: 5px;
+}
+
+.is-sidebar-collapsed .app-sidebar__brand-name,
+.is-sidebar-collapsed .app-sidebar__label,
+.is-sidebar-collapsed .app-sidebar__toggle-label {
+  width: 0;
+  opacity: 0;
+}
+
+.is-sidebar-collapsed .app-sidebar__link,
+.is-sidebar-collapsed .app-sidebar__toggle {
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+}
+
+.is-sidebar-collapsed .app-sidebar__link[data-tooltip]::after {
+  position: absolute;
+  z-index: 30;
+  top: 50%;
+  left: calc(100% + 9px);
+  padding: 6px 9px;
+  border: 1px solid #d5ded8;
+  border-radius: 5px;
+  background: #173e30;
+  box-shadow: 0 5px 14px rgb(20 44 34 / 16%);
+  color: white;
+  content: attr(data-tooltip);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-3px, -50%);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.is-sidebar-collapsed .app-sidebar__link[data-tooltip]:hover::after,
+.is-sidebar-collapsed .app-sidebar__link[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.product-main {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 100vh;
+  padding: 26px 28px 36px;
+  overflow: auto;
+}
+
+.product-shell.is-graph-route .product-main {
+  height: 100vh;
+  padding: 0;
+  overflow: hidden;
+}
+
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.page-heading h1 {
+  margin: 0;
+  color: #123c2e;
+  font-size: 29px;
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+}
+
+.page-heading p {
+  margin: 7px 0 0;
+  color: #66736b;
+  font-size: 13px;
+  line-height: 1.5;
+}

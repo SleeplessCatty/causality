@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: light;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  color: #17211b;
+  background: #f3f5f1;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --ink: #17211b;
+  --muted: #66736b;
+  --surface: #ffffff;
+  --border: #dfe5df;
+  --accent: #1f6b4f;
+  --accent-soft: #e5f1eb;
+  --range-control: #1d8762;
+  --danger: #a33b35;
+  --danger-soft: #f9e9e7;
+  --neutral: #6c756f;
+  --neutral-soft: #edf0ed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 960px;
+  min-height: 100vh;
+  background: #f5f7f5;
+}
+
+button,
+a {
+  font: inherit;
+}

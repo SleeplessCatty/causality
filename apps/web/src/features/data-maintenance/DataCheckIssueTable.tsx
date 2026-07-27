@@ -2,18 +2,18 @@ import { useIsMutating, useQuery } from '@tanstack/react-query';
 import { Fragment } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 
-import type { DataCheckIssueListQuery } from '@causality/contracts';
+import {
+  dataCheckIssueTypeLabel,
+  dataCheckIssueTypeOptions,
+  type DataCheckIssueListQuery,
+} from '@causality/contracts';
 import { AppSelect } from '../../shared/controls/AppSelect';
 import { useListPageCorrection } from '../../shared/lists/useListQueryState';
 import { ListPagination } from '../../shared/pagination/ListPagination';
 import { DataCheckExpandedRow } from './DataCheckExpandedRow';
 import { DataCheckIssueSource } from './DataCheckIssueSource';
 import { getDataCheckIssues } from './dataMaintenanceApi';
-import {
-  dataCheckIssueTypeLabel,
-  dataCheckIssueTypeOptions,
-  type DataCheckQueryState,
-} from './useDataCheckQueryState';
+import type { DataCheckQueryState } from './useDataCheckQueryState';
 
 interface DataCheckIssueTableProps {
   snapshotId: string | null;
@@ -32,10 +32,7 @@ const statusOptions = [
   { value: 'handled' as const, label: '已处理' },
 ];
 
-const issueFilterOptions = [
-  { value: '' as const, label: '全部' },
-  ...dataCheckIssueTypeOptions.map(([value, label]) => ({ value, label })),
-];
+const issueFilterOptions = [{ value: '' as const, label: '全部' }, ...dataCheckIssueTypeOptions];
 
 function SeverityBadge({ severity }: { severity: 'error' | 'warning' }) {
   const label = severity === 'error' ? '错误' : '警告';

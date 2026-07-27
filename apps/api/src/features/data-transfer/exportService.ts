@@ -7,13 +7,11 @@ import type { Pool, PoolClient } from 'pg';
 
 import { openExportCsvWithDependencies, type ExportCsvStream } from './exportCsvStream.js';
 import {
-  ExportRequestError,
   isExportTokenFormat,
   PostgresExportRequestRepository,
   type ExportRequestRepository,
 } from './exportRequestRepository.js';
 import {
-  ExportScopeError,
   normalizeExportInput,
   PostgresExportScopeRepository,
   type ExportScopeRepository,
@@ -114,7 +112,6 @@ export class ExportService {
       return { available: true, expiresAt: request.expiresAt.toISOString() };
     } catch (error) {
       await rollback(client, transactionStarted);
-      if (error instanceof ExportRequestError || error instanceof ExportScopeError) throw error;
       throw error;
     } finally {
       client.release();

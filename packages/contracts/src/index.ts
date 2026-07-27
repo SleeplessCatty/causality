@@ -89,6 +89,12 @@ export {
 } from './data-checks/dataCheckSchemas.js';
 
 export {
+  dataCheckIssueTypeLabel,
+  dataCheckIssueTypeLabels,
+  dataCheckIssueTypeOptions,
+} from './data-checks/dataCheckIssuePresentation.js';
+
+export {
   MAX_EXPORT_START_EVENTS,
   exportAvailabilityResponseSchema,
   exportCountsSchema,
