@@ -829,7 +829,7 @@ GET  /api/data-transfers/imports/:batchId/records?type=event&page=1
   produced by one CSV record.
 - `registerDataTransferRoutes(app, pool, { importTimeoutMs = 300_000 })` accepts an injectable timeout for deterministic cancellation tests.
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 Use Fastify injection to assert:
 
@@ -839,7 +839,7 @@ Use Fastify injection to assert:
 - a request exceeding five minutes is aborted with no history;
 - import exceptions preserve the existing `{ code, message }` API shape.
 
-- [ ] **Step 2: Run route tests and verify failure**
+- [x] **Step 2: Run route tests and verify failure**
 
 Run:
 
@@ -849,7 +849,7 @@ pnpm --filter @causality/api test -- data-transfer-routes.test.ts
 
 Expected: FAIL because multipart and routes are not registered.
 
-- [ ] **Step 3: Register multipart once**
+- [x] **Step 3: Register multipart once**
 
 In `buildApp`, register:
 
@@ -865,11 +865,11 @@ void app.register(multipart, {
 
 Keep server-side byte counting from Task 2 as the authoritative second boundary.
 
-- [ ] **Step 4: Implement upload route**
+- [x] **Step 4: Implement upload route**
 
 Sanitize `basename(part.filename)` by removing control characters, reject empty names, create a five-minute `AbortController`, combine request-close and timeout signals, parse the stream, commit through `ImportService`, and return status 201.
 
-- [ ] **Step 5: Write failing history integration tests**
+- [x] **Step 5: Write failing history integration tests**
 
 Create more than 50 batches and details. Assert:
 
@@ -880,15 +880,15 @@ Create more than 50 batches and details. Assert:
 - detail schemas never expose internal record IDs;
 - text snapshots survive live record deletion.
 
-- [ ] **Step 6: Implement `PostgresImportHistoryRepository`**
+- [x] **Step 6: Implement `PostgresImportHistoryRepository`**
 
 Use the shared page-size and pagination helpers. Select only the requested batch and closed detail type. Parse JSON snapshots with the matching Zod discriminated union before returning them.
 
-- [ ] **Step 7: Register read routes and OpenAPI schemas**
+- [x] **Step 7: Register read routes and OpenAPI schemas**
 
 Use the shared contracts for query, params, 200, 400, 404, and 500 responses. Add `registerDataTransferRoutes(app, pool, options?)` to `app.ts`.
 
-- [ ] **Step 8: Run API tests**
+- [x] **Step 8: Run API tests**
 
 Run:
 
@@ -900,7 +900,7 @@ pnpm --filter @causality/api typecheck
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit locally**
+- [x] **Step 9: Commit locally**
 
 ```bash
 git add apps/api/src/app.ts apps/api/src/features/data-transfer apps/api/test/data-transfer-routes.test.ts apps/api/test/data-transfer-history.integration.test.ts apps/api/test/support/postgresTestContext.ts

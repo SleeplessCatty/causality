@@ -1,4 +1,5 @@
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import type { Pool } from 'pg';
@@ -16,6 +17,7 @@ import { registerCaseRoutes } from './features/cases/caseRoutes.js';
 import { registerCausalGraphRoutes } from './features/causal-graph/causalGraphRoutes.js';
 import { registerDataCheckRoutes } from './features/data-checks/dataCheckRoutes.js';
 import { registerSemanticRoutes } from './features/semantic/semanticRoutes.js';
+import { registerDataTransferRoutes } from './features/data-transfer/dataTransferRoutes.js';
 import {
   PostgresSemanticQueryContextRepository,
   SemanticQueryService,
@@ -34,6 +36,7 @@ interface BuildAppOptions {
   semanticWorkerUrl?: string;
   semanticQueryTimeoutMs?: number;
   semanticWorkerClient?: SemanticWorkerClient;
+  importTimeoutMs?: number;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -54,6 +57,14 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   void app.register(cors, {
     origin: options.corsOrigin ?? 'http://localhost:5173',
+  });
+
+  void app.register(multipart, {
+    limits: {
+      files: 1,
+      parts: 1,
+      fileSize: 20 * 1024 * 1024,
+    },
   });
 
   app.after(() => {
@@ -77,6 +88,11 @@ export function buildApp(options: BuildAppOptions = {}) {
       registerCausalGraphRoutes(app, options.databasePool);
       registerDataCheckRoutes(app, options.databasePool);
       registerSemanticRoutes(app, options.databasePool, semanticWorkerClient);
+      registerDataTransferRoutes(app, options.databasePool, {
+        ...(options.importTimeoutMs === undefined
+          ? {}
+          : { importTimeoutMs: options.importTimeoutMs }),
+      });
     }
 
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());
