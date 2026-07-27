@@ -120,13 +120,19 @@ describe('DataMaintenance', () => {
     renderMaintenance();
 
     const title = screen.getByRole('heading', { level: 1, name: '数据维护' });
-    const subtitle = screen.getByText('数据检查');
+    const subtitle = screen.getByText('检查数据质量问题并建议处理方案');
     const pageHeading = title.closest('.page-heading');
     expect(pageHeading).toBeTruthy();
     expect(pageHeading?.contains(subtitle)).toBe(true);
 
     const panel = await screen.findByRole('region', { name: '数据检查' });
     expect(within(panel).queryByRole('heading', { name: '数据检查' })).toBeNull();
+
+    const actions = panel.querySelector('.data-check-heading-actions');
+    const checkButton = actions?.querySelector('.data-check-run-button');
+    const checkStatus = within(panel).getByText('等待检查');
+    expect(actions?.firstElementChild).toBe(checkButton);
+    expect(actions?.lastElementChild).toBe(checkStatus);
   });
 
   it('shows the unified action, first-run state, and exactly three issue columns', async () => {

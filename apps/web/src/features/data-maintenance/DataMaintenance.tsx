@@ -41,7 +41,7 @@ export function DataMaintenance() {
       <div className="page-heading">
         <div>
           <h1>数据维护</h1>
-          <p>数据检查</p>
+          <p>检查数据质量问题并建议处理方案</p>
         </div>
       </div>
       <DataCheckPanel

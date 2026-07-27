@@ -69,6 +69,14 @@ export function DataCheckPanel({ latest, loading, error, checking, onCheck }: Da
     <section className="data-check-panel" aria-label="数据检查">
       <div className="data-check-panel-toolbar">
         <div className="data-check-heading-actions">
+          <button
+            className="data-check-run-button"
+            type="button"
+            onClick={onCheck}
+            disabled={checking}
+          >
+            {checking ? '检查中…' : '检查数据'}
+          </button>
           <span
             className={`data-check-task-state${running ? ' data-check-task-state--running' : ''}`}
             aria-live="polite"
@@ -81,14 +89,6 @@ export function DataCheckPanel({ latest, loading, error, checking, onCheck }: Da
                   ? '检查完成'
                   : '等待检查'}
           </span>
-          <button
-            className="data-check-run-button"
-            type="button"
-            onClick={onCheck}
-            disabled={checking}
-          >
-            {checking ? '检查中…' : '检查数据'}
-          </button>
         </div>
       </div>
 
