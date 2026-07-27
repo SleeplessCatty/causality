@@ -5,6 +5,7 @@ import type {
 } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
+import { openExportCsvWithDependencies, type ExportCsvStream } from './exportCsvStream.js';
 import {
   ExportRequestError,
   isExportTokenFormat,
@@ -118,6 +119,15 @@ export class ExportService {
     } finally {
       client.release();
     }
+  }
+
+  public openExportCsv(token: string, signal: AbortSignal): Promise<ExportCsvStream> {
+    return openExportCsvWithDependencies(token, signal, {
+      pool: this.pool,
+      scopeRepository: this.scopeRepository,
+      requestRepository: this.requestRepository,
+      now: this.now,
+    });
   }
 }
 

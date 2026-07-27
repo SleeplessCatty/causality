@@ -33,12 +33,8 @@ import {
   type ImportHistoryRepository,
 } from './importHistoryRepository.js';
 import { ImportService } from './importService.js';
-import {
-  ExportRequestError,
-} from './exportRequestRepository.js';
-import {
-  ExportScopeError,
-} from './exportScopeRepository.js';
+import { ExportRequestError } from './exportRequestRepository.js';
+import { ExportScopeError } from './exportScopeRepository.js';
 import {
   createExportService,
   ExportService,
@@ -217,6 +213,40 @@ export function registerDataTransferRoutes(
       try {
         return await exportService.checkExportAvailability(request.params.token);
       } catch (error) {
+        return sendExportError(error, reply);
+      }
+    },
+  );
+
+  routes.get(
+    '/api/data-transfers/exports/:token',
+    {
+      schema: {
+        tags: ['data-transfers'],
+        params: exportTokenParamsSchema,
+        response: {
+          200: z.any(),
+          400: apiErrorSchema,
+          410: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const controller = new AbortController();
+      const disconnectRequestAbort = connectRequestAbort(request, reply, controller);
+      try {
+        const exported = await exportService.openExportCsv(request.params.token, controller.signal);
+        exported.stream.once('close', () => {
+          void exported.close();
+        });
+        reply.raw.once('finish', disconnectRequestAbort);
+        return reply
+          .type('text/csv; charset=utf-8')
+          .header('Content-Disposition', `attachment; filename="${exported.filename}"`)
+          .send(exported.stream);
+      } catch (error) {
+        disconnectRequestAbort();
         return sendExportError(error, reply);
       }
     },

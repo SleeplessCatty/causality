@@ -19,7 +19,11 @@ export interface ExportRequestRepository {
     createdAt: Date,
     expiresAt: Date,
   ): Promise<string>;
-  read(client: PoolClient, rawToken: string): Promise<StoredExportRequest>;
+  read(
+    client: PoolClient,
+    rawToken: string,
+    options?: { forUpdate?: boolean },
+  ): Promise<StoredExportRequest>;
   deleteExpired(client: PoolClient, now: Date): Promise<number>;
 }
 
@@ -113,14 +117,19 @@ export class PostgresExportRequestRepository implements ExportRequestRepository 
     return rawToken;
   }
 
-  public async read(client: PoolClient, rawToken: string): Promise<StoredExportRequest> {
+  public async read(
+    client: PoolClient,
+    rawToken: string,
+    options: { forUpdate?: boolean } = {},
+  ): Promise<StoredExportRequest> {
     if (!isExportTokenFormat(rawToken)) {
       throw new ExportRequestError('EXPORT_TOKEN_INVALID', '导出令牌无效');
     }
     const result = await client.query<ExportRequestRow>(
       `select id, export_type, start_event_ids, direction, depth, created_at, expires_at
        from export_requests
-       where token_hash = $1`,
+       where token_hash = $1
+       ${options.forUpdate ? 'for update' : ''}`,
       [tokenHash(rawToken)],
     );
     const row = result.rows[0];
