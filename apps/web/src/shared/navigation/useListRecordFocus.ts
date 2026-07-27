@@ -7,9 +7,9 @@ export function listRecordDomId(recordId: string): string {
   return `list-record-${recordId}`;
 }
 
-export function useListRecordFocus(recordIds: readonly string[]): void {
+export function useListRecordFocus(recordIds: readonly string[], requestedFocusId?: string): void {
   const location = useLocation();
-  const focusId = getListFocusId(location.state);
+  const focusId = requestedFocusId ?? getListFocusId(location.state);
   const handledLocationKey = useRef<string | null>(null);
 
   useEffect(() => {

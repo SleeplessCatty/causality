@@ -33,6 +33,7 @@ function renderRoute(path: string, element: React.ReactNode, state?: Record<stri
       { path: routePath, element },
       { path: '/cases', element: <div>案例列表</div> },
       { path: '/cases/:caseId', element: <div>案例详情目标</div> },
+      { path: '/maintenance', element: <div>数据维护目标</div> },
     ],
     {
       initialEntries: [
@@ -412,6 +413,26 @@ describe('case pages', () => {
       notice: '修改已保存',
       listFocusId: detail.id,
     });
+  });
+
+  it('cancels a data-check case edit back to the open issue without rechecking', async () => {
+    const issueId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => response(detail)),
+    );
+    const router = renderRoute('/cases/:caseId/edit', <CaseEditPage />, {
+      dataCheckReturnPath: `/maintenance?status=open&issue=${issueId}`,
+      dataCheckSnapshotId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      dataCheckIssueId: issueId,
+      dataCheckReturnMode: 'cancel',
+    });
+
+    await screen.findByRole('textbox', { name: '案例内容' });
+    fireEvent.click(screen.getByRole('link', { name: '取消' }));
+    expect(await screen.findByText('数据维护目标')).toBeTruthy();
+    expect(router.state.location.search).toBe(`?status=open&issue=${issueId}`);
+    expect(router.state.location.search).not.toContain('recheck');
   });
 
   it('keeps enhanced case mode while paging and resets it when the search text changes', async () => {

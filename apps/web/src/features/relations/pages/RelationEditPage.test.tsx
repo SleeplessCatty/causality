@@ -64,6 +64,7 @@ describe('RelationEditPage', () => {
         { path: '/relations/:relationId/edit', element: <RelationEditPage /> },
         { path: '/relations/:relationId', element: <div>关系详情目标</div> },
         { path: '/relations', element: <div>关系列表</div> },
+        { path: '/maintenance', element: <div>数据维护目标</div> },
       ],
       {
         initialEntries: [
@@ -106,5 +107,57 @@ describe('RelationEditPage', () => {
       notice: '修改已保存',
       listFocusId: relationId,
     });
+  });
+
+  it('saves a data-check relation edit back to the issue with one recheck marker', async () => {
+    const issueId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === 'PUT') return response(detail);
+        if (url.includes('/pair-check')) {
+          return response({ sameDirection: null, reverseDirection: null });
+        }
+        if (url.startsWith(`/api/relations/${relationId}/cases?`)) {
+          return response({
+            items: [linkedCase, secondLinkedCase],
+            nextCursor: null,
+            hasMore: false,
+          });
+        }
+        return response(detail);
+      }),
+    );
+    const router = createMemoryRouter(
+      [
+        { path: '/relations/:relationId/edit', element: <RelationEditPage /> },
+        { path: '/maintenance', element: <div>数据维护目标</div> },
+      ],
+      {
+        initialEntries: [
+          {
+            pathname: `/relations/${relationId}/edit`,
+            state: {
+              dataCheckReturnPath: `/maintenance?issue=${issueId}`,
+              dataCheckSnapshotId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+              dataCheckIssueId: issueId,
+              dataCheckReturnMode: 'cancel',
+            },
+          },
+        ],
+      },
+    );
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await screen.findByRole('combobox', { name: '具体案例 1' });
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(await screen.findByText('数据维护目标')).toBeTruthy();
+    expect(router.state.location.search).toBe(`?issue=${issueId}&recheck=1`);
+    expect(router.state.location.state).toMatchObject({ dataCheckReturnMode: 'saved' });
   });
 });

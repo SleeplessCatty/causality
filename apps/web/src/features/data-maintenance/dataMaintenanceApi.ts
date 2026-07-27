@@ -1,11 +1,16 @@
 import {
+  dataCheckActionContextSchema,
+  dataCheckActionResponseSchema,
   dataCheckIssueListResponseSchema,
-  dataCheckIssueSchema,
   dataCheckLatestResponseSchema,
-  type DataCheckIssue,
+  dataCheckRecheckResponseSchema,
+  type DataCheckActionContext,
+  type DataCheckActionRequest,
+  type DataCheckActionResponse,
   type DataCheckIssueListQuery,
   type DataCheckIssueListResponse,
   type DataCheckLatestResponse,
+  type DataCheckRecheckResponse,
 } from '@causality/contracts';
 
 import { requestJson } from '../../shared/api/httpClient';
@@ -35,24 +40,39 @@ export async function getDataCheckIssues(
   );
 }
 
-export async function autoHandleDataCheckIssue(
-  id: string,
+export async function getDataCheckActionContext(
+  issueId: string,
   snapshotId: string,
-): Promise<DataCheckIssue> {
-  return dataCheckIssueSchema.parse(
-    await requestJson(`/api/data-checks/issues/${id}/auto-handle`, {
+  signal?: AbortSignal,
+): Promise<DataCheckActionContext> {
+  const parameters = new URLSearchParams({ snapshotId });
+  return dataCheckActionContextSchema.parse(
+    await requestJson(
+      `/api/data-checks/issues/${issueId}/action-context?${parameters}`,
+      {},
+      signal,
+    ),
+  );
+}
+
+export async function applyDataCheckAction(
+  issueId: string,
+  request: DataCheckActionRequest,
+): Promise<DataCheckActionResponse> {
+  return dataCheckActionResponseSchema.parse(
+    await requestJson(`/api/data-checks/issues/${issueId}/actions`, {
       method: 'POST',
-      body: JSON.stringify({ snapshotId }),
+      body: JSON.stringify(request),
     }),
   );
 }
 
-export async function manualHandleDataCheckIssue(
-  id: string,
+export async function recheckDataCheckIssue(
+  issueId: string,
   snapshotId: string,
-): Promise<DataCheckIssue> {
-  return dataCheckIssueSchema.parse(
-    await requestJson(`/api/data-checks/issues/${id}/manual-handle`, {
+): Promise<DataCheckRecheckResponse> {
+  return dataCheckRecheckResponseSchema.parse(
+    await requestJson(`/api/data-checks/issues/${issueId}/recheck`, {
       method: 'POST',
       body: JSON.stringify({ snapshotId }),
     }),

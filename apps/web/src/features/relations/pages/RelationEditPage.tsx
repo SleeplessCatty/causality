@@ -5,7 +5,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
   buildListPath,
   listFocusState,
-  resolveListReturnPath,
+  resolveRecordReturnTarget,
 } from '../../../shared/navigation/listReturn';
 import { getAllRelationCases, getRelation, replaceRelation } from '../api/relationApi';
 import { RelationForm } from '../components/RelationForm';
@@ -27,12 +27,14 @@ export function RelationEditPage() {
   });
   const casesPending = relation.isSuccess && relation.data.caseCount > 0 && linkedCases.isPending;
   const casesError = relation.isSuccess && relation.data.caseCount > 0 && linkedCases.isError;
-  const listReturnTo = resolveListReturnPath(
+  const returnTarget = resolveRecordReturnTarget(
     location.state,
     '/relations',
     relation.data?.listPage ?? 1,
   );
+  const listReturnTo = returnTarget.path;
   const focusState = listFocusState(relationId);
+  const cancelState = returnTarget.dataCheck ? location.state : focusState;
 
   if (relation.isPending || casesPending) return <div className="page-state">加载因果关系…</div>;
   if (relation.isError || casesError) {
@@ -53,10 +55,21 @@ export function RelationEditPage() {
       queryClient.invalidateQueries({ queryKey: ['relations', 'list'] }),
       queryClient.invalidateQueries({ queryKey: ['relations', 'pair-check'] }),
       queryClient.invalidateQueries({ queryKey: ['cases'] }),
+      queryClient.invalidateQueries({ queryKey: ['events'] }),
+      queryClient.invalidateQueries({ queryKey: ['causal-graph'] }),
     ]);
-    navigate(buildListPath('/relations', updated.listPage), {
-      state: { notice: '修改已保存', listFocusId: updated.id },
-    });
+    if (returnTarget.dataCheck) {
+      const savedState = {
+        ...(location.state as Record<string, unknown>),
+        dataCheckReturnMode: 'saved',
+      };
+      const savedTarget = resolveRecordReturnTarget(savedState, '/relations', updated.listPage);
+      navigate(savedTarget.path, { state: savedState });
+    } else {
+      navigate(buildListPath('/relations', updated.listPage), {
+        state: { notice: '修改已保存', listFocusId: updated.id },
+      });
+    }
   }
 
   return (
@@ -64,11 +77,11 @@ export function RelationEditPage() {
       className="event-editor-page relation-editor-page"
       aria-labelledby="edit-relation-title"
     >
-      <Link className="back-link" to={listReturnTo} state={focusState}>
+      <Link className="back-link" to={listReturnTo} state={cancelState}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
-        返回关系列表
+        {returnTarget.dataCheck ? '返回数据维护' : '返回关系列表'}
       </Link>
       <h1 id="edit-relation-title">编辑因果关系</h1>
       <RelationForm
@@ -87,7 +100,7 @@ export function RelationEditPage() {
         }}
         onSubmit={submit}
         cancelTo={listReturnTo}
-        cancelState={focusState}
+        cancelState={cancelState}
       />
     </section>
   );

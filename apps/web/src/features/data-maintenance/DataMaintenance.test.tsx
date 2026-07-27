@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
+  DataCheckActionContext,
+  DataCheckActionOption,
+  DataCheckActionRecord,
   DataCheckIssue,
   DataCheckIssueListResponse,
   DataCheckLatestResponse,
@@ -82,6 +85,27 @@ function renderMaintenance() {
   );
 }
 
+function renderMaintenanceRoute(initialEntry = '/maintenance', state?: Record<string, unknown>) {
+  const [pathname, search = ''] = initialEntry.split('?');
+  const router = createMemoryRouter(
+    [
+      { path: '/maintenance', element: <DataMaintenance /> },
+      { path: '/events/:eventId/edit', element: <div>事件编辑页</div> },
+      { path: '/cases/:caseId/edit', element: <div>案例编辑页</div> },
+      { path: '/relations/:relationId/edit', element: <div>关系编辑页</div> },
+    ],
+    {
+      initialEntries: [{ pathname: pathname!, search: search ? `?${search}` : '', state }],
+    },
+  );
+  render(
+    <AppProviders>
+      <RouterProvider router={router} />
+    </AppProviders>,
+  );
+  return router;
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return Promise.resolve({
     ok: status >= 200 && status < 300,
@@ -106,6 +130,90 @@ function baseFetch(latest: DataCheckLatestResponse = neverRun) {
     if (url.endsWith('/api/data-checks/latest')) return jsonResponse(latest);
     throw new Error(`Unexpected request: ${url}`);
   });
+}
+
+const firstRecordId = '11000000-0000-4000-8000-000000000001';
+const secondRecordId = '11000000-0000-4000-8000-000000000002';
+
+function action(
+  type: DataCheckActionOption['type'],
+  label: string,
+  overrides: Partial<DataCheckActionOption> = {},
+): DataCheckActionOption {
+  return {
+    type,
+    label,
+    keepId: null,
+    mergeId: null,
+    editPath: null,
+    impact: {
+      relationsMoved: 0,
+      relationsDeleted: 0,
+      relationCaseLinksMoved: 0,
+      relationCaseLinksDeleted: 0,
+      recordsDeleted: 0,
+    },
+    ...overrides,
+  };
+}
+
+function record(
+  id: string,
+  title: string,
+  overrides: Partial<DataCheckActionRecord> = {},
+): DataCheckActionRecord {
+  return {
+    id,
+    targetType: 'event',
+    title,
+    primaryText: `${title}主要内容`,
+    secondaryText: [`${title}补充内容`],
+    detailPath: `/events/${id}`,
+    relationCount: 2,
+    caseCount: 3,
+    ...overrides,
+  };
+}
+
+function context(
+  issueId: string,
+  overrides: Partial<DataCheckActionContext> = {},
+): DataCheckActionContext {
+  return {
+    snapshotId,
+    issueId,
+    issueType: 'duplicate_event_name',
+    status: 'open',
+    dialogKind: 'merge',
+    records: [record(firstRecordId, '记录 A'), record(secondRecordId, '记录 B')],
+    actions: [
+      action('merge', '保留 A，合并 B', {
+        keepId: firstRecordId,
+        mergeId: secondRecordId,
+        impact: {
+          relationsMoved: 4,
+          relationsDeleted: 1,
+          relationCaseLinksMoved: 2,
+          relationCaseLinksDeleted: 3,
+          recordsDeleted: 1,
+        },
+      }),
+      action('merge', '保留 B，合并 A', {
+        keepId: secondRecordId,
+        mergeId: firstRecordId,
+        impact: {
+          relationsMoved: 7,
+          relationsDeleted: 6,
+          relationCaseLinksMoved: 5,
+          relationCaseLinksDeleted: 4,
+          recordsDeleted: 1,
+        },
+      }),
+      action('ignore', '忽略此问题'),
+    ],
+    message: null,
+    ...overrides,
+  };
 }
 
 describe('DataMaintenance', () => {
@@ -382,7 +490,7 @@ describe('DataMaintenance', () => {
     );
   });
 
-  it('creates event links only when alias and keyword issue metadata contains an event id', async () => {
+  it('shows issue identifiers without deriving record navigation from issue metadata', async () => {
     const invalidAlias: DataCheckIssue = {
       ...issue('b1000000-0000-4000-8000-000000000010', 'manual'),
       issueType: 'invalid_alias_text',
@@ -427,18 +535,16 @@ describe('DataMaintenance', () => {
 
     await screen.findByText(invalidAlias.description);
     const table = screen.getByRole('table');
-    const links = within(table).getAllByRole('link');
-    expect(links).toHaveLength(1);
-    expect(links[0]?.getAttribute('href')).toBe('/events/11000000-0000-4000-8000-000000000010');
+    expect(within(table).queryAllByRole('link')).toHaveLength(0);
+    expect(within(table).getByText('11000000-0000-4000-8000-000000000010')).toBeTruthy();
     expect(within(table).getByText('11000000-0000-4000-8000-000000000011')).toBeTruthy();
     expect(within(table).getByText('51000000-0000-4000-8000-000000000013')).toBeTruthy();
   });
 
-  it('updates auto and manual action cells to handled without refreshing resource lists', async () => {
+  it('stops using legacy auto/manual action mode copy and endpoints', async () => {
     const autoIssue = issue('b1000000-0000-4000-8000-000000000001', 'auto');
     const manualIssue = issue('b1000000-0000-4000-8000-000000000002', 'manual');
-    const handledIds = new Set<string>();
-    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/api/health')) {
         return jsonResponse({ status: 'ok', service: 'causality-api' });
@@ -448,60 +554,24 @@ describe('DataMaintenance', () => {
       }
       if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
       if (url.includes('/api/data-checks/latest/issues')) {
-        return jsonResponse(
-          issuePage(
-            [autoIssue, manualIssue].map((current) =>
-              handledIds.has(current.id)
-                ? {
-                    ...current,
-                    status: 'handled',
-                    handledAt: '2026-07-23T09:10:00.000Z',
-                  }
-                : current,
-            ),
-          ),
-        );
-      }
-      if (url.endsWith('/auto-handle') && options?.method === 'POST') {
-        handledIds.add(autoIssue.id);
-        return jsonResponse({
-          ...autoIssue,
-          status: 'handled',
-          handledAt: '2026-07-23T09:10:00.000Z',
-        });
-      }
-      if (url.endsWith('/manual-handle') && options?.method === 'POST') {
-        handledIds.add(manualIssue.id);
-        return jsonResponse({
-          ...manualIssue,
-          status: 'handled',
-          handledAt: '2026-07-23T09:10:00.000Z',
-        });
+        return jsonResponse(issuePage([autoIssue, manualIssue]));
       }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
     renderMaintenance();
 
-    const autoRow = (await screen.findByText(autoIssue.description)).closest('tr')!;
-    fireEvent.click(within(autoRow).getByRole('button', { name: '自动处理' }));
-    await waitFor(() => expect(within(autoRow).getByText('已处理')).toBeTruthy());
-
-    const manualRow = screen.getByText(manualIssue.description).closest('tr')!;
-    fireEvent.click(within(manualRow).getByRole('button', { name: '手动处理' }));
-    await waitFor(() => expect(within(manualRow).getByText('已处理')).toBeTruthy());
-
+    expect(await screen.findAllByRole('button', { name: '操作' })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: '自动处理' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '手动处理' })).toBeNull();
     expect(
-      fetchMock.mock.calls.some(([input]) =>
-        /^\/api\/(events|relations|cases)/.test(String(input)),
-      ),
+      fetchMock.mock.calls.some(([input]) => /auto-handle|manual-handle/.test(String(input))),
     ).toBe(false);
   });
 
-  it('removes a handled issue from the open filter and refreshes pagination totals', async () => {
+  it('keeps the open filter URL-owned while offering the typed operation entry', async () => {
     const current = issue('b1000000-0000-4000-8000-000000000003', 'manual');
-    let handled = false;
-    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith('/api/health')) {
         return jsonResponse({ status: 'ok', service: 'causality-api' });
@@ -513,15 +583,7 @@ describe('DataMaintenance', () => {
       if (url.includes('/api/data-checks/latest/issues')) {
         const requestUrl = new URL(url, 'http://localhost');
         const openOnly = requestUrl.searchParams.get('status') === 'open';
-        return jsonResponse(issuePage(handled && openOnly ? [] : [current]));
-      }
-      if (url.endsWith('/manual-handle') && options?.method === 'POST') {
-        handled = true;
-        return jsonResponse({
-          ...current,
-          status: 'handled',
-          handledAt: '2026-07-23T09:10:00.000Z',
-        });
+        return jsonResponse(issuePage(openOnly ? [current] : [current]));
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -538,9 +600,452 @@ describe('DataMaintenance', () => {
     );
     await screen.findByText(current.description);
 
-    fireEvent.click(screen.getByRole('button', { name: '手动处理' }));
+    expect(screen.getByRole('button', { name: '操作' })).toBeTruthy();
+  });
 
-    await waitFor(() => expect(screen.queryByText(current.description)).toBeNull());
-    expect(screen.getByText(/共\s*0\s*条/u)).toBeTruthy();
+  it('derives page, filters, and issue modal from the URL and restores them with history', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000020', 'manual');
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/action-context')) return jsonResponse(context(current.id));
+      if (url.includes('/api/data-checks/latest/issues')) {
+        const requestUrl = new URL(url, 'http://localhost');
+        return jsonResponse(issuePage([current], Number(requestUrl.searchParams.get('page')), 2));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderMaintenanceRoute(
+      `/maintenance?page=2&severity=warning&issueType=cross_event_shared_alias&status=open&issue=${current.id}`,
+    );
+
+    expect(await screen.findByRole('dialog', { name: '处理检查问题' })).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([input]) => {
+        const url = String(input);
+        return (
+          url.includes('/latest/issues?page=2') &&
+          url.includes('severity=warning') &&
+          url.includes('issueType=cross_event_shared_alias') &&
+          url.includes('status=open')
+        );
+      }),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+    await waitFor(() => expect(router.state.location.search).not.toContain('issue='));
+    await router.navigate(-1);
+    expect(await screen.findByRole('dialog', { name: '处理检查问题' })).toBeTruthy();
+    expect(router.state.location.search).toContain('page=2');
+    expect(router.state.location.search).toContain('severity=warning');
+    await router.navigate(1);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(router.state.location.search).toContain('page=2');
+  });
+
+  it('scrolls the current issue row into view after returning from edit', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000022', 'manual');
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/action-context')) return jsonResponse(context(current.id));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenanceRoute(`/maintenance?issue=${current.id}`);
+
+    await screen.findByText(current.description);
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' }));
+  });
+
+  it('normalizes invalid URL values and resets page when a filter changes', async () => {
+    vi.stubGlobal('fetch', baseFetch(succeeded));
+    const router = renderMaintenanceRoute(
+      '/maintenance?page=wat&severity=critical&issueType=unknown&status=stale&issue=bad',
+    );
+
+    await waitFor(() => expect(router.state.location.search).toBe(''));
+    fireEvent.click(screen.getByRole('button', { name: '严重程度' }));
+    fireEvent.click(screen.getByRole('option', { name: '警告' }));
+    await waitFor(() => expect(router.state.location.search).toBe('?severity=warning'));
+  });
+
+  it('resets page and closes the old issue when a new snapshot arrives while retaining filters', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000021', 'manual');
+    let latestCalls = 0;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) {
+        latestCalls += 1;
+        return jsonResponse(
+          latestCalls === 1
+            ? { ...succeeded, task: { ...succeeded.task, status: 'running' } }
+            : {
+                ...succeeded,
+                snapshot: {
+                  ...succeeded.snapshot!,
+                  snapshotId: 'a1000000-0000-4000-8000-000000000099',
+                },
+              },
+        );
+      }
+      if (url.includes('/action-context')) return jsonResponse(context(current.id));
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current], 2, 2));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderMaintenanceRoute(
+      `/maintenance?page=2&severity=warning&issue=${current.id}`,
+    );
+
+    await screen.findByText('最近成功检查');
+    await waitFor(() => {
+      expect(router.state.location.search).toBe('?severity=warning');
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('uses the same secondary 操作 button for every open row and keeps handled rows passive', async () => {
+    const autoIssue = issue('b1000000-0000-4000-8000-000000000030', 'auto');
+    const manualIssue = issue('b1000000-0000-4000-8000-000000000031', 'manual');
+    const handledIssue = issue('b1000000-0000-4000-8000-000000000032', 'manual', 'handled');
+    const fetchMock = baseFetch(succeeded);
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues'))
+        return jsonResponse(issuePage([autoIssue, manualIssue, handledIssue]));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenanceRoute();
+
+    const buttons = await screen.findAllByRole('button', { name: '操作' });
+    expect(buttons).toHaveLength(2);
+    expect(buttons.every((button) => button.className === 'button button--secondary')).toBe(true);
+    const handledRow = screen.getAllByText(handledIssue.description).at(-1)!.closest('tr')!;
+    expect(within(handledRow).getByText('已处理')).toBeTruthy();
+    expect(screen.getAllByRole('columnheader')).toHaveLength(3);
+  });
+
+  it('loads merge context, starts without a direction, and shows only selected server impact', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000040', 'manual');
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/action-context')) return jsonResponse(context(current.id));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenanceRoute();
+    fireEvent.click(await screen.findByRole('button', { name: '操作' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '处理检查问题' });
+    expect((await within(dialog).findAllByText('记录 A')).length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText('记录 B').length).toBeGreaterThan(0);
+    expect(dialog.querySelectorAll('.overflow-text')).not.toHaveLength(0);
+    expect(within(dialog).getAllByText('2 条关系 · 3 个案例')).toHaveLength(2);
+    expect(
+      within(dialog)
+        .getAllByRole('radio')
+        .every((radio) => !(radio as HTMLInputElement).checked),
+    ).toBe(true);
+    expect(
+      (within(dialog).getByRole('button', { name: '确认处理' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    fireEvent.click(within(dialog).getByRole('radio', { name: '保留 A，合并 B' }));
+    expect(within(dialog).getByText(/移动关系 4 条/)).toBeTruthy();
+    expect(within(dialog).queryByText(/移动关系 7 条/)).toBeNull();
+    fireEvent.click(within(dialog).getByRole('radio', { name: '保留 B，合并 A' }));
+    expect(within(dialog).getByText(/移动关系 7 条/)).toBeTruthy();
+    expect(within(dialog).queryByText(/移动关系 4 条/)).toBeNull();
+    expect(
+      (within(dialog).getByRole('button', { name: '确认处理' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      within(dialog)
+        .getByRole('button', { name: '忽略此问题' })
+        .closest('.data-check-dialog__ignore'),
+    ).toBeTruthy();
+    expect(document.activeElement).not.toBe(
+      within(dialog).getByRole('button', { name: '忽略此问题' }),
+    );
+  });
+
+  it.each([
+    [
+      'cleanup',
+      action('cleanup', '清理失效数据'),
+      '清理失效数据',
+      '确认清理检查发现的失效或重复数据。',
+    ],
+    [
+      'delete_relation',
+      action('delete_relation', '删除异常关系'),
+      '删除异常关系',
+      '此操作会删除异常因果关系，请确认后继续。',
+    ],
+    [
+      'repair_timestamp',
+      action('repair_timestamp', '修复时间字段'),
+      '修复时间字段',
+      '将依据服务器提供的修复方案校正时间字段。',
+    ],
+    [
+      'edit',
+      action('open_edit', '打开详情编辑', { editPath: `/events/${firstRecordId}/edit` }),
+      '打开详情编辑',
+      '请打开详情编辑并保存更正，返回后会重新检查此问题。',
+    ],
+    [
+      'ignore_only',
+      action('open_edit', '仍可安全编辑', { editPath: `/events/${firstRecordId}/edit` }),
+      '仍可安全编辑',
+      '当前问题没有自动修复方案，可忽略或使用服务器提供的安全入口。',
+    ],
+  ] as const)(
+    'renders server actions for %s contexts, including safe edit in ignore_only',
+    async (dialogKind, currentAction, label, expectedCopy) => {
+      const current = issue('b1000000-0000-4000-8000-000000000041', 'manual');
+      const fetchMock = vi.fn((input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/api/health'))
+          return jsonResponse({ status: 'ok', service: 'causality-api' });
+        if (url.endsWith('/api/ready'))
+          return jsonResponse({ status: 'ready', database: 'available' });
+        if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+        if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+        if (url.includes('/action-context'))
+          return jsonResponse(
+            context(current.id, {
+              dialogKind,
+              records: [record(firstRecordId, '当前记录')],
+              actions: [currentAction, action('ignore', '忽略此问题')],
+            }),
+          );
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      renderMaintenanceRoute();
+      fireEvent.click(await screen.findByRole('button', { name: '操作' }));
+
+      expect(await screen.findByRole('button', { name: label })).toBeTruthy();
+      expect(screen.getByText(expectedCopy)).toBeTruthy();
+    },
+  );
+
+  it('never initially focuses ignore when it is the only server action', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000045', 'manual');
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/action-context'))
+        return jsonResponse(
+          context(current.id, {
+            dialogKind: 'ignore_only',
+            records: [record(firstRecordId, '当前记录')],
+            actions: [action('ignore', '忽略此问题')],
+          }),
+        );
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenanceRoute();
+    fireEvent.click(await screen.findByRole('button', { name: '操作' }));
+
+    const ignore = await screen.findByRole('button', { name: '忽略此问题' });
+    expect(ignore.closest('.data-check-dialog__ignore')).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: '关闭' })),
+    );
+  });
+
+  it('opens only the server-provided edit path with a maintenance return state', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000046', 'manual');
+    const editPath = `/events/${firstRecordId}/edit`;
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/action-context'))
+        return jsonResponse(
+          context(current.id, {
+            dialogKind: 'ignore_only',
+            records: [record(firstRecordId, '当前记录')],
+            actions: [action('open_edit', '打开详情编辑', { editPath })],
+          }),
+        );
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderMaintenanceRoute('/maintenance?severity=warning');
+    fireEvent.click(await screen.findByRole('button', { name: '操作' }));
+    fireEvent.click(await screen.findByRole('button', { name: '打开详情编辑' }));
+
+    expect(await screen.findByText('事件编辑页')).toBeTruthy();
+    expect(router.state.location.pathname).toBe(editPath);
+    expect(router.state.location.state).toEqual({
+      dataCheckReturnPath: `/maintenance?severity=warning&issue=${current.id}`,
+      dataCheckSnapshotId: snapshotId,
+      dataCheckIssueId: current.id,
+      dataCheckReturnMode: 'cancel',
+    });
+  });
+
+  it('shows a stale server message with reload and never fabricates an edit action', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000042', 'manual');
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/action-context'))
+        return jsonResponse(
+          context(current.id, {
+            dialogKind: 'edit',
+            records: [record(firstRecordId, '损坏记录')],
+            actions: [],
+            message: '当前记录不符合严格详情页加载约束，暂时无法打开编辑页',
+          }),
+        );
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenanceRoute();
+    fireEvent.click(await screen.findByRole('button', { name: '操作' }));
+
+    expect(
+      await screen.findByText('当前记录不符合严格详情页加载约束，暂时无法打开编辑页'),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新加载' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /编辑/ })).toBeNull();
+  });
+
+  it('locks Escape and backdrop while an action is pending, then invalidates affected data', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000043', 'manual');
+    let resolveAction!: (value: Response) => void;
+    const actionResponse = new Promise<Response>((resolve) => {
+      resolveAction = resolve;
+    });
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/action-context'))
+        return jsonResponse(
+          context(current.id, {
+            dialogKind: 'cleanup',
+            records: [record(firstRecordId, '失效数据')],
+            actions: [action('cleanup', '清理失效数据')],
+          }),
+        );
+      if (url.includes('/actions') && options?.method === 'POST') return actionResponse;
+      if (/^\/api\/(events|cases|relations)/.test(url)) return jsonResponse({});
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenanceRoute();
+    fireEvent.click(await screen.findByRole('button', { name: '操作' }));
+    fireEvent.click(await screen.findByRole('button', { name: '清理失效数据' }));
+    await screen.findByRole('button', { name: '处理中…' });
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.mouseDown(document.querySelector('.delete-dialog-backdrop')!);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+
+    resolveAction(
+      await jsonResponse({
+        issue: { ...current, status: 'handled', handledAt: '2026-07-23T09:10:00.000Z' },
+        affectedEventIds: [firstRecordId],
+        affectedCaseIds: ['21000000-0000-4000-8000-000000000001'],
+        affectedRelationIds: ['31000000-0000-4000-8000-000000000001'],
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/latest/issues'))).toBe(
+      true,
+    );
+  });
+
+  it('consumes a saved edit recheck marker once with replace and keeps the issue open', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000044', 'manual');
+    let rechecks = 0;
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/recheck') && options?.method === 'POST') {
+        rechecks += 1;
+        return jsonResponse({ status: 'open', issue: current, context: context(current.id) });
+      }
+      if (url.includes('/action-context')) return jsonResponse(context(current.id));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderMaintenanceRoute(
+      `/maintenance?severity=warning&issue=${current.id}&recheck=1`,
+      {
+        dataCheckReturnPath: `/maintenance?severity=warning&issue=${current.id}`,
+        dataCheckSnapshotId: snapshotId,
+        dataCheckIssueId: current.id,
+        dataCheckReturnMode: 'saved',
+      },
+    );
+
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    await waitFor(() => expect(rechecks).toBe(1));
+    expect(router.state.location.search).toBe(`?severity=warning&issue=${current.id}`);
+    await router.navigate(router.state.location, { replace: true });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(rechecks).toBe(1);
   });
 });

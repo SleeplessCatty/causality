@@ -2,6 +2,7 @@ import { Link } from 'react-router';
 
 import type { DataCheckLatestResponse, DataCheckSnapshotSummary } from '@causality/contracts';
 import { DataCheckIssueTable } from './DataCheckIssueTable';
+import type { DataCheckQueryState } from './useDataCheckQueryState';
 
 interface DataCheckPanelProps {
   latest: DataCheckLatestResponse | undefined;
@@ -9,6 +10,7 @@ interface DataCheckPanelProps {
   error: string | null;
   checking: boolean;
   onCheck: () => void;
+  queryState: DataCheckQueryState;
 }
 
 function formatDateTime(value: string): string {
@@ -75,7 +77,14 @@ function semanticStatusLabel(snapshot: DataCheckSnapshotSummary): string {
   }
 }
 
-export function DataCheckPanel({ latest, loading, error, checking, onCheck }: DataCheckPanelProps) {
+export function DataCheckPanel({
+  latest,
+  loading,
+  error,
+  checking,
+  onCheck,
+  queryState,
+}: DataCheckPanelProps) {
   const snapshot = latest?.snapshot ?? null;
   const running = latest?.task.status === 'running';
   return (
@@ -141,7 +150,7 @@ export function DataCheckPanel({ latest, loading, error, checking, onCheck }: Da
         </div>
       ) : null}
 
-      <DataCheckIssueTable snapshotId={snapshot?.snapshotId ?? null} />
+      <DataCheckIssueTable snapshotId={snapshot?.snapshotId ?? null} queryState={queryState} />
     </section>
   );
 }
