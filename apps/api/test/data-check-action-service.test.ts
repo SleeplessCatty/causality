@@ -14,7 +14,10 @@ import {
   getDataCheckIssueEvaluator,
   issueEvaluatorRegistry,
 } from '../src/features/data-checks/dataCheckIssueEvaluator.js';
-import { assertMergePairMembership } from '../src/features/data-checks/dataCheckActionService.js';
+import {
+  assertMergePairMembership,
+  dataCheckImpactEquals,
+} from '../src/features/data-checks/dataCheckActionService.js';
 
 const snapshotId = 'a1000000-0000-4000-8000-000000000001';
 const issueId = 'b1000000-0000-4000-8000-000000000001';
@@ -143,5 +146,20 @@ describe('data-check action service authorization', () => {
       expect.objectContaining({ type: 'cleanup', actionKey: first }),
       expect.objectContaining({ type: 'ignore', actionKey: null }),
     ]);
+  });
+
+  it('compares every confirmed impact dimension exactly', () => {
+    const impact = {
+      relationsMoved: 1,
+      relationsDeleted: 2,
+      relationCaseLinksMoved: 3,
+      relationCaseLinksDeleted: 4,
+      recordsDeleted: 1,
+      recordsUpdated: 0,
+    };
+    expect(dataCheckImpactEquals(impact, { ...impact })).toBe(true);
+    for (const key of Object.keys(impact) as (keyof typeof impact)[]) {
+      expect(dataCheckImpactEquals(impact, { ...impact, [key]: impact[key] + 1 })).toBe(false);
+    }
   });
 });

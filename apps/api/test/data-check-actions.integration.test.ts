@@ -170,6 +170,38 @@ describe.sequential('typed data-check governance actions', () => {
     });
   }
 
+  async function recordExists(
+    table: 'abstract_events' | 'concrete_cases' | 'causal_relations',
+    id: string,
+  ): Promise<boolean> {
+    const result = await pool!.query<{ exists: boolean }>(
+      `select exists(select 1 from ${table} where id = $1) as exists`,
+      [id],
+    );
+    return result.rows[0]?.exists ?? false;
+  }
+
+  async function issueStatus(id: string): Promise<string | undefined> {
+    const result = await pool!.query<{ status: string }>(
+      `select status from data_check_issues where id = $1`,
+      [id],
+    );
+    return result.rows[0]?.status;
+  }
+
+  async function duplicateRelationCaseLinkCount(): Promise<number> {
+    const result = await pool!.query<{ count: number }>(
+      `select count(*)::int as count
+       from (
+         select causal_relation_id, concrete_case_id
+         from causal_relation_cases
+         group by causal_relation_id, concrete_case_id
+         having count(*) > 1
+       ) duplicate_links`,
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
   it('returns refreshed server-authorized context and closes handled or deleted targets', async () => {
     await insertEvents();
     const changedIssue = 'b2000000-0000-4000-8000-000000000001';
@@ -297,6 +329,100 @@ describe.sequential('typed data-check governance actions', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: 'DATA_CHECK_ACTION_CONFLICT' });
   });
+
+  it.each(['name', 'alias', 'keyword', 'relation', 'case_link'] as const)(
+    'invalidates event-merge authorization after a %s change',
+    async (changedPart) => {
+      await insertEvents();
+      if (changedPart === 'case_link') {
+        await pool!.query(
+          `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+           values ($1, $2, $3, 50)`,
+          [relationA, eventA, eventC],
+        );
+        await pool!.query(`insert into concrete_cases (id, content) values ($1, '新增关联案例')`, [
+          caseA,
+        ]);
+      }
+      const issueIdByPart = {
+        name: 'b2000000-0000-4000-8000-000000000070',
+        alias: 'b2000000-0000-4000-8000-000000000071',
+        keyword: 'b2000000-0000-4000-8000-000000000072',
+        relation: 'b2000000-0000-4000-8000-000000000073',
+        case_link: 'b2000000-0000-4000-8000-000000000074',
+      } as const;
+      const issueId = issueIdByPart[changedPart];
+      await currentIssue({
+        issueId,
+        issueType: 'cross_event_shared_alias',
+        targetType: 'event',
+        targetId: eventA,
+        relatedId: eventB,
+      });
+      const actionContext = (
+        await context!.app.inject({
+          method: 'GET',
+          url: `/api/data-checks/issues/${issueId}/action-context?snapshotId=${snapshotId}`,
+        })
+      ).json<DataCheckActionContext>();
+      const merge = actionContext.actions.find(
+        (option) =>
+          option.type === 'merge' && option.keepId === eventA && option.mergeId === eventB,
+      );
+      expect(merge?.actionKey).toMatch(/^[0-9a-f]{64}$/);
+
+      switch (changedPart) {
+        case 'name':
+          await pool!.query(`update abstract_events set name = '变化后的事件名' where id = $1`, [
+            eventA,
+          ]);
+          break;
+        case 'alias':
+          await pool!.query(
+            `insert into event_aliases (event_id, alias) values ($1, '新增事件别名')`,
+            [eventA],
+          );
+          break;
+        case 'keyword':
+          await pool!.query(
+            `insert into event_keywords (event_id, keyword, position)
+             values ($1, '新增关键词', 1)`,
+            [eventA],
+          );
+          break;
+        case 'relation':
+          await pool!.query(
+            `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+             values ($1, $2, $3, 50)`,
+            [relationA, eventA, eventC],
+          );
+          break;
+        case 'case_link':
+          await pool!.query(
+            `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+             values ($1, $2)`,
+            [relationA, caseA],
+          );
+          break;
+      }
+
+      const response = await context!.app.inject({
+        method: 'POST',
+        url: `/api/data-checks/issues/${issueId}/actions`,
+        payload: {
+          type: 'merge',
+          snapshotId,
+          keepId: eventA,
+          mergeId: eventB,
+          actionKey: merge!.actionKey,
+        },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ code: 'DATA_CHECK_ACTION_CONFLICT' });
+      expect(await issueStatus(issueId)).toBe('open');
+      expect(await recordExists('abstract_events', eventB)).toBe(true);
+    },
+  );
 
   it('disables stale actions until the next full check', async () => {
     await pool!.query(
@@ -681,6 +807,28 @@ describe.sequential('typed data-check governance actions', () => {
         relatedId: eventB,
       });
 
+      const actionContext = (
+        await context!.app.inject({
+          method: 'GET',
+          url: `/api/data-checks/issues/${issueId}/action-context?snapshotId=${snapshotId}`,
+        })
+      ).json<DataCheckActionContext>();
+      expect(
+        actionContext.actions.find(
+          (option) =>
+            option.type === 'merge' && option.keepId === keepId && option.mergeId === mergeId,
+        ),
+      ).toMatchObject({
+        impact: {
+          relationsMoved: 2,
+          relationsDeleted: 2,
+          relationCaseLinksMoved: 1,
+          relationCaseLinksDeleted: 2,
+          recordsDeleted: 1,
+          recordsUpdated: 0,
+        },
+      });
+
       const response = await postAction(issueId, {
         type: 'merge',
         snapshotId,
@@ -699,6 +847,8 @@ describe.sequential('typed data-check governance actions', () => {
           relationE,
         ]),
       });
+      expect(await issueStatus(issueId)).toBe('handled');
+      expect(await recordExists('abstract_events', mergeId)).toBe(false);
       expect(
         (
           await pool!.query(
@@ -707,6 +857,18 @@ describe.sequential('typed data-check governance actions', () => {
           )
         ).rows,
       ).toEqual([{ id: keepId }]);
+      expect(
+        Number(
+          (
+            await pool!.query(
+              `select count(*)::int as count
+               from causal_relations
+               where cause_event_id = $1 or effect_event_id = $1`,
+              [mergeId],
+            )
+          ).rows[0]?.count,
+        ),
+      ).toBe(0);
       expect(
         await pool!.query(
           `select count(*)::int as count from causal_relations
@@ -726,6 +888,23 @@ describe.sequential('typed data-check governance actions', () => {
         rows: [{ count: 3 }],
       });
       expect(
+        Number(
+          (
+            await pool!.query(
+              `select count(*)::int as count
+               from (
+                 select normalized_alias
+                 from event_aliases
+                 where event_id = $1
+                 group by normalized_alias
+                 having count(*) > 1
+               ) duplicate_aliases`,
+              [keepId],
+            )
+          ).rows[0]?.count,
+        ),
+      ).toBe(0);
+      expect(
         (
           await pool!.query(
             `select position from event_keywords where event_id = $1 order by position`,
@@ -736,84 +915,224 @@ describe.sequential('typed data-check governance actions', () => {
     },
   );
 
-  it('merges duplicate case and relation links with deduplication', async () => {
+  it.each(['alias', 'keyword'] as const)(
+    'rolls back the whole event merge when combined %s values exceed 20',
+    async (valueType) => {
+      await insertEvents();
+      if (valueType === 'alias') {
+        await pool!.query(
+          `insert into event_aliases (event_id, alias)
+           select $1::uuid, '保留别名' || number from generate_series(1, 10) number
+           union all
+           select $2::uuid, '合并别名' || number from generate_series(1, 10) number`,
+          [eventA, eventB],
+        );
+      } else {
+        await pool!.query(
+          `insert into event_keywords (event_id, keyword, position)
+           select $1::uuid, '保留关键词' || number, number from generate_series(1, 11) number
+           union all
+           select $2::uuid, '合并关键词' || number, number from generate_series(1, 10) number`,
+          [eventA, eventB],
+        );
+      }
+      await pool!.query(
+        `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+         values ($1, $2, $3, 50)`,
+        [relationA, eventB, eventC],
+      );
+      const issueId =
+        valueType === 'alias'
+          ? 'b2000000-0000-4000-8000-000000000075'
+          : 'b2000000-0000-4000-8000-000000000076';
+      await currentIssue({
+        issueId,
+        issueType: 'cross_event_shared_alias',
+        targetType: 'event',
+        targetId: eventA,
+        relatedId: eventB,
+      });
+
+      const response = await postAction(issueId, {
+        type: 'merge',
+        snapshotId,
+        keepId: eventA,
+        mergeId: eventB,
+      });
+      expect(response.statusCode).toBe(409);
+      expect(await issueStatus(issueId)).toBe('open');
+      expect(await recordExists('abstract_events', eventB)).toBe(true);
+      expect(
+        await pool!.query(
+          `select cause_event_id::text, effect_event_id::text
+           from causal_relations
+           where id = $1`,
+          [relationA],
+        ),
+      ).toMatchObject({ rows: [{ cause_event_id: eventB, effect_event_id: eventC }] });
+    },
+  );
+
+  it('rolls back relation migration and issue handling after a forced late exception', async () => {
     await insertEvents();
     await pool!.query(
-      `insert into concrete_cases (id, content) values
-       ($1, '重复案例'), ($2, '重复案例')`,
-      [caseA, caseB],
+      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
+       values ($1, $2, $3, 50)`,
+      [relationA, eventB, eventC],
     );
-    await pool!.query(
-      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence) values
-       ($1, $2, $3, 50), ($4, $2, $5, 50), ($6, $2, $3, 40)`,
-      [relationA, eventA, eventC, relationB, eventD, relationC],
-    );
-    await pool!.query(
-      `insert into causal_relation_cases (causal_relation_id, concrete_case_id) values
-       ($1, $2), ($1, $3), ($4, $3), ($5, $2), ($6, $3)`,
-      [relationA, caseA, caseB, relationB, relationC, relationC],
-    );
-
-    const caseIssue = 'b2000000-0000-4000-8000-000000000030';
+    const issueId = 'b2000000-0000-4000-8000-000000000077';
     await currentIssue({
-      issueId: caseIssue,
-      issueType: 'duplicate_case_content',
-      targetType: 'case',
-      targetId: caseA,
-      relatedId: caseB,
+      issueId,
+      issueType: 'cross_event_shared_alias',
+      targetType: 'event',
+      targetId: eventA,
+      relatedId: eventB,
     });
-    expect(
-      (
-        await postAction(caseIssue, {
-          type: 'merge',
-          snapshotId,
-          keepId: caseA,
-          mergeId: caseB,
-        })
-      ).statusCode,
-    ).toBe(200);
-    expect(
-      (await pool!.query(`select count(*)::int as count from concrete_cases`)).rows[0]?.count,
-    ).toBe(1);
-    expect(
-      (
-        await pool!.query(
-          `select causal_relation_id::text as relation_id
-           from causal_relation_cases where concrete_case_id = $1 order by causal_relation_id`,
-          [caseA],
-        )
-      ).rows,
-    ).toEqual([{ relation_id: relationA }, { relation_id: relationB }, { relation_id: relationC }]);
+    await pool!.query(`
+      create function fail_late_event_merge() returns trigger language plpgsql as $$
+      begin
+        if old.id = '${eventB}'::uuid then
+          raise exception 'forced late merge failure';
+        end if;
+        return old;
+      end
+      $$;
+      create trigger fail_late_event_merge_trigger
+      before delete on abstract_events
+      for each row execute function fail_late_event_merge();
+    `);
 
-    await pool!.query(`delete from data_check_issues`);
-    const relationIssue = 'b2000000-0000-4000-8000-000000000031';
-    await currentIssue({
-      issueId: relationIssue,
-      issueType: 'duplicate_relation_direction',
-      targetType: 'relation',
-      targetId: relationA,
-      relatedId: relationC,
+    const response = await postAction(issueId, {
+      type: 'merge',
+      snapshotId,
+      keepId: eventA,
+      mergeId: eventB,
     });
+    await pool!.query(`
+      drop trigger fail_late_event_merge_trigger on abstract_events;
+      drop function fail_late_event_merge();
+    `);
+
+    expect(response.statusCode).toBe(500);
+    expect(await issueStatus(issueId)).toBe('open');
+    expect(await recordExists('abstract_events', eventB)).toBe(true);
     expect(
-      (
-        await postAction(relationIssue, {
-          type: 'merge',
-          snapshotId,
-          keepId: relationA,
-          mergeId: relationC,
-        })
-      ).statusCode,
-    ).toBe(200);
-    expect(
-      (
-        await pool!.query(
-          `select causal_relation_id::text as relation_id
-           from causal_relation_cases where concrete_case_id = $1 order by causal_relation_id`,
-          [caseA],
-        )
-      ).rows,
-    ).toEqual([{ relation_id: relationA }, { relation_id: relationB }]);
+      await pool!.query(
+        `select cause_event_id::text, effect_event_id::text
+         from causal_relations
+         where id = $1`,
+        [relationA],
+      ),
+    ).toMatchObject({ rows: [{ cause_event_id: eventB, effect_event_id: eventC }] });
   });
+
+  it.each([
+    [caseA, caseB, relationA, relationC],
+    [caseB, caseA, relationC, relationA],
+  ] as const)(
+    'merges cases and same-direction relations in either explicit direction',
+    async (keepCaseId, mergeCaseId, keepRelationId, mergeRelationId) => {
+      await insertEvents();
+      await pool!.query(
+        `insert into concrete_cases (id, content) values
+       ($1, '重复案例'), ($2, '重复案例')`,
+        [caseA, caseB],
+      );
+      await pool!.query(
+        `insert into causal_relations (id, cause_event_id, effect_event_id, confidence) values
+       ($1, $2, $3, 50), ($4, $2, $5, 50), ($6, $2, $3, 40)`,
+        [relationA, eventA, eventC, relationB, eventD, relationC],
+      );
+      await pool!.query(
+        `insert into causal_relation_cases (causal_relation_id, concrete_case_id) values
+       ($1, $2), ($1, $3), ($4, $3), ($5, $2), ($6, $3)`,
+        [relationA, caseA, caseB, relationB, relationC, relationC],
+      );
+
+      const caseIssue =
+        keepCaseId === caseA
+          ? 'b2000000-0000-4000-8000-000000000030'
+          : 'b2000000-0000-4000-8000-000000000032';
+      await currentIssue({
+        issueId: caseIssue,
+        issueType: 'duplicate_case_content',
+        targetType: 'case',
+        targetId: caseA,
+        relatedId: caseB,
+      });
+      expect(
+        (
+          await postAction(caseIssue, {
+            type: 'merge',
+            snapshotId,
+            keepId: keepCaseId,
+            mergeId: mergeCaseId,
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(await recordExists('concrete_cases', mergeCaseId)).toBe(false);
+      expect(await issueStatus(caseIssue)).toBe('handled');
+      expect(await duplicateRelationCaseLinkCount()).toBe(0);
+      expect(
+        (
+          await pool!.query(
+            `select causal_relation_id::text as relation_id
+           from causal_relation_cases where concrete_case_id = $1 order by causal_relation_id`,
+            [keepCaseId],
+          )
+        ).rows,
+      ).toEqual([
+        { relation_id: relationA },
+        { relation_id: relationB },
+        { relation_id: relationC },
+      ]);
+
+      await pool!.query(`delete from data_check_issues`);
+      const relationIssue =
+        keepRelationId === relationA
+          ? 'b2000000-0000-4000-8000-000000000031'
+          : 'b2000000-0000-4000-8000-000000000033';
+      await currentIssue({
+        issueId: relationIssue,
+        issueType: 'duplicate_relation_direction',
+        targetType: 'relation',
+        targetId: relationA,
+        relatedId: relationC,
+      });
+      const keptBefore = await pool!.query<{
+        cause_event_id: string;
+        effect_event_id: string;
+        confidence: number;
+        description: string | null;
+      }>(
+        `select cause_event_id::text, effect_event_id::text, confidence, description
+       from causal_relations
+       where id = $1`,
+        [keepRelationId],
+      );
+      expect(
+        (
+          await postAction(relationIssue, {
+            type: 'merge',
+            snapshotId,
+            keepId: keepRelationId,
+            mergeId: mergeRelationId,
+          })
+        ).statusCode,
+      ).toBe(200);
+      expect(await recordExists('causal_relations', mergeRelationId)).toBe(false);
+      expect(await issueStatus(relationIssue)).toBe('handled');
+      expect(await duplicateRelationCaseLinkCount()).toBe(0);
+      expect(
+        await pool!.query(
+          `select cause_event_id::text, effect_event_id::text, confidence, description
+         from causal_relations
+         where id = $1`,
+          [keepRelationId],
+        ),
+      ).toMatchObject({ rows: keptBefore.rows });
+    },
+  );
 
   it('serializes opposite merge directions and rolls back stale membership', async () => {
     await insertEvents();

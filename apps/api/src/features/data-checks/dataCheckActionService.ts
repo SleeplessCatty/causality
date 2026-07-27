@@ -1,5 +1,7 @@
 import type {
   DataCheckActionContext,
+  DataCheckActionImpact,
+  DataCheckActionOption,
   DataCheckActionRequest,
   DataCheckActionResponse,
   DataCheckIssue,
@@ -19,6 +21,13 @@ import {
   readCurrentIssue,
   readCurrentIssueForUpdate,
 } from './dataCheckRepository.js';
+
+type AffectedIds = Pick<
+  DataCheckActionResponse,
+  'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'
+>;
+
+type MergeResult = AffectedIds & { impact: DataCheckActionImpact };
 
 export function assertMergePairMembership(
   issue: DataCheckIssue,
@@ -88,7 +97,17 @@ async function mergeRelationLinks(
   client: PoolClient,
   keepRelationId: string,
   mergeRelationId: string,
-): Promise<void> {
+): Promise<{ moved: number; deleted: number }> {
+  const impact = await client.query<{ moved: number; deleted: number }>(
+    `select count(*) filter (where retained.concrete_case_id is null)::int as moved,
+            count(*) filter (where retained.concrete_case_id is not null)::int as deleted
+     from causal_relation_cases source
+     left join causal_relation_cases retained
+       on retained.causal_relation_id = $1
+      and retained.concrete_case_id = source.concrete_case_id
+     where source.causal_relation_id = $2`,
+    [keepRelationId, mergeRelationId],
+  );
   await client.query(
     `insert into causal_relation_cases (causal_relation_id, concrete_case_id, linked_at)
      select $1::uuid, concrete_case_id, linked_at
@@ -100,6 +119,10 @@ async function mergeRelationLinks(
   await client.query(`delete from causal_relation_cases where causal_relation_id = $1`, [
     mergeRelationId,
   ]);
+  return {
+    moved: Number(impact.rows[0]?.moved ?? 0),
+    deleted: Number(impact.rows[0]?.deleted ?? 0),
+  };
 }
 
 async function mergeEventAliases(
@@ -201,9 +224,7 @@ async function mergeEvents(
   client: PoolClient,
   keepId: string,
   mergeId: string,
-): Promise<
-  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
-> {
+): Promise<MergeResult> {
   await lockRows(client, 'abstract_events', [keepId, mergeId]);
   const lockedRelations = await client.query<{ id: string }>(
     `with redirected as (
@@ -245,6 +266,14 @@ async function mergeEvents(
     [mergeId],
   );
   const relationIds = lockedRelations.rows.map((row) => row.id);
+  const impact: DataCheckActionImpact = {
+    relationsMoved: 0,
+    relationsDeleted: 0,
+    relationCaseLinksMoved: 0,
+    relationCaseLinksDeleted: 0,
+    recordsDeleted: 1,
+    recordsUpdated: 0,
+  };
   const affectedCaseIds = await linkedCaseIds(
     client,
     relations.rows.map((row) => row.id),
@@ -254,6 +283,14 @@ async function mergeEvents(
     const nextCauseId = relation.cause_event_id === mergeId ? keepId : relation.cause_event_id;
     const nextEffectId = relation.effect_event_id === mergeId ? keepId : relation.effect_event_id;
     if (nextCauseId === nextEffectId) {
+      const links = await client.query<{ count: number }>(
+        `select count(*)::int as count
+         from causal_relation_cases
+         where causal_relation_id = $1`,
+        [relation.id],
+      );
+      impact.relationsDeleted += 1;
+      impact.relationCaseLinksDeleted += Number(links.rows[0]?.count ?? 0);
       await client.query(`delete from causal_relation_cases where causal_relation_id = $1`, [
         relation.id,
       ]);
@@ -274,7 +311,10 @@ async function mergeEvents(
     const preservedId = collision.rows[0]?.id;
     if (preservedId) {
       if (!relationIds.includes(preservedId)) relationIds.push(preservedId);
-      await mergeRelationLinks(client, preservedId, relation.id);
+      const linkImpact = await mergeRelationLinks(client, preservedId, relation.id);
+      impact.relationsDeleted += 1;
+      impact.relationCaseLinksMoved += linkImpact.moved;
+      impact.relationCaseLinksDeleted += linkImpact.deleted;
       await client.query(`delete from causal_relations where id = $1`, [relation.id]);
       continue;
     }
@@ -284,6 +324,7 @@ async function mergeEvents(
        where id = $3`,
       [nextCauseId, nextEffectId, relation.id],
     );
+    impact.relationsMoved += 1;
   }
 
   await mergeEventAliases(client, keepId, mergeId);
@@ -294,6 +335,7 @@ async function mergeEvents(
     affectedEventIds: [keepId, mergeId].sort(),
     affectedCaseIds,
     affectedRelationIds: [...new Set(relationIds)].sort(),
+    impact,
   };
 }
 
@@ -301,9 +343,7 @@ async function mergeCases(
   client: PoolClient,
   keepId: string,
   mergeId: string,
-): Promise<
-  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
-> {
+): Promise<MergeResult> {
   await lockRows(client, 'concrete_cases', [keepId, mergeId]);
   const relations = await client.query<{ id: string }>(
     `select causal_relation_id::text as id
@@ -311,6 +351,16 @@ async function mergeCases(
      where concrete_case_id in ($1, $2)
      order by causal_relation_id
      for update`,
+    [keepId, mergeId],
+  );
+  const impactResult = await client.query<{ moved: number; deleted: number }>(
+    `select count(*) filter (where retained.causal_relation_id is null)::int as moved,
+            count(*) filter (where retained.causal_relation_id is not null)::int as deleted
+     from causal_relation_cases source
+     left join causal_relation_cases retained
+       on retained.concrete_case_id = $1
+      and retained.causal_relation_id = source.causal_relation_id
+     where source.concrete_case_id = $2`,
     [keepId, mergeId],
   );
   await client.query(
@@ -327,6 +377,14 @@ async function mergeCases(
     affectedEventIds: [],
     affectedCaseIds: [keepId, mergeId].sort(),
     affectedRelationIds: [...new Set(relations.rows.map((row) => row.id))].sort(),
+    impact: {
+      relationsMoved: 0,
+      relationsDeleted: 0,
+      relationCaseLinksMoved: Number(impactResult.rows[0]?.moved ?? 0),
+      relationCaseLinksDeleted: Number(impactResult.rows[0]?.deleted ?? 0),
+      recordsDeleted: 1,
+      recordsUpdated: 0,
+    },
   };
 }
 
@@ -334,9 +392,7 @@ async function mergeRelations(
   client: PoolClient,
   keepId: string,
   mergeId: string,
-): Promise<
-  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
-> {
+): Promise<MergeResult> {
   await lockRows(client, 'causal_relations', [keepId, mergeId]);
   const rows = await client.query<{
     id: string;
@@ -354,7 +410,7 @@ async function mergeRelations(
     unsafe('两条因果关系的方向已不再相同');
   }
   const affectedCaseIds = await linkedCaseIds(client, [keepId, mergeId]);
-  await mergeRelationLinks(client, keepId, mergeId);
+  const linkImpact = await mergeRelationLinks(client, keepId, mergeId);
   await client.query(`delete from causal_relations where id = $1`, [mergeId]);
   return {
     affectedEventIds: [
@@ -362,6 +418,14 @@ async function mergeRelations(
     ].sort(),
     affectedCaseIds,
     affectedRelationIds: [keepId, mergeId].sort(),
+    impact: {
+      relationsMoved: 0,
+      relationsDeleted: 0,
+      relationCaseLinksMoved: linkImpact.moved,
+      relationCaseLinksDeleted: linkImpact.deleted,
+      recordsDeleted: 1,
+      recordsUpdated: 0,
+    },
   };
 }
 
@@ -369,9 +433,7 @@ async function applyMerge(
   client: PoolClient,
   issue: DataCheckIssue,
   action: Extract<DataCheckActionRequest, { type: 'merge' }>,
-): Promise<
-  Pick<DataCheckActionResponse, 'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'>
-> {
+): Promise<MergeResult> {
   assertMergePairMembership(issue, action.keepId, action.mergeId);
   if (issue.targetType === 'event') return mergeEvents(client, action.keepId, action.mergeId);
   if (issue.targetType === 'case') return mergeCases(client, action.keepId, action.mergeId);
@@ -536,14 +598,9 @@ async function repairTimestamp(
 }
 
 function assertActionAllowed(
-  actions: readonly {
-    type: string;
-    keepId: string | null;
-    mergeId: string | null;
-    actionKey: string | null;
-  }[],
+  actions: readonly DataCheckActionOption[],
   request: DataCheckActionRequest,
-): void {
+): DataCheckActionOption {
   const option = actions.find(
     (option) =>
       option.type === request.type &&
@@ -554,6 +611,21 @@ function assertActionAllowed(
   if (request.type !== 'ignore' && option.actionKey !== request.actionKey) {
     unsafe('数据已变化，请重新加载处理方案');
   }
+  return option;
+}
+
+export function dataCheckImpactEquals(
+  actual: DataCheckActionImpact,
+  expected: DataCheckActionImpact,
+): boolean {
+  return (
+    actual.relationsMoved === expected.relationsMoved &&
+    actual.relationsDeleted === expected.relationsDeleted &&
+    actual.relationCaseLinksMoved === expected.relationCaseLinksMoved &&
+    actual.relationCaseLinksDeleted === expected.relationCaseLinksDeleted &&
+    actual.recordsDeleted === expected.recordsDeleted &&
+    actual.recordsUpdated === expected.recordsUpdated
+  );
 }
 
 function isSerializationFailure(error: unknown): boolean {
@@ -615,16 +687,25 @@ export class DataCheckActionService {
           records,
           await evaluator.buildActions(client, issue, records),
         );
-        assertActionAllowed(allowedActions, request);
+        const selectedAction = assertActionAllowed(allowedActions, request);
 
         let affected: Pick<
           DataCheckActionResponse,
           'affectedEventIds' | 'affectedCaseIds' | 'affectedRelationIds'
         >;
         switch (request.type) {
-          case 'merge':
-            affected = await applyMerge(client, issue, request);
+          case 'merge': {
+            const mergeResult = await applyMerge(client, issue, request);
+            if (!dataCheckImpactEquals(mergeResult.impact, selectedAction.impact)) {
+              unsafe('实际数据影响与确认前的处理方案不一致');
+            }
+            affected = {
+              affectedEventIds: mergeResult.affectedEventIds,
+              affectedCaseIds: mergeResult.affectedCaseIds,
+              affectedRelationIds: mergeResult.affectedRelationIds,
+            };
             break;
+          }
           case 'cleanup':
             affected = await applyCleanup(client, issue);
             break;
