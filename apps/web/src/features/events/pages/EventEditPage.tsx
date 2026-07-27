@@ -27,7 +27,6 @@ export function EventEditPage() {
   );
   const listReturnTo = returnTarget.path;
   const focusState = listFocusState(eventId);
-  const cancelState = returnTarget.dataCheck ? location.state : focusState;
 
   if (event.isPending) return <div className="page-state">加载事件…</div>;
   if (event.isError) {
@@ -50,27 +49,18 @@ export function EventEditPage() {
       queryClient.invalidateQueries({ queryKey: ['relations', 'list'] }),
       queryClient.invalidateQueries({ queryKey: ['causal-graph'] }),
     ]);
-    if (returnTarget.dataCheck) {
-      const savedState = {
-        ...(location.state as Record<string, unknown>),
-        dataCheckReturnMode: 'saved',
-      };
-      const savedTarget = resolveRecordReturnTarget(savedState, '/events', updated.listPage);
-      navigate(savedTarget.path, { state: savedState });
-    } else {
-      navigate(buildListPath('/events', updated.listPage), {
-        state: { notice: '修改已保存', listFocusId: updated.id },
-      });
-    }
+    navigate(buildListPath('/events', updated.listPage), {
+      state: { notice: '修改已保存', listFocusId: updated.id },
+    });
   }
 
   return (
     <section className="event-editor-page" aria-labelledby="edit-event-title">
-      <Link className="back-link" to={listReturnTo} state={cancelState}>
+      <Link className="back-link" to={listReturnTo} state={focusState}>
         <svg aria-hidden="true" viewBox="0 0 20 20">
           <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
         </svg>
-        {returnTarget.dataCheck ? '返回数据维护' : '返回事件列表'}
+        返回事件列表
       </Link>
       <h1 id="edit-event-title">编辑原子事件</h1>
       <EventForm
@@ -84,7 +74,7 @@ export function EventEditPage() {
         excludeId={eventId}
         onSubmit={submit}
         cancelTo={listReturnTo}
-        cancelState={cancelState}
+        cancelState={focusState}
       />
     </section>
   );

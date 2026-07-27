@@ -7,7 +7,6 @@ import {
   dataCheckIssueTypeSchema,
   dataCheckActionRequestSchema,
   dataCheckActionResponseSchema,
-  dataCheckHandlingRequestSchema,
   dataCheckPanelKindSchema,
   dataCheckIssueListQuerySchema,
   dataCheckIssueListResponseSchema,
@@ -280,14 +279,6 @@ describe('data-check contracts', () => {
       }),
     ).toThrow();
     expect(() => dataCheckIssueSchema.parse({ ...issue, associationNames: [] })).toThrow();
-  });
-
-  it('requires a snapshot id for issue handling', () => {
-    expect(dataCheckHandlingRequestSchema.parse({ snapshotId })).toEqual({ snapshotId });
-    expect(() => dataCheckHandlingRequestSchema.parse({})).toThrow();
-    expect(() =>
-      dataCheckHandlingRequestSchema.parse({ snapshotId, ignorePermanently: true }),
-    ).toThrow();
   });
 
   it('accepts only strict typed governance action requests', () => {

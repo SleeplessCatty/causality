@@ -5,12 +5,12 @@ import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  ExportRequestError,
   PostgresExportRequestRepository,
+  type ExportRequestError,
 } from '../src/features/data-transfer/exportRequestRepository.js';
 import {
-  ExportScopeError,
   PostgresExportScopeRepository,
+  type ExportScopeError,
 } from '../src/features/data-transfer/exportScopeRepository.js';
 import {
   startPostgresTestContext,

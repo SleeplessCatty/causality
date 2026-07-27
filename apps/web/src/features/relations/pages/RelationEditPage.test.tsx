@@ -109,7 +109,7 @@ describe('RelationEditPage', () => {
     });
   });
 
-  it('saves a data-check relation edit back to the issue with one recheck marker', async () => {
+  it('ignores obsolete maintenance return state and keeps normal relation-list navigation', async () => {
     const issueId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     vi.stubGlobal(
       'fetch',
@@ -132,6 +132,7 @@ describe('RelationEditPage', () => {
     const router = createMemoryRouter(
       [
         { path: '/relations/:relationId/edit', element: <RelationEditPage /> },
+        { path: '/relations', element: <div>关系列表</div> },
         { path: '/maintenance', element: <div>数据维护目标</div> },
       ],
       {
@@ -139,10 +140,12 @@ describe('RelationEditPage', () => {
           {
             pathname: `/relations/${relationId}/edit`,
             state: {
-              dataCheckReturnPath: `/maintenance?issue=${issueId}`,
+              listReturnPath: '/relations?q=%E5%85%B3%E7%A8%8E&page=2',
+              listFocusId: relationId,
+              dataCheckReturnPath: `/maintenance?expanded=${issueId}`,
               dataCheckSnapshotId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
               dataCheckIssueId: issueId,
-              dataCheckReturnMode: 'cancel',
+              dataCheckReturnMode: 'saved',
             },
           },
         ],
@@ -155,9 +158,17 @@ describe('RelationEditPage', () => {
     );
 
     await screen.findByRole('combobox', { name: '具体案例 1' });
+    expect(screen.getByRole('link', { name: '返回关系列表' }).getAttribute('href')).toBe(
+      '/relations?q=%E5%85%B3%E7%A8%8E&page=2',
+    );
     fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
-    expect(await screen.findByText('数据维护目标')).toBeTruthy();
-    expect(router.state.location.search).toBe(`?issue=${issueId}&recheck=1`);
-    expect(router.state.location.state).toMatchObject({ dataCheckReturnMode: 'saved' });
+    expect(await screen.findByText('关系列表')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/relations');
+    expect(router.state.location.search).toBe('?page=3');
+    expect(router.state.location.state).toMatchObject({
+      notice: '修改已保存',
+      listFocusId: relationId,
+    });
+    expect(JSON.stringify(router.state.location.state)).not.toContain('dataCheck');
   });
 });

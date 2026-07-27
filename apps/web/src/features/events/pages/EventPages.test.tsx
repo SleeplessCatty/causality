@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -217,37 +217,27 @@ describe('event route pages', () => {
     });
   });
 
-  it('returns a data-check edit to its issue without recheck on cancel and with one marker on save', async () => {
+  it('ignores obsolete maintenance return state and keeps normal event-list navigation', async () => {
     const issueId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    const snapshotId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-    const returnPath = `/maintenance?severity=warning&issue=${issueId}`;
     const state = {
-      dataCheckReturnPath: returnPath,
-      dataCheckSnapshotId: snapshotId,
+      listReturnPath: '/events?q=%E5%8E%9F%E6%B2%B9&page=2',
+      listFocusId: eventDetail.id,
+      dataCheckReturnPath: `/maintenance?severity=warning&expanded=${issueId}`,
+      dataCheckSnapshotId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       dataCheckIssueId: issueId,
-      dataCheckReturnMode: 'cancel',
+      dataCheckReturnMode: 'saved',
     };
-    const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) =>
-      init?.method === 'PUT'
-        ? jsonResponse({ ...eventDetail, name: '修正事件' })
-        : jsonResponse(eventDetail),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-    const cancelRouter = renderRoute('/events/:eventId/edit', <EventEditPage />, state);
-    await screen.findByRole('textbox', { name: '标准名称' });
-    fireEvent.click(screen.getByRole('link', { name: '取消' }));
-    expect(await screen.findByText('数据维护目标')).toBeTruthy();
-    expect(cancelRouter.state.location.search).toBe(`?severity=warning&issue=${issueId}`);
-    expect(cancelRouter.state.location.state).toMatchObject({ dataCheckReturnMode: 'cancel' });
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse(eventDetail)));
+    const router = renderRoute('/events/:eventId/edit', <EventEditPage />, state);
 
-    cleanup();
-    const saveRouter = renderRoute('/events/:eventId/edit', <EventEditPage />, state);
-    fireEvent.change(await screen.findByRole('textbox', { name: '标准名称' }), {
-      target: { value: '修正事件' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
-    expect(await screen.findByText('数据维护目标')).toBeTruthy();
-    expect(saveRouter.state.location.search).toBe(`?severity=warning&issue=${issueId}&recheck=1`);
-    expect(saveRouter.state.location.state).toMatchObject({ dataCheckReturnMode: 'saved' });
+    await screen.findByRole('textbox', { name: '标准名称' });
+    expect(screen.getByRole('link', { name: '返回事件列表' }).getAttribute('href')).toBe(
+      '/events?q=%E5%8E%9F%E6%B2%B9&page=2',
+    );
+    fireEvent.click(screen.getByRole('link', { name: '取消' }));
+    expect(await screen.findByText('事件列表')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/events');
+    expect(router.state.location.search).toBe('?q=%E5%8E%9F%E6%B2%B9&page=2');
+    expect(JSON.stringify(router.state.location.state)).not.toContain('dataCheck');
   });
 });

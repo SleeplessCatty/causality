@@ -215,7 +215,12 @@ export class PostgresExportScopeRepository implements ExportScopeRepository {
       );
       if (result.rows.length === 0) return;
       lastId = result.rows.at(-1)!.id;
-      yield result.rows.map(({ id: _id, ...row }) => row);
+      yield result.rows.map((row) => ({
+        name: row.name,
+        description: row.description,
+        aliases: row.aliases,
+        keywords: row.keywords,
+      }));
     }
   }
 
@@ -238,7 +243,7 @@ export class PostgresExportScopeRepository implements ExportScopeRepository {
       );
       if (result.rows.length === 0) return;
       lastId = result.rows.at(-1)!.id;
-      yield result.rows.map(({ id: _id, ...row }) => row);
+      yield result.rows.map((row) => ({ content: row.content }));
     }
   }
 

@@ -104,7 +104,6 @@ export async function openExportCsvWithDependencies(
       delimiter: ',',
       record_delimiter: '\n',
     });
-    let output: Readable;
     let finalization: Promise<void> | undefined;
     const onAbort = () => {
       controller.abort(signal.reason);
@@ -161,7 +160,7 @@ export async function openExportCsvWithDependencies(
       }
     }
 
-    output = Readable.from(transactionalOutput());
+    const output = Readable.from(transactionalOutput());
     const close = async (): Promise<void> => {
       controller.abort();
       output.destroy();

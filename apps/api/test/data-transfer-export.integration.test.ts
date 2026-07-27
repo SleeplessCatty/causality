@@ -167,11 +167,11 @@ class BackpressureScopeRepository implements ExportScopeRepository {
   }
 
   public async *streamCases(): AsyncIterable<CaseExportRow[]> {
-    return;
+    yield* [];
   }
 
   public async *streamRelations(): AsyncIterable<RelationExportRow[]> {
-    return;
+    yield* [];
   }
 }
 
@@ -182,15 +182,15 @@ class FailingScopeRepository implements ExportScopeRepository {
 
   public async *streamEvents(client: PoolClient): AsyncIterable<EventExportRow[]> {
     await client.query('create table export_stream_failure_marker (id integer)');
-    throw new Error('synthetic export read failure');
+    yield await Promise.reject<EventExportRow[]>(new Error('synthetic export read failure'));
   }
 
   public async *streamCases(): AsyncIterable<CaseExportRow[]> {
-    return;
+    yield* [];
   }
 
   public async *streamRelations(): AsyncIterable<RelationExportRow[]> {
-    return;
+    yield* [];
   }
 }
 
@@ -210,11 +210,11 @@ class CommitFailingScopeRepository implements ExportScopeRepository {
   }
 
   public async *streamCases(): AsyncIterable<CaseExportRow[]> {
-    return;
+    yield* [];
   }
 
   public async *streamRelations(): AsyncIterable<RelationExportRow[]> {
-    return;
+    yield* [];
   }
 }
 
@@ -232,15 +232,15 @@ class SetupAbortedScopeRepository implements ExportScopeRepository {
   }
 
   public async *streamEvents(): AsyncIterable<EventExportRow[]> {
-    return;
+    yield* [];
   }
 
   public async *streamCases(): AsyncIterable<CaseExportRow[]> {
-    return;
+    yield* [];
   }
 
   public async *streamRelations(): AsyncIterable<RelationExportRow[]> {
-    return;
+    yield* [];
   }
 }
 
@@ -283,7 +283,12 @@ describe.sequential('consistent streaming CSV export', () => {
     expect(disposition).toMatch(/^attachment; filename="causality-full-\d{8}-\d{6}\.csv"$/);
     const filename = disposition?.match(/^attachment; filename="([^"]+)"$/)?.[1];
     expect(filename).toBeDefined();
-    expect(filename).not.toMatch(/[\u0000-\u001f\u007f"]/u);
+    expect(
+      [...filename!].some((character) => {
+        const codePoint = character.codePointAt(0)!;
+        return codePoint <= 0x1f || codePoint === 0x7f || character === '"';
+      }),
+    ).toBe(false);
     expect(response.body).toBe(
       `"原子事件","事件 A","说明,""引号""\n第二行","alpha one;alpha two;Zulu","第一关键词;第二关键词"\n` +
         `"原子事件","事件 B","","",""\n` +
@@ -419,7 +424,8 @@ describe.sequential('consistent streaming CSV export', () => {
     );
     await expect(
       (async () => {
-        for await (const _chunk of failedExport.stream as Readable) {
+        for await (const chunk of failedExport.stream as Readable) {
+          void chunk;
           // Drain until the controlled repository fails.
         }
       })(),
@@ -444,7 +450,8 @@ describe.sequential('consistent streaming CSV export', () => {
 
     await expect(
       (async () => {
-        for await (const _chunk of exported.stream as Readable) {
+        for await (const chunk of exported.stream as Readable) {
+          void chunk;
           // The deferred constraint fails only after the final CSV chunk.
         }
       })(),

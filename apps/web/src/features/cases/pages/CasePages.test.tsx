@@ -415,24 +415,30 @@ describe('case pages', () => {
     });
   });
 
-  it('cancels a data-check case edit back to the open issue without rechecking', async () => {
+  it('ignores obsolete maintenance return state and keeps normal case-list navigation', async () => {
     const issueId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     vi.stubGlobal(
       'fetch',
       vi.fn(() => response(detail)),
     );
     const router = renderRoute('/cases/:caseId/edit', <CaseEditPage />, {
-      dataCheckReturnPath: `/maintenance?status=open&issue=${issueId}`,
+      listReturnPath: '/cases?q=%E5%85%B3%E7%A8%8E&page=2',
+      listFocusId: detail.id,
+      dataCheckReturnPath: `/maintenance?status=open&expanded=${issueId}`,
       dataCheckSnapshotId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       dataCheckIssueId: issueId,
-      dataCheckReturnMode: 'cancel',
+      dataCheckReturnMode: 'saved',
     });
 
     await screen.findByRole('textbox', { name: '案例内容' });
+    expect(screen.getByRole('link', { name: '返回案例列表' }).getAttribute('href')).toBe(
+      '/cases?q=%E5%85%B3%E7%A8%8E&page=2',
+    );
     fireEvent.click(screen.getByRole('link', { name: '取消' }));
-    expect(await screen.findByText('数据维护目标')).toBeTruthy();
-    expect(router.state.location.search).toBe(`?status=open&issue=${issueId}`);
-    expect(router.state.location.search).not.toContain('recheck');
+    expect(await screen.findByText('案例列表')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/cases');
+    expect(router.state.location.search).toBe('?q=%E5%85%B3%E7%A8%8E&page=2');
+    expect(JSON.stringify(router.state.location.state)).not.toContain('dataCheck');
   });
 
   it('keeps enhanced case mode while paging and resets it when the search text changes', async () => {

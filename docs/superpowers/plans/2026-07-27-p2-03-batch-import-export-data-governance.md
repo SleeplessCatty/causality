@@ -1776,6 +1776,9 @@ git commit -m "feat: add typed data-governance actions"
 
 ### Task 12: Data-maintenance dialogs, URL state, and edit return
 
+> Superseded by `docs/superpowers/specs/2026-07-27-data-maintenance-inline-issue-handling-design.md`
+> and `docs/superpowers/plans/2026-07-27-data-maintenance-inline-issue-handling.md`.
+
 **Files:**
 
 - Create: `apps/web/src/features/data-maintenance/useDataCheckQueryState.ts`

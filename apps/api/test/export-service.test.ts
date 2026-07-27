@@ -9,7 +9,10 @@ import {
   type StoredExportRequest,
 } from '../src/features/data-transfer/exportRequestRepository.js';
 import type { ExportScopeRepository } from '../src/features/data-transfer/exportScopeRepository.js';
-import { ExportService, ExportServiceError } from '../src/features/data-transfer/exportService.js';
+import {
+  ExportService,
+  type ExportServiceError,
+} from '../src/features/data-transfer/exportService.js';
 
 const startId = '81000000-0000-4000-8000-000000000001';
 const fixedNow = new Date('2026-07-27T08:00:00.000Z');

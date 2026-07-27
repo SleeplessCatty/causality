@@ -214,8 +214,6 @@ export const dataCheckIssueListResponseSchema = z
   })
   .strict();
 
-export const dataCheckHandlingRequestSchema = z.object({ snapshotId: z.uuid() }).strict();
-
 const mergeActionRequestSchema = z
   .object({
     type: z.literal('merge'),
@@ -365,7 +363,6 @@ export type DataCheckIssueSource = z.infer<typeof dataCheckIssueSourceSchema>;
 export type DataCheckIssueListItem = z.infer<typeof dataCheckIssueListItemSchema>;
 export type DataCheckIssueListQuery = z.infer<typeof dataCheckIssueListQuerySchema>;
 export type DataCheckIssueListResponse = z.infer<typeof dataCheckIssueListResponseSchema>;
-export type DataCheckHandlingRequest = z.infer<typeof dataCheckHandlingRequestSchema>;
 export type DataCheckActionRequest = z.infer<typeof dataCheckActionRequestSchema>;
 export type DataCheckPanelKind = z.infer<typeof dataCheckPanelKindSchema>;
 export type DataCheckAllowedAction = z.infer<typeof dataCheckAllowedActionSchema>;

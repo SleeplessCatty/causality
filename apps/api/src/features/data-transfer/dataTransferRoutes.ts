@@ -37,8 +37,8 @@ import { ExportRequestError } from './exportRequestRepository.js';
 import { ExportScopeError } from './exportScopeRepository.js';
 import {
   createExportService,
-  ExportService,
   ExportServiceError,
+  type ExportService,
   type ExportServiceOptions,
 } from './exportService.js';
 
