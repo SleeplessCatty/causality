@@ -558,13 +558,13 @@ function encodeCaseRow(input: CaseExportRow): string[];
 function encodeRelationRow(input: RelationExportRow): string[];
 ```
 
-- [ ] **Step 1: Write failing lexical and business-record tests**
+- [x] **Step 1: Write failing lexical and business-record tests**
 
 Cover these exact fixtures:
 
 ```ts
 '"具体案例","包含,逗号\\n和""引号""的案例"\\r\\n'
-'"原子事件","事件","说明","别名一;带\\\\;号的别名","关键词"\\n'
+'"原子事件","事件","说明","别名一;带\\;号的别名","关键词"\\n'
 '"因果关系","原因","结果","","","案例一","","案例二"'
 '"因果关系","结果","原因","101"'
 '具体案例,"未加引号"'
@@ -576,7 +576,7 @@ Assert:
 
 - commas, embedded newlines, doubled quotes, `LF`, and `CRLF` parse correctly;
 - BOM is ignored;
-- every non-empty field must be quoted;
+- every field, including empty fields, must be quoted;
 - blank logical records are ignored;
 - recoverable row errors increment `invalidRecordCount`;
 - unclosed quotes and invalid UTF-8 throw file errors;
@@ -589,7 +589,7 @@ Assert:
 - empty relation-case cells are ignored and do not count toward the 1,000-case limit;
 - logical records above 50,000 reject the file.
 
-- [ ] **Step 2: Run the CSV test and verify failure**
+- [x] **Step 2: Run the CSV test and verify failure**
 
 Run:
 
@@ -599,11 +599,11 @@ pnpm --filter @causality/api test -- data-transfer-csv.test.ts
 
 Expected: FAIL because the codec does not exist.
 
-- [ ] **Step 3: Implement the UTF-8 and byte-limit transform**
+- [x] **Step 3: Implement the UTF-8 and byte-limit transform**
 
 Use `TextDecoder('utf-8', { fatal: true })` incrementally while passing original chunks downstream. Count actual bytes and abort as soon as the total exceeds `20 * 1024 * 1024`.
 
-- [ ] **Step 4: Implement strict raw-record validation**
+- [x] **Step 4: Implement strict raw-record validation**
 
 Configure `csv-parse` as a stream with:
 
@@ -616,9 +616,13 @@ parse({
   record_delimiter: ['\r\n', '\n'],
   raw: true,
   relax_quotes: false,
+  relax_column_count: true,
   skip_empty_lines: false,
 });
 ```
+
+`relax_column_count` is required because the three approved record types have different field
+counts. It does not relax quoting or raw-record grammar; those remain enforced by the state machine.
 
 For each returned raw logical record, run a state machine that permits only:
 
@@ -629,15 +633,15 @@ quotedField := '"' ('""' | anyCharacterExceptUnescapedQuote)* '"'
 
 Ignore a raw record only when it contains no non-whitespace character. Do not split source text by physical newline.
 
-- [ ] **Step 5: Implement the three record decoders**
+- [x] **Step 5: Implement the three record decoders**
 
 Trim business fields, preserve meaningful interior whitespace, reuse `eventFormInputSchema`, `eventNameSchema`, `caseContentSchema`, `relationConfidenceSchema`, and `relationDescriptionSchema`, and return only normalized in-memory records. Later duplicate records must retain their original `sequence` for logging.
 
-- [ ] **Step 6: Add export row encoder tests**
+- [x] **Step 6: Add export row encoder tests**
 
 Assert the encoder produces arrays in the approved field order, preserves optional empty columns, places every relation case after description, and never exposes IDs or timestamps.
 
-- [ ] **Step 7: Run CSV tests and static checks**
+- [x] **Step 7: Run CSV tests and static checks**
 
 Run:
 
@@ -649,7 +653,7 @@ pnpm lint
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit locally**
+- [x] **Step 8: Commit locally**
 
 ```bash
 git add apps/api/src/features/data-transfer apps/api/test/data-transfer-csv.test.ts

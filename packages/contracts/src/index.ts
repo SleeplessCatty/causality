@@ -134,6 +134,7 @@ export {
   eventFormInputSchema,
   eventListQuerySchema,
   eventListResponseSchema,
+  eventNameSchema,
   eventRelationListQuerySchema,
   eventRelationListResponseSchema,
   eventSummarySchema,
