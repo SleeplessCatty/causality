@@ -10,6 +10,7 @@ const allowedDatabaseNames = new Set([
   'causality_cases_test',
   'causality_core_model_test',
   'causality_data_checks_test',
+  'causality_data_transfer_test',
   'causality_database_tools_test',
   'causality_events_test',
   'causality_graph_test',
@@ -39,14 +40,16 @@ export function closePostgresTestPool(pool: Pool): Promise<void> {
   return closure;
 }
 
-export async function startPostgresTestContext(
-  databaseName: string,
-  options: { semanticWorkerClient?: SemanticWorkerClient } = {},
-): Promise<{
+export type StartedPostgresTestContext = {
   pool: Pool;
   app: ReturnType<typeof buildApp>;
   close(): Promise<void>;
-}> {
+};
+
+export async function startPostgresTestContext(
+  databaseName: string,
+  options: { semanticWorkerClient?: SemanticWorkerClient } = {},
+): Promise<StartedPostgresTestContext> {
   if (!allowedDatabaseNames.has(databaseName)) {
     throw new Error(`Unsupported integration test database: ${databaseName}`);
   }

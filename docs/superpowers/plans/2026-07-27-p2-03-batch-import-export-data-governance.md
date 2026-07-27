@@ -695,7 +695,7 @@ interface ImportRepository {
 
 class ImportError extends Error {
   code:
-    | 'IMPORT_NO_VALID_DATA'
+    | 'CSV_NO_VALID_RECORDS'
     | 'IMPORT_CONFLICT_RETRY'
     | 'IMPORT_CANCELLED'
     | 'IMPORT_TIMEOUT';
@@ -705,7 +705,7 @@ class ImportError extends Error {
 - `planFileRecords(records)` resolves file-local duplicates and dependencies without reading the database.
 - `PostgresImportRepository.commit()` performs final database matching and every write in one serializable transaction.
 
-- [ ] **Step 1: Write failing planner tests**
+- [x] **Step 1: Write failing planner tests**
 
 Assert:
 
@@ -713,11 +713,13 @@ Assert:
 - the first strict duplicate event/case supplies optional fields;
 - later duplicates produce `reused` logs but never enrich fields;
 - duplicate relation rows may add new case associations;
-- a missing relation endpoint skips that relation and all embedded cases;
-- a single ambiguous embedded case skips only that association;
-- relation self-loops and invalid dependencies never enter the write plan.
+- unresolved relation endpoint names remain available for the final database match;
+- relation self-loops never enter the write plan.
 
-- [ ] **Step 2: Run planner tests and verify failure**
+Missing endpoints and ambiguous database matches cannot be decided without reading PostgreSQL, so
+their dependency-skipping behavior belongs to the integration tests in Step 4.
+
+- [x] **Step 2: Run planner tests and verify failure**
 
 Run:
 
@@ -727,7 +729,7 @@ pnpm --filter @causality/api test -- import-planner.test.ts
 
 Expected: FAIL because the planner is absent.
 
-- [ ] **Step 3: Implement deterministic file-local planning**
+- [x] **Step 3: Implement deterministic file-local planning**
 
 Use maps keyed by:
 
@@ -740,7 +742,7 @@ relationCaseKey = `${relationKey}\u0000${caseKey}`;
 
 Store the first valid record as the provisional creator and append stable log intents for later reuse. PostgreSQL staging recomputes `lower(btrim(name))` and is authoritative if JavaScript and database Unicode casing differ. Do not use aliases, keywords, vectors, or fuzzy search to resolve dependencies.
 
-- [ ] **Step 4: Write failing PostgreSQL import tests**
+- [x] **Step 4: Write failing PostgreSQL import tests**
 
 Seed existing event, case, relation, and relation-case records. Assert:
 
@@ -756,13 +758,13 @@ Seed existing event, case, relation, and relation-case records. Assert:
 
 Add `causality_data_transfer_test` to the explicit integration-test database allowlist.
 
-- [ ] **Step 5: Implement set-based final matching**
+- [x] **Step 5: Implement set-based final matching**
 
 Inside `BEGIN ISOLATION LEVEL SERIALIZABLE`, create transaction-local staging tables or use `unnest` recordsets. Batch-match normalized event names, exact case content, and relation endpoint pairs. Do not query once per imported row.
 
 Use set-based `INSERT`, `ON CONFLICT DO NOTHING`, and `RETURNING` statements for events, aliases, keywords, cases, relations, and relation-case links. Existing field values remain untouched.
 
-- [ ] **Step 6: Write audit rows in the same transaction**
+- [x] **Step 6: Write audit rows in the same transaction**
 
 Insert one batch row and stable detail rows for every successful created/reused event, case, relation, and relation-case result. Store readable JSON snapshots:
 
@@ -773,11 +775,11 @@ Insert one batch row and stable detail rows for every successful created/reused 
 { type: 'relation_case', causeEventName, effectEventName, caseContent }
 ```
 
-- [ ] **Step 7: Connect cancellation and error mapping**
+- [x] **Step 7: Connect cancellation and error mapping**
 
 Check `signal.aborted` between parse/planning/write phases, pass the signal to cancellable database queries, roll back any uncommitted transaction, map SQLSTATE `40001` to `IMPORT_CONFLICT_RETRY`, and preserve a committed batch even if the HTTP client later disconnects.
 
-- [ ] **Step 8: Run import tests**
+- [x] **Step 8: Run import tests**
 
 Run:
 
@@ -789,7 +791,7 @@ pnpm --filter @causality/api typecheck
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit locally**
+- [x] **Step 9: Commit locally**
 
 ```bash
 git add apps/api/src/features/data-transfer apps/api/test/import-planner.test.ts apps/api/test/data-transfer-import.integration.test.ts apps/api/test/support/postgresTestContext.ts
