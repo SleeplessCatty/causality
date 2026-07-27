@@ -70,6 +70,7 @@ export {
 } from './data-checks/dataCheckSchemas.js';
 
 export {
+  MAX_EXPORT_START_EVENTS,
   exportAvailabilityResponseSchema,
   exportCountsSchema,
   exportDirectionSchema,

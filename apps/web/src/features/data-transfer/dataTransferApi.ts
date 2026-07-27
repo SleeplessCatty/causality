@@ -1,5 +1,6 @@
 import {
   exportAvailabilityResponseSchema,
+  exportPreviewInputSchema,
   exportPreviewResponseSchema,
   importBatchListResponseSchema,
   importBatchSummarySchema,
@@ -65,19 +66,28 @@ export async function getImportRecords(
   );
 }
 
-export async function previewExport(input: ExportPreviewInput): Promise<ExportPreviewResponse> {
+export async function previewExport(
+  input: ExportPreviewInput,
+  signal?: AbortSignal,
+): Promise<ExportPreviewResponse> {
+  const validatedInput = exportPreviewInputSchema.parse(input);
   return exportPreviewResponseSchema.parse(
-    await requestJson('/api/data-transfers/exports/preview', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
+    await requestJson(
+      '/api/data-transfers/exports/preview',
+      {
+        method: 'POST',
+        body: JSON.stringify(validatedInput),
+      },
+      signal,
+    ),
   );
 }
 
-export async function downloadExport(token: string): Promise<void> {
+export async function downloadExport(token: string, signal?: AbortSignal): Promise<void> {
   const encodedToken = encodeURIComponent(token);
   exportAvailabilityResponseSchema.parse(
-    await requestJson(`/api/data-transfers/exports/${encodedToken}/availability`),
+    await requestJson(`/api/data-transfers/exports/${encodedToken}/availability`, {}, signal),
   );
+  signal?.throwIfAborted();
   startBrowserDownload(`/api/data-transfers/exports/${encodedToken}`);
 }

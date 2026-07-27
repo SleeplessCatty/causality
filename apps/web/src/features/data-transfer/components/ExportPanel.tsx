@@ -4,7 +4,8 @@ import type {
   ExportPreviewInput,
   ExportPreviewResponse,
 } from '@causality/contracts';
-import { useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 
 import { AppSelect } from '../../../shared/controls/AppSelect';
 import { useAutoDismissError } from '../../../shared/forms/useAutoDismissError';
@@ -29,6 +30,22 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+interface PreviewMutationVariables {
+  input: ExportPreviewInput;
+  signal: AbortSignal;
+  filterRevision: number;
+}
+
+interface DownloadMutationVariables {
+  token: string;
+  signal: AbortSignal;
+  filterRevision: number;
+}
+
 export function ExportPanel() {
   const [mode, setMode] = useState<ExportMode>('full');
   const [selectedEvents, setSelectedEvents] = useState<EventCandidate[]>([]);
@@ -36,17 +53,98 @@ export function ExportPanel() {
   const [depth, setDepth] = useState(1);
   const [preview, setPreview] = useState<ExportPreviewResponse | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [previewPending, setPreviewPending] = useState(false);
-  const [downloadPending, setDownloadPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [errorRevision, setErrorRevision] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const filterRevisionRef = useRef(0);
+  const previewAbortControllerRef = useRef<AbortController | null>(null);
+  const downloadAbortControllerRef = useRef<AbortController | null>(null);
 
-  useAutoDismissError(Boolean(error), errorRevision, () => setError(null));
+  const previewMutation = useMutation<ExportPreviewResponse, unknown, PreviewMutationVariables>({
+    mutationFn: ({ input, signal }) => previewExport(input, signal),
+    onSuccess: (nextPreview, variables) => {
+      if (variables.signal.aborted || variables.filterRevision !== filterRevisionRef.current) {
+        return;
+      }
+      setPreview(nextPreview);
+      setDialogOpen(true);
+    },
+    onError: (previewError, variables) => {
+      if (
+        isAbortError(previewError) ||
+        variables.signal.aborted ||
+        variables.filterRevision !== filterRevisionRef.current
+      ) {
+        return;
+      }
+      setErrorRevision((revision) => revision + 1);
+    },
+    onSettled: (_data, _error, variables) => {
+      if (previewAbortControllerRef.current?.signal === variables.signal) {
+        previewAbortControllerRef.current = null;
+      }
+    },
+  });
+
+  const downloadMutation = useMutation<void, unknown, DownloadMutationVariables>({
+    mutationFn: ({ token, signal }) => downloadExport(token, signal),
+    onSuccess: (_data, variables) => {
+      if (variables.signal.aborted || variables.filterRevision !== filterRevisionRef.current) {
+        return;
+      }
+      setDialogOpen(false);
+      setNotice('下载已开始');
+    },
+    onError: (availabilityError, variables) => {
+      if (
+        isAbortError(availabilityError) ||
+        variables.signal.aborted ||
+        variables.filterRevision !== filterRevisionRef.current
+      ) {
+        return;
+      }
+      setPreview(null);
+      setDialogOpen(false);
+      setErrorRevision((revision) => revision + 1);
+    },
+    onSettled: (_data, _error, variables) => {
+      if (downloadAbortControllerRef.current?.signal === variables.signal) {
+        downloadAbortControllerRef.current = null;
+      }
+    },
+  });
+
+  useEffect(
+    () => () => {
+      filterRevisionRef.current += 1;
+      previewAbortControllerRef.current?.abort();
+      downloadAbortControllerRef.current?.abort();
+    },
+    [],
+  );
+
+  const previewError =
+    previewMutation.isError && !isAbortError(previewMutation.error)
+      ? errorMessage(previewMutation.error, '无法预览导出，请重试')
+      : null;
+  const availabilityError =
+    downloadMutation.isError && !isAbortError(downloadMutation.error)
+      ? `${errorMessage(downloadMutation.error, '无法确认导出可用性')}，请重新预览`
+      : null;
+  const error = availabilityError ?? previewError;
+
+  useAutoDismissError(Boolean(error), errorRevision, () => {
+    previewMutation.reset();
+    downloadMutation.reset();
+  });
 
   function invalidatePreview(): void {
     filterRevisionRef.current += 1;
+    previewAbortControllerRef.current?.abort();
+    previewAbortControllerRef.current = null;
+    downloadAbortControllerRef.current?.abort();
+    downloadAbortControllerRef.current = null;
+    previewMutation.reset();
+    downloadMutation.reset();
     setPreview(null);
     setDialogOpen(false);
     setNotice(null);
@@ -56,20 +154,16 @@ export function ExportPanel() {
     if (nextMode === mode) return;
     setMode(nextMode);
     invalidatePreview();
-    setError(null);
   }
 
-  function showError(message: string): void {
-    setError(message);
-    setErrorRevision((revision) => revision + 1);
-  }
-
-  async function openPreview(): Promise<void> {
+  function openPreview(): void {
     if (preview) {
       setDialogOpen(true);
       return;
     }
-    if (previewPending || (mode === 'filtered' && selectedEvents.length === 0)) return;
+    if (previewMutation.isPending || (mode === 'filtered' && selectedEvents.length === 0)) {
+      return;
+    }
 
     const input: ExportPreviewInput =
       mode === 'full'
@@ -80,42 +174,32 @@ export function ExportPanel() {
             direction,
             depth,
           };
-    setPreviewPending(true);
-    setError(null);
     setNotice(null);
-    const filterRevision = filterRevisionRef.current;
-    try {
-      const nextPreview = await previewExport(input);
-      if (filterRevision !== filterRevisionRef.current) return;
-      setPreview(nextPreview);
-      setDialogOpen(true);
-    } catch (previewError) {
-      if (filterRevision === filterRevisionRef.current) {
-        showError(errorMessage(previewError, '无法预览导出，请重试'));
-      }
-    } finally {
-      setPreviewPending(false);
-    }
+    downloadMutation.reset();
+    const controller = new AbortController();
+    previewAbortControllerRef.current = controller;
+    previewMutation.mutate({
+      input,
+      signal: controller.signal,
+      filterRevision: filterRevisionRef.current,
+    });
   }
 
-  async function confirmDownload(): Promise<void> {
-    if (!preview || downloadPending) return;
-    setDownloadPending(true);
-    setError(null);
-    try {
-      await downloadExport(preview.token);
-      setDialogOpen(false);
-      setNotice('下载已开始');
-    } catch (availabilityError) {
-      setPreview(null);
-      setDialogOpen(false);
-      showError(`${errorMessage(availabilityError, '无法确认导出可用性')}，请重新预览`);
-    } finally {
-      setDownloadPending(false);
-    }
+  function confirmDownload(): void {
+    if (!preview || downloadMutation.isPending) return;
+    setNotice(null);
+    previewMutation.reset();
+    const controller = new AbortController();
+    downloadAbortControllerRef.current = controller;
+    downloadMutation.mutate({
+      token: preview.token,
+      signal: controller.signal,
+      filterRevision: filterRevisionRef.current,
+    });
   }
 
-  const previewDisabled = previewPending || (mode === 'filtered' && selectedEvents.length === 0);
+  const previewDisabled =
+    previewMutation.isPending || (mode === 'filtered' && selectedEvents.length === 0);
 
   return (
     <section className="data-transfer-export-card" aria-labelledby="export-panel-title">
@@ -186,9 +270,9 @@ export function ExportPanel() {
           className="button button--primary"
           type="button"
           disabled={previewDisabled}
-          onClick={() => void openPreview()}
+          onClick={openPreview}
         >
-          {previewPending
+          {previewMutation.isPending
             ? '正在预览…'
             : preview
               ? '查看导出确认'
@@ -212,11 +296,11 @@ export function ExportPanel() {
       <ExportConfirmDialog
         open={dialogOpen}
         preview={preview}
-        pending={downloadPending}
+        pending={downloadMutation.isPending}
         onClose={() => {
-          if (!downloadPending) setDialogOpen(false);
+          if (!downloadMutation.isPending) setDialogOpen(false);
         }}
-        onConfirm={() => void confirmDownload()}
+        onConfirm={confirmDownload}
       />
     </section>
   );

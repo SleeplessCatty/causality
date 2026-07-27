@@ -186,6 +186,10 @@
   font-size: 10px;
 }
 
+.data-transfer-export-limit-error {
+  margin: 10px 0 0;
+}
+
 .data-transfer-export-selects {
   display: flex;
   gap: 10px;

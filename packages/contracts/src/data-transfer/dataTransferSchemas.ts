@@ -95,6 +95,8 @@ export const importRecordListResponseSchema = z
 
 export const importUploadResponseSchema = z.object({ batch: importBatchSummarySchema }).strict();
 
+export const MAX_EXPORT_START_EVENTS = 100;
+
 export const exportDirectionSchema = z.enum(['upstream', 'downstream', 'both']);
 
 export const exportPreviewInputSchema = z.discriminatedUnion('type', [
@@ -102,7 +104,7 @@ export const exportPreviewInputSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('filtered'),
-      startEventIds: z.array(z.uuid()).min(1).max(100),
+      startEventIds: z.array(z.uuid()).min(1).max(MAX_EXPORT_START_EVENTS),
       direction: exportDirectionSchema,
       depth: z.number().int().min(1).max(10),
     })
