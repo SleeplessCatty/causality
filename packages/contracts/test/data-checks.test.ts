@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   dataCheckActionContextSchema,
+  dataCheckAllowedActionSchema,
+  dataCheckIssueSourceSchema,
+  dataCheckIssueTypeSchema,
   dataCheckActionRequestSchema,
   dataCheckActionResponseSchema,
   dataCheckHandlingRequestSchema,
+  dataCheckPanelKindSchema,
   dataCheckIssueListQuerySchema,
   dataCheckIssueListResponseSchema,
   dataCheckIssueSchema,
   dataCheckLatestResponseSchema,
-  dataCheckRecheckResponseSchema,
   dataCheckSnapshotSummarySchema,
 } from '../src/index.js';
 
@@ -37,10 +40,9 @@ const issue = {
   id: issueId,
   snapshotId,
   severity: 'warning',
-  issueType: 'cross_event_alias',
+  issueType: 'cross_event_shared_alias',
   description: '事件别名与另一个事件的标准名称相同',
   suggestion: '检查两个事件是否应当合并',
-  actionMode: 'manual',
   status: 'open',
   targetType: 'event',
   targetId: eventId,
@@ -48,19 +50,127 @@ const issue = {
   handledAt: null,
 };
 
+const issueTypes = [
+  'missing_relation_cause_event',
+  'missing_relation_effect_event',
+  'delete_missing_alias',
+  'delete_missing_keyword',
+  'delete_missing_relation_case',
+  'relation_self_loop',
+  'relation_confidence_range',
+  'duplicate_relation_direction',
+  'duplicate_event_name',
+  'duplicate_case_content',
+  'delete_duplicate_alias',
+  'delete_duplicate_keyword',
+  'resequence_keywords',
+  'invalid_event_name',
+  'invalid_case_content',
+  'invalid_alias_text',
+  'invalid_keyword_text',
+  'invalid_event_description',
+  'invalid_relation_description',
+  'invalid_event_timestamp_order',
+  'invalid_relation_timestamp_order',
+  'invalid_case_timestamp_order',
+  'cross_event_alias_name',
+  'cross_event_shared_alias',
+  'semantic_duplicate_event',
+  'semantic_duplicate_case',
+] as const;
+
+const source = {
+  displayKind: 'pair',
+  items: [
+    {
+      type: 'event',
+      role: 'target',
+      label: '事件 A',
+      detailPath: `/events/${eventId}`,
+    },
+    {
+      type: 'event',
+      role: 'related',
+      label: '事件 B',
+      detailPath: `/events/${relatedEventId}`,
+    },
+  ],
+  relationDetailPaths: [],
+  auxiliaryText: null,
+};
+
 describe('data-check contracts', () => {
+  it('closes the supported issue taxonomy and source display shapes', () => {
+    expect(issueTypes.every((value) => dataCheckIssueTypeSchema.safeParse(value).success)).toBe(
+      true,
+    );
+    expect(dataCheckIssueTypeSchema.safeParse('unknown_issue').success).toBe(false);
+    expect(
+      dataCheckIssueSourceSchema.parse({
+        displayKind: 'relation',
+        items: [
+          {
+            type: 'event',
+            role: 'cause',
+            label: '供应中断',
+            detailPath: `/events/${eventId}`,
+          },
+          {
+            type: 'event',
+            role: 'effect',
+            label: '原材料价格上涨',
+            detailPath: `/events/${relatedEventId}`,
+          },
+        ],
+        relationDetailPaths: [`/relations/${issueId}`],
+        auxiliaryText: null,
+      }).displayKind,
+    ).toBe('relation');
+
+    const invalidPaths = [
+      'https://example.com/events/33333333-3333-4333-8333-333333333333',
+      '//example.com/events/33333333-3333-4333-8333-333333333333',
+      `/events/${eventId}/edit`,
+    ];
+    for (const detailPath of invalidPaths) {
+      expect(
+        dataCheckIssueSourceSchema.safeParse({
+          displayKind: 'single',
+          items: [{ type: 'event', role: 'target', label: '事件', detailPath }],
+          relationDetailPaths: [],
+          auxiliaryText: null,
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      dataCheckIssueSourceSchema.safeParse({
+        displayKind: 'single',
+        items: [
+          {
+            type: 'case',
+            role: 'target',
+            label: '案例',
+            detailPath: `/events/${eventId}`,
+          },
+        ],
+        relationDetailPaths: [],
+        auxiliaryText: null,
+      }).success,
+    ).toBe(false);
+  });
+
   it('normalizes fixed-size issue filters', () => {
     expect(
       dataCheckIssueListQuerySchema.parse({
         page: '2',
         severity: 'warning',
-        issueType: ' cross_event_alias ',
+        issueType: 'cross_event_shared_alias',
         status: 'open',
       }),
     ).toEqual({
       page: 2,
       severity: 'warning',
-      issueType: 'cross_event_alias',
+      issueType: 'cross_event_shared_alias',
       status: 'open',
     });
     expect(dataCheckIssueListQuerySchema.parse({})).toEqual({ page: 1 });
@@ -153,7 +263,7 @@ describe('data-check contracts', () => {
     expect(dataCheckIssueSchema.parse(issue)).toEqual(issue);
     expect(
       dataCheckIssueListResponseSchema.parse({
-        items: [issue],
+        items: [{ ...issue, source }],
         page: 2,
         pageSize: 50,
         totalItems: 51,
@@ -181,11 +291,12 @@ describe('data-check contracts', () => {
   });
 
   it('accepts only strict typed governance action requests', () => {
+    const actionKey = 'a'.repeat(64);
     const requests = [
-      { type: 'merge', snapshotId, keepId: eventId, mergeId: relatedEventId },
-      { type: 'cleanup', snapshotId },
-      { type: 'delete_relation', snapshotId },
-      { type: 'repair_timestamp', snapshotId },
+      { type: 'merge', snapshotId, keepId: eventId, mergeId: relatedEventId, actionKey },
+      { type: 'cleanup', snapshotId, actionKey },
+      { type: 'delete_relation', snapshotId, actionKey },
+      { type: 'repair_timestamp', snapshotId, actionKey },
       { type: 'ignore', snapshotId },
     ] as const;
 
@@ -205,6 +316,7 @@ describe('data-check contracts', () => {
         snapshotId,
         keepId: eventId,
         mergeId: 'not-an-id',
+        actionKey,
       }).success,
     ).toBe(false);
     expect(
@@ -213,6 +325,7 @@ describe('data-check contracts', () => {
         snapshotId,
         keepId: eventId,
         mergeId: eventId,
+        actionKey,
       }).success,
     ).toBe(false);
     expect(
@@ -222,9 +335,23 @@ describe('data-check contracts', () => {
       dataCheckActionRequestSchema.safeParse({
         type: 'cleanup',
         snapshotId,
-        targetType: 'event',
       }).success,
     ).toBe(false);
+    expect(
+      dataCheckActionRequestSchema.safeParse({
+        type: 'ignore',
+        snapshotId,
+        actionKey,
+      }).success,
+    ).toBe(false);
+    expect(dataCheckAllowedActionSchema.safeParse('open_edit').success).toBe(false);
+    expect(dataCheckPanelKindSchema.options).toEqual([
+      'merge',
+      'cleanup',
+      'delete_relation',
+      'repair_timestamp',
+      'manual',
+    ]);
   });
 
   it('validates strict server-authorized action contexts and responses', () => {
@@ -233,7 +360,7 @@ describe('data-check contracts', () => {
       issueId,
       issueType: 'duplicate_event_name',
       status: 'open',
-      dialogKind: 'merge',
+      panelKind: 'merge',
       records: [
         {
           id: eventId,
@@ -262,13 +389,14 @@ describe('data-check contracts', () => {
           label: '保留事件 A',
           keepId: eventId,
           mergeId: relatedEventId,
-          editPath: null,
+          actionKey: 'b'.repeat(64),
           impact: {
             relationsMoved: 3,
             relationsDeleted: 0,
             relationCaseLinksMoved: 2,
             relationCaseLinksDeleted: 0,
             recordsDeleted: 1,
+            recordsUpdated: 0,
           },
         },
       ],
@@ -285,19 +413,5 @@ describe('data-check contracts', () => {
         affectedRelationIds: [],
       }),
     ).toMatchObject({ affectedEventIds: [eventId, relatedEventId] });
-    expect(
-      dataCheckRecheckResponseSchema.parse({
-        status: 'open',
-        issue,
-        context,
-      }),
-    ).toMatchObject({ status: 'open' });
-    expect(
-      dataCheckRecheckResponseSchema.parse({
-        status: 'resolved',
-        issue: { ...issue, status: 'handled', handledAt: timestamp },
-        context: null,
-      }),
-    ).toMatchObject({ status: 'resolved' });
   });
 });
