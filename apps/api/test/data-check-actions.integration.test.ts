@@ -181,6 +181,8 @@ describe.sequential('typed data-check governance actions', () => {
       expect.arrayContaining([
         expect.objectContaining({ type: 'merge', keepId: eventA, mergeId: eventB }),
         expect.objectContaining({ type: 'merge', keepId: eventB, mergeId: eventA }),
+        expect.objectContaining({ type: 'open_edit', editPath: `/events/${eventA}/edit` }),
+        expect.objectContaining({ type: 'open_edit', editPath: `/events/${eventB}/edit` }),
       ]),
     );
 
@@ -264,7 +266,7 @@ describe.sequential('typed data-check governance actions', () => {
     });
     expect(unknown.json<DataCheckActionContext>()).toMatchObject({
       dialogKind: 'edit',
-      actions: [{ type: 'open_edit', editPath: `/events/${eventA}` }, { type: 'ignore' }],
+      actions: [{ type: 'open_edit', editPath: `/events/${eventA}/edit` }, { type: 'ignore' }],
     });
   });
 
@@ -479,20 +481,20 @@ describe.sequential('typed data-check governance actions', () => {
         issueId: 'b2000000-0000-4000-8000-00000000001b',
         targetType: 'alias',
         targetId: validAliasId,
-        editPath: `/events/${eventD}`,
+        editPath: `/events/${eventD}/edit`,
       },
       {
         issueId: 'b2000000-0000-4000-8000-00000000001c',
         targetType: 'keyword',
         targetId: validKeywordId,
-        editPath: `/events/${eventD}`,
+        editPath: `/events/${eventD}/edit`,
       },
       {
         issueId: 'b2000000-0000-4000-8000-00000000001d',
         targetType: 'relation_case',
         targetId: relationB,
         relatedId: caseB,
-        editPath: `/relations/${relationB}`,
+        editPath: `/relations/${relationB}/edit`,
       },
     ] as const;
 

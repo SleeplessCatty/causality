@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 
+import { getDataCheckReturnState } from '../../shared/navigation/listReturn';
 import { getReadiness } from '../system-status/systemStatusApi';
 import { DataCheckIssueDialog } from './DataCheckIssueDialog';
 import { DataCheckPanel } from './DataCheckPanel';
@@ -14,6 +15,10 @@ export function DataMaintenance() {
   const queryState = useDataCheckQueryState();
   const previousSnapshotId = useRef<string | null>(null);
   const consumedRecheck = useRef<string | null>(null);
+  const [queuedRecheck, setQueuedRecheck] = useState<{
+    issueId: string;
+    snapshotId: string;
+  } | null>(null);
   const readiness = useQuery({
     queryKey: ['system', 'readiness'],
     queryFn: ({ signal }) => getReadiness(signal),
@@ -63,24 +68,40 @@ export function DataMaintenance() {
       : null;
 
   const snapshotId = dataCheck.data?.snapshot?.snapshotId ?? null;
+  const dataCheckReturn = getDataCheckReturnState(location.state);
+  const staleReturnState =
+    snapshotId !== null &&
+    dataCheckReturn !== null &&
+    dataCheckReturn.dataCheckIssueId === queryState.issueId &&
+    dataCheckReturn.dataCheckSnapshotId !== snapshotId;
+  const snapshotChanged =
+    snapshotId !== null &&
+    previousSnapshotId.current !== null &&
+    previousSnapshotId.current !== snapshotId;
   useEffect(() => {
     if (!snapshotId) return;
-    if (previousSnapshotId.current && previousSnapshotId.current !== snapshotId) {
+    if (
+      staleReturnState ||
+      (previousSnapshotId.current && previousSnapshotId.current !== snapshotId)
+    ) {
       queryState.resetForSnapshot();
+      setQueuedRecheck(null);
     }
     previousSnapshotId.current = snapshotId;
-  }, [queryState.resetForSnapshot, snapshotId]);
+  }, [queryState.resetForSnapshot, snapshotId, staleReturnState]);
 
   useEffect(() => {
-    if (!queryState.recheck || !queryState.issueId || !snapshotId) return;
-    const state =
-      typeof location.state === 'object' && location.state !== null
-        ? (location.state as Record<string, unknown>)
-        : null;
     if (
-      state?.dataCheckReturnMode !== 'saved' ||
-      state.dataCheckIssueId !== queryState.issueId ||
-      state.dataCheckSnapshotId !== snapshotId
+      !queryState.recheck ||
+      !queryState.issueId ||
+      !snapshotId ||
+      staleReturnState
+    )
+      return;
+    if (
+      dataCheckReturn?.dataCheckReturnMode !== 'saved' ||
+      dataCheckReturn.dataCheckIssueId !== queryState.issueId ||
+      dataCheckReturn.dataCheckSnapshotId !== snapshotId
     ) {
       queryState.consumeRecheck();
       return;
@@ -88,17 +109,30 @@ export function DataMaintenance() {
     const marker = `${snapshotId}:${queryState.issueId}:${location.key}`;
     if (consumedRecheck.current === marker) return;
     consumedRecheck.current = marker;
+    setQueuedRecheck({ issueId: queryState.issueId, snapshotId });
     queryState.consumeRecheck();
-    recheckIssue.mutate({ issueId: queryState.issueId, snapshotId });
   }, [
+    dataCheckReturn,
     location.key,
-    location.state,
     queryState.consumeRecheck,
     queryState.issueId,
     queryState.recheck,
-    recheckIssue,
     snapshotId,
+    staleReturnState,
   ]);
+
+  useEffect(() => {
+    if (
+      !queuedRecheck ||
+      queryState.recheck ||
+      new URLSearchParams(location.search).has('recheck')
+    )
+      return;
+    recheckIssue.mutate(queuedRecheck);
+    setQueuedRecheck(null);
+  }, [location.search, queryState.recheck, queuedRecheck, recheckIssue]);
+
+  const recheckPending = queryState.recheck || queuedRecheck !== null || recheckIssue.isPending;
 
   return (
     <div className="data-maintenance-workspace">
@@ -124,11 +158,12 @@ export function DataMaintenance() {
                 : readinessError
         }
       />
-      {queryState.issueId && snapshotId ? (
+      {queryState.issueId && snapshotId && !staleReturnState && !snapshotChanged ? (
         <DataCheckIssueDialog
           key={queryState.issueId}
           issueId={queryState.issueId}
           snapshotId={snapshotId}
+          externalPending={recheckPending}
           onClose={queryState.closeIssue}
         />
       ) : null}

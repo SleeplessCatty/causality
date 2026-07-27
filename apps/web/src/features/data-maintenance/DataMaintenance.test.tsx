@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -85,7 +86,11 @@ function renderMaintenance() {
   );
 }
 
-function renderMaintenanceRoute(initialEntry = '/maintenance', state?: Record<string, unknown>) {
+function renderMaintenanceRoute(
+  initialEntry = '/maintenance',
+  state?: Record<string, unknown>,
+  queryClient?: QueryClient,
+) {
   const [pathname, search = ''] = initialEntry.split('?');
   const router = createMemoryRouter(
     [
@@ -99,9 +104,15 @@ function renderMaintenanceRoute(initialEntry = '/maintenance', state?: Record<st
     },
   );
   render(
-    <AppProviders>
-      <RouterProvider router={router} />
-    </AppProviders>,
+    queryClient ? (
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    ) : (
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>
+    ),
   );
   return router;
 }
@@ -490,6 +501,25 @@ describe('DataMaintenance', () => {
     );
   });
 
+  it('replaces an out-of-range numeric page with the server-clamped page', async () => {
+    const fetchMock = vi.fn((input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([], 3, 3));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = renderMaintenanceRoute('/maintenance?page=999&severity=warning');
+
+    await waitFor(() =>
+      expect(router.state.location.search).toBe('?page=3&severity=warning'),
+    );
+  });
+
   it('shows issue identifiers without deriving record navigation from issue metadata', async () => {
     const invalidAlias: DataCheckIssue = {
       ...issue('b1000000-0000-4000-8000-000000000010', 'manual'),
@@ -761,7 +791,17 @@ describe('DataMaintenance', () => {
         return jsonResponse({ status: 'ready', database: 'available' });
       if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
       if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
-      if (url.includes('/action-context')) return jsonResponse(context(current.id));
+      if (url.includes('/action-context'))
+        return jsonResponse(
+          context(current.id, {
+            actions: [
+              ...context(current.id).actions,
+              action('open_edit', '编辑记录 A', {
+                editPath: `/events/${firstRecordId}/edit`,
+              }),
+            ],
+          }),
+        );
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -799,6 +839,7 @@ describe('DataMaintenance', () => {
     expect(document.activeElement).not.toBe(
       within(dialog).getByRole('button', { name: '忽略此问题' }),
     );
+    expect(within(dialog).getByRole('button', { name: '编辑记录 A' })).toBeTruthy();
   });
 
   it.each([
@@ -1012,9 +1053,100 @@ describe('DataMaintenance', () => {
     );
   });
 
+  it('invalidates both detail and edit relation-association cache keys after success', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000047', 'manual');
+    const relationId = '31000000-0000-4000-8000-000000000047';
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+    queryClient.setQueryData(['cases', 'relation-associations', relationId], { detail: true });
+    queryClient.setQueryData(['cases', 'relation-associations', 'edit', relationId], {
+      edit: true,
+    });
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/action-context'))
+        return jsonResponse(
+          context(current.id, {
+            dialogKind: 'cleanup',
+            records: [record(firstRecordId, '失效数据')],
+            actions: [action('cleanup', '清理失效数据')],
+          }),
+        );
+      if (url.includes('/actions') && options?.method === 'POST')
+        return jsonResponse({
+          issue: { ...current, status: 'handled', handledAt: '2026-07-23T09:10:00.000Z' },
+          affectedEventIds: [],
+          affectedCaseIds: [],
+          affectedRelationIds: [relationId],
+        });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenanceRoute('/maintenance', undefined, queryClient);
+    fireEvent.click(await screen.findByRole('button', { name: '操作' }));
+    fireEvent.click(await screen.findByRole('button', { name: '清理失效数据' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(
+      queryClient.getQueryState(['cases', 'relation-associations', relationId])?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(['cases', 'relation-associations', 'edit', relationId])
+        ?.isInvalidated,
+    ).toBe(true);
+  });
+
+  it('locks Close, Escape, and backdrop while an edit-return recheck is pending', async () => {
+    const current = issue('b1000000-0000-4000-8000-000000000048', 'manual');
+    let resolveRecheck!: (value: Response) => void;
+    const pendingRecheck = new Promise<Response>((resolve) => {
+      resolveRecheck = resolve;
+    });
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/health'))
+        return jsonResponse({ status: 'ok', service: 'causality-api' });
+      if (url.endsWith('/api/ready'))
+        return jsonResponse({ status: 'ready', database: 'available' });
+      if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
+      if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
+      if (url.includes('/action-context')) return jsonResponse(context(current.id));
+      if (url.includes('/recheck') && options?.method === 'POST') return pendingRecheck;
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderMaintenanceRoute(`/maintenance?issue=${current.id}&recheck=1`, {
+      dataCheckReturnPath: `/maintenance?issue=${current.id}`,
+      dataCheckSnapshotId: snapshotId,
+      dataCheckIssueId: current.id,
+      dataCheckReturnMode: 'saved',
+    });
+
+    const dialog = await screen.findByRole('dialog');
+    const close = within(dialog).getByRole('button', { name: '关闭' });
+    await waitFor(() => expect((close as HTMLButtonElement).disabled).toBe(true));
+    fireEvent.click(close);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.mouseDown(document.querySelector('.delete-dialog-backdrop')!);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+
+    resolveRecheck(
+      await jsonResponse({ status: 'open', issue: current, context: context(current.id) }),
+    );
+    await waitFor(() => expect((close as HTMLButtonElement).disabled).toBe(false));
+  });
+
   it('consumes a saved edit recheck marker once with replace and keeps the issue open', async () => {
     const current = issue('b1000000-0000-4000-8000-000000000044', 'manual');
     let rechecks = 0;
+    const routerRef: { current?: ReturnType<typeof createMemoryRouter> } = {};
     const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
       const url = String(input);
       if (url.endsWith('/api/health'))
@@ -1024,6 +1156,7 @@ describe('DataMaintenance', () => {
       if (url.endsWith('/api/data-checks/latest')) return jsonResponse(succeeded);
       if (url.includes('/latest/issues')) return jsonResponse(issuePage([current]));
       if (url.includes('/recheck') && options?.method === 'POST') {
+        expect(routerRef.current?.state.location.search).not.toContain('recheck');
         rechecks += 1;
         return jsonResponse({ status: 'open', issue: current, context: context(current.id) });
       }
@@ -1040,12 +1173,55 @@ describe('DataMaintenance', () => {
         dataCheckReturnMode: 'saved',
       },
     );
+    routerRef.current = router;
 
     expect(await screen.findByRole('dialog')).toBeTruthy();
     await waitFor(() => expect(rechecks).toBe(1));
     expect(router.state.location.search).toBe(`?severity=warning&issue=${current.id}`);
-    await router.navigate(router.state.location, { replace: true });
+    const currentEntry = `${router.state.location.pathname}${router.state.location.search}`;
+    const currentState = router.state.location.state as Record<string, unknown>;
+    cleanup();
+    renderMaintenanceRoute(currentEntry, currentState);
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     expect(rechecks).toBe(1);
   });
+
+  it.each(['cancel', 'saved'] as const)(
+    'does not reopen an issue from a %s return when the latest snapshot changed before mount',
+    async (returnMode) => {
+      const current = issue('b1000000-0000-4000-8000-000000000049', 'manual');
+      const latestSnapshotId = 'a1000000-0000-4000-8000-000000000099';
+      const fetchMock = vi.fn((input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/api/health'))
+          return jsonResponse({ status: 'ok', service: 'causality-api' });
+        if (url.endsWith('/api/ready'))
+          return jsonResponse({ status: 'ready', database: 'available' });
+        if (url.endsWith('/api/data-checks/latest'))
+          return jsonResponse({
+            ...succeeded,
+            snapshot: { ...succeeded.snapshot!, snapshotId: latestSnapshotId },
+          });
+        if (url.includes('/latest/issues')) return jsonResponse(issuePage([]));
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const marker = returnMode === 'saved' ? '&recheck=1' : '';
+      const router = renderMaintenanceRoute(
+        `/maintenance?page=4&severity=warning&issue=${current.id}${marker}`,
+        {
+          dataCheckReturnPath: `/maintenance?page=4&severity=warning&issue=${current.id}`,
+          dataCheckSnapshotId: snapshotId,
+          dataCheckIssueId: current.id,
+          dataCheckReturnMode: returnMode,
+        },
+      );
+
+      await waitFor(() => expect(router.state.location.search).toBe('?severity=warning'));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(
+        fetchMock.mock.calls.some(([input]) => /action-context|recheck/.test(String(input))),
+      ).toBe(false);
+    },
+  );
 });

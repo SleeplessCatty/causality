@@ -16,6 +16,7 @@ import { DataCheckMergeDialog } from './DataCheckMergeDialog';
 interface DataCheckIssueDialogProps {
   issueId: string;
   snapshotId: string;
+  externalPending?: boolean;
   onClose(): void;
 }
 
@@ -33,6 +34,7 @@ async function invalidateAffectedData(
     queryClient.invalidateQueries({ queryKey: ['relations', 'list'] }),
     queryClient.invalidateQueries({ queryKey: ['relations', 'pair-check'] }),
     queryClient.invalidateQueries({ queryKey: ['causal-graph'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', 'relation-associations'] }),
     ...result.affectedEventIds.flatMap((id) => [
       queryClient.invalidateQueries({ queryKey: ['events', 'detail', id] }),
       queryClient.invalidateQueries({ queryKey: ['events', 'relations', id] }),
@@ -43,7 +45,6 @@ async function invalidateAffectedData(
     ]),
     ...result.affectedRelationIds.flatMap((id) => [
       queryClient.invalidateQueries({ queryKey: ['relations', 'detail', id] }),
-      queryClient.invalidateQueries({ queryKey: ['cases', 'relation-associations', id] }),
     ]),
   ]);
 }
@@ -109,7 +110,12 @@ function ContextRecords({
   );
 }
 
-export function DataCheckIssueDialog({ issueId, snapshotId, onClose }: DataCheckIssueDialogProps) {
+export function DataCheckIssueDialog({
+  issueId,
+  snapshotId,
+  externalPending = false,
+  onClose,
+}: DataCheckIssueDialogProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -138,7 +144,10 @@ export function DataCheckIssueDialog({ issueId, snapshotId, onClose }: DataCheck
   const ignoreAction = context?.actions.find((candidate) => candidate.type === 'ignore') ?? null;
   const regularActions =
     context?.actions.filter(
-      (candidate) => candidate.type !== 'ignore' && candidate.type !== 'merge',
+      (candidate) =>
+        candidate.type !== 'ignore' &&
+        candidate.type !== 'merge' &&
+        (context.dialogKind !== 'merge' || candidate.type === 'open_edit'),
     ) ?? [];
   const hasMergeAction = context?.actions.some((candidate) => candidate.type === 'merge') ?? false;
   const initialFocusRef =
@@ -159,7 +168,7 @@ export function DataCheckIssueDialog({ issueId, snapshotId, onClose }: DataCheck
     actionMutation.mutate(action);
   }
 
-  const pending = actionMutation.isPending;
+  const pending = externalPending || actionMutation.isPending;
   return (
     <AppDialog
       open
@@ -181,20 +190,25 @@ export function DataCheckIssueDialog({ issueId, snapshotId, onClose }: DataCheck
             >
               {pending ? '处理中…' : '确认处理'}
             </button>
-          ) : (
-            regularActions.map((candidate, index) => (
-              <button
-                ref={index === 0 ? primaryActionRef : undefined}
-                className="button button--primary"
-                type="button"
-                disabled={pending}
-                onClick={() => run(candidate)}
-                key={`${candidate.type}-${candidate.label}`}
-              >
-                {pending ? '处理中…' : candidate.label}
-              </button>
-            ))
-          )}
+          ) : null}
+          {regularActions.map((candidate, index) => (
+            <button
+              ref={
+                context?.dialogKind !== 'merge' && index === 0 ? primaryActionRef : undefined
+              }
+              className={`button ${
+                context?.dialogKind === 'merge' || candidate.type === 'open_edit'
+                  ? 'button--secondary'
+                  : 'button--primary'
+              }`}
+              type="button"
+              disabled={pending}
+              onClick={() => run(candidate)}
+              key={`${candidate.type}-${candidate.label}`}
+            >
+              {pending ? '处理中…' : candidate.label}
+            </button>
+          ))}
           {ignoreAction ? (
             <div className="data-check-dialog__ignore">
               <button

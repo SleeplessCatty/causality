@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router';
 
 import type { DataCheckIssue, DataCheckIssueListQuery } from '@causality/contracts';
 import { AppSelect } from '../../shared/controls/AppSelect';
 import { listRecordDomId, useListRecordFocus } from '../../shared/navigation/useListRecordFocus';
+import { useListPageCorrection } from '../../shared/lists/useListQueryState';
 import { ListPagination } from '../../shared/pagination/ListPagination';
 import { getDataCheckIssues } from './dataMaintenanceApi';
 import { dataCheckIssueTypeOptions, type DataCheckQueryState } from './useDataCheckQueryState';
@@ -48,6 +50,7 @@ function IssueDescription({ issue }: { issue: DataCheckIssue }) {
 }
 
 export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTableProps) {
+  const [, setSearchParameters] = useSearchParams();
   const { page, severity, issueType, status, issueId } = queryState;
   const queryKey = [
     'data-checks',
@@ -68,6 +71,12 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
     },
   });
   const data = issues.data;
+  useListPageCorrection({
+    requestedPage: page,
+    responsePage: data?.page,
+    isPlaceholderData: issues.isPlaceholderData,
+    setSearchParameters,
+  });
   useListRecordFocus(data?.items.map((current) => current.id) ?? [], issueId ?? undefined);
 
   return (

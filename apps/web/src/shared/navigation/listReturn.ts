@@ -74,6 +74,28 @@ export function createDataCheckEditReturnState(
   };
 }
 
+export function getDataCheckReturnState(state: unknown): DataCheckReturnState | null {
+  const record = stateRecord(state);
+  const dataCheckReturnPath = record?.dataCheckReturnPath;
+  const snapshotId = record?.dataCheckSnapshotId;
+  const issueId = record?.dataCheckIssueId;
+  const returnMode = record?.dataCheckReturnMode;
+  return typeof dataCheckReturnPath === 'string' &&
+    isSafeReturnPath(dataCheckReturnPath, '/maintenance') &&
+    typeof snapshotId === 'string' &&
+    uuidPattern.test(snapshotId) &&
+    typeof issueId === 'string' &&
+    uuidPattern.test(issueId) &&
+    (returnMode === 'cancel' || returnMode === 'saved')
+    ? {
+        dataCheckReturnPath,
+        dataCheckSnapshotId: snapshotId,
+        dataCheckIssueId: issueId,
+        dataCheckReturnMode: returnMode,
+      }
+    : null;
+}
+
 export function resolveListReturnPath(
   state: unknown,
   basePath: string,
@@ -94,23 +116,18 @@ export function resolveRecordReturnTarget(
   dataCheck?: { snapshotId: string; issueId: string; recheck: boolean };
 } {
   const record = stateRecord(state);
-  const dataCheckReturnPath = record?.dataCheckReturnPath;
-  const snapshotId = record?.dataCheckSnapshotId;
-  const issueId = record?.dataCheckIssueId;
-  const returnMode = record?.dataCheckReturnMode;
-  if (
-    typeof dataCheckReturnPath === 'string' &&
-    isSafeReturnPath(dataCheckReturnPath, '/maintenance') &&
-    typeof snapshotId === 'string' &&
-    uuidPattern.test(snapshotId) &&
-    typeof issueId === 'string' &&
-    uuidPattern.test(issueId) &&
-    (returnMode === 'cancel' || returnMode === 'saved')
-  ) {
-    const recheck = returnMode === 'saved';
+  const dataCheckReturn = getDataCheckReturnState(state);
+  if (dataCheckReturn) {
+    const recheck = dataCheckReturn.dataCheckReturnMode === 'saved';
     return {
-      path: recheck ? appendRecheckMarker(dataCheckReturnPath) : dataCheckReturnPath,
-      dataCheck: { snapshotId, issueId, recheck },
+      path: recheck
+        ? appendRecheckMarker(dataCheckReturn.dataCheckReturnPath)
+        : dataCheckReturn.dataCheckReturnPath,
+      dataCheck: {
+        snapshotId: dataCheckReturn.dataCheckSnapshotId,
+        issueId: dataCheckReturn.dataCheckIssueId,
+        recheck,
+      },
     };
   }
 

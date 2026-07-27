@@ -83,6 +83,15 @@ function action(
   };
 }
 
+const editableDetailPathPattern =
+  /^\/(?:events|cases|relations)\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function editPathFor(record: DataCheckActionRecord): string | null {
+  return record.detailPath && editableDetailPathPattern.test(record.detailPath)
+    ? `${record.detailPath}/edit`
+    : null;
+}
+
 interface RecordRow {
   id: string;
   title: string;
@@ -598,13 +607,14 @@ function mergeEvaluator(predicateSql: string): DataCheckIssueEvaluator {
       );
       const edit = (
         await Promise.all(
-          records.map(async (record, index) =>
-            record.detailPath && (await canOpenStrictDetail(client, record))
+          records.map(async (record, index) => {
+            const editPath = editPathFor(record);
+            return editPath && (await canOpenStrictDetail(client, record))
               ? action('open_edit', `编辑记录 ${index === 0 ? 'A' : 'B'}`, {
-                  editPath: record.detailPath,
+                  editPath,
                 })
-              : null,
-          ),
+              : null;
+          }),
         )
       ).filter((option): option is DataCheckActionOption => option !== null);
       return [...options, ...edit, action('ignore', '忽略此问题')];
@@ -799,8 +809,9 @@ function editableEvaluator(
         options.push(action('repair_timestamp', '修复时间顺序'));
       }
       const record = records[0];
-      if (record?.detailPath && (await canOpenStrictDetail(client, record))) {
-        options.push(action('open_edit', '打开详情编辑', { editPath: record.detailPath }));
+      const editPath = record ? editPathFor(record) : null;
+      if (record && editPath && (await canOpenStrictDetail(client, record))) {
+        options.push(action('open_edit', '打开详情编辑', { editPath }));
       }
       options.push(action('ignore', '忽略此问题'));
       return options;
@@ -968,8 +979,9 @@ function fallbackEvaluator(targetType: DataCheckTargetType): DataCheckIssueEvalu
     async buildActions(client, _issue, records) {
       const options: DataCheckActionOption[] = [];
       const record = records[0];
-      if (record?.detailPath && (await canOpenStrictDetail(client, record))) {
-        options.push(action('open_edit', '打开详情编辑', { editPath: record.detailPath }));
+      const editPath = record ? editPathFor(record) : null;
+      if (record && editPath && (await canOpenStrictDetail(client, record))) {
+        options.push(action('open_edit', '打开详情编辑', { editPath }));
       }
       options.push(action('ignore', '忽略此问题'));
       return options;
