@@ -4,6 +4,8 @@ import type {
   DataCheckIssueListQuery,
   DataCheckIssueListResponse,
   DataCheckLatestResponse,
+  DataCheckSemanticReason,
+  DataCheckSemanticStatus,
   DataCheckSeverity,
   DataCheckTargetType,
 } from '@causality/contracts';
@@ -36,12 +38,23 @@ export interface DataCheckRuleTiming {
   milliseconds: number;
 }
 
+export interface DataCheckSemanticResult {
+  status: DataCheckSemanticStatus;
+  reason: DataCheckSemanticReason;
+  issueCount: number;
+}
+
+export interface DataCheckSemanticRule {
+  scan(): Promise<{ issues: DataCheckIssueDraft[]; semantic: DataCheckSemanticResult }>;
+}
+
 export interface DataCheckScanResult {
   snapshotId: string;
   checkedAt: Date;
   orphanCounts: DataCheckOrphanCounts;
   issues: DataCheckIssueDraft[];
   timings: DataCheckRuleTiming[];
+  semantic: DataCheckSemanticResult;
 }
 
 export interface DataCheckStartResult {

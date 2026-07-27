@@ -267,6 +267,35 @@ describe('ParameterSettings', () => {
     expect(screen.getByRole('button', { name: '重新索引' })).toBeTruthy();
   });
 
+  it('saves each model data-check threshold independently without invoking a model action', async () => {
+    const initial = lifecycle();
+    const saved = lifecycle({
+      models: initial.models.map((item) =>
+        item.modelCode === 'bge-small-zh-v1.5' ? { ...item, dedupeThreshold: 80 } : item,
+      ),
+    });
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      if (String(input).endsWith('/dedupe-threshold')) return jsonResponse(saved);
+      if (options?.method === 'POST') throw new Error('threshold save must not start a model action');
+      return jsonResponse(initial);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    const current = await screen.findByRole('article', { name: '中文轻量' });
+    expect(within(current).getByLabelText('相似度门槛数值')).toBeTruthy();
+    const input = within(current).getByLabelText('数据查重门槛数值');
+    fireEvent.change(input, { target: { value: '80' } });
+    fireEvent.blur(input);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/semantic/models/bge-small-zh-v1.5/dedupe-threshold',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ threshold: 80 }) }),
+      ),
+    );
+  });
+
   it('renders the active operation once and exposes no model actions while it runs', async () => {
     const operation: SemanticOperation = {
       type: 'full_index',

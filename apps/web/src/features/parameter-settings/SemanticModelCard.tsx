@@ -20,8 +20,10 @@ interface SemanticModelCardProps {
   actionsDisabled: boolean;
   pendingAction: SemanticAction | null;
   thresholdPending: boolean;
+  dedupeThresholdPending: boolean;
   onAction(action: SemanticAction, model: SemanticModelLifecycle): void;
   onThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void>;
+  onDedupeThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void>;
 }
 
 export function SemanticModelCard({
@@ -29,24 +31,36 @@ export function SemanticModelCard({
   actionsDisabled,
   pendingAction,
   thresholdPending,
+  dedupeThresholdPending,
   onAction,
   onThreshold,
+  onDedupeThreshold,
 }: SemanticModelCardProps) {
   const [threshold, setThreshold] = useState<number | null>(model.threshold);
+  const [dedupeThreshold, setDedupeThreshold] = useState<number | null>(model.dedupeThreshold);
+  const [dedupeThresholdError, setDedupeThresholdError] = useState<string>();
   const statuses = [semanticFileBadge(model), semanticRoleBadge(model), semanticStageBadge(model)];
 
   useEffect(() => setThreshold(model.threshold), [model.threshold]);
+  useEffect(() => setDedupeThreshold(model.dedupeThreshold), [model.dedupeThreshold]);
 
-  async function saveThreshold(): Promise<void> {
-    if (threshold === null || !Number.isInteger(threshold) || threshold < 0 || threshold > 100) {
-      setThreshold(model.threshold);
+  async function savePercentage(
+    value: number | null,
+    savedValue: number,
+    setValue: (next: number | null) => void,
+    save: (next: number) => Promise<void>,
+    onFailure?: () => void,
+  ): Promise<void> {
+    if (value === null || !Number.isInteger(value) || value < 0 || value > 100) {
+      setValue(savedValue);
       return;
     }
-    if (threshold === model.threshold) return;
+    if (value === savedValue) return;
     try {
-      await onThreshold(model.modelCode, threshold);
+      await save(value);
     } catch {
-      setThreshold(model.threshold);
+      setValue(savedValue);
+      onFailure?.();
     }
   }
 
@@ -99,7 +113,34 @@ export function SemanticModelCard({
         disabled={thresholdPending}
         preserveAppearanceWhenDisabled
         onChange={setThreshold}
-        onCommit={() => void saveThreshold()}
+        onCommit={() =>
+          void savePercentage(threshold, model.threshold, setThreshold, (next) =>
+            onThreshold(model.modelCode, next),
+          )
+        }
+      />
+
+      <PercentageControl
+        id={`semantic-dedupe-threshold-${model.modelCode}`}
+        label="数据查重门槛"
+        value={dedupeThreshold}
+        sliderLabel="数据查重门槛滑块"
+        numberLabel="数据查重门槛数值"
+        help="只影响数据检查的疑似重复候选，不会重新生成索引。"
+        error={dedupeThresholdError}
+        disabled={dedupeThresholdPending}
+        preserveAppearanceWhenDisabled
+        onChange={setDedupeThreshold}
+        onCommit={() => {
+          setDedupeThresholdError(undefined);
+          void savePercentage(
+            dedupeThreshold,
+            model.dedupeThreshold,
+            setDedupeThreshold,
+            (next) => onDedupeThreshold(model.modelCode, next),
+            () => setDedupeThresholdError('数据查重门槛保存失败，请稍后重试'),
+          );
+        }}
       />
 
       {model.failure ? (

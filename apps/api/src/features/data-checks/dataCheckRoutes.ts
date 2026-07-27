@@ -19,6 +19,8 @@ import { DataCheckCoordinator } from './dataCheckCoordinator.js';
 import { DataCheckRepositoryError, PostgresDataCheckRepository } from './dataCheckRepository.js';
 import { createDataCheckRules } from './dataCheckRules.js';
 import { DataCheckService } from './dataCheckService.js';
+import { SemanticDuplicateRule } from './semanticDuplicateRule.js';
+import type { SemanticWorkerClient } from '../semantic/semanticWorkerClient.js';
 
 const issueParamsSchema = z.object({ issueId: z.uuid() }).strict();
 
@@ -30,13 +32,19 @@ function sendDataCheckError(error: unknown, reply: FastifyReply) {
   throw error;
 }
 
-export function registerDataCheckRoutes(app: FastifyInstance, pool: Pool): DataCheckCoordinator {
+export function registerDataCheckRoutes(
+  app: FastifyInstance,
+  pool: Pool,
+  semanticWorkerClient: SemanticWorkerClient,
+): DataCheckCoordinator {
   const routes = app.withTypeProvider<ZodTypeProvider>();
   routes.setValidatorCompiler(validatorCompiler);
   routes.setSerializerCompiler(serializerCompiler);
 
   const repository = new PostgresDataCheckRepository(pool);
-  const scanner = new DataCheckService(pool, createDataCheckRules());
+  const scanner = new DataCheckService(pool, createDataCheckRules(), {
+    semanticRule: new SemanticDuplicateRule(pool, semanticWorkerClient),
+  });
   const coordinator = new DataCheckCoordinator(repository, scanner);
 
   app.addHook('onReady', async () => {

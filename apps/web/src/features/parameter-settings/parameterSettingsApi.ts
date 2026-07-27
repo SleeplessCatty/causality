@@ -79,6 +79,23 @@ export async function updateSemanticThreshold(
   );
 }
 
+export async function updateSemanticDedupeThreshold(
+  modelCode: SemanticModelCode,
+  threshold: number,
+): Promise<SemanticLifecycleSnapshot> {
+  return semanticLifecycleSnapshotSchema.parse(
+    await requestJson(
+      `/api/semantic/models/${modelCode}/dedupe-threshold`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ threshold }),
+      },
+      undefined,
+      actionTimeoutMilliseconds,
+    ),
+  );
+}
+
 export async function reindexSemanticModel(): Promise<SemanticActionAccepted> {
   return semanticActionAcceptedSchema.parse(
     await requestJson(

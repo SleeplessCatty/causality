@@ -62,6 +62,19 @@ function SnapshotSummary({ snapshot }: { snapshot: DataCheckSnapshotSummary }) {
   );
 }
 
+function semanticStatusLabel(snapshot: DataCheckSnapshotSummary): string {
+  switch (snapshot.semanticStatus) {
+    case 'completed':
+      return '语义查重已完成';
+    case 'truncated':
+      return '语义查重结果已截断';
+    case 'failed':
+      return '语义查重未完成';
+    case 'skipped':
+      return '语义查重已跳过';
+  }
+}
+
 export function DataCheckPanel({ latest, loading, error, checking, onCheck }: DataCheckPanelProps) {
   const snapshot = latest?.snapshot ?? null;
   const running = latest?.task.status === 'running';
@@ -110,6 +123,7 @@ export function DataCheckPanel({ latest, loading, error, checking, onCheck }: Da
           <div className="data-check-success">
             <span>最近成功检查</span>
             <time dateTime={snapshot.checkedAt}>{formatDateTime(snapshot.checkedAt)}</time>
+            <span>{semanticStatusLabel(snapshot)}</span>
           </div>
           <SnapshotSummary snapshot={snapshot} />
         </>

@@ -86,7 +86,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       registerRelationRoutes(app, options.databasePool, semanticQuery);
       registerCaseRoutes(app, options.databasePool, semanticQuery);
       registerCausalGraphRoutes(app, options.databasePool);
-      registerDataCheckRoutes(app, options.databasePool);
+      registerDataCheckRoutes(app, options.databasePool, semanticWorkerClient);
       registerSemanticRoutes(app, options.databasePool, semanticWorkerClient);
       registerDataTransferRoutes(app, options.databasePool, {
         ...(options.importTimeoutMs === undefined

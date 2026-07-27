@@ -96,6 +96,33 @@ export function registerSemanticRoutes(
     },
   );
 
+  routes.patch(
+    '/api/semantic/models/:modelCode/dedupe-threshold',
+    {
+      schema: {
+        tags: ['semantic'],
+        params: semanticModelParamsSchema,
+        body: semanticThresholdInputSchema,
+        response: {
+          200: semanticLifecycleSnapshotSchema,
+          400: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await lifecycleService.updateDedupeThreshold(
+          request.params.modelCode,
+          request.body.threshold,
+        );
+      } catch (error) {
+        return sendSemanticError(error, reply);
+      }
+    },
+  );
+
   routes.post(
     '/api/semantic/models/:modelCode/use',
     {

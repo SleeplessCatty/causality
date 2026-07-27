@@ -18,6 +18,7 @@ import {
   retrySemanticDownload,
   retrySemanticFullIndex,
   retrySemanticLoad,
+  updateSemanticDedupeThreshold,
   updateSemanticThreshold,
   useSemanticModel,
 } from './parameterSettingsApi';
@@ -90,6 +91,14 @@ export function ParameterSettings() {
   const updateThreshold = useMutation({
     mutationFn: ({ modelCode, threshold }: { modelCode: SemanticModelCode; threshold: number }) =>
       updateSemanticThreshold(modelCode, threshold),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: lifecycleQueryKey });
+    },
+    onError: reportError,
+  });
+  const updateDedupeThreshold = useMutation({
+    mutationFn: ({ modelCode, threshold }: { modelCode: SemanticModelCode; threshold: number }) =>
+      updateSemanticDedupeThreshold(modelCode, threshold),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: lifecycleQueryKey });
     },
@@ -171,9 +180,16 @@ export function ParameterSettings() {
                 updateThreshold.isPending &&
                 updateThreshold.variables?.modelCode === model.modelCode
               }
+              dedupeThresholdPending={
+                updateDedupeThreshold.isPending &&
+                updateDedupeThreshold.variables?.modelCode === model.modelCode
+              }
               onAction={requestAction}
               onThreshold={(modelCode, threshold) =>
                 updateThreshold.mutateAsync({ modelCode, threshold }).then(() => undefined)
+              }
+              onDedupeThreshold={(modelCode, threshold) =>
+                updateDedupeThreshold.mutateAsync({ modelCode, threshold }).then(() => undefined)
               }
             />
           ))}

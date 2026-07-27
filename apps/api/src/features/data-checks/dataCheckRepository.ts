@@ -526,8 +526,8 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
              warning_count = $7,
              open_count = $8,
              handled_count = 0,
-             semantic_status = 'skipped',
-             semantic_reason = 'not_recorded'
+             semantic_status = $9,
+             semantic_reason = $10
          where singleton_key = true`,
         [
           result.snapshotId,
@@ -538,6 +538,8 @@ export class PostgresDataCheckRepository implements DataCheckRepository {
           errorCount,
           warningCount,
           result.issues.length,
+          result.semantic.status,
+          result.semantic.reason,
         ],
       );
       const latest = await readLatest(client);

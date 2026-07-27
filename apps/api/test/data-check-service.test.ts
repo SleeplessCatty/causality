@@ -66,6 +66,7 @@ function scanResult(): DataCheckScanResult {
       },
     ],
     timings: [{ rule: 'relation_self_loop', milliseconds: 1 }],
+    semantic: { status: 'skipped', reason: 'not_recorded', issueCount: 0 },
   };
 }
 
@@ -251,5 +252,27 @@ describe('DataCheckService', () => {
     await expect(service.run()).rejects.toThrow('rule failed');
     expect(client.query).toHaveBeenLastCalledWith('rollback');
     expect(client.release).toHaveBeenCalledOnce();
+  });
+
+  it('publishes deterministic issues when only the semantic rule fails', async () => {
+    const client = {
+      query: vi.fn().mockResolvedValue({
+        rows: [{ orphan_event_count: '0', orphan_relation_count: '0', orphan_case_count: '0' }],
+      }),
+      release: vi.fn(),
+    } as unknown as PoolClient;
+    const pool = { connect: vi.fn().mockResolvedValue(client) } as unknown as Pool;
+    const deterministic: DataCheckRule = {
+      issueType: 'relation_self_loop',
+      scan: vi.fn().mockResolvedValue(scanResult().issues),
+    };
+    const semanticRule = { scan: vi.fn().mockRejectedValue(new Error('semantic query failed')) };
+    const service = new DataCheckService(pool, [deterministic], { semanticRule });
+
+    const result = await service.run();
+
+    expect(result.issues).toEqual(scanResult().issues);
+    expect(result.semantic).toEqual({ status: 'failed', reason: 'internal_failure', issueCount: 0 });
+    expect(deterministic.scan).toHaveBeenCalledOnce();
   });
 });

@@ -72,6 +72,7 @@ interface JobRow {
 export interface SemanticLifecycleRepository {
   readFacts(): Promise<SemanticLifecycleFacts>;
   setThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void>;
+  setDedupeThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void>;
 }
 
 function failure(options: {
@@ -275,6 +276,19 @@ export class PostgresSemanticLifecycleRepository implements SemanticLifecycleRep
     const result = await this.pool.query(
       `update semantic_model_settings
        set threshold = $2,
+           updated_at = clock_timestamp()
+       where model_code = $1`,
+      [modelCode, threshold],
+    );
+    if (result.rowCount !== 1) {
+      throw new SemanticRepositoryError('SEMANTIC_MODEL_UNAVAILABLE', '语义模型配置不存在');
+    }
+  }
+
+  public async setDedupeThreshold(modelCode: SemanticModelCode, threshold: number): Promise<void> {
+    const result = await this.pool.query(
+      `update semantic_model_settings
+       set dedupe_threshold = $2,
            updated_at = clock_timestamp()
        where model_code = $1`,
       [modelCode, threshold],

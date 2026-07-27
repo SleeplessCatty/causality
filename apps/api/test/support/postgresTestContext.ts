@@ -20,6 +20,7 @@ const allowedDatabaseNames = new Set([
   'causality_readiness_test',
   'causality_relations_test',
   'causality_semantic_test',
+  'causality_semantic_duplicate_test',
 ]);
 
 const poolClosures = new WeakMap<Pool, Promise<void>>();

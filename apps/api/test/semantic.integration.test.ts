@@ -64,6 +64,7 @@ describe.sequential('semantic configuration API', () => {
              when model_code = 'granite-embedding-97m-multilingual-r2' then $3::smallint
              when model_code = 'bge-m3' then $4::smallint
            end,
+           dedupe_threshold = 100,
            file_status = 'not_downloaded',
            downloaded_at = null,
            failure_kind = null,
@@ -357,7 +358,7 @@ describe.sequential('semantic configuration API', () => {
     }
   });
 
-  it('returns the lifecycle catalog and changes one threshold without queuing work', async () => {
+  it('returns independent default duplicate thresholds and changes one without queueing work', async () => {
     const initial = await context!.app.inject({ method: 'GET', url: '/api/semantic/lifecycle' });
     expect(initial.statusCode).toBe(200);
     expect(initial.json()).toMatchObject({
@@ -370,43 +371,82 @@ describe.sequential('semantic configuration API', () => {
         expect.objectContaining({
           modelCode: 'bge-small-zh-v1.5',
           threshold: MODEL_CATALOG['bge-small-zh-v1.5'].defaultThreshold,
+          dedupeThreshold: 100,
           role: 'inactive',
         }),
         expect.objectContaining({
           modelCode: 'multilingual-e5-small',
           threshold: MODEL_CATALOG['multilingual-e5-small'].defaultThreshold,
+          dedupeThreshold: 100,
           role: 'inactive',
         }),
         expect.objectContaining({
           modelCode: 'granite-embedding-97m-multilingual-r2',
           threshold: MODEL_CATALOG['granite-embedding-97m-multilingual-r2'].defaultThreshold,
+          dedupeThreshold: 100,
           role: 'inactive',
         }),
         expect.objectContaining({
           modelCode: 'bge-m3',
           threshold: MODEL_CATALOG['bge-m3'].defaultThreshold,
+          dedupeThreshold: 100,
           role: 'inactive',
         }),
       ]),
     );
 
+    const beforeIndex = await pool!.query(
+      `select active_model_code, status, state_version, processed_items, total_items,
+              pending_items, failed_items, failure_stage, failure_kind, failure_code, error
+       from semantic_index_state
+       where singleton_key = true`,
+    );
     const updated = await context!.app.inject({
+      method: 'PATCH',
+      url: '/api/semantic/models/bge-m3/dedupe-threshold',
+      payload: { threshold: 80 },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(
+      updated.json().models.find((model: { modelCode: string }) => model.modelCode === 'bge-m3'),
+    ).toMatchObject({ dedupeThreshold: 80, threshold: MODEL_CATALOG['bge-m3'].defaultThreshold });
+    expect(
+      updated.json().models.find((model: { modelCode: string }) => model.modelCode === 'bge-small-zh-v1.5'),
+    ).toMatchObject({ dedupeThreshold: 100 });
+
+    const similarityUpdated = await context!.app.inject({
       method: 'PATCH',
       url: '/api/semantic/models/bge-m3/threshold',
       payload: { threshold: 60 },
     });
-    expect(updated.statusCode).toBe(200);
-    expect(updated.json()).toMatchObject({
+    expect(similarityUpdated.statusCode).toBe(200);
+    expect(similarityUpdated.json()).toMatchObject({
       currentModelCode: null,
       worker: { status: 'online', modelState: 'idle' },
     });
     expect(
-      updated.json().models.find((model: { modelCode: string }) => model.modelCode === 'bge-m3'),
-    ).toMatchObject({ threshold: 60 });
+      similarityUpdated
+        .json()
+        .models.find((model: { modelCode: string }) => model.modelCode === 'bge-m3'),
+    ).toMatchObject({ threshold: 60, dedupeThreshold: 80 });
     const jobs = await pool!.query<{ count: number }>(
       `select count(*)::int as count from semantic_jobs`,
     );
     expect(jobs.rows[0]?.count).toBe(0);
+    const afterIndex = await pool!.query(
+      `select active_model_code, status, state_version, processed_items, total_items,
+              pending_items, failed_items, failure_stage, failure_kind, failure_code, error
+       from semantic_index_state
+       where singleton_key = true`,
+    );
+    expect(afterIndex.rows).toEqual(beforeIndex.rows);
+
+    const invalid = await context!.app.inject({
+      method: 'PATCH',
+      url: '/api/semantic/models/bge-m3/dedupe-threshold',
+      payload: { threshold: 101 },
+    });
+    expect(invalid.statusCode).toBe(400);
   });
 
   it('switches immediately to an undownloaded model and returns the existing queued download for a duplicate submission', async () => {

@@ -109,7 +109,7 @@ describe.sequential('data-check REST API and rules', () => {
         errorCount: 0,
         warningCount: 0,
         semanticStatus: 'skipped',
-        semanticReason: 'not_recorded',
+        semanticReason: 'no_active_model',
       },
       latestFailure: null,
     });
@@ -241,6 +241,7 @@ describe.sequential('data-check REST API and rules', () => {
         },
       ],
       timings: [],
+      semantic: { status: 'skipped', reason: 'not_recorded', issueCount: 0 },
     });
 
     await repository.replaceSnapshot(result(firstSnapshot, 'first_snapshot_issue'));

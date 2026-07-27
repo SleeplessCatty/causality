@@ -124,4 +124,12 @@ export class SemanticLifecycleService {
     await this.repository.setThreshold(modelCode, threshold);
     return this.lifecycle();
   }
+
+  public async updateDedupeThreshold(
+    modelCode: SemanticModelCode,
+    threshold: number,
+  ): Promise<SemanticLifecycleSnapshot> {
+    await this.repository.setDedupeThreshold(modelCode, threshold);
+    return this.lifecycle();
+  }
 }
