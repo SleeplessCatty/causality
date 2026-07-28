@@ -9,10 +9,13 @@
     "pnpm": "11.15.1"
   },
   "scripts": {
-    "dev": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && pnpm --parallel --filter @causality/api --filter @causality/semantic-worker --filter @causality/web dev",
+    "dev": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && pnpm --parallel --filter @causality/api --filter @causality/semantic-worker --filter @causality/mcp --filter @causality/web dev",
     "dev:web": "pnpm --filter @causality/contracts build && pnpm --filter @causality/web dev",
     "dev:api": "pnpm --filter @causality/contracts build && pnpm --filter @causality/api dev",
     "dev:semantic-worker": "pnpm --filter @causality/contracts build && pnpm --filter @causality/semantic-core build && pnpm --filter @causality/semantic-worker dev",
+    "mcp:dev": "pnpm --filter @causality/contracts build && pnpm --filter @causality/mcp dev",
+    "mcp:stdio": "pnpm --filter @causality/contracts build && pnpm --filter @causality/mcp stdio",
+    "mcp:inspect": "pnpm dlx @modelcontextprotocol/inspector@2.0.0 pnpm mcp:stdio",
     "db:generate": "pnpm --filter @causality/api db:generate",
     "db:migrate": "pnpm --filter @causality/api db:migrate",
     "db:seed": "pnpm --filter @causality/api db:seed",

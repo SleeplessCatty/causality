@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 
 const project = process.env.CAUSALITY_SMOKE_PROJECT ?? '';
 const port = process.env.CAUSALITY_SMOKE_PORT ?? '18080';
+const mcpPort = process.env.CAUSALITY_SMOKE_MCP_PORT ?? '18081';
 
 function compose(args: string[]): string {
   if (!/^causality-smoke-[a-z0-9-]+$/u.test(project)) {
@@ -13,7 +14,11 @@ function compose(args: string[]): string {
   return execFileSync('docker', ['compose', '-p', project, ...args], {
     cwd: process.cwd(),
     encoding: 'utf8',
-    env: { ...process.env, CAUSALITY_WEB_PORT: port },
+    env: {
+      ...process.env,
+      CAUSALITY_WEB_PORT: port,
+      CAUSALITY_MCP_PORT: mcpPort,
+    },
   });
 }
 
@@ -67,6 +72,10 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   await expect(page.getByRole('region', { name: '局部因果图工作台' })).toBeVisible();
 
   await expect.poll(async () => (await request.get('/api/ready')).status()).toBe(200);
+  const unauthenticatedMcp = await request.post(`http://127.0.0.1:${mcpPort}/mcp`, {
+    data: {},
+  });
+  expect(unauthenticatedMcp.status()).toBe(401);
   expect(verifyWorkerNativeRuntime()).toContain('onnxruntime_native=ok');
   expect(verifyDatabase()).toMatchObject({
     migrationApplied: true,
@@ -136,7 +145,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
         },
     );
   const byService = Object.fromEntries(serviceRows.map((row) => [row.Service, row]));
-  for (const service of ['postgres', 'api', 'semantic-worker', 'web']) {
+  for (const service of ['postgres', 'api', 'semantic-worker', 'mcp', 'web']) {
     expect(byService[service]).toMatchObject({ State: 'running', Health: 'healthy' });
   }
   expect(byService.migrate).toMatchObject({ State: 'exited', ExitCode: 0 });

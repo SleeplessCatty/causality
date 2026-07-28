@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 import { loadMcpEnv } from './config/env.js';
 import { startCausalityMcpHttpServer } from './transports/httpServer.js';
 
@@ -7,8 +9,8 @@ try {
   const server = await startCausalityMcpHttpServer({
     apiBaseUrl: env.CAUSALITY_API_URL,
     apiTimeoutMs: env.CAUSALITY_API_TIMEOUT_MS,
-    host: env.CAUSALITY_MCP_HOST,
-    port: env.CAUSALITY_MCP_PORT,
+    host: env.HOST,
+    port: env.PORT,
     allowedOrigins: env.CAUSALITY_MCP_ALLOWED_ORIGINS,
     maxBodyBytes: env.CAUSALITY_MCP_MAX_BODY_BYTES,
   });

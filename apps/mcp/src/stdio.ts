@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 import { loadMcpEnv } from './config/env.js';
 import { connectCausalityMcpStdioServer } from './transports/stdioServer.js';
 

@@ -4,6 +4,8 @@ x-api-environment: &api-environment
   CORS_ORIGIN: http://127.0.0.1:${CAUSALITY_WEB_PORT:-8080}
   LOG_LEVEL: ${CAUSALITY_LOG_LEVEL:-info}
   SEMANTIC_WORKER_URL: http://semantic-worker:3100
+  CAUSALITY_MCP_ENDPOINT: http://127.0.0.1:${CAUSALITY_MCP_PORT:-8081}/mcp
+  CAUSALITY_MCP_HEALTH_URL: http://mcp:8081/health
 
 services:
   postgres:
@@ -46,6 +48,35 @@ services:
         - -e
         - >-
           fetch('http://127.0.0.1:3000/api/ready')
+          .then((response) => { if (!response.ok) process.exit(1); })
+          .catch(() => process.exit(1));
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  mcp:
+    image: causality-mcp:local
+    build:
+      context: .
+      dockerfile: apps/mcp/Dockerfile
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8081
+      CAUSALITY_API_URL: http://api:3000
+    ports:
+      - '127.0.0.1:${CAUSALITY_MCP_PORT:-8081}:8081'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:8081/health')
           .then((response) => { if (!response.ok) process.exit(1); })
           .catch(() => process.exit(1));
       interval: 3s

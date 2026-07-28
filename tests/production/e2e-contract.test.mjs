@@ -8,6 +8,10 @@ const packageJson = JSON.parse(
 );
 const scriptUrl = new URL('../../scripts/test-e2e.sh', import.meta.url);
 const script = existsSync(scriptUrl) ? readFileSync(scriptUrl, 'utf8') : '';
+const productionScriptUrl = new URL('../../scripts/test-production-compose.sh', import.meta.url);
+const productionScript = existsSync(productionScriptUrl)
+  ? readFileSync(productionScriptUrl, 'utf8')
+  : '';
 const playwrightConfig = readFileSync(
   new URL('../../playwright.config.ts', import.meta.url),
   'utf8',
@@ -46,11 +50,32 @@ test('root scripts include semantic packages and delivery checks', () => {
     assert.match(packageJson.scripts[command], /@causality\/semantic-core/);
     assert.match(packageJson.scripts[command], /@causality\/semantic-worker/);
   }
+  assert.equal(
+    packageJson.scripts['mcp:dev'],
+    'pnpm --filter @causality/contracts build && pnpm --filter @causality/mcp dev',
+  );
+  assert.equal(
+    packageJson.scripts['mcp:stdio'],
+    'pnpm --filter @causality/contracts build && pnpm --filter @causality/mcp stdio',
+  );
+  assert.equal(
+    packageJson.scripts['mcp:inspect'],
+    'pnpm dlx @modelcontextprotocol/inspector@2.0.0 pnpm mcp:stdio',
+  );
+  for (const command of ['dev', 'typecheck', 'test', 'build']) {
+    assert.match(packageJson.scripts[command], /@causality\/mcp/);
+  }
   assert.match(packageJson.scripts['test:integration'], /@causality\/api test:integration/);
   assert.match(
     packageJson.scripts['test:integration'],
     /@causality\/semantic-worker test:integration/,
   );
+});
+
+test('the production smoke script allocates and forwards a separate MCP port', () => {
+  assert.match(productionScript, /smoke_mcp_port="\$\{CAUSALITY_SMOKE_MCP_PORT:-18081\}"/);
+  assert.match(productionScript, /CAUSALITY_MCP_PORT="\$smoke_mcp_port"/);
+  assert.match(productionScript, /CAUSALITY_SMOKE_MCP_PORT="\$smoke_mcp_port"/);
 });
 
 test('the E2E script creates and always drops only its unique allowlisted test database', () => {
