@@ -279,6 +279,10 @@
   padding-top: 18px;
 }
 
+.data-transfer-ai-history {
+  padding-top: 0;
+}
+
 .data-transfer-history-empty {
   margin-top: 14px;
 }
@@ -328,6 +332,47 @@
   font-size: 12px;
 }
 
+.data-transfer-ai-history-table {
+  min-width: 980px;
+}
+
+.data-transfer-ai-history-table th,
+.data-transfer-ai-history-table td {
+  width: auto;
+  padding-right: 11px;
+  padding-left: 11px;
+  white-space: nowrap;
+}
+
+.data-transfer-ai-history-table th:nth-child(1) {
+  width: 16%;
+}
+
+.data-transfer-ai-history-table th:nth-child(2) {
+  width: 24%;
+}
+
+.data-transfer-ai-history-table th:nth-child(3) {
+  width: 12%;
+}
+
+.data-transfer-ai-history-table th:nth-child(4) {
+  width: 41%;
+}
+
+.data-transfer-ai-history-table th:last-child {
+  width: 7%;
+}
+
+.data-transfer-ai-history-table td .overflow-text {
+  display: block;
+}
+
+.data-transfer-ai-history-table td:last-child,
+.data-transfer-ai-history-table td:nth-child(3) {
+  text-align: center;
+}
+
 .data-transfer-detail-page {
   max-width: 1180px;
 }
@@ -364,6 +409,14 @@
   color: #26382f;
   font-size: 13px;
   line-height: 1.5;
+}
+
+.data-transfer-ai-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.data-transfer-ai-summary-grid dd .overflow-text {
+  display: block;
 }
 
 .data-transfer-detail-records {
@@ -412,4 +465,10 @@
 .data-transfer-outcome--reused {
   background: var(--neutral-soft);
   color: var(--neutral);
+}
+
+.data-transfer-outcome--updated,
+.data-transfer-outcome--changed {
+  background: #fff3d9;
+  color: #8a5b00;
 }

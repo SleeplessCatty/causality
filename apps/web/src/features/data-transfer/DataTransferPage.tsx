@@ -8,15 +8,17 @@ import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
 import { createListReturnState } from '../../shared/navigation/listReturn';
 import { useListRecordFocus } from '../../shared/navigation/useListRecordFocus';
 import { readListPage } from '../../shared/pagination/ListPagination';
+import { AiImportHistoryTable } from './components/AiImportHistoryTable';
 import { ImportHistoryTable } from './components/ImportHistoryTable';
 import { ImportPanel } from './components/ImportPanel';
 import { ExportPanel } from './components/ExportPanel';
-import { getImportHistory, uploadImport } from './dataTransferApi';
+import { getAiImportHistory, getImportHistory, uploadImport } from './dataTransferApi';
 import { useImportNavigationProtection } from './useImportNavigationProtection';
 
 const dataTransferTabs = [
   { value: 'import', label: '导入' },
   { value: 'export', label: '导出' },
+  { value: 'aiHistory', label: 'AI 导入历史' },
 ] as const;
 
 export function DataTransferPage() {
@@ -25,7 +27,8 @@ export function DataTransferPage() {
   const [searchParameters, setSearchParameters] = useSearchParams();
   const page = readListPage(searchParameters.get('page'));
   const requestedTab = searchParameters.get('tab');
-  const activeTab = requestedTab === 'export' ? 'export' : 'import';
+  const activeTab =
+    requestedTab === 'export' || requestedTab === 'aiHistory' ? requestedTab : 'import';
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorRevision, setErrorRevision] = useState(0);
@@ -51,6 +54,16 @@ export function DataTransferPage() {
     placeholderData: (previous) => previous,
   });
   const historyData = history.data?.response;
+  const aiHistory = useQuery({
+    queryKey: ['ai-captures', 'history', page],
+    queryFn: async ({ signal }) => ({
+      requestedPage: page,
+      response: await getAiImportHistory(page, signal),
+    }),
+    enabled: activeTab === 'aiHistory',
+    placeholderData: (previous) => previous,
+  });
+  const aiHistoryData = aiHistory.data?.response;
 
   useEffect(() => {
     if (
@@ -77,8 +90,37 @@ export function DataTransferPage() {
     setSearchParameters,
   ]);
 
+  useEffect(() => {
+    if (
+      activeTab !== 'aiHistory' ||
+      aiHistory.isFetching ||
+      aiHistory.isPlaceholderData ||
+      aiHistory.data?.requestedPage !== page ||
+      aiHistoryData?.page === undefined ||
+      aiHistoryData.page === page
+    ) {
+      return;
+    }
+    const next = new URLSearchParams(searchParameters);
+    next.set('page', String(aiHistoryData.page));
+    setSearchParameters(next, { replace: true });
+  }, [
+    activeTab,
+    aiHistory.data?.requestedPage,
+    aiHistory.isFetching,
+    aiHistory.isPlaceholderData,
+    aiHistoryData?.page,
+    page,
+    searchParameters,
+    setSearchParameters,
+  ]);
+
   useListRecordFocus(
-    activeTab === 'import' ? (historyData?.items.map((batch) => batch.id) ?? []) : [],
+    activeTab === 'import'
+      ? (historyData?.items.map((batch) => batch.id) ?? [])
+      : activeTab === 'aiHistory'
+        ? (aiHistoryData?.items.map((batch) => batch.id) ?? [])
+        : [],
   );
 
   const upload = useMutation({
@@ -103,7 +145,7 @@ export function DataTransferPage() {
 
   function changePage(nextPage: number): void {
     const next = new URLSearchParams(searchParameters);
-    next.set('tab', 'import');
+    next.set('tab', activeTab);
     next.set('page', String(nextPage));
     setSearchParameters(next);
   }
@@ -183,8 +225,43 @@ export function DataTransferPage() {
                 ) : null}
               </section>
             </>
-          ) : (
+          ) : activeTab === 'export' ? (
             <ExportPanel />
+          ) : (
+            <section
+              className="data-transfer-history data-transfer-ai-history"
+              aria-labelledby="ai-import-history-title"
+            >
+              <div className="data-transfer-section-heading">
+                <div>
+                  <h2 id="ai-import-history-title">AI 导入历史</h2>
+                  <p>仅记录已经成功提交的 AI 采集入库批次。</p>
+                </div>
+              </div>
+              {aiHistory.isPending && !aiHistoryData ? (
+                <div className="table-state">加载 AI 导入历史…</div>
+              ) : null}
+              {aiHistory.isError ? (
+                <div className="table-state table-state--error" role="alert">
+                  <strong>无法加载 AI 导入历史</strong>
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    onClick={() => void aiHistory.refetch()}
+                  >
+                    重新加载
+                  </button>
+                </div>
+              ) : null}
+              {aiHistoryData ? (
+                <AiImportHistoryTable
+                  data={aiHistoryData}
+                  fetching={aiHistory.isFetching}
+                  location={location}
+                  onPageChange={changePage}
+                />
+              ) : null}
+            </section>
           )}
         </AppTabs>
       </div>

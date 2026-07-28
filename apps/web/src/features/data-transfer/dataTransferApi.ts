@@ -1,4 +1,7 @@
 import {
+  aiImportBatchDetailSchema,
+  aiImportBatchListResponseSchema,
+  aiImportRecordListResponseSchema,
   exportAvailabilityResponseSchema,
   exportPreparationInputSchema,
   exportPreparationResponseSchema,
@@ -6,6 +9,10 @@ import {
   importBatchSummarySchema,
   importRecordListResponseSchema,
   importUploadResponseSchema,
+  type AiImportBatchDetail,
+  type AiImportBatchListResponse,
+  type AiImportRecordListResponse,
+  type AiImportRecordType,
   type ExportPreparationInput,
   type ExportPreparationResponse,
   type ImportBatchListResponse,
@@ -63,6 +70,36 @@ export async function getImportRecords(
   const parameters = new URLSearchParams({ type, page: String(page) });
   return importRecordListResponseSchema.parse(
     await requestJson(`/api/data-transfers/imports/${batchId}/records?${parameters}`, {}, signal),
+  );
+}
+
+export async function getAiImportHistory(
+  page: number,
+  signal?: AbortSignal,
+): Promise<AiImportBatchListResponse> {
+  return aiImportBatchListResponseSchema.parse(
+    await requestJson(`/api/ai-captures/history?page=${page}`, {}, signal),
+  );
+}
+
+export async function getAiImportBatch(
+  batchId: string,
+  signal?: AbortSignal,
+): Promise<AiImportBatchDetail> {
+  return aiImportBatchDetailSchema.parse(
+    await requestJson(`/api/ai-captures/history/${batchId}`, {}, signal),
+  );
+}
+
+export async function getAiImportRecords(
+  batchId: string,
+  type: AiImportRecordType,
+  page: number,
+  signal?: AbortSignal,
+): Promise<AiImportRecordListResponse> {
+  const parameters = new URLSearchParams({ type, page: String(page) });
+  return aiImportRecordListResponseSchema.parse(
+    await requestJson(`/api/ai-captures/history/${batchId}/records?${parameters}`, {}, signal),
   );
 }
 

@@ -139,6 +139,13 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'data-transfer/ai-imports/:batchId',
+        lazy: lazyPage(
+          () => import('../features/data-transfer/pages/AiImportDetailPage'),
+          (module) => module.AiImportDetailPage,
+        ),
+      },
+      {
         path: 'settings',
         lazy: lazyPage(
           () => import('../features/parameter-settings/ParameterSettings'),

@@ -1,10 +1,21 @@
-import type { ImportBatchListResponse, ImportBatchSummary } from '@causality/contracts';
+import type {
+  AiImportBatchListResponse,
+  AiImportBatchSummary,
+  ImportBatchListResponse,
+  ImportBatchSummary,
+} from '@causality/contracts';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Link, Outlet, RouterProvider, createMemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppProviders } from '../../app/AppProviders';
-import { getImportHistory, prepareExport, saveExportFile, uploadImport } from './dataTransferApi';
+import {
+  getAiImportHistory,
+  getImportHistory,
+  prepareExport,
+  saveExportFile,
+  uploadImport,
+} from './dataTransferApi';
 import { DataTransferPage } from './DataTransferPage';
 
 vi.mock('./dataTransferApi', () => ({
@@ -12,6 +23,9 @@ vi.mock('./dataTransferApi', () => ({
   getImportHistory: vi.fn(),
   getImportBatch: vi.fn(),
   getImportRecords: vi.fn(),
+  getAiImportHistory: vi.fn(),
+  getAiImportBatch: vi.fn(),
+  getAiImportRecords: vi.fn(),
   prepareExport: vi.fn(),
   saveExportFile: vi.fn(),
 }));
@@ -29,11 +43,45 @@ const batch: ImportBatchSummary = {
   },
 };
 
+const aiBatch: AiImportBatchSummary = {
+  id: '20000000-0000-4000-8000-000000000001',
+  planId: '30000000-0000-4000-8000-000000000001',
+  topic: '供应链中断的连锁影响',
+  planVersion: 2,
+  clientName: 'Claude Desktop',
+  completedAt: '2026-07-28T06:00:00.000Z',
+  counts: {
+    eventCreated: 2,
+    eventReused: 1,
+    eventUpdated: 1,
+    caseCreated: 3,
+    caseReused: 2,
+    relationCreated: 1,
+    relationReused: 1,
+    relationCaseCreated: 2,
+    confidenceChanged: 1,
+  },
+};
+
 function historyPage(
   items: ImportBatchSummary[] = [batch],
   page = 1,
   totalPages = 1,
 ): ImportBatchListResponse {
+  return {
+    items,
+    page,
+    pageSize: 50,
+    totalItems: totalPages === 1 ? items.length : 51,
+    totalPages,
+  };
+}
+
+function aiHistoryPage(
+  items: AiImportBatchSummary[] = [aiBatch],
+  page = 1,
+  totalPages = 1,
+): AiImportBatchListResponse {
   return {
     items,
     page,
@@ -64,6 +112,10 @@ function renderPage(initialEntry = '/data-transfer?tab=import&page=1') {
             path: '/data-transfer/imports/:batchId',
             element: <div>导入详情占位</div>,
           },
+          {
+            path: '/data-transfer/ai-imports/:batchId',
+            element: <div>AI 导入详情占位</div>,
+          },
         ],
       },
     ],
@@ -88,6 +140,7 @@ function chooseFile(name = 'mixed.csv', size = 1_572_864): File {
 describe('DataTransferPage', () => {
   beforeEach(() => {
     vi.mocked(getImportHistory).mockResolvedValue(historyPage());
+    vi.mocked(getAiImportHistory).mockResolvedValue(aiHistoryPage());
     vi.mocked(prepareExport).mockResolvedValue({
       token: 'export-token',
       expiresAt: '2026-07-27T08:30:00.000Z',
@@ -140,6 +193,25 @@ describe('DataTransferPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: '导入' }));
     expect(await screen.findByText(batch.filename)).toBeTruthy();
     expect(router.state.location.search).toBe('?tab=import&page=2');
+  });
+
+  it('keeps the AI import history tab and page in the URL and only loads AI history', async () => {
+    vi.mocked(getAiImportHistory).mockResolvedValue(aiHistoryPage([aiBatch], 2, 2));
+    const router = renderPage('/data-transfer?tab=aiHistory&page=2');
+
+    expect(await screen.findByText(aiBatch.topic)).toBeTruthy();
+    expect(router.state.location.search).toBe('?tab=aiHistory&page=2');
+    expect(screen.getByRole('tab', { name: 'AI 导入历史' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      '导入',
+      '导出',
+      'AI 导入历史',
+    ]);
+    expect(getAiImportHistory).toHaveBeenCalledWith(2, expect.any(AbortSignal));
+    expect(getImportHistory).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: '导出 CSV' })).toBeNull();
   });
 
   it('shows the selected filename and size in MB', async () => {
