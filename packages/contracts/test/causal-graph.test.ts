@@ -63,7 +63,7 @@ describe('causal graph contracts', () => {
           id: relationId,
           causeEventId: centerEventId,
           effectEventId: relatedEventId,
-          confidence: 80,
+          confidence: 80.4321,
           caseCount: 3,
         },
       ],

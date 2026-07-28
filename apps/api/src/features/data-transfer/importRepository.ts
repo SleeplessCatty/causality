@@ -555,14 +555,23 @@ export class PostgresImportRepository implements ImportRepository {
                cause_event_id,
                effect_event_id,
                confidence,
+               baseline_confidence,
+               baseline_case_count,
                description
              )
              select input.cause_id::uuid,
                     input.effect_id::uuid,
                     input.confidence,
+                    input.confidence,
+                    0,
                     input.description
              from jsonb_to_recordset($1::jsonb)
-               as input(cause_id text, effect_id text, confidence smallint, description text)
+               as input(
+                 cause_id text,
+                 effect_id text,
+                 confidence numeric(7,4),
+                 description text
+               )
              on conflict do nothing
              returning cause_event_id, effect_event_id, id`,
             [

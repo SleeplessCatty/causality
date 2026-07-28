@@ -103,6 +103,8 @@ const fixedRelations = relationDefinitions.map((relation, index) => ({
   causeEventId: relation.causeEventId,
   effectEventId: relation.effectEventId,
   confidence: relation.confidence,
+  baselineConfidence: relation.confidence,
+  baselineCaseCount: 0,
   description: relation.description,
 }));
 

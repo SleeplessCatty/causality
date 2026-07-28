@@ -78,7 +78,7 @@ async function seedExportGraph(pool: Pool): Promise<void> {
   await pool.query(
     `insert into causal_relations (
        id, cause_event_id, effect_event_id, confidence, description
-     ) values ($1, $2, $3, 87, '关系说明')`,
+     ) values ($1, $2, $3, 87.4321, '关系说明')`,
     [relationId, eventIds.cause, eventIds.effect],
   );
   await pool.query(
@@ -296,7 +296,7 @@ describe.sequential('consistent streaming CSV export', () => {
         `"具体案例","案例,一"\n` +
         `"具体案例","案例""二"\n` +
         `"具体案例","独立案例"\n` +
-        `"因果关系","事件 A","事件 B","87","关系说明","案例""二","案例,一"\n`,
+        `"因果关系","事件 A","事件 B","87.4321","关系说明","案例""二","案例,一"\n`,
     );
     expect(response.body).not.toContain('\uFEFF');
     expect(response.body).not.toContain(relationId);

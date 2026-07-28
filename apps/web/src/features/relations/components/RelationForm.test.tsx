@@ -149,6 +149,7 @@ describe('RelationForm', () => {
         causeEventId: cause.id,
         effectEventId: effect.id,
         confidence: 80,
+        confidenceManuallyEdited: false,
         description: null,
         caseSelections: [],
       }),

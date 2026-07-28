@@ -21,7 +21,7 @@ const relationId = '33333333-3333-4333-8333-333333333333';
 describe('relation contracts', () => {
   it('exports reusable confidence and description field schemas', () => {
     expect(relationConfidenceSchema.parse(75)).toBe(75);
-    expect(relationConfidenceSchema.safeParse(75.5).success).toBe(false);
+    expect(relationConfidenceSchema.parse(75.4321)).toBe(75.4321);
     expect(relationDescriptionSchema.parse('  利率上升促使流动性收紧  ')).toBe(
       '利率上升促使流动性收紧',
     );
@@ -40,8 +40,25 @@ describe('relation contracts', () => {
       causeEventId,
       effectEventId,
       confidence: 75,
+      confidenceManuallyEdited: false,
       description: '利率上升促使流动性收紧',
       caseSelections: [],
+    });
+  });
+
+  it('preserves an explicit manual confidence edit signal', () => {
+    expect(
+      relationFormInputSchema.parse({
+        causeEventId,
+        effectEventId,
+        confidence: 34.4,
+        confidenceManuallyEdited: true,
+        description: null,
+        caseSelections: [],
+      }),
+    ).toMatchObject({
+      confidence: 34.4,
+      confidenceManuallyEdited: true,
     });
   });
 
@@ -135,14 +152,19 @@ describe('relation contracts', () => {
     ).toBe(false);
   });
 
-  it('rejects self loops, null confidence, decimals, and out-of-range values', () => {
+  it('rejects self loops, null confidence, non-finite confidence, and out-of-range values', () => {
     const base = { causeEventId, effectEventId, description: null };
     expect(
       relationFormInputSchema.safeParse({ ...base, effectEventId: causeEventId, confidence: 50 })
         .success,
     ).toBe(false);
     expect(relationFormInputSchema.safeParse({ ...base, confidence: null }).success).toBe(false);
-    expect(relationFormInputSchema.safeParse({ ...base, confidence: 50.5 }).success).toBe(false);
+    expect(relationFormInputSchema.safeParse({ ...base, confidence: Number.NaN }).success).toBe(
+      false,
+    );
+    expect(relationFormInputSchema.safeParse({ ...base, confidence: Infinity }).success).toBe(
+      false,
+    );
     expect(relationFormInputSchema.safeParse({ ...base, confidence: 101 }).success).toBe(false);
   });
 
@@ -234,7 +256,7 @@ describe('relation contracts', () => {
     };
     const detail = {
       ...reference,
-      confidence: 75,
+      confidence: 75.4321,
       description: null,
       caseCount: 2,
       listPage: 3,
@@ -251,7 +273,7 @@ describe('relation contracts', () => {
     expect(relationDetailSchema.parse(detail)).toEqual(detail);
     expect(
       relationListResponseSchema.parse({
-        items: [{ ...reference, confidence: 75, caseCount: 2, updatedAt: detail.updatedAt }],
+        items: [{ ...reference, confidence: 75.4321, caseCount: 2, updatedAt: detail.updatedAt }],
         page: 1,
         pageSize: 30,
         totalItems: 1,

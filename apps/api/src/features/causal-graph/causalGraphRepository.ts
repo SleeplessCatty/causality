@@ -16,7 +16,7 @@ interface RelationRow {
   id: string;
   cause_event_id: string;
   effect_event_id: string;
-  confidence: number;
+  confidence: number | string;
   case_count: number;
 }
 
@@ -29,7 +29,7 @@ function mapRelation(row: RelationRow): CausalGraphRelation {
     id: row.id,
     causeEventId: row.cause_event_id,
     effectEventId: row.effect_event_id,
-    confidence: row.confidence,
+    confidence: Number(row.confidence),
     caseCount: Number(row.case_count),
   };
 }

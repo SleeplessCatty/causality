@@ -151,13 +151,18 @@ export function buildSimulationPlan(options: SimulationOptions, batchId: string)
     },
   ]);
   const directions = buildDirections(options.events, options.relations, random);
-  const relations = directions.map(([cause, effect], index) => ({
-    id: deterministicUuid(`${batchId}:relation:${index}`),
-    causeEventId: events[cause]!.id!,
-    effectEventId: events[effect]!.id!,
-    confidence: Math.floor(random() * 101),
-    description: `模拟关系：${events[cause]!.name} → ${events[effect]!.name}`,
-  }));
+  const relations = directions.map(([cause, effect], index) => {
+    const confidence = Math.floor(random() * 101);
+    return {
+      id: deterministicUuid(`${batchId}:relation:${index}`),
+      causeEventId: events[cause]!.id!,
+      effectEventId: events[effect]!.id!,
+      confidence,
+      baselineConfidence: confidence,
+      baselineCaseCount: 0,
+      description: `模拟关系：${events[cause]!.name} → ${events[effect]!.name}`,
+    };
+  });
 
   return {
     events,

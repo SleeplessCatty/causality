@@ -211,8 +211,16 @@ ALTER TABLE causal_relations
     CHECK (baseline_case_count >= 0);
 ```
 
-Do not add automatic recalculation triggers in this migration. They are introduced only
-after every link writer is updated in Task 2.
+Do not add automatic recalculation triggers in this migration. Add only transitional
+compatibility triggers that:
+
+- initialize omitted baseline values from a newly inserted relation's submitted
+  confidence and zero linked cases;
+- synchronize `baseline_case_count` after direct link inserts/deletes without changing
+  `confidence` or `baseline_confidence`.
+
+These triggers preserve existing SQL, seed, benchmark, and test-data writers during the
+intermediate Task 1 schema. Task 2 must replace them with the final automatic policy.
 
 - [ ] **Step 8: Preserve existing writers during the intermediate schema**
 
@@ -375,6 +383,17 @@ greatest(
 ```
 
 The triggers must update each affected relation once per SQL statement, not once per row.
+Before creating them, drop the Task 1 compatibility triggers and their three functions:
+
+```text
+causal_relations_initialize_confidence_baseline
+causal_relation_cases_sync_inserted_baseline_count
+causal_relation_cases_sync_deleted_baseline_count
+initialize_relation_confidence_baseline()
+sync_inserted_relation_baseline_case_counts()
+sync_deleted_relation_baseline_case_counts()
+```
+
 Apply the migration and verify it before changing repository semantics:
 
 ```bash

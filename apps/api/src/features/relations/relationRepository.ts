@@ -27,7 +27,7 @@ interface RelationRow {
   cause_event_name: string;
   effect_event_id: string;
   effect_event_name: string;
-  confidence: number;
+  confidence: number | string;
   description: string | null;
   created_at: Date;
   updated_at: Date;
@@ -76,7 +76,7 @@ function reference(row: RelationRow): RelationReference {
 function summary(row: RelationRow): RelationSummary {
   return {
     ...reference(row),
-    confidence: row.confidence,
+    confidence: Number(row.confidence),
     caseCount: Number(row.case_count),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -420,13 +420,21 @@ export class PostgresRelationRepository implements RelationRepository {
     try {
       await client.query('begin');
       const result = await client.query<{ id: string }>(
-        `insert into causal_relations (cause_event_id, effect_event_id, confidence, description)
-         values ($1, $2, $3, $4)
+        `insert into causal_relations (
+           cause_event_id,
+           effect_event_id,
+           confidence,
+           baseline_confidence,
+           baseline_case_count,
+           description
+         )
+         values ($1, $2, $3, $3, 0, $4)
          returning id`,
         [input.causeEventId, input.effectEventId, input.confidence, input.description],
       );
       const id = result.rows[0]!.id;
       await this.replaceCaseSelections(client, id, input.caseSelections);
+      await this.storeSubmittedConfidenceBaseline(client, id, input.confidence);
       await client.query('commit');
       return (await this.findById(id))!;
     } catch (error) {
@@ -446,6 +454,7 @@ export class PostgresRelationRepository implements RelationRepository {
          set cause_event_id = $2,
              effect_event_id = $3,
              confidence = $4,
+             baseline_confidence = $4,
              description = $5,
              updated_at = clock_timestamp()
          where id = $1
@@ -457,6 +466,7 @@ export class PostgresRelationRepository implements RelationRepository {
         return null;
       }
       await this.replaceCaseSelections(client, id, input.caseSelections);
+      await this.storeSubmittedConfidenceBaseline(client, id, input.confidence);
       await client.query('commit');
       return this.findById(id);
     } catch (error) {
@@ -529,5 +539,24 @@ export class PostgresRelationRepository implements RelationRepository {
         [relationId, caseIds],
       );
     }
+  }
+
+  private async storeSubmittedConfidenceBaseline(
+    client: PoolClient,
+    relationId: string,
+    confidence: number,
+  ): Promise<void> {
+    await client.query(
+      `update causal_relations
+       set confidence = $2,
+           baseline_confidence = $2,
+           baseline_case_count = (
+             select count(*)::integer
+             from causal_relation_cases
+             where causal_relation_id = $1
+           )
+       where id = $1`,
+      [relationId, confidence],
+    );
   }
 }

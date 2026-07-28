@@ -19,6 +19,7 @@ const allowedDatabaseNames = new Set([
   'causality_events_test',
   'causality_graph_test',
   'causality_readiness_test',
+  'causality_relation_confidence_migration_test',
   'causality_relations_test',
   'causality_semantic_test',
   'causality_semantic_duplicate_test',

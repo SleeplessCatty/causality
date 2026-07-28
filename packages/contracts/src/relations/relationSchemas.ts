@@ -13,7 +13,7 @@ import { searchModeSchema, semanticIndexNoticeSchema } from '../semantic/semanti
 const timestampSchema = z.iso.datetime({ offset: true });
 const eventReferenceSchema = z.object({ id: z.uuid(), name: eventNameSchema }).strict();
 
-export const relationConfidenceSchema = z.number().int().min(0).max(100);
+export const relationConfidenceSchema = z.number().finite().min(0).max(100);
 export const relationDescriptionSchema = z
   .string()
   .trim()
@@ -27,6 +27,7 @@ export const relationFormInputSchema = z
     causeEventId: z.uuid(),
     effectEventId: z.uuid(),
     confidence: relationConfidenceSchema,
+    confidenceManuallyEdited: z.boolean().default(false),
     description: relationDescriptionSchema,
     caseSelections: z
       .array(
@@ -97,7 +98,7 @@ export const relationReferenceSchema = z
 
 export const relationSummarySchema = relationReferenceSchema
   .extend({
-    confidence: z.number().int().min(0).max(100),
+    confidence: relationConfidenceSchema,
     caseCount: z.number().int().nonnegative(),
     updatedAt: timestampSchema,
   })

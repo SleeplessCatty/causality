@@ -26,6 +26,7 @@ const input = {
   causeEventId: detail.causeEvent.id,
   effectEventId: detail.effectEvent.id,
   confidence: detail.confidence,
+  confidenceManuallyEdited: false,
   description: detail.description,
   caseSelections: [],
 };

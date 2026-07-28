@@ -77,7 +77,7 @@ describe.sequential('relation REST API', () => {
     const cause = await createEvent('测试：原油价格上涨');
     const effect = await createEvent('测试：航空成本上升');
     const response = await createRelation(cause.id, effect.id, {
-      confidence: 82,
+      confidence: 82.4321,
       description: '燃油成本传导',
     });
     const created = response.json<RelationDetail>();
@@ -86,7 +86,7 @@ describe.sequential('relation REST API', () => {
     expect(created).toMatchObject({
       causeEvent: { id: cause.id, name: cause.name },
       effectEvent: { id: effect.id, name: effect.name },
-      confidence: 82,
+      confidence: 82.4321,
       caseCount: 0,
       description: '燃油成本传导',
       recentCases: [],
@@ -139,7 +139,7 @@ describe.sequential('relation REST API', () => {
       payload: {
         causeEventId: cause.id,
         effectEventId: newEffect.id,
-        confidence: 91,
+        confidence: 91.2345,
         description: '汇率变化传导',
         caseSelections: [],
       },
@@ -147,8 +147,23 @@ describe.sequential('relation REST API', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       effectEvent: { id: newEffect.id },
-      confidence: 91,
+      confidence: 91.2345,
       description: '汇率变化传导',
+    });
+    const baseline = await pool!.query<{
+      baseline_case_count: number;
+      baseline_confidence: string;
+      confidence: string;
+    }>(
+      `select confidence, baseline_confidence, baseline_case_count
+       from causal_relations
+       where id = $1`,
+      [created.id],
+    );
+    expect(baseline.rows[0]).toEqual({
+      confidence: '91.2345',
+      baseline_confidence: '91.2345',
+      baseline_case_count: 0,
     });
   });
 

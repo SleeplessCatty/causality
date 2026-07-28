@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { eventNameSchema } from '../events/eventSchemas.js';
+import { relationConfidenceSchema } from '../relations/relationSchemas.js';
 
 const graphLimitSchema = z.union([z.literal(20), z.literal(50), z.literal(100)]);
 const relationLimitSchema = z.union([z.literal(200), z.literal(500), z.literal(1_000)]);
@@ -29,7 +30,7 @@ export const causalGraphRelationSchema = z
     id: z.uuid(),
     causeEventId: z.uuid(),
     effectEventId: z.uuid(),
-    confidence: z.number().int().min(0).max(100),
+    confidence: relationConfidenceSchema,
     caseCount: z.number().int().nonnegative(),
   })
   .strict();

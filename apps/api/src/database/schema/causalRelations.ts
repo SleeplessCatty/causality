@@ -2,8 +2,9 @@ import { sql } from 'drizzle-orm';
 import {
   check,
   index,
+  integer,
+  numeric,
   pgTable,
-  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -22,7 +23,13 @@ export const causalRelations = pgTable(
     effectEventId: uuid('effect_event_id')
       .notNull()
       .references(() => abstractEvents.id, { onDelete: 'restrict' }),
-    confidence: smallint('confidence').notNull(),
+    confidence: numeric('confidence', { precision: 7, scale: 4, mode: 'number' }).notNull(),
+    baselineConfidence: numeric('baseline_confidence', {
+      precision: 7,
+      scale: 4,
+      mode: 'number',
+    }).notNull(),
+    baselineCaseCount: integer('baseline_case_count').notNull(),
     description: text('description'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -49,6 +56,11 @@ export const causalRelations = pgTable(
       sql`${table.causeEventId} <> ${table.effectEventId}`,
     ),
     check('causal_relations_confidence_check', sql`${table.confidence} between 0 and 100`),
+    check(
+      'causal_relations_baseline_confidence_check',
+      sql`${table.baselineConfidence} between 0 and 100`,
+    ),
+    check('causal_relations_baseline_case_count_check', sql`${table.baselineCaseCount} >= 0`),
     check(
       'causal_relations_description_check',
       sql`${table.description} is null or char_length(btrim(${table.description})) > 0`,

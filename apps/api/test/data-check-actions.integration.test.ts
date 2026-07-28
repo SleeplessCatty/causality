@@ -304,8 +304,11 @@ describe.sequential('typed data-check governance actions', () => {
         ]);
         await runWithDisabledReferences(async (client) => {
           await client.query(
-            `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
-             values ($1, $2, $3, 50)`,
+            `insert into causal_relations (
+               id, cause_event_id, effect_event_id, confidence,
+               baseline_confidence, baseline_case_count
+             )
+             values ($1, $2, $3, 50, 50, 0)`,
             issueType === 'missing_relation_cause_event'
               ? [relationA, eventA, eventC]
               : [relationA, eventC, eventA],
@@ -924,8 +927,10 @@ describe.sequential('typed data-check governance actions', () => {
       [keywordId, eventC],
     );
     await pool!.query(
-      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence) values
-       ($1, $2, $3, 150)`,
+      `insert into causal_relations (
+         id, cause_event_id, effect_event_id, confidence,
+         baseline_confidence, baseline_case_count
+       ) values ($1, $2, $3, 150, 100, 0)`,
       [relationA, eventB, eventC],
     );
     const missingCauseRelation = '22000000-0000-4000-8000-000000000011';
@@ -936,8 +941,11 @@ describe.sequential('typed data-check governance actions', () => {
       await corruptionClient.query(`set session_replication_role = replica`);
       await corruptionClient.query(
         `insert into causal_relations
-           (id, cause_event_id, effect_event_id, confidence)
-         values ($1, $2, $3, 50), ($4, $3, $2, 50)`,
+           (
+             id, cause_event_id, effect_event_id, confidence,
+             baseline_confidence, baseline_case_count
+           )
+         values ($1, $2, $3, 50, 50, 0), ($4, $3, $2, 50, 50, 0)`,
         [missingCauseRelation, missingEvent, eventB, missingEffectRelation],
       );
       await corruptionClient.query(`set session_replication_role = origin`);

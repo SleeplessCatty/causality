@@ -253,7 +253,7 @@ describe.sequential('append-only data import transaction', () => {
     });
 
     const relations = await pool!.query<{
-      confidence: number;
+      confidence: string;
       description: string | null;
       cause_name: string;
       effect_name: string;
@@ -271,13 +271,13 @@ describe.sequential('append-only data import transaction', () => {
       {
         cause_name: '已有原因事件',
         effect_name: '已有结果事件',
-        confidence: 60,
+        confidence: '60.0000',
         description: '数据库原始关系说明',
       },
       {
         cause_name: '新原因事件',
         effect_name: '新结果事件',
-        confidence: 80,
+        confidence: '80.0000',
         description: '新关系说明',
       },
     ]);

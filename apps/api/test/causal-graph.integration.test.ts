@@ -47,7 +47,7 @@ describe.sequential('causal graph REST API', () => {
     );
     await pool.query(
       `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
-       values ($1, $7, $8, 90),
+       values ($1, $7, $8, 90.4321),
               ($2, $7, $9, 90),
               ($3, $8, $10, 80),
               ($4, $9, $10, 70),
@@ -110,6 +110,9 @@ describe.sequential('causal graph REST API', () => {
       relationIds.ba,
     ]);
     expect(graph.relations.find((relation) => relation.id === relationIds.ab)?.caseCount).toBe(2);
+    expect(graph.relations.find((relation) => relation.id === relationIds.ab)?.confidence).toBe(
+      90.4321,
+    );
     expect(graph.relations.find((relation) => relation.id === relationIds.cd)?.caseCount).toBe(3);
     expect(graph.meta).toEqual({
       centerEventId: eventIds.a,

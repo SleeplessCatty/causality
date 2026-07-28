@@ -293,6 +293,7 @@ export class PostgresExportScopeRepository implements ExportScopeRepository {
       }
       yield result.rows.map(({ id, ...row }) => ({
         ...row,
+        confidence: Number(row.confidence),
         caseContents: casesByRelation.get(id) ?? [],
       }));
     }
