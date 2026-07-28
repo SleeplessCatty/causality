@@ -1143,7 +1143,7 @@ git add apps/web/src/features/data-transfer apps/web/src/app apps/web/src/main.t
 git commit -m "feat: add CSV import history interface"
 ```
 
-- [ ] **Step 9: Request manual review**
+- [x] **Step 9: Request manual review**
 
 Ask the user to verify file selection, cancel/leave protection, mixed-record import, error auto-dismiss, history paging, all detail tabs, long-text tips, and browser back/forward restoration before starting Task 7.
 
@@ -1202,13 +1202,13 @@ POST /api/data-transfers/exports/prepare
 GET  /api/data-transfers/exports/:token/availability
 ```
 
-- [ ] **Step 1: Write failing recursive-scope tests**
+- [x] **Step 1: Write failing recursive-scope tests**
 
 Build a graph containing branches, a cycle, reverse relations, multiple start events, and shared cases. Assert exact event/relation/case sets for upstream, downstream, both, depth 1, depth 10, and minimum-depth revisits.
 
 Also assert full export contains orphan events and orphan cases, while a filtered orphan start event contains that event and no unrelated relation/case.
 
-- [ ] **Step 2: Run scope tests and verify failure**
+- [x] **Step 2: Run scope tests and verify failure**
 
 Run:
 
@@ -1218,13 +1218,13 @@ pnpm --filter @causality/api test:integration -- export-scope.integration.test.t
 
 Expected: FAIL because export traversal does not exist.
 
-- [ ] **Step 3: Implement one recursive CTE scope definition**
+- [x] **Step 3: Implement one recursive CTE scope definition**
 
 The CTE starts events at depth 0, adds one per traversed relation, applies direction at each frontier, suppresses infinite cycle traversal, retains every in-range relation, includes both endpoints, and derives cases from included relation IDs. Materialize IDs into transaction-local `export_scope_events`, `export_scope_relations`, and `export_scope_cases` tables; never return an unbounded ID array to Node.js.
 
 Preview and download must both call this repository; do not duplicate traversal SQL.
 
-- [ ] **Step 4: Write failing token tests**
+- [x] **Step 4: Write failing token tests**
 
 Assert:
 
@@ -1237,15 +1237,15 @@ Assert:
 - a start event deleted before export preparation rejects the request.
 - duplicate start event IDs are normalized to one start event without changing traversal results.
 
-- [ ] **Step 5: Implement export preparation transaction**
+- [x] **Step 5: Implement export preparation transaction**
 
 Use a repeatable-read transaction to materialize and count the scope, then store the request filter and expiry. Return current counts and the raw token once.
 
-- [ ] **Step 6: Register preparation and availability routes**
+- [x] **Step 6: Register preparation and availability routes**
 
 Validate request/response with shared contracts. Availability rechecks expiry and the continued existence of every selected start event without generating CSV.
 
-- [ ] **Step 7: Run export preparation tests**
+- [x] **Step 7: Run export preparation tests**
 
 Run:
 
@@ -1257,7 +1257,7 @@ pnpm --filter @causality/api typecheck
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit locally**
+- [x] **Step 8: Commit locally**
 
 ```bash
 git add apps/api/src/features/data-transfer apps/api/test/export-scope.integration.test.ts apps/api/test/export-service.test.ts
@@ -1296,7 +1296,7 @@ function openExportCsv(token: string, signal: AbortSignal): Promise<ExportCsvStr
 GET /api/data-transfers/exports/:token
 ```
 
-- [ ] **Step 1: Write failing CSV export integration tests**
+- [x] **Step 1: Write failing CSV export integration tests**
 
 Assert:
 
@@ -1311,7 +1311,7 @@ Assert:
 - response filename contains no control characters;
 - exported CSV reimports into an empty database with equivalent business rows and links.
 
-- [ ] **Step 2: Run export tests and verify failure**
+- [x] **Step 2: Run export tests and verify failure**
 
 Run:
 
@@ -1321,11 +1321,11 @@ pnpm --filter @causality/api test:integration -- data-transfer-export.integratio
 
 Expected: FAIL because the stream route is absent.
 
-- [ ] **Step 3: Implement keyset batch readers**
+- [x] **Step 3: Implement keyset batch readers**
 
 Hold one repeatable-read transaction for the download. Materialize resolved scope IDs into transaction-local temporary tables, then read events, cases, and relations in stable ID batches. Order entities by ID, aliases by normalized alias then ID, keywords by position then ID, and relation cases by linked time then case ID. Do not load the entire result or all case arrays into Node.js memory.
 
-- [ ] **Step 4: Implement the CSV transform**
+- [x] **Step 4: Implement the CSV transform**
 
 Use:
 
@@ -1341,7 +1341,7 @@ stringify({
 
 Feed arrays from Task 2 encoders. Respect stream backpressure; stop database reads and roll back when the client signal aborts.
 
-- [ ] **Step 5: Implement safe response handling**
+- [x] **Step 5: Implement safe response handling**
 
 Validate and lock the token before sending CSV headers. Set:
 
@@ -1353,7 +1353,7 @@ Content-Disposition: attachment; filename="causality-filtered-20260727-143000.cs
 
 Filter CR, LF, quotes, and control characters from filename fragments. Commit/close after the final chunk; roll back/close on stream failure.
 
-- [ ] **Step 6: Run round-trip and cancellation tests**
+- [x] **Step 6: Run round-trip and cancellation tests**
 
 Run:
 
@@ -1364,7 +1364,7 @@ pnpm --filter @causality/api typecheck
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit locally**
+- [x] **Step 7: Commit locally**
 
 ```bash
 git add apps/api/src/features/data-transfer apps/api/test/data-transfer-export.integration.test.ts
@@ -1393,7 +1393,7 @@ git commit -m "feat: stream compatible CSV exports"
 - `prepareExport(input)` returns confirmation counts/token.
 - `saveExportFile(token)` first calls availability, then starts a same-route browser file save.
 
-- [ ] **Step 1: Write failing export UI tests**
+- [x] **Step 1: Write failing export UI tests**
 
 Assert:
 
@@ -1410,7 +1410,7 @@ Assert:
 - expired token keeps all filters and asks for a new export confirmation;
 - no export history is rendered.
 
-- [ ] **Step 2: Run UI tests and verify failure**
+- [x] **Step 2: Run UI tests and verify failure**
 
 Run:
 
@@ -1420,19 +1420,19 @@ pnpm --filter @causality/web test -- ExportPanel.test.tsx
 
 Expected: FAIL because export UI is absent.
 
-- [ ] **Step 3: Implement API calls and download launcher**
+- [x] **Step 3: Implement API calls and download launcher**
 
 Add preparation and availability schema validation. After availability succeeds, create a temporary hidden `<a download>` pointing at the same-origin token GET route, click it, and remove it. Do not replace `window.location`.
 
-- [ ] **Step 4: Implement selection controls**
+- [x] **Step 4: Implement selection controls**
 
 Reuse `EventCandidateCombobox`, `AppSelect`, `OverflowText`, existing button styles, and existing error auto-dismiss. Do not duplicate graph candidate loading or use native selects.
 
-- [ ] **Step 5: Implement confirmation dialog**
+- [x] **Step 5: Implement confirmation dialog**
 
 Use `AppDialog`; no direction is altered when it opens. Disable close/confirm while availability is being checked. Closing the dialog retains current filters and preparation token; only parameter changes, token expiry, or a failed availability check discards it.
 
-- [ ] **Step 6: Run Web regression**
+- [x] **Step 6: Run Web regression**
 
 Run:
 
@@ -1444,14 +1444,14 @@ pnpm --filter @causality/web build
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit locally**
+- [x] **Step 7: Commit locally**
 
 ```bash
 git add apps/web/src/features/data-transfer apps/web/src/shared/api
 git commit -m "feat: add filtered and full export interface"
 ```
 
-- [ ] **Step 8: Request manual review**
+- [x] **Step 8: Request manual review**
 
 Ask the user to verify multi-event selection, custom dropdowns, chip overflow tips, export confirmation counts, full and filtered file exports, route preservation, and importing an exported file before Task 10.
 
@@ -1512,7 +1512,7 @@ function registerDataCheckRoutes(
 ): DataCheckCoordinator;
 ```
 
-- [ ] **Step 1: Write failing threshold tests**
+- [x] **Step 1: Write failing threshold tests**
 
 Assert:
 
@@ -1522,11 +1522,11 @@ Assert:
 - saving does not create semantic jobs or alter `semantic_index_state`;
 - lifecycle responses include both thresholds.
 
-- [ ] **Step 2: Implement threshold repository, service, and route**
+- [x] **Step 2: Implement threshold repository, service, and route**
 
 Add `setDedupeThreshold(modelCode, threshold)` beside the existing query threshold method, with separate mutation, error handling, and lifecycle refresh.
 
-- [ ] **Step 3: Add the second model-card control**
+- [x] **Step 3: Add the second model-card control**
 
 Render a second `PercentageControl` directly below “相似度门槛”:
 
@@ -1537,7 +1537,7 @@ Render a second `PercentageControl` directly below “相似度门槛”:
 
 Use independent local state, pending state, save/revert logic, labels, and errors. Preserve the current dark model card and card height/order.
 
-- [ ] **Step 4: Write failing semantic duplicate tests**
+- [x] **Step 4: Write failing semantic duplicate tests**
 
 Seed active model settings and embeddings. Assert:
 
@@ -1551,19 +1551,19 @@ Seed active model settings and embeddings. Assert:
 - threshold 100 only returns cosine similarity that reaches 100;
 - relation vectors never create semantic duplicate issues.
 
-- [ ] **Step 5: Implement preflight and batched pgvector rule**
+- [x] **Step 5: Implement preflight and batched pgvector rule**
 
 Before the repeatable-read data scan, check Worker status and current lifecycle facts. Query only the active model's ready vectors. Use indexed nearest-neighbor/LATERAL candidate selection, stable ID ordering, top five, pair deduplication, and a global `50_001` probe so truncation is detectable without retaining more than 50,000 issues.
 
-- [ ] **Step 6: Preserve deterministic results on semantic failure**
+- [x] **Step 6: Preserve deterministic results on semantic failure**
 
 Catch only semantic-rule failures, set `failed/internal_failure`, and continue snapshot replacement. A deterministic rule or snapshot write failure still fails the whole data-check attempt.
 
-- [ ] **Step 7: Persist and display semantic snapshot state**
+- [x] **Step 7: Persist and display semantic snapshot state**
 
 Save semantic status/reason with the latest successful snapshot. Display one short status beside the latest check time; never display Worker stack traces or model internals.
 
-- [ ] **Step 8: Run semantic-governance tests**
+- [x] **Step 8: Run semantic-governance tests**
 
 Run:
 
@@ -1577,14 +1577,14 @@ pnpm typecheck
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit locally**
+- [x] **Step 9: Commit locally**
 
 ```bash
 git add packages/contracts apps/api/src/features/semantic apps/api/src/features/data-checks apps/api/src/app.ts apps/api/test apps/web/src/features/parameter-settings apps/web/src/features/data-maintenance
 git commit -m "feat: add semantic duplicate data checks"
 ```
 
-- [ ] **Step 10: Request manual review**
+- [x] **Step 10: Request manual review**
 
 Ask the user to verify both threshold controls, independent saving, no reindex side effect, semantic skipped/completed/truncated messages, and unchanged model-card styling before Task 11.
 
@@ -1688,11 +1688,11 @@ type DataCheckRecheckResponse =
 
 - Action context is server-derived and includes current display records, detail links, and one explicit action option per allowed direction with its own live impact counts. Record A is always the issue target and record B is always `relatedId`; the client cannot supply an arbitrary target pair.
 
-- [ ] **Step 1: Write failing action-contract tests**
+- [x] **Step 1: Write failing action-contract tests**
 
 Assert every union branch rejects unknown fields, invalid IDs, wrong action names, and merge directions not matching the two records in the issue.
 
-- [ ] **Step 2: Write failing context tests**
+- [x] **Step 2: Write failing context tests**
 
 Assert:
 
@@ -1703,7 +1703,7 @@ Assert:
 - each issue type maps to an explicit dialog kind;
 - unknown issue types allow only details/edit when safe plus ignore.
 
-- [ ] **Step 3: Implement `DataCheckIssueEvaluator`**
+- [x] **Step 3: Implement `DataCheckIssueEvaluator`**
 
 Create one registry keyed by closed issue type. Each entry defines:
 
@@ -1718,7 +1718,7 @@ Create one registry keyed by closed issue type. Each entry defines:
 
 Both action-context and single-issue recheck use this registry, so rule semantics are not duplicated in routes.
 
-- [ ] **Step 4: Write failing merge integration tests**
+- [x] **Step 4: Write failing merge integration tests**
 
 Cover both directions for:
 
@@ -1730,11 +1730,11 @@ Cover both directions for:
 - stable-ID locking under concurrent opposite merge attempts;
 - rollback when either record disappears before submit.
 
-- [ ] **Step 5: Implement transaction-safe merge services**
+- [x] **Step 5: Implement transaction-safe merge services**
 
 Use one serializable transaction, lock both primary rows in sorted UUID order, recompute impact counts, validate issue pair membership, migrate links with `ON CONFLICT DO NOTHING`, remove obsolete links/records, and rely on existing semantic triggers for affected live records.
 
-- [ ] **Step 6: Implement cleanup, deletion, repair, and ignore**
+- [x] **Step 6: Implement cleanup, deletion, repair, and ignore**
 
 Whitelist exact SQL by issue type:
 
@@ -1745,7 +1745,7 @@ Whitelist exact SQL by issue type:
 
 No route accepts SQL, table names, target types, or unrelated target IDs from the client.
 
-- [ ] **Step 7: Implement single-issue recheck**
+- [x] **Step 7: Implement single-issue recheck**
 
 Require both snapshot and issue IDs. Re-run only the registered evaluator:
 
@@ -1754,11 +1754,11 @@ Require both snapshot and issue IDs. Re-run only the registered evaluator:
 - stale snapshot → 409;
 - missing target → mark handled.
 
-- [ ] **Step 8: Register routes and retain legacy handlers temporarily**
+- [x] **Step 8: Register routes and retain legacy handlers temporarily**
 
 Add the three typed routes. Keep old auto/manual endpoints only until Task 12 migrates the Web UI; mark their removal in Task 13.
 
-- [ ] **Step 9: Run action tests**
+- [x] **Step 9: Run action tests**
 
 Run:
 
@@ -2031,7 +2031,7 @@ pnpm test:e2e
 
 Expected: every command exits 0.
 
-- [ ] **Step 10: Commit locally**
+- [x] **Step 10: Commit locally**
 
 ```bash
 git add packages/contracts apps/api apps/web tests package.json
@@ -2054,7 +2054,7 @@ git commit -m "test: complete P2-03 regression and performance gates"
 - README documents operator behavior, not development history.
 - Roadmap marks P2-03 complete only after automated and manual acceptance.
 
-- [ ] **Step 1: Rewrite the README feature section**
+- [x] **Step 1: Rewrite the README feature section**
 
 Document:
 
@@ -2067,7 +2067,7 @@ Document:
 - development and production startup/migration commands;
 - a warning that imported factual accuracy remains the user's responsibility.
 
-- [ ] **Step 2: Add a compact manual acceptance checklist**
+- [x] **Step 2: Add a compact manual acceptance checklist**
 
 Record the 24 approved design checks plus:
 
@@ -2079,7 +2079,7 @@ Record the 24 approved design checks plus:
 - All extracted shared components retain old behavior
 ```
 
-- [ ] **Step 3: Run final documentation and release-candidate checks**
+- [x] **Step 3: Run final documentation and release-candidate checks**
 
 Run:
 
@@ -2091,15 +2091,15 @@ git status --short
 
 Expected: formatting passes and only intended release-candidate files are modified.
 
-- [ ] **Step 4: Request final manual acceptance**
+- [x] **Step 4: Request final manual acceptance**
 
-Do not mark the design or roadmap complete yet. Ask the user to run the documented production-like startup and manually validate navigation, import, history/detail, export, semantic thresholds, issue dialogs, merges, and edit return.
+Do not mark the design or roadmap complete yet. Ask the user to run the documented production-like startup and manually validate navigation, import, history/detail, export, semantic thresholds, inline issue expansion and treatment plans, merges, failed-action state retention, and full recheck behavior.
 
-- [ ] **Step 5: Mark P2-03 complete after user approval**
+- [x] **Step 5: Mark P2-03 complete after user approval**
 
 Update the design status and roadmap only after the user explicitly reports that manual review passed.
 
-- [ ] **Step 6: Commit the accepted release candidate locally**
+- [x] **Step 6: Commit the accepted release candidate locally**
 
 ```bash
 git add README.md docs tests/production
@@ -2116,7 +2116,7 @@ Do not push GitHub. Report the local commit range and ask whether to enter P2-04
 2. Tasks 5–6 deliver shared primitives and import UI. Stop for manual review after Task 6.
 3. Tasks 7–9 deliver preparation, streaming export, and export UI. Stop for manual review after Task 9.
 4. Task 10 adds semantic duplicate detection and threshold UI. Stop for manual review.
-5. Tasks 11–12 deliver typed governance actions and edit return. Stop for manual review after Task 12.
+5. Task 11 delivers typed governance actions. The original Task 12 is replaced by the approved inline data-maintenance treatment plan, followed by its manual review gate.
 6. Task 13 removes compatibility paths and runs performance/full regression.
 7. Task 14 updates formal documentation and waits for final manual acceptance before completion status.
 
