@@ -9,7 +9,11 @@ export type AiCaptureErrorCode =
   | 'AI_PLAN_UNIQUE_CONFLICT'
   | 'AI_PLAN_COMPARISON_STALE'
   | 'AI_PLAN_NOT_FOUND'
-  | 'AI_PLAN_NOT_REPLACEABLE';
+  | 'AI_PLAN_NOT_REPLACEABLE'
+  | 'AI_PLAN_NOT_COMMITTABLE'
+  | 'AI_PLAN_NOT_LATEST'
+  | 'AI_PLAN_EXPIRED'
+  | 'AI_PLAN_DEPENDENCY_CHANGED';
 
 export class AiCaptureDataError extends Error {
   public readonly category = 'data';

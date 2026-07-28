@@ -9,6 +9,8 @@ import type { SemanticWorkerClient } from '../../src/features/semantic/semanticW
 const allowedDatabaseNames = new Set([
   'causality_ai_candidate_comparison_test',
   'causality_ai_capture_foundation_test',
+  'causality_ai_import_commit_test',
+  'causality_ai_import_history_test',
   'causality_ai_import_plan_test',
   'causality_cases_test',
   'causality_core_model_test',
