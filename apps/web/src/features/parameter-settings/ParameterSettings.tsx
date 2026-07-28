@@ -8,6 +8,7 @@ import { useState } from 'react';
 
 import { ApiClientError } from '../../shared/api/httpClient';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
+import { McpSettingsPanel } from './McpSettingsPanel';
 import { SemanticModelCard } from './SemanticModelCard';
 import { SemanticModelActionDialog, type SemanticModelAction } from './SemanticModelActionDialog';
 import { SemanticTaskProgress } from './SemanticTaskProgress';
@@ -135,7 +136,7 @@ export function ParameterSettings() {
       <div className="page-heading">
         <div>
           <h1 id="parameter-settings-title">参数配置</h1>
-          <p>管理本地语义模型及增强查询参数</p>
+          <p>管理本地语义模型、增强查询参数及 MCP 服务连接</p>
         </div>
       </div>
 
@@ -144,6 +145,8 @@ export function ParameterSettings() {
           {actionError}
         </div>
       ) : null}
+
+      <McpSettingsPanel />
 
       <section className="semantic-settings-section" aria-labelledby="semantic-settings-title">
         <div className="semantic-settings-section__heading">

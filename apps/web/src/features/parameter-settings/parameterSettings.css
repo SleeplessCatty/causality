@@ -8,13 +8,131 @@
   margin: 18px 0 0;
 }
 
-.semantic-settings-section {
+.semantic-settings-section,
+.mcp-settings-section {
   margin-top: 22px;
   padding: 18px 20px 20px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: rgb(255 255 255 / 97%);
   box-shadow: 0 10px 28px rgb(35 50 41 / 6%);
+}
+
+.mcp-settings-details {
+  display: grid;
+  grid-template-columns: 110px minmax(220px, 1fr) minmax(320px, 1.4fr);
+  margin: 0;
+  padding: 13px 0;
+  border-bottom: 1px solid #e2e8e3;
+}
+
+.mcp-settings-details > div {
+  min-width: 0;
+  padding: 0 14px;
+  border-right: 1px solid #e2e8e3;
+}
+
+.mcp-settings-details > div:first-child {
+  padding-left: 0;
+}
+
+.mcp-settings-details > div:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.mcp-settings-details dt {
+  color: #79847d;
+  font-size: 10px;
+  font-weight: 680;
+}
+
+.mcp-settings-details dd {
+  min-width: 0;
+  margin: 5px 0 0;
+  color: #30483d;
+  font-size: 12px;
+}
+
+.mcp-settings-details code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-settings-status {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.mcp-settings-status--running {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mcp-settings-status--stopped {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.mcp-settings-actions {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.mcp-settings-actions .button {
+  min-height: 31px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.mcp-settings-alert {
+  min-width: 240px;
+  margin-right: auto;
+}
+
+.mcp-settings-copy-status {
+  margin-right: auto;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.mcp-settings-state {
+  display: flex;
+  min-height: 74px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mcp-settings-state--error {
+  gap: 12px;
+  color: var(--danger);
+}
+
+.mcp-settings-state .button {
+  min-height: 31px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.mcp-token-dialog {
+  width: min(460px, calc(100vw - 40px));
 }
 
 .semantic-settings-section__heading {

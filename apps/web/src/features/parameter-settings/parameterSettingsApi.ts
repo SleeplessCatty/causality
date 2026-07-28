@@ -1,6 +1,10 @@
 import {
+  mcpSettingsResponseSchema,
+  mcpTokenRotationResponseSchema,
   semanticActionAcceptedSchema,
   semanticLifecycleSnapshotSchema,
+  type McpSettingsResponse,
+  type McpTokenRotationResponse,
   type SemanticActionAccepted,
   type SemanticLifecycleSnapshot,
   type SemanticModelCode,
@@ -9,6 +13,21 @@ import {
 import { requestJson } from '../../shared/api/httpClient';
 
 const actionTimeoutMilliseconds = 15_000;
+
+export async function getMcpSettings(signal?: AbortSignal): Promise<McpSettingsResponse> {
+  return mcpSettingsResponseSchema.parse(await requestJson('/api/mcp/settings', {}, signal));
+}
+
+export async function rotateMcpToken(): Promise<McpTokenRotationResponse> {
+  return mcpTokenRotationResponseSchema.parse(
+    await requestJson(
+      '/api/mcp/settings/rotate-token',
+      { method: 'POST' },
+      undefined,
+      actionTimeoutMilliseconds,
+    ),
+  );
+}
 
 export async function getSemanticLifecycle(
   signal?: AbortSignal,

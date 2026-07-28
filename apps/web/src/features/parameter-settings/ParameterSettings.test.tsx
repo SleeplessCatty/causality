@@ -1,4 +1,5 @@
 import type {
+  McpSettingsResponse,
   SemanticAction,
   SemanticFailure,
   SemanticLifecycleSnapshot,
@@ -18,6 +19,20 @@ const acceptedAction = {
   accepted: true as const,
   taskId: '11111111-1111-4111-8111-111111111111',
   activeModelCode: 'bge-small-zh-v1.5' as const,
+};
+const mcpToken = 'c'.repeat(64);
+const mcpSettings: McpSettingsResponse = {
+  serviceStatus: 'running',
+  endpoint: 'http://127.0.0.1:8081/mcp',
+  maskedToken: `cccc${'•'.repeat(8)}cccc`,
+  accessToken: mcpToken,
+  tokenVersion: 1,
+  updatedAt: timestamp,
+  clientConfig: {
+    transport: 'streamable-http',
+    url: 'http://127.0.0.1:8081/mcp',
+    headers: { Authorization: `Bearer ${mcpToken}` },
+  },
 };
 
 const retryableFailure: SemanticFailure = {
@@ -154,6 +169,21 @@ function jsonResponse(body: unknown, status = 200): Promise<Response> {
   );
 }
 
+function withMcpSettings(
+  handler: (input: string | URL | Request, options?: RequestInit) => Promise<Response>,
+) {
+  return vi.fn((input: string | URL | Request, options?: RequestInit) =>
+    String(input) === '/api/mcp/settings' ? jsonResponse(mcpSettings) : handler(input, options),
+  );
+}
+
+function semanticRequestCount(
+  fetchMock: ReturnType<typeof withMcpSettings>,
+  endpoint = '/api/semantic/lifecycle',
+): number {
+  return fetchMock.mock.calls.filter(([input]) => String(input) === endpoint).length;
+}
+
 function renderPage() {
   render(
     <AppProviders>
@@ -168,11 +198,24 @@ describe('ParameterSettings', () => {
     vi.unstubAllGlobals();
   });
 
+  it('places MCP service management on the existing parameter settings page', async () => {
+    vi.stubGlobal(
+      'fetch',
+      withMcpSettings(() => jsonResponse(lifecycle())),
+    );
+
+    renderPage();
+
+    expect(await screen.findByRole('region', { name: 'MCP 服务' })).toBeTruthy();
+    expect(await screen.findByText('http://127.0.0.1:8081/mcp')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '语义增强查询' })).toBeTruthy();
+  });
+
   it('distinguishes file, model-role, and index badges', async () => {
     const snapshot = lifecycle();
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse(snapshot)),
+      withMcpSettings(() => jsonResponse(snapshot)),
     );
 
     renderPage();
@@ -192,7 +235,7 @@ describe('ParameterSettings', () => {
     });
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse(snapshot)),
+      withMcpSettings(() => jsonResponse(snapshot)),
     );
 
     renderPage();
@@ -227,7 +270,7 @@ describe('ParameterSettings', () => {
         allowedActions: [action],
         failure,
       });
-      const fetchMock = vi.fn((input: string | URL | Request) =>
+      const fetchMock = withMcpSettings((input: string | URL | Request) =>
         String(input).endsWith(failureStage === 'load' ? '/retry-load' : '/retry-full-index')
           ? jsonResponse(acceptedAction, 202)
           : jsonResponse(snapshot),
@@ -258,7 +301,7 @@ describe('ParameterSettings', () => {
     });
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse(snapshot)),
+      withMcpSettings(() => jsonResponse(snapshot)),
     );
     renderPage();
 
@@ -274,7 +317,7 @@ describe('ParameterSettings', () => {
         item.modelCode === 'bge-small-zh-v1.5' ? { ...item, dedupeThreshold: 80 } : item,
       ),
     });
-    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+    const fetchMock = withMcpSettings((input: string | URL | Request, options?: RequestInit) => {
       if (String(input).endsWith('/dedupe-threshold')) return jsonResponse(saved);
       if (options?.method === 'POST')
         throw new Error('threshold save must not start a model action');
@@ -318,7 +361,7 @@ describe('ParameterSettings', () => {
     snapshot.models = snapshot.models.map((item) => ({ ...item, allowedActions: [] }));
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => jsonResponse(snapshot)),
+      withMcpSettings(() => jsonResponse(snapshot)),
     );
     renderPage();
 
@@ -349,26 +392,29 @@ describe('ParameterSettings', () => {
     });
     const ready = currentLifecycle({ stage: 'ready', allowedActions: ['reindex'] });
     const responses = [building, building, ready];
-    const fetchMock = vi.fn(() =>
-      jsonResponse(responses[Math.min(fetchMock.mock.calls.length - 1, responses.length - 1)]),
-    );
+    let semanticReads = 0;
+    const fetchMock = withMcpSettings(() => {
+      const response = responses[Math.min(semanticReads, responses.length - 1)];
+      semanticReads += 1;
+      return jsonResponse(response);
+    });
     vi.stubGlobal('fetch', fetchMock);
 
     renderPage();
     await act(async () => {
       await Promise.resolve();
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(semanticRequestCount(fetchMock)).toBe(1);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(semanticRequestCount(fetchMock)).toBe(3);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3_000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(semanticRequestCount(fetchMock)).toBe(3);
   });
 
   it('uses the five-second server interval when the Worker is unreachable', async () => {
@@ -384,7 +430,7 @@ describe('ParameterSettings', () => {
       loadedModelCode: null,
       checkedAt: timestamp,
     };
-    const fetchMock = vi.fn(() => jsonResponse(snapshot));
+    const fetchMock = withMcpSettings(() => jsonResponse(snapshot));
     vi.stubGlobal('fetch', fetchMock);
 
     renderPage();
@@ -392,24 +438,24 @@ describe('ParameterSettings', () => {
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(4_999);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(semanticRequestCount(fetchMock)).toBe(1);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(semanticRequestCount(fetchMock)).toBe(2);
   });
 
   it('refreshes the lifecycle snapshot when the window regains focus', async () => {
-    const fetchMock = vi.fn(() => jsonResponse(lifecycle()));
+    const fetchMock = withMcpSettings(() => jsonResponse(lifecycle()));
     vi.stubGlobal('fetch', fetchMock);
     renderPage();
 
     await screen.findByRole('heading', { name: '参数配置' });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(semanticRequestCount(fetchMock)).toBe(1);
 
     focusManager.setFocused(false);
     focusManager.setFocused(true);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(semanticRequestCount(fetchMock)).toBe(2));
   });
 });
