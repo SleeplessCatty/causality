@@ -7,6 +7,7 @@ import { isDatabaseReady } from '../../src/database/readiness.js';
 import type { SemanticWorkerClient } from '../../src/features/semantic/semanticWorkerClient.js';
 
 const allowedDatabaseNames = new Set([
+  'causality_ai_capture_foundation_test',
   'causality_cases_test',
   'causality_core_model_test',
   'causality_data_checks_test',

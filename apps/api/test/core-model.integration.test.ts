@@ -160,6 +160,9 @@ describe.sequential('core PostgreSQL model', () => {
 
       expect(tables.rows.map((row) => row.table_name)).toEqual([
         'abstract_events',
+        'ai_import_batches',
+        'ai_import_plans',
+        'ai_import_records',
         'causal_relation_cases',
         'causal_relations',
         'concrete_cases',
@@ -170,6 +173,7 @@ describe.sequential('core PostgreSQL model', () => {
         'export_requests',
         'import_batches',
         'import_records',
+        'mcp_settings',
         'semantic_embeddings',
         'semantic_index_state',
         'semantic_jobs',

@@ -1,4 +1,7 @@
 export { abstractEvents } from './abstractEvents.js';
+export { aiImportBatches } from './aiImportBatches.js';
+export { aiImportPlans } from './aiImportPlans.js';
+export { aiImportRecords } from './aiImportRecords.js';
 export { causalRelations } from './causalRelations.js';
 export { causalRelationCases } from './causalRelationCases.js';
 export { concreteCases } from './concreteCases.js';
@@ -9,6 +12,7 @@ export { eventKeywords } from './eventKeywords.js';
 export { exportRequests } from './exportRequests.js';
 export { importBatches } from './importBatches.js';
 export { importRecords } from './importRecords.js';
+export { mcpSettings } from './mcpSettings.js';
 export { semanticEmbeddings, semanticVector } from './semanticEmbeddings.js';
 export { semanticIndexState } from './semanticIndexState.js';
 export { semanticJobs } from './semanticJobs.js';

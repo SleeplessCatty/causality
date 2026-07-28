@@ -127,6 +127,13 @@
       "when": 1785242428361,
       "tag": "0017_relation_confidence_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785243723844,
+      "tag": "0018_ai_capture_foundation",
+      "breakpoints": true
     }
   ]
 }
