@@ -1,4 +1,8 @@
 import type {
+  AiCaptureComparison,
+  AiImportCommitResult,
+  AiImportPlan,
+  AiImportPlanStatus,
   CaseListResponse,
   CausalGraphResponse,
   EventDetail,
@@ -13,7 +17,7 @@ import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createCausalityMcpServer } from '../src/server/createMcpServer.js';
-import type { CausalityKnowledgeApi } from '../src/tools/registerKnowledgeTools.js';
+import type { CausalityMcpApi } from '../src/server/createMcpServer.js';
 
 const eventId = '10000000-0000-4000-8000-000000000001';
 const effectEventId = '10000000-0000-4000-8000-000000000002';
@@ -121,7 +125,7 @@ const graph: CausalGraphResponse = {
   },
 };
 
-class FakeKnowledgeApi implements CausalityKnowledgeApi {
+class FakeKnowledgeApi implements CausalityMcpApi {
   public eventRelationInput: { id: string; limit: number; cursor?: string } | null = null;
 
   public async searchEvents(): Promise<EventListResponse> {
@@ -154,6 +158,26 @@ class FakeKnowledgeApi implements CausalityKnowledgeApi {
 
   public async queryGraph(): Promise<CausalGraphResponse> {
     return graph;
+  }
+
+  public async compare(): Promise<AiCaptureComparison> {
+    throw new Error('not used');
+  }
+
+  public async prepare(): Promise<AiImportPlan> {
+    throw new Error('not used');
+  }
+
+  public async planStatus(): Promise<AiImportPlanStatus> {
+    throw new Error('not used');
+  }
+
+  public async commit(): Promise<AiImportCommitResult> {
+    throw new Error('not used');
+  }
+
+  public async result(): Promise<AiImportCommitResult> {
+    throw new Error('not used');
   }
 }
 
@@ -188,16 +212,20 @@ describe('read-only knowledge tools', () => {
 
   it('lists exactly six strictly validated read-only tools', async () => {
     const listed = await mcpClient.listTools();
+    const readTools = listed.tools.filter((tool) => tool.annotations?.readOnlyHint);
 
-    expect(listed.tools.map((tool) => tool.name)).toEqual([
+    expect(readTools.map((tool) => tool.name)).toEqual([
       'search_atomic_events',
       'get_atomic_event',
       'search_concrete_cases',
       'get_causal_relation',
       'get_relation_cases',
       'query_local_causal_graph',
+      'compare_knowledge_candidates',
+      'get_import_plan_status',
+      'get_import_result',
     ]);
-    for (const tool of listed.tools) {
+    for (const tool of readTools) {
       expect(tool.annotations).toMatchObject({
         readOnlyHint: true,
         destructiveHint: false,
@@ -209,6 +237,13 @@ describe('read-only knowledge tools', () => {
         additionalProperties: false,
       });
     }
+  });
+
+  it('exposes read, capture, and canonical prompt capabilities from one server factory', async () => {
+    const [tools, prompts] = await Promise.all([mcpClient.listTools(), mcpClient.listPrompts()]);
+
+    expect(tools.tools).toHaveLength(11);
+    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(['causality_capture']);
   });
 
   it('returns readable text and structured database facts for every tool', async () => {

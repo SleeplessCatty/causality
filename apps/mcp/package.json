@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "http": "tsx src/http.ts",
+    "prompt:generate": "tsx src/prompts/generatePortablePrompt.ts",
+    "stdio": "tsx src/stdio.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
@@ -15,6 +18,7 @@
   },
   "devDependencies": {
     "@types/node": "24.10.0",
+    "tsx": "4.23.1",
     "typescript": "6.0.2",
     "vitest": "4.1.10"
   }

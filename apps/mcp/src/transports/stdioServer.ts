@@ -1,0 +1,35 @@
+import { mcpSettingsResponseSchema } from '@causality/contracts';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+
+import { CausalityApiClient } from '../api/causalityApiClient.js';
+import { createCausalityMcpServer } from '../server/createMcpServer.js';
+
+export interface ConnectCausalityMcpStdioServerOptions {
+  apiBaseUrl: string;
+  apiTimeoutMs?: number;
+  fetch?: typeof fetch;
+  transport?: Transport;
+}
+
+export async function connectCausalityMcpStdioServer(
+  options: ConnectCausalityMcpStdioServerOptions,
+) {
+  const fetchImplementation = options.fetch ?? fetch;
+  const response = await fetchImplementation(new URL('/api/mcp/settings', options.apiBaseUrl));
+  if (!response.ok) {
+    throw new Error(`Unable to load MCP settings (HTTP ${response.status})`);
+  }
+  const parsed = mcpSettingsResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new Error('MCP settings response is invalid');
+
+  const apiClient = new CausalityApiClient({
+    baseUrl: options.apiBaseUrl,
+    token: parsed.data.accessToken,
+    fetch: fetchImplementation,
+    ...(options.apiTimeoutMs === undefined ? {} : { timeoutMs: options.apiTimeoutMs }),
+  });
+  const server = createCausalityMcpServer({ apiClient });
+  await server.connect(options.transport ?? new StdioServerTransport());
+  return server;
+}
