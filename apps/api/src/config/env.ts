@@ -9,6 +9,10 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().url().default('http://localhost:5173'),
   SEMANTIC_WORKER_URL: z.string().url().default('http://127.0.0.1:3100'),
   SEMANTIC_QUERY_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(10_000),
+  AI_CAPTURE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
+  CAUSALITY_MCP_ENDPOINT: z.string().url().default('http://127.0.0.1:8081/mcp'),
+  CAUSALITY_MCP_HEALTH_URL: z.string().url().default('http://127.0.0.1:8081/health'),
+  CAUSALITY_MCP_HEALTH_TIMEOUT_MS: z.coerce.number().int().min(100).max(10_000).default(1_000),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

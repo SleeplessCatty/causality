@@ -20,4 +20,8 @@ export class AiImportPlanService {
   public status(planId: string): Promise<AiImportPlanStatus> {
     return this.repository.status(planId);
   }
+
+  public get(planId: string): Promise<AiImportPlan> {
+    return this.repository.get(planId);
+  }
 }

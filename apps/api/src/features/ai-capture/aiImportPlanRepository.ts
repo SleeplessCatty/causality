@@ -2,10 +2,13 @@ import type {
   AiCaptureCandidateSet,
   AiCaptureComparison,
   AiCaptureDecisionSet,
+  AiImportCommitResult,
   AiImportPlan,
   AiImportPlanStatus,
+  AiWorkflowError,
   PrepareAiImportPlanInput,
 } from '@causality/contracts';
+import { aiImportCommitResultSchema, aiWorkflowErrorSchema } from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
 import { AiCaptureDataError } from './aiCaptureErrors.js';
@@ -29,7 +32,7 @@ interface PlanRow {
   client_name: string;
   candidate_payload: AiCaptureCandidateSet;
   plan_payload: StoredAiImportPlanPayload;
-  result_payload: Record<string, unknown> | null;
+  result_payload: unknown;
   created_at: Date;
   expires_at: Date;
   committed_at: Date | null;
@@ -99,6 +102,7 @@ export interface AiImportPlanRepository {
     mutations: PreparedMutationSet,
   ): Promise<AiImportPlan>;
   status(planId: string): Promise<AiImportPlanStatus>;
+  get(planId: string): Promise<AiImportPlan>;
 }
 
 function canonicalInput(input: PrepareAiImportPlanInput): PrepareAiImportPlanInput {
@@ -135,6 +139,14 @@ function canonicalInput(input: PrepareAiImportPlanInput): PrepareAiImportPlanInp
 }
 
 function publicPlan(row: PlanRow): AiImportPlan {
+  const parsedResult = aiImportCommitResultSchema.safeParse(row.result_payload);
+  const parsedError = aiWorkflowErrorSchema.safeParse(row.result_payload);
+  const result: AiImportCommitResult | null =
+    row.status === 'committed' && parsedResult.success ? parsedResult.data : null;
+  const error: AiWorkflowError | null =
+    (row.status === 'data_failed' || row.status === 'system_failed') && parsedError.success
+      ? parsedError.data
+      : null;
   return {
     id: row.id,
     version: row.version,
@@ -149,8 +161,8 @@ function publicPlan(row: PlanRow): AiImportPlan {
     createdAt: row.created_at.toISOString(),
     expiresAt: row.expires_at.toISOString(),
     committedAt: row.committed_at?.toISOString() ?? null,
-    error: null,
-    result: null,
+    error,
+    result,
   };
 }
 
@@ -395,6 +407,16 @@ export class PostgresAiImportPlanRepository implements AiImportPlanRepository {
     } finally {
       client.release();
     }
+  }
+
+  public async get(planId: string): Promise<AiImportPlan> {
+    await this.status(planId);
+    const result = await this.pool.query<PlanRow>(`select * from ai_import_plans where id = $1`, [
+      planId,
+    ]);
+    const plan = result.rows[0];
+    if (!plan) throw new AiCaptureDataError('AI_PLAN_NOT_FOUND', [planId]);
+    return publicPlan(plan);
   }
 
   private async dependenciesValid(

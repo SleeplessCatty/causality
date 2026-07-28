@@ -19,6 +19,13 @@ import { registerDataCheckRoutes } from './features/data-checks/dataCheckRoutes.
 import { registerSemanticRoutes } from './features/semantic/semanticRoutes.js';
 import { registerDataTransferRoutes } from './features/data-transfer/dataTransferRoutes.js';
 import {
+  createAiCaptureRouteDependencies,
+  registerAiCaptureRoutes,
+} from './features/ai-capture/aiCaptureRoutes.js';
+import { PostgresMcpSettingsRepository } from './features/mcp-settings/mcpSettingsRepository.js';
+import { McpSettingsService } from './features/mcp-settings/mcpSettingsService.js';
+import { registerMcpSettingsRoutes } from './features/mcp-settings/mcpSettingsRoutes.js';
+import {
   PostgresSemanticQueryContextRepository,
   SemanticQueryService,
 } from './features/semantic/semanticQueryService.js';
@@ -37,6 +44,10 @@ interface BuildAppOptions {
   semanticQueryTimeoutMs?: number;
   semanticWorkerClient?: SemanticWorkerClient;
   importTimeoutMs?: number;
+  aiCaptureTimeoutMs?: number;
+  mcpEndpoint?: string;
+  mcpHealthUrl?: string;
+  mcpHealthTimeoutMs?: number;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -93,6 +104,25 @@ export function buildApp(options: BuildAppOptions = {}) {
           ? {}
           : { importTimeoutMs: options.importTimeoutMs }),
       });
+      registerAiCaptureRoutes(
+        app,
+        createAiCaptureRouteDependencies(options.databasePool, semanticWorkerClient),
+        {
+          ...(options.aiCaptureTimeoutMs === undefined
+            ? {}
+            : { requestTimeoutMs: options.aiCaptureTimeoutMs }),
+        },
+      );
+      registerMcpSettingsRoutes(
+        app,
+        new McpSettingsService(new PostgresMcpSettingsRepository(options.databasePool), {
+          endpoint: options.mcpEndpoint ?? 'http://127.0.0.1:8081/mcp',
+          healthUrl: options.mcpHealthUrl ?? 'http://127.0.0.1:8081/health',
+          ...(options.mcpHealthTimeoutMs === undefined
+            ? {}
+            : { healthTimeoutMs: options.mcpHealthTimeoutMs }),
+        }),
+      );
     }
 
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());

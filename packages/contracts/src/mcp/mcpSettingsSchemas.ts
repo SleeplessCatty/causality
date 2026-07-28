@@ -51,7 +51,15 @@ export const mcpTokenRotationResponseSchema = z
   })
   .strict();
 
+export const mcpAuthorizationResponseSchema = z
+  .object({
+    authorized: z.literal(true),
+    tokenVersion: z.number().int().positive(),
+  })
+  .strict();
+
 export type McpServiceStatus = z.infer<typeof mcpServiceStatusSchema>;
 export type McpClientConfig = z.infer<typeof mcpClientConfigSchema>;
 export type McpSettingsResponse = z.infer<typeof mcpSettingsResponseSchema>;
 export type McpTokenRotationResponse = z.infer<typeof mcpTokenRotationResponseSchema>;
+export type McpAuthorizationResponse = z.infer<typeof mcpAuthorizationResponseSchema>;

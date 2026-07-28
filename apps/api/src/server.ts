@@ -13,6 +13,10 @@ const app = buildApp({
   databasePool: pool,
   semanticWorkerUrl: env.SEMANTIC_WORKER_URL,
   semanticQueryTimeoutMs: env.SEMANTIC_QUERY_TIMEOUT_MS,
+  aiCaptureTimeoutMs: env.AI_CAPTURE_TIMEOUT_MS,
+  mcpEndpoint: env.CAUSALITY_MCP_ENDPOINT,
+  mcpHealthUrl: env.CAUSALITY_MCP_HEALTH_URL,
+  mcpHealthTimeoutMs: env.CAUSALITY_MCP_HEALTH_TIMEOUT_MS,
   logger:
     env.NODE_ENV === 'development'
       ? {

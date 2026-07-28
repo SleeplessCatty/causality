@@ -201,10 +201,12 @@ export {
 } from './maintenance/deletionSchemas.js';
 
 export {
+  mcpAuthorizationResponseSchema,
   mcpClientConfigSchema,
   mcpServiceStatusSchema,
   mcpSettingsResponseSchema,
   mcpTokenRotationResponseSchema,
+  type McpAuthorizationResponse,
   type McpClientConfig,
   type McpServiceStatus,
   type McpSettingsResponse,

@@ -23,7 +23,7 @@ export class AiCaptureDataError extends Error {
   public constructor(
     public readonly code: AiCaptureErrorCode,
     public readonly affectedRefs: string[] = [],
-    message = code,
+    message: string = code,
   ) {
     super(message);
     this.name = 'AiCaptureDataError';

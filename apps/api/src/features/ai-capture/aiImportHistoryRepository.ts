@@ -1,7 +1,9 @@
 import {
   MAIN_LIST_PAGE_SIZE,
+  aiImportCommitResultSchema,
   type AiImportBatchDetail,
   type AiImportBatchListResponse,
+  type AiImportCommitResult,
   type AiImportRecordListResponse,
   type AiImportRecordType,
 } from '@causality/contracts';
@@ -102,6 +104,18 @@ export class PostgresAiImportHistoryRepository {
       [id],
     );
     return result.rows[0] ? batch(result.rows[0]) : null;
+  }
+
+  public async findResult(historyId: string): Promise<AiImportCommitResult | null> {
+    const result = await this.pool.query<{ result_payload: unknown }>(
+      `select plan.result_payload
+       from ai_import_batches batch
+       join ai_import_plans plan on plan.id = batch.plan_id
+       where batch.id = $1 and plan.status = 'committed'`,
+      [historyId],
+    );
+    const parsed = aiImportCommitResultSchema.safeParse(result.rows[0]?.result_payload);
+    return parsed.success ? parsed.data : null;
   }
 
   public async listRecords(

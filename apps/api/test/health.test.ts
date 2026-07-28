@@ -109,6 +109,10 @@ describe('environment configuration', () => {
       CORS_ORIGIN: 'http://localhost:5173',
       SEMANTIC_WORKER_URL: 'http://127.0.0.1:3100',
       SEMANTIC_QUERY_TIMEOUT_MS: 10_000,
+      AI_CAPTURE_TIMEOUT_MS: 30_000,
+      CAUSALITY_MCP_ENDPOINT: 'http://127.0.0.1:8081/mcp',
+      CAUSALITY_MCP_HEALTH_URL: 'http://127.0.0.1:8081/health',
+      CAUSALITY_MCP_HEALTH_TIMEOUT_MS: 1_000,
     });
   });
 
