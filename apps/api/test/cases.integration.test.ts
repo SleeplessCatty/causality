@@ -25,6 +25,8 @@ describe.sequential('case REST API', () => {
           activeModelCode: 'multilingual-e5-small',
         }),
         embedQuery: async () => [1, ...Array.from({ length: 383 }, () => 0)],
+        embedQueries: async (_modelCode, texts) =>
+          texts.map(() => [1, ...Array.from({ length: 383 }, () => 0)]),
       },
     });
     ({ pool, app } = context);

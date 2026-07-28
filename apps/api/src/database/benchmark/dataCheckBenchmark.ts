@@ -147,6 +147,7 @@ async function measureSemanticRule(
       activeModelCode: semanticModelCode,
     }),
     embedQuery: async () => [],
+    embedQueries: async () => [],
   };
   const plan = await pool.query<{ 'QUERY PLAN': unknown }>(
     `explain (format json) ${semanticCandidateSql(384)}`,

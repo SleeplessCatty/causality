@@ -154,6 +154,7 @@ async function measureServiceQuery(
         activeModelCode: model.code,
       }),
       embedQuery: async () => queryVector(model.dimensions),
+      embedQueries: async (_modelCode, texts) => texts.map(() => queryVector(model.dimensions)),
     },
     searchRepository: new PostgresSemanticSearchRepository(pool),
   });

@@ -140,6 +140,35 @@ describe('TransformersEmbeddingRuntime', () => {
     expect(fake.wasDisposed()).toBe(true);
   });
 
+  it('embeds multiple queries in one normalized pipeline call and skips an empty batch', async () => {
+    const fake = fakeBackend(384);
+    const runtime = new TransformersEmbeddingRuntime({
+      modelsDirectory: '/models',
+      backend: fake.backend,
+    });
+
+    await runtime.load(MODEL_CATALOG['multilingual-e5-small'], '/models/e5/revision');
+
+    await expect(runtime.embedQueries([])).resolves.toEqual([]);
+    const vectors = await runtime.embedQueries(['需求下降', '库存上升']);
+
+    expect(vectors).toHaveLength(2);
+    expect(vectors[0]).toHaveLength(384);
+    expect(vectors[1]).toHaveLength(384);
+    expect(fake.calls).toEqual([
+      {
+        text: ['query: 需求下降', 'query: 库存上升'],
+        options: {
+          pooling: 'mean',
+          normalize: true,
+          truncation: true,
+          max_length: 512,
+        },
+      },
+    ]);
+    expect(fake.disposedOutputs()).toBe(1);
+  });
+
   it('uses empty BGE-M3 prefixes with cls pooling', async () => {
     const fake = fakeBackend(1024);
     const runtime = new TransformersEmbeddingRuntime({

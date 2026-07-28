@@ -46,6 +46,14 @@ function queryService(activeModelCode: SemanticModelCode | null): SemanticWorker
         vector: Array.from({ length: 384 }, () => 0.05),
       };
     },
+    embedQueries: async (modelCode, texts) => {
+      if (modelCode !== activeModelCode) throw new ActiveModelMismatchError();
+      return {
+        modelCode,
+        dimensions: 384,
+        vectors: texts.map(() => Array.from({ length: 384 }, () => 0.05)),
+      };
+    },
   };
 }
 
@@ -129,6 +137,61 @@ describe('semantic worker internal server', () => {
     await app.close();
   });
 
+  it('returns one vector per batch query and rejects invalid or oversized batches', async () => {
+    const app = buildInternalServer({ service: queryService('multilingual-e5-small') });
+    const valid = await app.inject({
+      method: 'POST',
+      url: '/internal/embed-queries',
+      payload: {
+        modelCode: 'multilingual-e5-small',
+        texts: ['需求下降', '库存上升'],
+      },
+    });
+
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json()).toMatchObject({
+      modelCode: 'multilingual-e5-small',
+      dimensions: 384,
+    });
+    expect(valid.json().vectors).toHaveLength(2);
+
+    for (const payload of [
+      { modelCode: 'multilingual-e5-small', texts: [] },
+      { modelCode: 'multilingual-e5-small', texts: [' '] },
+      { modelCode: 'multilingual-e5-small', texts: ['a'.repeat(201)] },
+      {
+        modelCode: 'multilingual-e5-small',
+        texts: Array.from({ length: 65 }, (_, index) => `查询${index}`),
+      },
+      { modelCode: 'multilingual-e5-small', texts: ['查询'], extra: true },
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/internal/embed-queries',
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    await app.close();
+  });
+
+  it('accepts the maximum valid batch of 64 Chinese texts with 200 characters each', async () => {
+    const app = buildInternalServer({ service: queryService('multilingual-e5-small') });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/internal/embed-queries',
+      payload: {
+        modelCode: 'multilingual-e5-small',
+        texts: Array.from({ length: 64 }, () => '因'.repeat(200)),
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().vectors).toHaveLength(64);
+    await app.close();
+  });
+
   it('rejects a model other than the active loaded model', async () => {
     const app = buildInternalServer({ service: queryService('multilingual-e5-small') });
 
@@ -160,6 +223,7 @@ describe('semantic worker internal server', () => {
         loaded = true;
       },
       embedQuery: async () => [],
+      embedQueries: async () => [],
       embedDocuments: async () => [],
       dispose: async () => {
         disposed = true;
@@ -206,6 +270,7 @@ describe('semantic worker internal server', () => {
         throw new Error('Error loading shared library ld-linux-aarch64.so.1');
       },
       embedQuery: async () => [],
+      embedQueries: async () => [],
       embedDocuments: async () => [],
       dispose: async () => {
         disposed = true;
@@ -240,6 +305,7 @@ describe('semantic worker internal server', () => {
       runtime: {
         load: async () => undefined,
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => {
           ordering.push('dispose');
@@ -271,6 +337,7 @@ describe('semantic worker internal server', () => {
       runtime: {
         load: async () => undefined,
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => undefined,
       },
@@ -298,6 +365,7 @@ describe('semantic worker internal server', () => {
           throw new Error('runtime incompatible');
         },
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => {
           ordering.push('dispose');
@@ -321,6 +389,7 @@ describe('semantic worker internal server', () => {
       runtime: {
         load: async () => undefined,
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => {
           disposed = true;
@@ -344,6 +413,7 @@ describe('semantic worker internal server', () => {
     const runtime: EmbeddingRuntime = {
       load: async () => undefined,
       embedQuery: async () => Array.from({ length: 384 }, () => 0.1),
+      embedQueries: async (texts) => texts.map(() => Array.from({ length: 384 }, () => 0.1)),
       embedDocuments: async () => [],
       dispose: async () => undefined,
     };

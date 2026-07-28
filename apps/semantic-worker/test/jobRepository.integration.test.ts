@@ -401,6 +401,8 @@ describe.sequential('semantic job repositories', () => {
         loadedPaths.push(localPath);
       },
       embedQuery: async () => Array.from({ length: model.dimensions }, () => 0),
+      embedQueries: async (texts) =>
+        texts.map(() => Array.from({ length: model.dimensions }, () => 0)),
       embedDocuments: async (documents) =>
         documents.map(() => Array.from({ length: model.dimensions }, () => 0)),
       dispose: async () => undefined,

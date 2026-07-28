@@ -29,6 +29,7 @@ describe.sequential('semantic duplicate data-check rule', () => {
       };
     },
     embedQuery: async () => [],
+    embedQueries: async () => [],
   };
 
   beforeAll(async () => {

@@ -126,6 +126,10 @@ class FakeEmbeddingRuntime implements EmbeddingRuntime {
     return Array.from({ length: 384 }, () => 0);
   }
 
+  public async embedQueries(texts: readonly string[]): Promise<number[][]> {
+    return texts.map(() => Array.from({ length: 384 }, () => 0));
+  }
+
   public async embedDocuments(documents: readonly string[]): Promise<number[][]> {
     this.embeddingCalls += 1;
     this.embeddedDocuments.push(...documents);

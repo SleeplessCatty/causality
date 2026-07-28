@@ -21,6 +21,13 @@ const embedQuerySchema = z
   })
   .strict();
 
+const embedQueriesSchema = z
+  .object({
+    modelCode: semanticModelCodeSchema,
+    texts: z.array(z.string().trim().min(1).max(200)).min(1).max(64),
+  })
+  .strict();
+
 export interface SemanticWorkerHealth {
   status: 'ok';
   modelLoaded: boolean;
@@ -33,9 +40,19 @@ export interface QueryEmbeddingResult {
   vector: number[];
 }
 
+export interface QueryEmbeddingsResult {
+  modelCode: SemanticModelCode;
+  dimensions: SemanticVectorDimensions;
+  vectors: number[][];
+}
+
 export interface SemanticWorkerQueryService {
   health(): SemanticWorkerHealth;
   embedQuery(modelCode: SemanticModelCode, text: string): Promise<QueryEmbeddingResult>;
+  embedQueries(
+    modelCode: SemanticModelCode,
+    texts: readonly string[],
+  ): Promise<QueryEmbeddingsResult>;
 }
 
 export class ActiveModelMismatchError extends Error {
@@ -140,6 +157,20 @@ export class SemanticWorkerService implements SemanticWorkerQueryService {
     };
   }
 
+  public async embedQueries(
+    modelCode: SemanticModelCode,
+    texts: readonly string[],
+  ): Promise<QueryEmbeddingsResult> {
+    if (modelCode !== this.activeModelCode) throw new ActiveModelMismatchError();
+    const model = MODEL_CATALOG[modelCode];
+    const vectors = await this.options.runtime.embedQueries(texts);
+    return {
+      modelCode,
+      dimensions: model.dimensions,
+      vectors,
+    };
+  }
+
   public dispose(): Promise<void> {
     this.activeModelCode = null;
     return this.options.runtime.dispose();
@@ -154,7 +185,7 @@ interface BuildInternalServerOptions {
 export function buildInternalServer(options: BuildInternalServerOptions): FastifyInstance {
   const app = Fastify({
     logger: options.logger ?? false,
-    bodyLimit: 4 * 1024,
+    bodyLimit: 64 * 1024,
   });
 
   app.get('/internal/health', async () => options.service.health());
@@ -168,6 +199,27 @@ export function buildInternalServer(options: BuildInternalServerOptions): Fastif
     }
     try {
       return await options.service.embedQuery(parsed.data.modelCode, parsed.data.text);
+    } catch (error) {
+      if (error instanceof ActiveModelMismatchError) {
+        return reply.status(409).send({
+          code: 'SEMANTIC_MODEL_UNAVAILABLE',
+          message: '请求的语义模型当前未加载',
+        });
+      }
+      throw error;
+    }
+  });
+
+  app.post('/internal/embed-queries', async (request, reply) => {
+    const parsed = embedQueriesSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        code: 'VALIDATION_ERROR',
+        message: '请求参数无效',
+      });
+    }
+    try {
+      return await options.service.embedQueries(parsed.data.modelCode, parsed.data.texts);
     } catch (error) {
       if (error instanceof ActiveModelMismatchError) {
         return reply.status(409).send({

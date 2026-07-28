@@ -356,6 +356,7 @@ describe('LoadJobRunner', () => {
         loaded.push(target);
       },
       embedQuery: async () => [],
+      embedQueries: async () => [],
       embedDocuments: async () => [],
       dispose: async () => undefined,
     };
@@ -389,6 +390,7 @@ describe('LoadJobRunner', () => {
           throw Object.assign(new Error('runtime busy'), { code: 'EBUSY' });
         },
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => {
           disposed = true;
@@ -422,6 +424,7 @@ describe('LoadJobRunner', () => {
           throw Object.assign(new Error('runtime busy'), { code: 'EBUSY' });
         },
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => {
           ordering.push('cleanup');
@@ -453,6 +456,7 @@ describe('LoadJobRunner', () => {
       runtime: {
         load: async () => undefined,
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => {
           disposed = true;
@@ -487,6 +491,7 @@ describe('LoadJobRunner', () => {
       runtime: {
         load: async () => undefined,
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => {
           disposed = true;
@@ -517,6 +522,7 @@ describe('LoadJobRunner', () => {
           controller.abort();
         },
         embedQuery: async () => [],
+        embedQueries: async () => [],
         embedDocuments: async () => [],
         dispose: async () => {
           disposed = true;

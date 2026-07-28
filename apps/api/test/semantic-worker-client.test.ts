@@ -99,6 +99,71 @@ describe('HttpSemanticWorkerClient', () => {
     );
   });
 
+  it('returns one strictly validated vector for every requested batch query', async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        modelCode: 'multilingual-e5-small',
+        dimensions: 384,
+        vectors: [vector384, vector384],
+      }),
+    );
+    const client = new HttpSemanticWorkerClient({
+      baseUrl: 'http://127.0.0.1:3100',
+      timeoutMs: 1_000,
+      fetchFn,
+    });
+
+    await expect(
+      client.embedQueries('multilingual-e5-small', ['需求下降', '库存上升']),
+    ).resolves.toEqual([vector384, vector384]);
+    expect(fetchFn).toHaveBeenCalledWith(
+      'http://127.0.0.1:3100/internal/embed-queries',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          modelCode: 'multilingual-e5-small',
+          texts: ['需求下降', '库存上升'],
+        }),
+      }),
+    );
+  });
+
+  it('rejects batch responses with a mismatched model, count, dimensions, or values', async () => {
+    const responses = [
+      {
+        modelCode: 'bge-small-zh-v1.5',
+        dimensions: 384,
+        vectors: [vector384, vector384],
+      },
+      {
+        modelCode: 'multilingual-e5-small',
+        dimensions: 1024,
+        vectors: [vector384, vector384],
+      },
+      {
+        modelCode: 'multilingual-e5-small',
+        dimensions: 384,
+        vectors: [vector384],
+      },
+      {
+        modelCode: 'multilingual-e5-small',
+        dimensions: 384,
+        vectors: [vector384, [...vector384.slice(0, 383), null]],
+      },
+    ];
+
+    for (const body of responses) {
+      const client = new HttpSemanticWorkerClient({
+        baseUrl: 'http://127.0.0.1:3100',
+        timeoutMs: 1_000,
+        fetchFn: vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(body)),
+      });
+      await expect(
+        client.embedQueries('multilingual-e5-small', ['需求下降', '库存上升']),
+      ).rejects.toMatchObject({ code: 'SEMANTIC_WORKER_UNAVAILABLE' });
+    }
+  });
+
   it('maps timeout and connection failures to a stable unavailable error', async () => {
     const timeoutFetch = vi.fn<typeof fetch>().mockImplementation(
       (_input, init) =>

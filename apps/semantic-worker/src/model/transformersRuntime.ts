@@ -172,6 +172,22 @@ export class TransformersEmbeddingRuntime implements EmbeddingRuntime {
     });
   }
 
+  public embedQueries(texts: readonly string[]): Promise<number[][]> {
+    if (texts.length === 0) return Promise.resolve([]);
+    return this.schedule(async () => {
+      const { model, pipeline } = this.loaded();
+      const output = await pipeline(
+        texts.map((text) => `${model.queryPrefix}${text}`),
+        this.optionsFor(model),
+      );
+      try {
+        return this.copyVectors(output, texts.length, model.dimensions);
+      } finally {
+        output.dispose();
+      }
+    });
+  }
+
   public embedDocuments(texts: readonly string[]): Promise<number[][]> {
     if (texts.length === 0) return Promise.resolve([]);
     return this.schedule(async () => {

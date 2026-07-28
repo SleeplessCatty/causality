@@ -33,6 +33,9 @@ describe.sequential('semantic configuration API', () => {
         embedQuery: async () => {
           throw new SemanticWorkerClientError();
         },
+        embedQueries: async () => {
+          throw new SemanticWorkerClientError();
+        },
       },
     });
     ({ pool } = context);

@@ -30,6 +30,7 @@ function workerClient(): SemanticWorkerClient {
       activeModelCode: 'multilingual-e5-small',
     }),
     embedQuery: vi.fn().mockResolvedValue(Array.from({ length: 384 }, () => 0.1)),
+    embedQueries: vi.fn().mockResolvedValue([]),
   };
 }
 

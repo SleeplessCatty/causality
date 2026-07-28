@@ -14,6 +14,14 @@ const embeddingResponseSchema = z
   })
   .strict();
 
+const embeddingsResponseSchema = z
+  .object({
+    modelCode: semanticModelCodeSchema,
+    dimensions: z.union([z.literal(384), z.literal(512), z.literal(1024)]),
+    vectors: z.array(z.array(z.number().finite())),
+  })
+  .strict();
+
 const healthResponseSchema = z
   .object({
     status: z.literal('ok'),
@@ -35,6 +43,7 @@ export type SemanticWorkerHealth = z.infer<typeof healthResponseSchema>;
 export interface SemanticWorkerClient {
   health(): Promise<SemanticWorkerHealth>;
   embedQuery(modelCode: SemanticModelCode, text: string): Promise<number[]>;
+  embedQueries(modelCode: SemanticModelCode, texts: readonly string[]): Promise<number[][]>;
 }
 
 export class SemanticWorkerClientError extends Error {
@@ -55,11 +64,13 @@ interface HttpSemanticWorkerClientOptions {
 
 export class HttpSemanticWorkerClient implements SemanticWorkerClient {
   private readonly fetchFn: typeof fetch;
+  private readonly embeddingsEndpoint: string;
   private readonly embeddingEndpoint: string;
   private readonly healthEndpoint: string;
 
   public constructor(private readonly options: HttpSemanticWorkerClientOptions) {
     this.fetchFn = options.fetchFn ?? fetch;
+    this.embeddingsEndpoint = new URL('/internal/embed-queries', options.baseUrl).toString();
     this.embeddingEndpoint = new URL('/internal/embed-query', options.baseUrl).toString();
     this.healthEndpoint = new URL('/internal/health', options.baseUrl).toString();
   }
@@ -102,6 +113,37 @@ export class HttpSemanticWorkerClient implements SemanticWorkerClient {
         throw new SemanticWorkerClientError();
       }
       return parsed.data.vector;
+    } catch (error) {
+      if (error instanceof SemanticWorkerClientError) throw error;
+      throw new SemanticWorkerClientError();
+    }
+  }
+
+  public async embedQueries(
+    modelCode: SemanticModelCode,
+    texts: readonly string[],
+  ): Promise<number[][]> {
+    try {
+      const response = await this.fetchFn(this.embeddingsEndpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ modelCode, texts }),
+        signal: AbortSignal.timeout(this.options.timeoutMs),
+      });
+      if (!response.ok) throw new SemanticWorkerClientError();
+
+      const parsed = embeddingsResponseSchema.safeParse(await response.json());
+      const definition = MODEL_CATALOG[modelCode];
+      if (
+        !parsed.success ||
+        parsed.data.modelCode !== modelCode ||
+        parsed.data.dimensions !== definition.dimensions ||
+        parsed.data.vectors.length !== texts.length ||
+        parsed.data.vectors.some((vector) => vector.length !== definition.dimensions)
+      ) {
+        throw new SemanticWorkerClientError();
+      }
+      return parsed.data.vectors;
     } catch (error) {
       if (error instanceof SemanticWorkerClientError) throw error;
       throw new SemanticWorkerClientError();
