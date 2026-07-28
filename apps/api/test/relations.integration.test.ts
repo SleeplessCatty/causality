@@ -56,6 +56,7 @@ describe.sequential('relation REST API', () => {
     effectEventId: string,
     overrides: Partial<{
       confidence: number;
+      confidenceManuallyEdited: boolean;
       description: string | null;
       caseSelections: CaseSelection[];
     }> = {},
@@ -67,6 +68,7 @@ describe.sequential('relation REST API', () => {
         causeEventId,
         effectEventId,
         confidence: overrides.confidence ?? 70,
+        confidenceManuallyEdited: overrides.confidenceManuallyEdited ?? true,
         description: overrides.description ?? null,
         caseSelections: overrides.caseSelections ?? [],
       },
@@ -140,6 +142,7 @@ describe.sequential('relation REST API', () => {
         causeEventId: cause.id,
         effectEventId: newEffect.id,
         confidence: 91.2345,
+        confidenceManuallyEdited: true,
         description: '汇率变化传导',
         caseSelections: [],
       },
@@ -238,7 +241,10 @@ describe.sequential('relation REST API', () => {
         },
       });
       expect(replaced.statusCode).toBe(200);
-      expect(replaced.json<RelationDetail>()).toMatchObject({ caseCount: 1, confidence: 64 });
+      expect(replaced.json<RelationDetail>()).toMatchObject({
+        caseCount: 1,
+        confidence: 32.2596,
+      });
       const independentCount = await pool!.query<{ count: string }>(
         `select count(*) from concrete_cases where content = any($1::text[])`,
         [newContents],

@@ -139,11 +139,15 @@ function decodeCase(fields: readonly string[], sequence: number): ParsedImportRe
   return { type: 'case', sequence, content: content.data };
 }
 
-function decodeConfidence(value: string | undefined): number | null {
+function decodeConfidence(
+  value: string | undefined,
+): { confidence: number; confidenceManuallyEdited: boolean } | null {
   const source = value?.trim() ?? '';
-  if (source.length === 0) return 10;
+  if (source.length === 0) {
+    return { confidence: 10, confidenceManuallyEdited: false };
+  }
   const parsed = relationConfidenceSchema.safeParse(Number(source));
-  return parsed.success ? parsed.data : null;
+  return parsed.success ? { confidence: parsed.data, confidenceManuallyEdited: true } : null;
 }
 
 function decodeRelationCases(fields: readonly string[]): string[] | null {
@@ -163,13 +167,13 @@ function decodeRelationCases(fields: readonly string[]): string[] | null {
 function decodeRelation(fields: readonly string[], sequence: number): ParsedImportRecord | null {
   const causeEventName = eventNameSchema.safeParse(fields[1] ?? '');
   const effectEventName = eventNameSchema.safeParse(fields[2] ?? '');
-  const confidence = decodeConfidence(fields[3]);
+  const confidenceInput = decodeConfidence(fields[3]);
   const description = relationDescriptionSchema.safeParse(fields[4] ?? null);
   const caseContents = decodeRelationCases(fields);
   if (
     !causeEventName.success ||
     !effectEventName.success ||
-    confidence === null ||
+    confidenceInput === null ||
     !description.success ||
     !caseContents
   ) {
@@ -181,7 +185,7 @@ function decodeRelation(fields: readonly string[], sequence: number): ParsedImpo
     sequence,
     causeEventName: causeEventName.data,
     effectEventName: effectEventName.data,
-    confidence,
+    ...confidenceInput,
     description: description.data,
     caseContents,
   };

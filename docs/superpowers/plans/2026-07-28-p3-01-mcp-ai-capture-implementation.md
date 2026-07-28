@@ -394,6 +394,16 @@ sync_inserted_relation_baseline_case_counts()
 sync_deleted_relation_baseline_case_counts()
 ```
 
+Replace the transitional insert initializer with the final
+`causal_relations_initialize_policy_baseline` trigger. It only fills omitted
+`baseline_confidence` and `baseline_case_count` from the submitted confidence and zero when
+a direct SQL writer omits them; it never synchronizes a baseline after link mutation.
+
+Each link trigger must collect distinct relation IDs in sorted order, lock those relation rows,
+and only then call `recalculate_relation_confidences`. The second statement after the lock must
+read the committed case count so concurrent link mutations cannot overwrite a newer confidence
+with a stale count.
+
 Apply the migration and verify it before changing repository semantics:
 
 ```bash

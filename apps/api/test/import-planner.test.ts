@@ -39,6 +39,7 @@ function relation(
     causeEventName,
     effectEventName,
     confidence: options.confidence ?? 10,
+    confidenceManuallyEdited: options.confidence !== undefined,
     description: options.description ?? null,
     caseContents,
   };

@@ -88,6 +88,7 @@ interface RelationOccurrence {
   causeEventName: string;
   effectEventName: string;
   confidence: number;
+  confidenceManuallyEdited: boolean;
   description: string | null;
   caseContents: string[];
   causeId: string;
@@ -410,6 +411,7 @@ export class PostgresImportRepository implements ImportRepository {
         causeEventName: record.causeEventName,
         effectEventName: record.effectEventName,
         confidence: record.confidence,
+        confidenceManuallyEdited: record.confidenceManuallyEdited,
         description: record.description,
         caseContents: record.caseContents,
         causeId,
@@ -561,15 +563,14 @@ export class PostgresImportRepository implements ImportRepository {
              )
              select input.cause_id::uuid,
                     input.effect_id::uuid,
-                    input.confidence,
-                    input.confidence,
+                    10,
+                    10,
                     0,
                     input.description
              from jsonb_to_recordset($1::jsonb)
                as input(
                  cause_id text,
                  effect_id text,
-                 confidence numeric(7,4),
                  description text
                )
              on conflict do nothing
@@ -579,7 +580,6 @@ export class PostgresImportRepository implements ImportRepository {
                 [...relationCreators.values()].map((occurrence) => ({
                   cause_id: occurrence.causeId,
                   effect_id: occurrence.effectId,
-                  confidence: occurrence.confidence,
                   description: occurrence.description,
                 })),
               ),
@@ -692,6 +692,35 @@ export class PostgresImportRepository implements ImportRepository {
     const createdLinks = new Set(
       createdLinkResult.rows.map((row) => linkKey(row.causal_relation_id, row.concrete_case_id)),
     );
+    const explicitBaselines = [...relationCreators].flatMap(([key, occurrence]) => {
+      const relationId = createdRelations.get(key);
+      return relationId && occurrence.confidenceManuallyEdited
+        ? [{ relationId, confidence: occurrence.confidence }]
+        : [];
+    });
+    if (explicitBaselines.length > 0) {
+      await client.query(
+        `update causal_relations as relation
+         set confidence = input.confidence,
+             baseline_confidence = input.confidence,
+             baseline_case_count = (
+               select count(*)::integer
+               from causal_relation_cases relation_case
+               where relation_case.causal_relation_id = relation.id
+             )
+         from jsonb_to_recordset($1::jsonb)
+           as input(relation_id text, confidence numeric(7,4))
+         where relation.id = input.relation_id::uuid`,
+        [
+          JSON.stringify(
+            explicitBaselines.map((baseline) => ({
+              relation_id: baseline.relationId,
+              confidence: baseline.confidence,
+            })),
+          ),
+        ],
+      );
+    }
     for (const occurrence of uniqueLinkCandidates.values()) {
       const key = linkKey(occurrence.relationId, occurrence.caseId);
       audit.push({

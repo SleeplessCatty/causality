@@ -64,12 +64,12 @@ async function selectEvent(label: string, candidate: typeof cause) {
 describe('RelationForm', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('requires two existing events and an integer confidence', async () => {
+  it('requires two existing events and a valid confidence', async () => {
     const submit = renderForm();
     fireEvent.click(screen.getByRole('button', { name: '创建关系' }));
     expect(await screen.findByText('请选择原因事件')).toBeTruthy();
     expect(screen.getByText('请选择结果事件')).toBeTruthy();
-    expect(screen.getByText('请输入 0 到 100 的整数')).toBeTruthy();
+    expect(screen.getByText('请输入 0 到 100 的数值')).toBeTruthy();
     expect(submit).not.toHaveBeenCalled();
   });
 
@@ -89,7 +89,7 @@ describe('RelationForm', () => {
         await act(() => vi.advanceTimersByTimeAsync(3_000));
         expect(screen.queryByText('请选择原因事件')).toBeNull();
         expect(screen.queryByText('请选择结果事件')).toBeNull();
-        expect(screen.queryByText('请输入 0 到 100 的整数')).toBeNull();
+        expect(screen.queryByText('请输入 0 到 100 的数值')).toBeNull();
         fireEvent.click(submit);
         expect(screen.getByText('请选择原因事件')).toBeTruthy();
       } finally {
@@ -149,6 +149,33 @@ describe('RelationForm', () => {
         causeEventId: cause.id,
         effectEventId: effect.id,
         confidence: 80,
+        confidenceManuallyEdited: true,
+        description: null,
+        caseSelections: [],
+      }),
+    );
+  });
+
+  it('does not mark an untouched edit confidence as manually changed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse({ sameDirection: null, reverseDirection: null })),
+    );
+    const submit = renderForm(undefined, 'edit', {
+      causeEvent: cause,
+      effectEvent: effect,
+      confidence: 80.4321,
+      description: null,
+      caseSelections: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '保存修改' }));
+
+    await waitFor(() =>
+      expect(submit).toHaveBeenCalledWith({
+        causeEventId: cause.id,
+        effectEventId: effect.id,
+        confidence: 80.4321,
         confidenceManuallyEdited: false,
         description: null,
         caseSelections: [],

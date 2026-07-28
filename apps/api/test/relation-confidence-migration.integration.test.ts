@@ -143,7 +143,7 @@ describe.sequential('relation confidence baseline migration', () => {
     );
   });
 
-  it('keeps legacy relation and link writers valid without changing confidence', async () => {
+  it('keeps direct relation and link writers valid under the final policy', async () => {
     await legacyPool!.query(
       `insert into abstract_events (id, name)
        values ($1, '直接写入原因事件'), ($2, '直接写入结果事件')`,
@@ -178,9 +178,9 @@ describe.sequential('relation confidence baseline migration', () => {
       [directRelationId],
     );
     expect(stored.rows[0]).toEqual({
-      confidence: '41.2500',
+      confidence: '47.1250',
       baseline_confidence: '41.2500',
-      baseline_case_count: 1,
+      baseline_case_count: 0,
     });
   });
 });

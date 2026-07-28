@@ -77,8 +77,9 @@ async function seedExportGraph(pool: Pool): Promise<void> {
   );
   await pool.query(
     `insert into causal_relations (
-       id, cause_event_id, effect_event_id, confidence, description
-     ) values ($1, $2, $3, 87.4321, '关系说明')`,
+       id, cause_event_id, effect_event_id,
+       confidence, baseline_confidence, baseline_case_count, description
+     ) values ($1, $2, $3, 87.4321, 87.4321, 2, '关系说明')`,
     [relationId, eventIds.cause, eventIds.effect],
   );
   await pool.query(

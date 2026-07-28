@@ -428,13 +428,15 @@ export class PostgresRelationRepository implements RelationRepository {
            baseline_case_count,
            description
          )
-         values ($1, $2, $3, $3, 0, $4)
+         values ($1, $2, 10, 10, 0, $3)
          returning id`,
-        [input.causeEventId, input.effectEventId, input.confidence, input.description],
+        [input.causeEventId, input.effectEventId, input.description],
       );
       const id = result.rows[0]!.id;
       await this.replaceCaseSelections(client, id, input.caseSelections);
-      await this.storeSubmittedConfidenceBaseline(client, id, input.confidence);
+      if (input.confidenceManuallyEdited) {
+        await this.storeSubmittedConfidenceBaseline(client, id, input.confidence);
+      }
       await client.query('commit');
       return (await this.findById(id))!;
     } catch (error) {
@@ -453,20 +455,20 @@ export class PostgresRelationRepository implements RelationRepository {
         `update causal_relations
          set cause_event_id = $2,
              effect_event_id = $3,
-             confidence = $4,
-             baseline_confidence = $4,
-             description = $5,
+             description = $4,
              updated_at = clock_timestamp()
          where id = $1
          returning id`,
-        [id, input.causeEventId, input.effectEventId, input.confidence, input.description],
+        [id, input.causeEventId, input.effectEventId, input.description],
       );
       if (!result.rows[0]) {
         await client.query('rollback');
         return null;
       }
       await this.replaceCaseSelections(client, id, input.caseSelections);
-      await this.storeSubmittedConfidenceBaseline(client, id, input.confidence);
+      if (input.confidenceManuallyEdited) {
+        await this.storeSubmittedConfidenceBaseline(client, id, input.confidence);
+      }
       await client.query('commit');
       return this.findById(id);
     } catch (error) {

@@ -36,6 +36,23 @@ describe('PercentageControl', () => {
     expect(onChange).toHaveBeenNthCalledWith(2, null);
   });
 
+  it('applies a custom decimal step to both percentage inputs', () => {
+    render(
+      <PercentageControl
+        id="relation-confidence"
+        label="置信度"
+        value={65.4}
+        step={0.1}
+        sliderLabel="置信度滑块"
+        numberLabel="置信度数值"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('slider', { name: '置信度滑块' }).getAttribute('step')).toBe('0.1');
+    expect(screen.getByRole('spinbutton', { name: '置信度数值' }).getAttribute('step')).toBe('0.1');
+  });
+
   it('keeps the relation form help and error presentation reusable', () => {
     render(
       <PercentageControl

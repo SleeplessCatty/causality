@@ -22,6 +22,7 @@ export type ParsedImportRecord =
       causeEventName: string;
       effectEventName: string;
       confidence: number;
+      confidenceManuallyEdited: boolean;
       description: string | null;
       caseContents: string[];
     };

@@ -221,6 +221,7 @@ describe('strict import CSV parser', () => {
         causeEventName: '原因',
         effectEventName: '结果',
         confidence: 10,
+        confidenceManuallyEdited: false,
         description: null,
         caseContents: ['案例一', '案例二'],
       },
@@ -230,6 +231,7 @@ describe('strict import CSV parser', () => {
         causeEventName: '另一个原因',
         effectEventName: '另一个结果',
         confidence: 10,
+        confidenceManuallyEdited: false,
         description: null,
         caseContents: [],
       },
@@ -245,6 +247,7 @@ describe('strict import CSV parser', () => {
     expect(result.validRecords[0]).toMatchObject({
       type: 'relation',
       confidence: 80,
+      confidenceManuallyEdited: true,
       caseContents: ['案例一', '案例二'],
     });
   });

@@ -52,6 +52,7 @@ function relation(
     causeEventName,
     effectEventName,
     confidence: options.confidence ?? 10,
+    confidenceManuallyEdited: options.confidence !== undefined,
     description: options.description ?? null,
     caseContents,
   };
@@ -107,9 +108,11 @@ async function seedExistingGraph(pool: Pool): Promise<void> {
        cause_event_id,
        effect_event_id,
        confidence,
+       baseline_confidence,
+       baseline_case_count,
        description
      )
-     values ($3, $1, $2, 60, '数据库原始关系说明')`,
+     values ($3, $1, $2, 60, 60, 1, '数据库原始关系说明')`,
     [existingCauseId, existingEffectId, existingRelationId],
   );
   await pool.query(
@@ -271,7 +274,7 @@ describe.sequential('append-only data import transaction', () => {
       {
         cause_name: '已有原因事件',
         effect_name: '已有结果事件',
-        confidence: '60.0000',
+        confidence: '67.6000',
         description: '数据库原始关系说明',
       },
       {
@@ -339,6 +342,54 @@ describe.sequential('append-only data import transaction', () => {
       { source_sequence: 4, record_type: 'case', outcome: 'created' },
       { source_sequence: 6, record_type: 'relation', outcome: 'created' },
       { source_sequence: 6, record_type: 'relation_case', outcome: 'created' },
+    ]);
+  });
+
+  it('automatically calculates omitted confidence and captures an explicit confidence baseline', async () => {
+    await runImport(pool!, [
+      event(1, '自动置信度原因'),
+      event(2, '自动置信度结果'),
+      relation(3, '自动置信度原因', '自动置信度结果', ['自动案例一', '自动案例二']),
+      event(4, '显式置信度原因'),
+      event(5, '显式置信度结果'),
+      relation(6, '显式置信度原因', '显式置信度结果', ['显式案例一', '显式案例二'], {
+        confidence: 65,
+      }),
+    ]);
+
+    const rows = await pool!.query<{
+      baseline_case_count: number;
+      baseline_confidence: string;
+      case_count: number;
+      cause_name: string;
+      confidence: string;
+    }>(
+      `select cause.name as cause_name,
+              relation.confidence,
+              relation.baseline_confidence,
+              relation.baseline_case_count,
+              count(link.concrete_case_id)::int as case_count
+       from causal_relations relation
+       join abstract_events cause on cause.id = relation.cause_event_id
+       left join causal_relation_cases link on link.causal_relation_id = relation.id
+       group by relation.id, cause.name
+       order by cause.name`,
+    );
+    expect(rows.rows).toEqual([
+      {
+        cause_name: '显式置信度原因',
+        confidence: '65.0000',
+        baseline_confidence: '65.0000',
+        baseline_case_count: 2,
+        case_count: 2,
+      },
+      {
+        cause_name: '自动置信度原因',
+        confidence: '27.1000',
+        baseline_confidence: '10.0000',
+        baseline_case_count: 0,
+        case_count: 2,
+      },
     ]);
   });
 

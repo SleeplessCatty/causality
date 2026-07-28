@@ -1663,6 +1663,21 @@ describe.sequential('typed data-check governance actions', () => {
         { relation_id: relationB },
         { relation_id: relationC },
       ]);
+      expect(
+        (
+          await pool!.query(
+            `select id::text, confidence
+             from causal_relations
+             where id = any($1::uuid[])
+             order by id`,
+            [[relationA, relationB, relationC]],
+          )
+        ).rows,
+      ).toEqual([
+        { id: relationA, confidence: '55.0000' },
+        { id: relationB, confidence: '55.0000' },
+        { id: relationC, confidence: '46.0000' },
+      ]);
 
       await pool!.query(`delete from data_check_issues`);
       const relationIssue =

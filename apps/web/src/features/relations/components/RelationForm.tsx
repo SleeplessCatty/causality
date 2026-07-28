@@ -43,6 +43,7 @@ export function RelationForm({
   const [causeEvent, setCauseEvent] = useState(initialValue.causeEvent);
   const [effectEvent, setEffectEvent] = useState(initialValue.effectEvent);
   const [confidence, setConfidence] = useState<number | null>(initialValue.confidence);
+  const [confidenceManuallyEdited, setConfidenceManuallyEdited] = useState(false);
   const [description, setDescription] = useState(initialValue.description ?? '');
   const [caseSelections, setCaseSelections] = useState(initialValue.caseSelections);
   const [casesIncomplete, setCasesIncomplete] = useState(false);
@@ -83,6 +84,7 @@ export function RelationForm({
       causeEventId: causeEvent?.id ?? '',
       effectEventId: effectEvent?.id ?? '',
       confidence,
+      confidenceManuallyEdited,
       description,
       caseSelections: caseSelections.map((selection) =>
         selection.type === 'existing'
@@ -103,7 +105,7 @@ export function RelationForm({
         if (field in errors) continue;
         if (field === 'causeEventId') errors[field] = '请选择原因事件';
         else if (field === 'effectEventId') errors[field] = '请选择结果事件';
-        else if (field === 'confidence') errors[field] = '请输入 0 到 100 的整数';
+        else if (field === 'confidence') errors[field] = '请输入 0 到 100 的数值';
         else errors[field] = issue.message;
       }
       setFieldErrors(errors);
@@ -181,9 +183,13 @@ export function RelationForm({
             required
             sliderLabel="置信度滑块"
             numberLabel="置信度数值"
-            help="由人工判断并填写 0–100 的整数。"
+            step={0.1}
+            help="案例关联变化时自动计算；也可以手动填写 0–100 的数值。"
             error={fieldErrors.confidence}
-            onChange={setConfidence}
+            onChange={(value) => {
+              setConfidence(value);
+              setConfidenceManuallyEdited(true);
+            }}
           />
 
           <div className="form-field">

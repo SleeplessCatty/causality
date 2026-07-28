@@ -8,6 +8,7 @@ interface PercentageControlProps {
   numberLabel: string;
   onChange(value: number | null): void;
   onCommit?: (() => void) | undefined;
+  step?: number;
   required?: boolean;
   help?: string | undefined;
   error?: string | undefined;
@@ -23,6 +24,7 @@ export function PercentageControl({
   numberLabel,
   onChange,
   onCommit,
+  step = 1,
   required = false,
   help,
   error,
@@ -40,7 +42,7 @@ export function PercentageControl({
           type="range"
           min="0"
           max="100"
-          step="1"
+          step={step}
           value={value ?? 0}
           aria-label={sliderLabel}
           disabled={disabled || value === null}
@@ -57,7 +59,7 @@ export function PercentageControl({
             type="number"
             min="0"
             max="100"
-            step="1"
+            step={step}
             value={value ?? ''}
             aria-label={numberLabel}
             aria-invalid={Boolean(error)}

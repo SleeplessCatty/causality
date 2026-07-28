@@ -46,13 +46,16 @@ describe.sequential('causal graph REST API', () => {
       [eventIds.a, eventIds.b, eventIds.c, eventIds.d, eventIds.isolated],
     );
     await pool.query(
-      `insert into causal_relations (id, cause_event_id, effect_event_id, confidence)
-       values ($1, $7, $8, 90.4321),
-              ($2, $7, $9, 90),
-              ($3, $8, $10, 80),
-              ($4, $9, $10, 70),
-              ($5, $10, $7, 60),
-              ($6, $8, $7, 50)`,
+      `insert into causal_relations (
+         id, cause_event_id, effect_event_id,
+         confidence, baseline_confidence, baseline_case_count
+       )
+       values ($1, $7, $8, 90.4321, 90.4321, 2),
+              ($2, $7, $9, 90, 90, 1),
+              ($3, $8, $10, 80, 80, 0),
+              ($4, $9, $10, 70, 70, 3),
+              ($5, $10, $7, 60, 60, 0),
+              ($6, $8, $7, 50, 50, 0)`,
       [
         relationIds.ab,
         relationIds.ac,
