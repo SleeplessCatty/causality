@@ -1,6 +1,7 @@
 import type {
   AiCaptureCandidateSet,
   AiCaptureComparison,
+  AiCaptureQualityReport,
   AiImportCommitResult,
   AiImportPlan,
   CaseListResponse,
@@ -145,11 +146,36 @@ const candidates: AiCaptureCandidateSet = {
   relationCaseLinks: [],
 };
 
+const blockedReport: AiCaptureQualityReport = {
+  version: 1,
+  status: 'blocked',
+  issues: [
+    {
+      code: 'AI_QUALITY_ORPHAN_EVENT',
+      severity: 'error',
+      phase: 'candidate',
+      entityType: 'event',
+      refs: ['event-invalid'],
+      paths: ['/atomicEvents/0'],
+      message: '原子事件未参与任何因果关系',
+      suggestedAction: '为原子事件补充因果关系，或将其从候选中移除',
+      aiCanRepair: true,
+    },
+  ],
+  topicRelevance: [],
+};
+
 const comparison: AiCaptureComparison = {
   atomicEvents: [],
   concreteCases: [],
   causalRelations: [],
   relationCaseLinks: [],
+  qualityReport: {
+    version: 1,
+    status: 'passed',
+    issues: [],
+    topicRelevance: [],
+  },
 };
 
 const counts = {
@@ -379,6 +405,29 @@ describe('CausalityApiClient', () => {
       status: 404,
       code: 'EVENT_NOT_FOUND',
       message: '原子事件不存在',
+    } satisfies Partial<CausalityApiClientError>);
+  });
+
+  it('preserves a validated quality report from a workflow API failure', async () => {
+    const client = createClient(async () =>
+      jsonResponse(
+        {
+          category: 'data',
+          code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+          message: '候选集合存在必须修复的质量问题',
+          affectedRefs: ['event-invalid'],
+          aiCanRepair: true,
+          retryCurrentPlan: false,
+          suggestedAction: '根据质量报告修正完整候选集合后重新对比',
+          qualityReport: blockedReport,
+        },
+        400,
+      ),
+    );
+
+    await expect(client.compare(candidates)).rejects.toMatchObject({
+      code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+      qualityReport: blockedReport,
     } satisfies Partial<CausalityApiClientError>);
   });
 

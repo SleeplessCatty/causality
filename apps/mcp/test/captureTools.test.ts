@@ -1,6 +1,7 @@
 import type {
   AiCaptureCandidateSet,
   AiCaptureComparison,
+  AiCaptureQualityReport,
   AiImportCommitResult,
   AiImportPlan,
   AiImportPlanStatus,
@@ -65,6 +66,44 @@ const candidates: AiCaptureCandidateSet = {
   ],
 };
 
+const warningReport: AiCaptureQualityReport = {
+  version: 1,
+  status: 'warning',
+  issues: [
+    {
+      code: 'AI_QUALITY_RELATION_WITHOUT_CASE',
+      severity: 'warning',
+      phase: 'candidate',
+      entityType: 'relation',
+      refs: ['relation-delay'],
+      paths: ['/causalRelations/0'],
+      message: '因果关系没有关联具体案例',
+      suggestedAction: '补充支持该因果关系的具体案例',
+      aiCanRepair: true,
+    },
+  ],
+  topicRelevance: [{ ref: 'event-cause', similarity: 0.83 }],
+};
+
+const blockedReport: AiCaptureQualityReport = {
+  version: 1,
+  status: 'blocked',
+  issues: [
+    {
+      code: 'AI_QUALITY_ORPHAN_EVENT',
+      severity: 'error',
+      phase: 'candidate',
+      entityType: 'event',
+      refs: ['event-cause'],
+      paths: ['/atomicEvents/0'],
+      message: '原子事件未参与任何因果关系',
+      suggestedAction: '为原子事件补充因果关系，或将其从候选中移除',
+      aiCanRepair: true,
+    },
+  ],
+  topicRelevance: [],
+};
+
 const comparison: AiCaptureComparison = {
   atomicEvents: [
     { ref: 'event-cause', matches: [] },
@@ -73,6 +112,7 @@ const comparison: AiCaptureComparison = {
   concreteCases: [{ ref: 'case-port', matches: [] }],
   causalRelations: [{ ref: 'relation-delay', status: 'missing' }],
   relationCaseLinks: [{ relationRef: 'relation-delay', caseRef: 'case-port', exists: false }],
+  qualityReport: warningReport,
 };
 
 const prepareInput: PrepareAiImportPlanInput = {
@@ -288,6 +328,12 @@ describe('capture workflow tools', () => {
     expect(textContent(result)).toContain('1 条具体案例');
     expect(textContent(result)).toContain('1 条因果关系');
     expect(textContent(result)).toContain('1 条案例关联');
+    expect(result.structuredContent).toMatchObject({ qualityReport: warningReport });
+    expect(textContent(result)).toContain('质量检查：存疑');
+    expect(textContent(result)).toContain('阻断问题：0');
+    expect(textContent(result)).toContain('存疑问题：1');
+    expect(textContent(result)).toContain('[AI_QUALITY_RELATION_WITHOUT_CASE]');
+    expect(textContent(result)).not.toContain('0.83');
   });
 
   it('returns a readable complete plan together with the full structured plan', async () => {
@@ -309,6 +355,9 @@ describe('capture workflow tools', () => {
     expect(text).toContain('新增/复用案例关联：1/0');
     expect(text).toContain('置信度变化：1');
     expect(text).toContain('失效时间：2026-07-28T12:30:00.000Z');
+    expect(text).toContain('质量检查：存疑');
+    expect(text).toContain('[AI_QUALITY_RELATION_WITHOUT_CASE]');
+    expect(text).not.toContain('0.83');
   });
 
   it('keeps commit input limited to one immutable plan ID and returns the exact marker', async () => {
@@ -343,6 +392,7 @@ describe('capture workflow tools', () => {
         aiCanRepair: true,
         retryCurrentPlan: false,
         suggestedAction: '重新查询并生成完整方案',
+        qualityReport: blockedReport,
       },
       409,
     );
@@ -359,7 +409,13 @@ describe('capture workflow tools', () => {
       affectedRefs: ['event-cause'],
       aiCanRepair: true,
       retryCurrentPlan: false,
+      qualityReport: blockedReport,
     });
+    const text = textContent(result);
+    expect(text).toContain('[AI_QUALITY_ORPHAN_EVENT]');
+    expect(text).toContain('路径：/atomicEvents/0');
+    expect(text).toContain('相关项：event-cause');
+    expect(text).toContain('建议：为原子事件补充因果关系，或将其从候选中移除');
     expect(errorLogs).toEqual([
       expect.objectContaining({
         event: 'mcp_tool_failed',

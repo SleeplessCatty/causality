@@ -3,6 +3,7 @@ import {
   prepareAiImportPlanInputSchema,
   type AiCaptureCandidateSet,
   type AiCaptureComparison,
+  type AiCaptureQualityReport,
   type AiImportCommitResult,
   type AiImportPlan,
   type AiImportPlanStatus,
@@ -87,8 +88,33 @@ function comparisonText(comparison: AiCaptureComparison): string {
     `- ${comparison.concreteCases.length} 条具体案例`,
     `- ${comparison.causalRelations.length} 条因果关系`,
     `- ${comparison.relationCaseLinks.length} 条案例关联`,
+    ...qualityText(comparison.qualityReport),
     '匹配结果只是候选依据，不会自动决定新增、复用或跳过。',
   ].join('\n');
+}
+
+function qualityText(report: AiCaptureQualityReport): string[] {
+  const errors = report.issues.filter((issue) => issue.severity === 'error');
+  const warnings = report.issues.filter((issue) => issue.severity === 'warning');
+  return [
+    `质量检查：${report.status === 'passed' ? '通过' : report.status === 'warning' ? '存疑' : '阻断'}`,
+    `- 阻断问题：${errors.length}`,
+    `- 存疑问题：${warnings.length}`,
+    ...report.issues.map(
+      (issue) =>
+        `- [${issue.code}] ${issue.message}；相关项：${issue.refs.join('、') || '批次'}；建议：${issue.suggestedAction}`,
+    ),
+  ];
+}
+
+function qualityFailureText(report: AiCaptureQualityReport): string[] {
+  return [
+    ...qualityText(report).slice(0, 3),
+    ...report.issues.map(
+      (issue) =>
+        `- [${issue.code}] ${issue.message}；路径：${issue.paths.join('、') || '批次'}；相关项：${issue.refs.join('、') || '批次'}；建议：${issue.suggestedAction}`,
+    ),
+  ];
 }
 
 function decisionLabel(
@@ -129,6 +155,7 @@ function planText(plan: AiImportPlan): string {
     `方案版本：V${plan.version}`,
     `当前状态：${plan.status}`,
     `失效时间：${plan.expiresAt}`,
+    ...qualityText(plan.comparison.qualityReport),
     '',
     '原子事件决策：',
     ...(eventLines.length > 0 ? eventLines : ['- 无']),
@@ -183,6 +210,7 @@ function workflowError(error: unknown): AiWorkflowError {
         (category === 'configuration'
           ? '检查 MCP 与 Causality API 配置后重新执行'
           : '检查 Causality 服务状态后等待用户决定是否重试'),
+      ...(error.qualityReport === undefined ? {} : { qualityReport: error.qualityReport }),
     };
   }
   return {
@@ -207,6 +235,9 @@ function errorResult(error: unknown) {
           `操作失败：${structuredContent.message}`,
           `错误代码：${structuredContent.code}`,
           `建议动作：${structuredContent.suggestedAction}`,
+          ...(structuredContent.qualityReport === undefined
+            ? []
+            : qualityFailureText(structuredContent.qualityReport)),
         ].join('\n'),
       },
     ],

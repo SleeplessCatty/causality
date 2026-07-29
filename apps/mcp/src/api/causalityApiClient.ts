@@ -15,6 +15,7 @@ import {
   relationDetailSchema,
   type AiCaptureCandidateSet,
   type AiCaptureComparison,
+  type AiCaptureQualityReport,
   type AiImportCommitResult,
   type AiImportPlan,
   type AiImportPlanStatus,
@@ -40,6 +41,7 @@ interface CausalityApiClientErrorOptions {
   status?: number;
   traceId?: string;
   workflowError?: AiWorkflowError;
+  qualityReport?: AiCaptureQualityReport;
   cause?: unknown;
 }
 
@@ -53,6 +55,7 @@ export class CausalityApiClientError extends Error {
   public readonly aiCanRepair: boolean | undefined;
   public readonly retryCurrentPlan: boolean | undefined;
   public readonly suggestedAction: string | undefined;
+  public readonly qualityReport: AiCaptureQualityReport | undefined;
 
   public constructor(options: CausalityApiClientErrorOptions) {
     super(options.message, options.cause === undefined ? undefined : { cause: options.cause });
@@ -66,6 +69,7 @@ export class CausalityApiClientError extends Error {
     this.aiCanRepair = options.workflowError?.aiCanRepair;
     this.retryCurrentPlan = options.workflowError?.retryCurrentPlan;
     this.suggestedAction = options.workflowError?.suggestedAction;
+    this.qualityReport = options.qualityReport ?? options.workflowError?.qualityReport;
   }
 }
 
@@ -97,6 +101,9 @@ function apiFailure(status: number, payload: unknown, traceId: string): Causalit
       code: workflow.data.code,
       message: workflow.data.message,
       workflowError: workflow.data,
+      ...(workflow.data.qualityReport === undefined
+        ? {}
+        : { qualityReport: workflow.data.qualityReport }),
     });
   }
 

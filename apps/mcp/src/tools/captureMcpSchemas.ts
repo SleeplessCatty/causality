@@ -11,6 +11,77 @@ const description = z.string().max(2_000).nullable().optional();
 const timestamp = z.iso.datetime({ offset: true });
 const count = z.number().int().nonnegative();
 
+// Keep this as a transport-only mirror. The canonical contract schemas use transforms
+// that cannot be represented in MCP JSON Schema.
+const qualityIssueCode = z.enum([
+  'AI_QUALITY_SCHEMA_INVALID',
+  'AI_QUALITY_EVENT_LIMIT_EXCEEDED',
+  'AI_QUALITY_DUPLICATE_REF',
+  'AI_QUALITY_REFERENCE_MISSING',
+  'AI_QUALITY_SELF_LOOP',
+  'AI_QUALITY_DUPLICATE_LINK',
+  'AI_QUALITY_DUPLICATE_EVENT_NAME',
+  'AI_QUALITY_DUPLICATE_CASE_CONTENT',
+  'AI_QUALITY_DUPLICATE_RELATION',
+  'AI_QUALITY_ORPHAN_EVENT',
+  'AI_QUALITY_ORPHAN_CASE',
+  'AI_QUALITY_COMPOUND_EVENT_SUSPECTED',
+  'AI_QUALITY_ALIAS_COLLISION',
+  'AI_QUALITY_RELATION_WITHOUT_CASE',
+  'AI_QUALITY_TRANSITIVE_SHORTCUT_SUSPECTED',
+  'AI_QUALITY_EVENTS_SHARE_EXACT_MATCH',
+  'AI_QUALITY_CASES_SHARE_EXACT_MATCH',
+  'AI_QUALITY_EVENT_SEMANTIC_DUPLICATE_SUSPECTED',
+  'AI_QUALITY_CASE_SEMANTIC_DUPLICATE_SUSPECTED',
+  'AI_QUALITY_ACTIVE_EVENT_ORPHANED',
+  'AI_QUALITY_ACTIVE_CASE_ORPHANED',
+  'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
+  'AI_QUALITY_COMPARISON_COVERAGE_INVALID',
+  'AI_QUALITY_DECISION_COVERAGE_INVALID',
+  'AI_QUALITY_REUSE_TARGET_INVALID',
+  'AI_QUALITY_CREATE_EXACT_CONFLICT',
+  'AI_QUALITY_COMPARISON_STALE',
+  'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
+  'AI_QUALITY_REPORT_BLOCKED',
+]);
+
+const qualityIssue = z
+  .object({
+    code: qualityIssueCode,
+    severity: z.enum(['error', 'warning']),
+    phase: z.enum(['candidate', 'comparison', 'plan']),
+    entityType: z.enum(['batch', 'event', 'case', 'relation', 'link']),
+    refs: z.array(z.string()),
+    paths: z.array(z.string().startsWith('/')),
+    message: z.string(),
+    suggestedAction: z.string(),
+    aiCanRepair: z.boolean(),
+  })
+  .strict();
+
+const qualityReport = z
+  .object({
+    version: z.literal(1),
+    status: z.enum(['passed', 'warning', 'blocked']),
+    issues: z.array(qualityIssue),
+    topicRelevance: z.array(
+      z
+        .object({
+          ref: z.string(),
+          similarity: z.number().min(0).max(1),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+const defaultQualityReport = () => ({
+  version: 1 as const,
+  status: 'passed' as const,
+  issues: [],
+  topicRelevance: [],
+});
+
 const atomicEventCandidate = z
   .object({
     ref,
@@ -107,6 +178,7 @@ export const captureComparisonMcpSchema = z
     relationCaseLinks: z.array(
       z.object({ relationRef: ref, caseRef: ref, exists: z.boolean() }).strict(),
     ),
+    qualityReport: qualityReport.default(defaultQualityReport),
   })
   .strict();
 
@@ -192,6 +264,7 @@ const workflowError = z
     aiCanRepair: z.boolean(),
     retryCurrentPlan: z.boolean(),
     suggestedAction: z.string().min(1),
+    qualityReport: qualityReport.optional(),
   })
   .strict();
 
