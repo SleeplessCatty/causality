@@ -24,6 +24,7 @@ const allowedDatabaseNames = new Set([
   'causality_export_scope_test',
   'causality_database_tools_test',
   'causality_events_test',
+  'causality_evidence_test',
   'causality_graph_test',
   'causality_readiness_test',
   'causality_relation_confidence_migration_test',

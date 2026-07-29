@@ -15,6 +15,7 @@ import { registerEventRoutes } from './features/events/eventRoutes.js';
 import { registerRelationRoutes } from './features/relations/relationRoutes.js';
 import { registerCaseRoutes } from './features/cases/caseRoutes.js';
 import { registerCausalGraphRoutes } from './features/causal-graph/causalGraphRoutes.js';
+import { registerCausalEvidenceRoutes } from './features/causal-evidence/causalEvidenceRoutes.js';
 import { registerDataCheckRoutes } from './features/data-checks/dataCheckRoutes.js';
 import { registerSemanticRoutes } from './features/semantic/semanticRoutes.js';
 import { registerDataTransferRoutes } from './features/data-transfer/dataTransferRoutes.js';
@@ -97,6 +98,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       registerRelationRoutes(app, options.databasePool, semanticQuery);
       registerCaseRoutes(app, options.databasePool, semanticQuery);
       registerCausalGraphRoutes(app, options.databasePool);
+      registerCausalEvidenceRoutes(app, options.databasePool);
       registerDataCheckRoutes(app, options.databasePool, semanticWorkerClient);
       registerSemanticRoutes(app, options.databasePool, semanticWorkerClient);
       registerDataTransferRoutes(app, options.databasePool, {
