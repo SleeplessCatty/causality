@@ -81,16 +81,26 @@ function detailStringArray(detail: Record<string, unknown>, key: string): string
 function formatEventRecord(record: AiImportRecord): string {
   const { detail } = record;
   const name = detailString(detail, 'name');
-  if (name) return name;
-
-  const parts: string[] = [];
+  const parts: string[] = name ? [name] : [];
   const aliases = detailStringArray(detail, 'appendAliases');
   const keywords = detailStringArray(detail, 'appendKeywords');
-  const newDescription = detailString(detail, 'newDescription', 'description');
   if (aliases.length > 0) parts.push(`新增别名：${aliases.join('、')}`);
   if (keywords.length > 0) parts.push(`新增关键词：${keywords.join('、')}`);
-  if (newDescription) parts.push(`说明：${newDescription}`);
-  return parts.join('；') || detailString(detail, 'ref') || record.primaryRecordId;
+  if ('newDescription' in detail) {
+    const newDescription = detail.newDescription;
+    parts.push(`说明：${typeof newDescription === 'string' ? newDescription : '已清空'}`);
+  } else {
+    const description = detailString(detail, 'description');
+    if (description) parts.push(`说明：${description}`);
+  }
+  return parts.join('；') || '未知原子事件';
+}
+
+function formatRelationText(detail: Record<string, unknown>): string {
+  const cause = detailString(detail, 'causeEventName') ?? '未知原因事件';
+  const effect = detailString(detail, 'effectEventName') ?? '未知结果事件';
+  const description = detailString(detail, 'relationDescription', 'description');
+  return description ? `${cause} → ${effect}；${description}` : `${cause} → ${effect}`;
 }
 
 function formatRecordText(record: AiImportRecord): string {
@@ -99,24 +109,14 @@ function formatRecordText(record: AiImportRecord): string {
     case 'event':
       return formatEventRecord(record);
     case 'case':
-      return detailString(detail, 'content') ?? record.primaryRecordId;
-    case 'relation': {
-      const cause =
-        detailString(detail, 'causeEventName', 'causeEventId', 'cause_event_id') ?? '未知原因事件';
-      const effect =
-        detailString(detail, 'effectEventName', 'effectEventId', 'effect_event_id') ??
-        '未知结果事件';
-      const description = detailString(detail, 'description');
-      return description ? `${cause} → ${effect}；${description}` : `${cause} → ${effect}`;
-    }
+      return detailString(detail, 'content') ?? '未知具体案例';
+    case 'relation':
+      return formatRelationText(detail);
     case 'relation_case': {
-      const relation = detailString(detail, 'relationRef') ?? record.primaryRecordId;
-      const concreteCase =
-        detailString(detail, 'caseRef') ?? record.relatedRecordId ?? '未知具体案例';
-      return `${relation} + ${concreteCase}`;
+      const concreteCase = detailString(detail, 'caseContent') ?? '未知具体案例';
+      return `${formatRelationText(detail)} + ${concreteCase}`;
     }
     case 'confidence': {
-      const relation = detailString(detail, 'relationRef') ?? record.primaryRecordId;
       const oldConfidence = detailNumber(detail, 'oldConfidence');
       const newConfidence = detailNumber(detail, 'newConfidence');
       const oldCaseCount = detailNumber(detail, 'oldCaseCount');
@@ -129,7 +129,7 @@ function formatRecordText(record: AiImportRecord): string {
         oldCaseCount === undefined || newCaseCount === undefined
           ? ''
           : `（案例 ${oldCaseCount} → ${newCaseCount}）`;
-      return `${relation}：${confidence}${cases}`;
+      return `${formatRelationText(detail)}：${confidence}${cases}`;
     }
   }
 }

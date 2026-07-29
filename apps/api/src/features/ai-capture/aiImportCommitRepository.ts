@@ -84,6 +84,12 @@ interface AppliedMutationResult {
   noChanges: boolean;
 }
 
+interface RelationDisplay {
+  causeEventName: string;
+  effectEventName: string;
+  relationDescription: string | null;
+}
+
 function isRetryableTransactionError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const code = (error as Error & { code?: string }).code;
@@ -346,6 +352,9 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
     const eventIds = new Map(mutations.reuseEvents.map((item) => [item.ref, item.id]));
     const caseIds = new Map(mutations.reuseCases.map((item) => [item.ref, item.id]));
     const relationIds = new Map(mutations.reuseRelations.map((item) => [item.ref, item.id]));
+    const eventNames = new Map<string, string>();
+    const caseContents = new Map<string, string>();
+    const relationDisplays = new Map<string, RelationDisplay>();
     const records: HistoryRecord[] = [];
 
     for (const item of mutations.createEvents) {
@@ -356,6 +365,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
       );
       const id = result.rows[0]!.id;
       eventIds.set(item.ref, id);
+      eventNames.set(item.ref, item.name);
       await this.insertAliases(client, id, item.aliases);
       await this.insertKeywords(client, id, item.keywords);
       records.push({
@@ -378,6 +388,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
         [item.id],
       );
       if (!event.rows[0]) throw new AiCaptureDataError('AI_PLAN_DEPENDENCY_CHANGED', [item.ref]);
+      eventNames.set(item.ref, event.rows[0].name);
       records.push({
         recordType: 'event',
         action: 'reused',
@@ -402,6 +413,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
         relatedRecordId: null,
         detail: {
           ref: item.ref,
+          name: eventNames.get(item.ref) ?? '未知原子事件',
           appendAliases: item.appendAliases,
           appendKeywords: item.appendKeywords,
           oldDescription: item.oldDescription,
@@ -417,6 +429,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
       );
       const id = result.rows[0]!.id;
       caseIds.set(item.ref, id);
+      caseContents.set(item.ref, item.content);
       records.push({
         recordType: 'case',
         action: 'created',
@@ -433,6 +446,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
       if (!concreteCase.rows[0]) {
         throw new AiCaptureDataError('AI_PLAN_DEPENDENCY_CHANGED', [item.ref]);
       }
+      caseContents.set(item.ref, concreteCase.rows[0].content);
       records.push({
         recordType: 'case',
         action: 'reused',
@@ -453,6 +467,12 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
         confidenceBefore.set(item.relationRef, Number(current.rows[0].confidence));
     }
 
+    const eventNamesById = new Map(
+      [...eventIds].flatMap(([ref, id]) => {
+        const name = eventNames.get(ref);
+        return name ? [[id, name] as const] : [];
+      }),
+    );
     for (const item of mutations.createRelations) {
       const causeId =
         item.causeEvent.kind === 'existing'
@@ -477,6 +497,23 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
       const id = result.rows[0]!.id;
       relationIds.set(item.ref, id);
       confidenceBefore.set(item.ref, 10);
+      const causeEventName =
+        item.causeEvent.kind === 'create'
+          ? eventNames.get(item.causeEvent.ref)
+          : eventNamesById.get(item.causeEvent.id);
+      const effectEventName =
+        item.effectEvent.kind === 'create'
+          ? eventNames.get(item.effectEvent.ref)
+          : eventNamesById.get(item.effectEvent.id);
+      if (!causeEventName || !effectEventName) {
+        throw new AiCaptureDataError('AI_PLAN_DEPENDENCY_CHANGED', [item.ref]);
+      }
+      const relationDisplay: RelationDisplay = {
+        causeEventName,
+        effectEventName,
+        relationDescription: item.description,
+      };
+      relationDisplays.set(item.ref, relationDisplay);
       records.push({
         recordType: 'relation',
         action: 'created',
@@ -487,6 +524,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
           causeEventId: causeId,
           effectEventId: effectId,
           description: item.description,
+          ...relationDisplay,
         },
       });
     }
@@ -495,20 +533,33 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
         cause_event_id: string;
         effect_event_id: string;
         description: string | null;
+        cause_event_name: string;
+        effect_event_name: string;
       }>(
-        `select cause_event_id, effect_event_id, description
-         from causal_relations where id = $1`,
+        `select relation.cause_event_id, relation.effect_event_id, relation.description,
+                cause_event.name as cause_event_name,
+                effect_event.name as effect_event_name
+         from causal_relations relation
+         join abstract_events cause_event on cause_event.id = relation.cause_event_id
+         join abstract_events effect_event on effect_event.id = relation.effect_event_id
+         where relation.id = $1`,
         [item.id],
       );
       if (!relation.rows[0]) {
         throw new AiCaptureDataError('AI_PLAN_DEPENDENCY_CHANGED', [item.ref]);
       }
+      const relationDisplay: RelationDisplay = {
+        causeEventName: relation.rows[0].cause_event_name,
+        effectEventName: relation.rows[0].effect_event_name,
+        relationDescription: relation.rows[0].description,
+      };
+      relationDisplays.set(item.ref, relationDisplay);
       records.push({
         recordType: 'relation',
         action: 'reused',
         primaryRecordId: item.id,
         relatedRecordId: null,
-        detail: { ref: item.ref, ...relation.rows[0] },
+        detail: { ref: item.ref, ...relation.rows[0], ...relationDisplay },
       });
     }
 
@@ -526,12 +577,25 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
          values ($1, $2)`,
         [relationId, caseId],
       );
+      const relationDisplay = relationDisplays.get(item.relationRef);
+      const caseContent = caseContents.get(item.caseRef);
+      if (!relationDisplay || !caseContent) {
+        throw new AiCaptureDataError('AI_PLAN_DEPENDENCY_CHANGED', [
+          item.relationRef,
+          item.caseRef,
+        ]);
+      }
       records.push({
         recordType: 'relation_case',
         action: 'created',
         primaryRecordId: relationId,
         relatedRecordId: caseId,
-        detail: { relationRef: item.relationRef, caseRef: item.caseRef },
+        detail: {
+          relationRef: item.relationRef,
+          caseRef: item.caseRef,
+          ...relationDisplay,
+          caseContent,
+        },
       });
     }
 
@@ -548,12 +612,25 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
           link.caseRef,
         ]);
       }
+      const relationDisplay = relationDisplays.get(link.relationRef);
+      const caseContent = caseContents.get(link.caseRef);
+      if (!relationDisplay || !caseContent) {
+        throw new AiCaptureDataError('AI_PLAN_DEPENDENCY_CHANGED', [
+          link.relationRef,
+          link.caseRef,
+        ]);
+      }
       records.push({
         recordType: 'relation_case',
         action: 'reused',
         primaryRecordId: link.relationId,
         relatedRecordId: link.caseId,
-        detail: { relationRef: link.relationRef, caseRef: link.caseRef },
+        detail: {
+          relationRef: link.relationRef,
+          caseRef: link.caseRef,
+          ...relationDisplay,
+          caseContent,
+        },
       });
     }
 
@@ -570,6 +647,10 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
       const newConfidence = Number(current.rows[0]?.confidence);
       const oldConfidence = confidenceBefore.get(item.relationRef) ?? item.oldConfidence;
       if (Number.isFinite(newConfidence) && newConfidence !== oldConfidence) {
+        const relationDisplay = relationDisplays.get(item.relationRef);
+        if (!relationDisplay) {
+          throw new AiCaptureDataError('AI_PLAN_DEPENDENCY_CHANGED', [item.relationRef]);
+        }
         confidenceChanged += 1;
         records.push({
           recordType: 'confidence',
@@ -578,6 +659,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
           relatedRecordId: null,
           detail: {
             relationRef: item.relationRef,
+            ...relationDisplay,
             oldConfidence,
             newConfidence,
             oldCaseCount: item.oldCaseCount,

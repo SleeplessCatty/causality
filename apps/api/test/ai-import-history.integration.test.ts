@@ -5,6 +5,10 @@ import { PostgresAiImportHistoryRepository } from '../src/features/ai-capture/ai
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 describe.sequential('AI import successful history PostgreSQL queries', () => {
+  const causeEventId = '30000000-0000-4000-8000-000000000001';
+  const effectEventId = '30000000-0000-4000-8000-000000000002';
+  const concreteCaseId = '40000000-0000-4000-8000-000000000001';
+  const relationId = '50000000-0000-4000-8000-000000000001';
   let context: Awaited<ReturnType<typeof startPostgresTestContext>>;
   let pool: Pool;
   let repository: PostgresAiImportHistoryRepository;
@@ -51,25 +55,74 @@ describe.sequential('AI import successful history PostgreSQL queries', () => {
       if (index === 51) newestBatchId = batchId;
     }
 
-    const longContent = '很长的历史详情'.repeat(200);
-    for (const [index, recordType, action] of [
-      [1, 'event', 'created'],
-      [2, 'case', 'reused'],
-      [3, 'relation', 'created'],
-      [4, 'relation_case', 'created'],
-      [5, 'confidence', 'changed'],
-    ] as const) {
+    await pool.query(
+      `insert into abstract_events (id, name)
+       values ($1, '能源价格上升'), ($2, '生产成本上升')`,
+      [causeEventId, effectEventId],
+    );
+    await pool.query(`insert into concrete_cases (id, content) values ($1, $2)`, [
+      concreteCaseId,
+      '2026年某地区能源现货价格持续上涨。',
+    ]);
+    await pool.query(
+      `insert into causal_relations (
+         id, cause_event_id, effect_event_id, confidence,
+         baseline_confidence, baseline_case_count, description
+       )
+       values ($1, $2, $3, 19, 10, 0, '能源成本传导至生产成本')`,
+      [relationId, causeEventId, effectEventId],
+    );
+
+    const records = [
+      [1, 'event', 'created', causeEventId, null, { ref: 'event-1' }],
+      [2, 'case', 'reused', concreteCaseId, null, { ref: 'case-1' }],
+      [
+        3,
+        'relation',
+        'created',
+        relationId,
+        null,
+        { ref: 'relation-1', causeEventId, effectEventId },
+      ],
+      [
+        4,
+        'relation_case',
+        'created',
+        relationId,
+        concreteCaseId,
+        { relationRef: 'relation-1', caseRef: 'case-1' },
+      ],
+      [
+        5,
+        'confidence',
+        'changed',
+        relationId,
+        null,
+        {
+          relationRef: 'relation-1',
+          oldConfidence: 10,
+          newConfidence: 19,
+          oldCaseCount: 0,
+          newCaseCount: 1,
+        },
+      ],
+    ] as const;
+    for (const [index, recordType, action, primaryRecordId, relatedRecordId, detail] of records) {
       await pool.query(
         `insert into ai_import_records (
            batch_id, sequence, record_type, action,
            primary_record_id, related_record_id, detail
          )
-         values (
-           $1, $2, $3, $4,
-           (lpad($5::text, 8, '0') || '-0000-4000-8000-000000000000')::uuid,
-           null, jsonb_build_object('content', $6::text)
-         )`,
-        [newestBatchId, index, recordType, action, index, longContent],
+         values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+        [
+          newestBatchId,
+          index,
+          recordType,
+          action,
+          primaryRecordId,
+          relatedRecordId,
+          JSON.stringify(detail),
+        ],
       );
     }
   }, 120_000);
@@ -102,17 +155,33 @@ describe.sequential('AI import successful history PostgreSQL queries', () => {
       topic: '历史主题 51',
       counts: { eventCreated: 51 },
     });
-    for (const type of ['event', 'case', 'relation', 'relation_case', 'confidence'] as const) {
-      const records = await repository.listRecords(newestBatchId, type, 1);
-      expect(records).toMatchObject({
+    const records = await Promise.all(
+      (['event', 'case', 'relation', 'relation_case', 'confidence'] as const).map((type) =>
+        repository.listRecords(newestBatchId, type, 1),
+      ),
+    );
+    for (const response of records) {
+      expect(response).toMatchObject({
         page: 1,
         pageSize: 50,
         totalItems: 1,
         totalPages: 1,
       });
-      expect(records.items[0]?.recordType).toBe(type);
-      expect(String(records.items[0]?.detail.content).length).toBeGreaterThan(1_000);
     }
+    expect(records[0]!.items[0]!.detail).toMatchObject({ name: '能源价格上升' });
+    expect(records[1]!.items[0]!.detail).toMatchObject({
+      content: '2026年某地区能源现货价格持续上涨。',
+    });
+    for (const response of records.slice(2)) {
+      expect(response.items[0]!.detail).toMatchObject({
+        causeEventName: '能源价格上升',
+        effectEventName: '生产成本上升',
+        relationDescription: '能源成本传导至生产成本',
+      });
+    }
+    expect(records[3]!.items[0]!.detail).toMatchObject({
+      caseContent: '2026年某地区能源现货价格持续上涨。',
+    });
   });
 
   it('returns null for a missing batch and an empty first page for a missing category', async () => {

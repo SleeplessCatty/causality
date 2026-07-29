@@ -241,14 +241,18 @@ describe.sequential('AI import commit PostgreSQL transaction', () => {
       description: '更新后的港口作业说明',
       confidence: '19.0000',
     });
-    const records = await pool.query<{ record_type: string; action: string }>(
-      `select record_type, action
+    const records = await pool.query<{
+      record_type: string;
+      action: string;
+      detail: Record<string, unknown>;
+    }>(
+      `select record_type, action, detail
        from ai_import_records
        where batch_id = $1
        order by sequence`,
       [first.historyId],
     );
-    expect(records.rows).toEqual(
+    expect(records.rows.map(({ record_type, action }) => ({ record_type, action }))).toEqual(
       expect.arrayContaining([
         { record_type: 'event', action: 'created' },
         { record_type: 'event', action: 'reused' },
@@ -261,6 +265,37 @@ describe.sequential('AI import commit PostgreSQL transaction', () => {
         { record_type: 'confidence', action: 'changed' },
       ]),
     );
+    for (const record of records.rows.filter(({ record_type }) =>
+      ['relation', 'relation_case', 'confidence'].includes(record_type),
+    )) {
+      expect(record.detail).toMatchObject({
+        causeEventName: expect.any(String),
+        effectEventName: expect.any(String),
+      });
+    }
+    for (const record of records.rows.filter(
+      ({ record_type }) => record_type === 'relation_case',
+    )) {
+      expect(record.detail).toMatchObject({ caseContent: expect.any(String) });
+    }
+
+    await pool.query(`delete from causal_relation_cases where causal_relation_id = $1`, [
+      existingRelationId,
+    ]);
+    await pool.query(`delete from causal_relations where id = $1`, [existingRelationId]);
+    const preservedHistory = await pool.query<{ detail: Record<string, unknown> }>(
+      `select detail
+       from ai_import_records
+       where batch_id = $1
+         and record_type = 'confidence'
+         and primary_record_id = $2`,
+      [first.historyId, existingRelationId],
+    );
+    expect(preservedHistory.rows[0]?.detail).toMatchObject({
+      causeEventName: '港口停止作业',
+      effectEventName: '零部件到货延迟',
+      relationDescription: '既有关系',
+    });
   });
 
   it('commits a no-change plan once even when two requests run concurrently', async () => {

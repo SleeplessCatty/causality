@@ -37,6 +37,58 @@ interface RecordRow {
   primary_record_id: string;
   related_record_id: string | null;
   detail: Record<string, unknown>;
+  event_name: string | null;
+  case_content: string | null;
+  cause_event_name: string | null;
+  effect_event_name: string | null;
+  relation_description: string | null;
+}
+
+function detailString(detail: Record<string, unknown>, key: string): string | undefined {
+  const value = detail[key];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function firstDetailNullableString(
+  detail: Record<string, unknown>,
+  keys: readonly string[],
+  fallback: string | null,
+): string | null {
+  for (const key of keys) {
+    const value = detail[key];
+    if (typeof value === 'string' || value === null) return value;
+  }
+  return fallback;
+}
+
+function readableRecordDetail(row: RecordRow): Record<string, unknown> {
+  const detail = { ...row.detail };
+  if (row.record_type === 'event') {
+    return { ...detail, name: detailString(detail, 'name') ?? row.event_name ?? '未知原子事件' };
+  }
+  if (row.record_type === 'case') {
+    return {
+      ...detail,
+      content: detailString(detail, 'content') ?? row.case_content ?? '未知具体案例',
+    };
+  }
+  return {
+    ...detail,
+    causeEventName:
+      detailString(detail, 'causeEventName') ?? row.cause_event_name ?? '未知原因事件',
+    effectEventName:
+      detailString(detail, 'effectEventName') ?? row.effect_event_name ?? '未知结果事件',
+    relationDescription: firstDetailNullableString(
+      detail,
+      ['relationDescription', 'description'],
+      row.relation_description,
+    ),
+    ...(row.record_type === 'relation_case'
+      ? {
+          caseContent: detailString(detail, 'caseContent') ?? row.case_content ?? '未知具体案例',
+        }
+      : {}),
+  };
 }
 
 function batch(row: BatchRow): AiImportBatchDetail {
@@ -136,11 +188,27 @@ export class PostgresAiImportHistoryRepository {
       MAIN_LIST_PAGE_SIZE,
     );
     const result = await this.pool.query<RecordRow>(
-      `select id, sequence, record_type, action,
-              primary_record_id, related_record_id, detail
-       from ai_import_records
-       where batch_id = $1 and record_type = $2
-       order by sequence
+      `select record.id, record.sequence, record.record_type, record.action,
+              record.primary_record_id, record.related_record_id, record.detail,
+              history_event.name as event_name,
+              coalesce(history_case.content, linked_case.content) as case_content,
+              cause_event.name as cause_event_name,
+              effect_event.name as effect_event_name,
+              history_relation.description as relation_description
+       from ai_import_records record
+       left join abstract_events history_event
+         on record.record_type = 'event' and history_event.id = record.primary_record_id
+       left join concrete_cases history_case
+         on record.record_type = 'case' and history_case.id = record.primary_record_id
+       left join causal_relations history_relation
+         on record.record_type in ('relation', 'relation_case', 'confidence')
+        and history_relation.id = record.primary_record_id
+       left join abstract_events cause_event on cause_event.id = history_relation.cause_event_id
+       left join abstract_events effect_event on effect_event.id = history_relation.effect_event_id
+       left join concrete_cases linked_case
+         on record.record_type = 'relation_case' and linked_case.id = record.related_record_id
+       where record.batch_id = $1 and record.record_type = $2
+       order by record.sequence
        limit $3 offset $4`,
       [batchId, recordType, MAIN_LIST_PAGE_SIZE, offset],
     );
@@ -152,7 +220,7 @@ export class PostgresAiImportHistoryRepository {
         action: row.action,
         primaryRecordId: row.primary_record_id,
         relatedRecordId: row.related_record_id,
-        detail: row.detail,
+        detail: readableRecordDetail(row),
       })),
       page,
       pageSize: MAIN_LIST_PAGE_SIZE,

@@ -41,13 +41,23 @@ const recordTypeDetails: Record<AiImportRecordType, Record<string, unknown>> = {
   case: { ref: 'case-1', content: '2026年某地区能源现货价格持续上涨。' },
   relation: {
     ref: 'relation-1',
-    causeEventId: '能源价格上升',
-    effectEventId: '生产成本上升',
+    causeEventName: '能源价格上升',
+    effectEventName: '生产成本上升',
     description: '能源成本传导至生产成本',
   },
-  relation_case: { relationRef: 'relation-1', caseRef: 'case-1' },
+  relation_case: {
+    relationRef: 'relation-1',
+    caseRef: 'case-1',
+    causeEventName: '能源价格上升',
+    effectEventName: '生产成本上升',
+    relationDescription: '能源成本传导至生产成本',
+    caseContent: '2026年某地区能源现货价格持续上涨。',
+  },
   confidence: {
     relationRef: 'relation-1',
+    causeEventName: '能源价格上升',
+    effectEventName: '生产成本上升',
+    relationDescription: '能源成本传导至生产成本',
     oldConfidence: 10,
     newConfidence: 19,
     oldCaseCount: 0,
@@ -133,7 +143,11 @@ describe('AiImportDetailPage', () => {
       `/data-transfer/ai-imports/${batch.id}?tab=confidence&eventPage=2&casePage=1&relationPage=1&relationCasePage=1&confidencePage=2`,
     );
 
-    expect(await screen.findByText('relation-1：10% → 19%（案例 0 → 1）')).toBeTruthy();
+    expect(
+      await screen.findByText(
+        '能源价格上升 → 生产成本上升；能源成本传导至生产成本：10% → 19%（案例 0 → 1）',
+      ),
+    ).toBeTruthy();
     expect(getAiImportRecords).toHaveBeenLastCalledWith(
       batch.id,
       'confidence',
@@ -152,6 +166,51 @@ describe('AiImportDetailPage', () => {
     );
     expect(router.state.location.search).toContain('eventPage=2');
     expect(router.state.location.search).toContain('confidencePage=2');
+  });
+
+  it('renders relations, case links, and confidence changes as readable business text', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('tab', { name: '因果关系' }));
+    expect(
+      await screen.findByText('能源价格上升 → 生产成本上升；能源成本传导至生产成本'),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: '案例关联' }));
+    expect(
+      await screen.findByText(
+        '能源价格上升 → 生产成本上升；能源成本传导至生产成本 + 2026年某地区能源现货价格持续上涨。',
+      ),
+    ).toBeTruthy();
+
+    expect(screen.queryByText(/relation-1|case-1|40000000-0000/)).toBeNull();
+  });
+
+  it('keeps an updated event name together with its readable changes', async () => {
+    vi.mocked(getAiImportRecords).mockResolvedValueOnce({
+      ...recordPage('event', 1),
+      items: [
+        {
+          ...recordPage('event', 1).items[0]!,
+          action: 'updated',
+          detail: {
+            ref: 'event-1',
+            name: '能源价格上升',
+            appendAliases: ['能源涨价'],
+            appendKeywords: ['成本'],
+            oldDescription: '旧说明',
+            newDescription: '能源单位价格持续上升',
+          },
+        },
+      ],
+    });
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        '能源价格上升；新增别名：能源涨价；新增关键词：成本；说明：能源单位价格持续上升',
+      ),
+    ).toBeTruthy();
   });
 
   it('returns to the original AI history page and restores the focused batch', async () => {
