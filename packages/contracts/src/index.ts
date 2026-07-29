@@ -114,6 +114,31 @@ export {
 } from './causal-graph/causalGraphSchemas.js';
 
 export {
+  causalEvidenceBundleInputSchema,
+  causalEvidenceBundleResponseSchema,
+  causalEvidenceCaseSchema,
+  causalEvidenceRelationSchema,
+  causalEvidenceStatusSchema,
+  causalPathEventSchema,
+  causalPathQuerySchema,
+  causalPathRelationSchema,
+  causalPathResponseSchema,
+  causalPathSchema,
+  causalPathTruncatedReasonSchema,
+  type CausalEvidenceBundleInput,
+  type CausalEvidenceBundleResponse,
+  type CausalEvidenceCase,
+  type CausalEvidenceRelation,
+  type CausalEvidenceStatus,
+  type CausalPath,
+  type CausalPathEvent,
+  type CausalPathQuery,
+  type CausalPathRelation,
+  type CausalPathResponse,
+  type CausalPathTruncatedReason,
+} from './causal-evidence/causalEvidenceSchemas.js';
+
+export {
   dataCheckActionContextSchema,
   dataCheckActionImpactSchema,
   dataCheckActionOptionSchema,
