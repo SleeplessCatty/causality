@@ -6,10 +6,8 @@ import type {
   CaseDetail,
   CaseListResponse,
   CaseRelationListResponse,
-  CausalEvidenceBundleInput,
   CausalEvidenceBundleResponse,
   CausalGraphResponse,
-  CausalPathQuery,
   CausalPathResponse,
   EventDetail,
   EventListResponse,
@@ -218,13 +216,11 @@ class FakeKnowledgeApi implements CausalityMcpApi {
     return graph;
   }
 
-  public async findCausalPaths(_input: CausalPathQuery): Promise<CausalPathResponse> {
+  public async findCausalPaths(): Promise<CausalPathResponse> {
     throw new Error('not used');
   }
 
-  public async getCausalEvidenceBundle(
-    _input: CausalEvidenceBundleInput,
-  ): Promise<CausalEvidenceBundleResponse> {
+  public async getCausalEvidenceBundle(): Promise<CausalEvidenceBundleResponse> {
     throw new Error('not used');
   }
 
