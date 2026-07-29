@@ -394,4 +394,122 @@ describe.sequential('AI capture typed HTTP workflow', () => {
     );
     expect(committed.rows[0]!.count).toBe(0);
   });
+
+  it('returns exact-create repair metadata without writing a plan row', async () => {
+    const auth = { 'x-causality-mcp-token': token };
+    await context.pool.query(
+      `update semantic_model_settings
+       set file_status = 'downloaded',
+           downloaded_at = clock_timestamp()
+       where model_code = 'multilingual-e5-small';
+       update semantic_index_state
+       set active_model_code = 'multilingual-e5-small',
+           status = 'ready',
+           state_version = state_version + 1,
+           updated_at = clock_timestamp()
+       where singleton_key = true`,
+    );
+    const candidates: AiCaptureCandidateSet = {
+      topic: '需求与库存',
+      clientName: 'exact-conflict-route-test',
+      atomicEvents: [
+        {
+          ref: 'event-demand',
+          name: '市场需求下降',
+          description: null,
+          aliases: [],
+          keywords: [],
+        },
+        {
+          ref: 'event-stock',
+          name: '库存积压增加',
+          description: null,
+          aliases: [],
+          keywords: [],
+        },
+      ],
+      concreteCases: [{ ref: 'case-stock', content: '2026年市场需求下降后库存积压增加' }],
+      causalRelations: [
+        {
+          ref: 'relation-stock',
+          causeEventRef: 'event-demand',
+          effectEventRef: 'event-stock',
+          description: null,
+        },
+      ],
+      relationCaseLinks: [{ relationRef: 'relation-stock', caseRef: 'case-stock' }],
+    };
+    const before = await context.pool.query<{ count: number }>(
+      `select count(*)::int as count from ai_import_plans`,
+    );
+
+    const response = await context.app.inject({
+      method: 'POST',
+      url: '/api/ai-captures/plans',
+      headers: auth,
+      payload: {
+        candidates,
+        comparison: {
+          atomicEvents: [
+            {
+              ref: 'event-demand',
+              matches: [
+                {
+                  id: '10000000-0000-4000-8000-000000000099',
+                  name: '市场需求下降',
+                  description: null,
+                  aliases: [],
+                  keywords: [],
+                  matchKind: 'exact_name',
+                  similarity: 1,
+                  updatedAt: '2026-07-30T00:00:00.000Z',
+                },
+              ],
+            },
+            { ref: 'event-stock', matches: [] },
+          ],
+          concreteCases: [{ ref: 'case-stock', matches: [] }],
+          causalRelations: [{ ref: 'relation-stock', status: 'missing' }],
+          relationCaseLinks: [
+            { relationRef: 'relation-stock', caseRef: 'case-stock', exists: false },
+          ],
+          qualityReport: {
+            version: 1,
+            status: 'passed',
+            issues: [],
+            topicRelevance: [],
+          },
+        },
+        decisions: {
+          atomicEvents: [
+            { ref: 'event-demand', action: 'create' },
+            { ref: 'event-stock', action: 'create' },
+          ],
+          concreteCases: [{ ref: 'case-stock', action: 'create' }],
+          causalRelations: [{ ref: 'relation-stock', action: 'create' }],
+          relationCaseLinks: [
+            { relationRef: 'relation-stock', caseRef: 'case-stock', action: 'create' },
+          ],
+        },
+      },
+    });
+    const after = await context.pool.query<{ count: number }>(
+      `select count(*)::int as count from ai_import_plans`,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<AiWorkflowError>()).toMatchObject({
+      code: 'AI_PLAN_QUALITY_BLOCKED',
+      qualityReport: {
+        issues: [
+          expect.objectContaining({
+            code: 'AI_QUALITY_CREATE_EXACT_CONFLICT',
+            message: '创建决策对应的数据已存在',
+            suggestedAction: '复用精确匹配的已有记录，或跳过该候选或关联',
+          }),
+        ],
+      },
+    });
+    expect(after.rows[0]!.count).toBe(before.rows[0]!.count);
+  });
 });

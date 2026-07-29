@@ -11,6 +11,13 @@ import {
 } from '@causality/contracts';
 import type { z } from 'zod';
 
+import {
+  aiImportPlanLinkKey,
+  buildAiImportPlanLocationIndex,
+  decisionPathsForPlanIssue,
+  type AiImportPlanLocationIndex,
+} from './aiImportPlanLocationIndex.js';
+
 const severityRank = { error: 0, warning: 1 } as const;
 const SEMANTIC_DUPLICATE_THRESHOLD = 0.9;
 const compoundConnectorPattern = /并且|同时|以及|并/;
@@ -68,13 +75,102 @@ interface ComparisonCandidate {
 }
 
 interface SharedMatchIssueOptions {
-  candidates: readonly ComparisonCandidate[];
+  groups: ReadonlyMap<string, Array<{ ref: string; index: number }>>;
   section: 'atomicEvents' | 'concreteCases';
   code: AiCaptureQualityIssueCode;
   entityType: Extract<AiCaptureQualityEntityType, 'event' | 'case'>;
   message: string;
   matchPathSuffix: '/matches' | '/matches/0';
-  matchingId(candidate: ComparisonCandidate): string | null;
+}
+
+interface ComparisonEntityMatchGroups {
+  exact: Map<string, Array<{ ref: string; index: number }>>;
+  semantic: Map<string, Array<{ ref: string; index: number }>>;
+}
+
+interface ComparisonMatchGroups {
+  events: ComparisonEntityMatchGroups;
+  cases: ComparisonEntityMatchGroups;
+}
+
+interface IndexedCandidate<T> {
+  value: T;
+  index: number;
+}
+
+interface CandidateQualityIndex {
+  events: Array<IndexedCandidate<AiCaptureCandidateSet['atomicEvents'][number]>>;
+  cases: Array<IndexedCandidate<AiCaptureCandidateSet['concreteCases'][number]>>;
+  relations: Array<IndexedCandidate<AiCaptureCandidateSet['causalRelations'][number]>>;
+  eventNames: Map<string, IndexedCandidate<AiCaptureCandidateSet['atomicEvents'][number]>[]>;
+  caseContents: Map<string, IndexedCandidate<AiCaptureCandidateSet['concreteCases'][number]>[]>;
+  relationEndpoints: Map<
+    string,
+    IndexedCandidate<AiCaptureCandidateSet['causalRelations'][number]>[]
+  >;
+  connectedEventRefs: Set<string>;
+  linkedCaseRefs: Set<string>;
+  linkedRelationRefs: Set<string>;
+  outgoingByCause: Map<string, Set<string>>;
+  incomingByEffect: Map<string, Set<string>>;
+}
+
+function appendIndex<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const values = map.get(key) ?? [];
+  values.push(value);
+  map.set(key, values);
+}
+
+function addAdjacency(map: Map<string, Set<string>>, from: string, to: string): void {
+  const adjacent = map.get(from) ?? new Set<string>();
+  adjacent.add(to);
+  map.set(from, adjacent);
+}
+
+function buildCandidateQualityIndex(input: AiCaptureCandidateSet): CandidateQualityIndex {
+  const index: CandidateQualityIndex = {
+    events: [],
+    cases: [],
+    relations: [],
+    eventNames: new Map(),
+    caseContents: new Map(),
+    relationEndpoints: new Map(),
+    connectedEventRefs: new Set(),
+    linkedCaseRefs: new Set(),
+    linkedRelationRefs: new Set(),
+    outgoingByCause: new Map(),
+    incomingByEffect: new Map(),
+  };
+
+  input.atomicEvents.forEach((value, entryIndex) => {
+    const entry = { value, index: entryIndex };
+    index.events.push(entry);
+    appendIndex(index.eventNames, normalizeEventName(value.name), entry);
+  });
+  input.concreteCases.forEach((value, entryIndex) => {
+    const entry = { value, index: entryIndex };
+    index.cases.push(entry);
+    appendIndex(index.caseContents, value.content.trim(), entry);
+  });
+  input.causalRelations.forEach((value, entryIndex) => {
+    const entry = { value, index: entryIndex };
+    index.relations.push(entry);
+    appendIndex(
+      index.relationEndpoints,
+      relationEndpointKey(value.causeEventRef, value.effectEventRef),
+      entry,
+    );
+    index.connectedEventRefs.add(value.causeEventRef);
+    index.connectedEventRefs.add(value.effectEventRef);
+    addAdjacency(index.outgoingByCause, value.causeEventRef, value.effectEventRef);
+    addAdjacency(index.incomingByEffect, value.effectEventRef, value.causeEventRef);
+  });
+  input.relationCaseLinks.forEach((value) => {
+    index.linkedRelationRefs.add(value.relationRef);
+    index.linkedCaseRefs.add(value.caseRef);
+  });
+
+  return index;
 }
 
 function issueOrder(left: AiCaptureQualityIssue, right: AiCaptureQualityIssue): number {
@@ -160,13 +256,14 @@ export function mergeQualityReports(
 
 export class AiCaptureQualityGate {
   public inspectCandidates(input: AiCaptureCandidateSet): AiCaptureQualityReport {
+    const index = buildCandidateQualityIndex(input);
     return buildQualityReport([
-      ...duplicateEventNameIssues(input),
-      ...duplicateCaseContentIssues(input),
-      ...duplicateRelationIssues(input),
-      ...orphanEventIssues(input),
-      ...orphanCaseIssues(input),
-      ...candidateWarningIssues(input),
+      ...duplicateEventNameIssues(index),
+      ...duplicateCaseContentIssues(index),
+      ...duplicateRelationIssues(index),
+      ...orphanEventIssues(index),
+      ...orphanCaseIssues(index),
+      ...candidateWarningIssues(index),
     ]);
   }
 
@@ -178,23 +275,22 @@ export class AiCaptureQualityGate {
     return buildQualityReport(
       [
         ...this.inspectCandidates(input.candidates).issues,
-        ...sharedExactMatchIssues(input.comparison),
-        ...sharedSemanticMatchIssues(input.comparison),
+        ...sharedComparisonMatchIssues(input.comparison),
       ],
       input.topicRelevance,
     );
   }
 
   public inspectPlan(input: PrepareAiImportPlanInput): AiCaptureQualityReport {
+    const locationIndex = buildAiImportPlanLocationIndex(input);
     const candidateReport = this.inspectCandidates(input.candidates);
-    const comparisonReport = buildQualityReport([
-      ...sharedExactMatchIssues(input.comparison),
-      ...sharedSemanticMatchIssues(input.comparison),
-    ]);
+    const comparisonReport = buildQualityReport(sharedComparisonMatchIssues(input.comparison));
     const candidateIssues = candidateReport.issues
       .filter((issue) => issue.code !== 'AI_QUALITY_RELATION_WITHOUT_CASE')
-      .map((issue) => issueForPlan(input, issue));
-    const comparisonWarnings = comparisonReport.issues.map((issue) => issueForPlan(input, issue));
+      .map((issue) => issueForPlan(locationIndex, issue));
+    const comparisonWarnings = comparisonReport.issues.map((issue) =>
+      issueForPlan(locationIndex, issue),
+    );
     const blockedCandidateIssues = candidateReport.issues.filter(
       (issue) => issue.severity === 'error',
     );
@@ -214,13 +310,13 @@ export class AiCaptureQualityGate {
             }),
           ]
         : []),
-      ...planDecisionIssues(input),
+      ...planDecisionIssues(input, locationIndex),
     ]);
   }
 }
 
 function issueForPlan(
-  input: PrepareAiImportPlanInput,
+  locationIndex: AiImportPlanLocationIndex,
   issue: AiCaptureQualityIssue,
 ): AiCaptureQualityIssue {
   return planIssue({
@@ -228,27 +324,19 @@ function issueForPlan(
     severity: issue.severity,
     entityType: issue.entityType,
     refs: issue.refs,
-    paths: decisionPaths(input, issue.entityType, issue.refs),
+    paths: decisionPathsForPlanIssue(locationIndex, issue.entityType, issue.refs),
     message: issue.message,
   });
 }
 
-function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIssue[] {
-  const eventDecisions = new Map(
-    input.decisions.atomicEvents.map((decision, index) => [decision.ref, { decision, index }]),
-  );
-  const caseDecisions = new Map(
-    input.decisions.concreteCases.map((decision, index) => [decision.ref, { decision, index }]),
-  );
-  const relationDecisions = new Map(
-    input.decisions.causalRelations.map((decision, index) => [decision.ref, { decision, index }]),
-  );
-  const linkDecisions = new Map(
-    input.decisions.relationCaseLinks.map((decision, index) => [
-      relationKey(decision.relationRef, decision.caseRef),
-      { decision, index },
-    ]),
-  );
+function planDecisionIssues(
+  input: PrepareAiImportPlanInput,
+  locationIndex: AiImportPlanLocationIndex,
+): AiCaptureQualityIssue[] {
+  const eventDecisions = locationIndex.decisions.atomicEvents.byRef;
+  const caseDecisions = locationIndex.decisions.concreteCases.byRef;
+  const relationDecisions = locationIndex.decisions.causalRelations.byRef;
+  const linkDecisions = locationIndex.decisions.relationCaseLinks.byKey;
   const activeRelationRefs = new Set(
     input.decisions.causalRelations.flatMap((decision) =>
       decision.action === 'skip' ? [] : [decision.ref],
@@ -256,7 +344,9 @@ function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIs
   );
   const activeLinkKeys = new Set(
     input.decisions.relationCaseLinks.flatMap((decision) =>
-      decision.action === 'skip' ? [] : [relationKey(decision.relationRef, decision.caseRef)],
+      decision.action === 'skip'
+        ? []
+        : [aiImportPlanLinkKey(decision.relationRef, decision.caseRef)],
     ),
   );
   const connectedEventRefs = new Set(
@@ -266,12 +356,14 @@ function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIs
   );
   const linkedCaseRefs = new Set(
     input.candidates.relationCaseLinks.flatMap((link) =>
-      activeLinkKeys.has(relationKey(link.relationRef, link.caseRef)) ? [link.caseRef] : [],
+      activeLinkKeys.has(aiImportPlanLinkKey(link.relationRef, link.caseRef)) ? [link.caseRef] : [],
     ),
   );
   const linkedRelationRefs = new Set(
     input.candidates.relationCaseLinks.flatMap((link) =>
-      activeLinkKeys.has(relationKey(link.relationRef, link.caseRef)) ? [link.relationRef] : [],
+      activeLinkKeys.has(aiImportPlanLinkKey(link.relationRef, link.caseRef))
+        ? [link.relationRef]
+        : [],
     ),
   );
   const issues: AiCaptureQualityIssue[] = [];
@@ -322,10 +414,10 @@ function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIs
   });
 
   input.candidates.causalRelations.forEach((relation) => {
-    const relationEntry = relationDecisions.get(relation.ref);
-    if (!relationEntry || relationEntry.decision.action === 'skip') return;
+    const relationEntry = relationDecisions.get(relation.ref)?.at(-1);
+    if (!relationEntry || relationEntry.value.action === 'skip') return;
     const skippedEventRefs = [relation.causeEventRef, relation.effectEventRef].filter(
-      (ref) => eventDecisions.get(ref)?.decision.action === 'skip',
+      (ref) => eventDecisions.get(ref)?.at(-1)?.value.action === 'skip',
     );
     if (skippedEventRefs.length === 0) return;
     issues.push(
@@ -335,10 +427,10 @@ function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIs
         entityType: 'relation',
         refs: [relation.ref, ...skippedEventRefs],
         paths: [
-          `/decisions/causalRelations/${relationEntry.index}`,
+          relationEntry.path,
           ...skippedEventRefs.flatMap((ref) => {
-            const entry = eventDecisions.get(ref);
-            return entry ? [`/decisions/atomicEvents/${entry.index}`] : [];
+            const entry = eventDecisions.get(ref)?.at(-1);
+            return entry ? [entry.path] : [];
           }),
         ],
         message: '有效因果关系依赖已跳过的原子事件决策',
@@ -347,13 +439,13 @@ function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIs
   });
 
   input.candidates.relationCaseLinks.forEach((link) => {
-    const key = relationKey(link.relationRef, link.caseRef);
-    const linkEntry = linkDecisions.get(key);
-    if (!linkEntry || linkEntry.decision.action === 'skip') return;
-    const relationEntry = relationDecisions.get(link.relationRef);
-    const caseEntry = caseDecisions.get(link.caseRef);
-    const relationSkipped = relationEntry?.decision.action === 'skip';
-    const caseSkipped = caseEntry?.decision.action === 'skip';
+    const key = aiImportPlanLinkKey(link.relationRef, link.caseRef);
+    const linkEntry = linkDecisions.get(key)?.at(-1);
+    if (!linkEntry || linkEntry.value.action === 'skip') return;
+    const relationEntry = relationDecisions.get(link.relationRef)?.at(-1);
+    const caseEntry = caseDecisions.get(link.caseRef)?.at(-1);
+    const relationSkipped = relationEntry?.value.action === 'skip';
+    const caseSkipped = caseEntry?.value.action === 'skip';
     if (!relationSkipped && !caseSkipped) return;
     issues.push(
       planIssue({
@@ -362,11 +454,9 @@ function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIs
         entityType: 'link',
         refs: [link.relationRef, link.caseRef],
         paths: [
-          `/decisions/relationCaseLinks/${linkEntry.index}`,
-          ...(relationSkipped && relationEntry
-            ? [`/decisions/causalRelations/${relationEntry.index}`]
-            : []),
-          ...(caseSkipped && caseEntry ? [`/decisions/concreteCases/${caseEntry.index}`] : []),
+          linkEntry.path,
+          ...(relationSkipped && relationEntry ? [relationEntry.path] : []),
+          ...(caseSkipped && caseEntry ? [caseEntry.path] : []),
         ],
         message: '有效案例关联依赖已跳过的因果关系或具体案例决策',
       }),
@@ -376,93 +466,71 @@ function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIs
   return issues;
 }
 
-function decisionPaths(
-  input: PrepareAiImportPlanInput,
-  entityType: AiCaptureQualityEntityType,
-  refs: readonly string[],
-): string[] {
-  const refSet = new Set(refs);
-  switch (entityType) {
-    case 'event':
-      return input.decisions.atomicEvents.flatMap((decision, index) =>
-        refSet.has(decision.ref) ? [`/decisions/atomicEvents/${index}`] : [],
-      );
-    case 'case':
-      return input.decisions.concreteCases.flatMap((decision, index) =>
-        refSet.has(decision.ref) ? [`/decisions/concreteCases/${index}`] : [],
-      );
-    case 'relation':
-      return input.decisions.causalRelations.flatMap((decision, index) =>
-        refSet.has(decision.ref) ? [`/decisions/causalRelations/${index}`] : [],
-      );
-    case 'link':
-      return input.decisions.relationCaseLinks.flatMap((decision, index) =>
-        refSet.has(decision.relationRef) && refSet.has(decision.caseRef)
-          ? [`/decisions/relationCaseLinks/${index}`]
-          : [],
-      );
-    case 'batch':
-      return ['/decisions'];
-  }
+function newComparisonEntityMatchGroups(): ComparisonEntityMatchGroups {
+  return { exact: new Map(), semantic: new Map() };
 }
 
-function sharedExactMatchIssues(comparison: AiCaptureComparison): AiCaptureQualityIssue[] {
+function indexComparisonMatches(
+  candidates: readonly ComparisonCandidate[],
+): ComparisonEntityMatchGroups {
+  const groups = newComparisonEntityMatchGroups();
+  candidates.forEach((candidate, index) => {
+    const entry = { ref: candidate.ref, index };
+    const exactId = uniqueExactMatchId(candidate.matches);
+    if (exactId) appendIndex(groups.exact, exactId, entry);
+    const semanticId = qualifyingSemanticMatchId(candidate);
+    if (semanticId) appendIndex(groups.semantic, semanticId, entry);
+  });
+  return groups;
+}
+
+function buildComparisonMatchGroups(comparison: AiCaptureComparison): ComparisonMatchGroups {
+  return {
+    events: indexComparisonMatches(comparison.atomicEvents),
+    cases: indexComparisonMatches(comparison.concreteCases),
+  };
+}
+
+function sharedComparisonMatchIssues(comparison: AiCaptureComparison): AiCaptureQualityIssue[] {
+  const groups = buildComparisonMatchGroups(comparison);
   return [
     ...sharedMatchIssues({
-      candidates: comparison.atomicEvents,
+      groups: groups.events.exact,
       section: 'atomicEvents',
       code: 'AI_QUALITY_EVENTS_SHARE_EXACT_MATCH',
       entityType: 'event',
       message: '多个原子事件候选唯一精确匹配同一已有原子事件',
       matchPathSuffix: '/matches',
-      matchingId: (candidate) => uniqueExactMatchId(candidate.matches),
     }),
     ...sharedMatchIssues({
-      candidates: comparison.concreteCases,
+      groups: groups.cases.exact,
       section: 'concreteCases',
       code: 'AI_QUALITY_CASES_SHARE_EXACT_MATCH',
       entityType: 'case',
       message: '多个具体案例候选唯一精确匹配同一已有具体案例',
       matchPathSuffix: '/matches',
-      matchingId: (candidate) => uniqueExactMatchId(candidate.matches),
     }),
-  ];
-}
-
-function sharedSemanticMatchIssues(comparison: AiCaptureComparison): AiCaptureQualityIssue[] {
-  return [
     ...sharedMatchIssues({
-      candidates: comparison.atomicEvents,
+      groups: groups.events.semantic,
       section: 'atomicEvents',
       code: 'AI_QUALITY_EVENT_SEMANTIC_DUPLICATE_SUSPECTED',
       entityType: 'event',
       message: '多个原子事件候选高相似指向同一已有原子事件',
       matchPathSuffix: '/matches/0',
-      matchingId: qualifyingSemanticMatchId,
     }),
     ...sharedMatchIssues({
-      candidates: comparison.concreteCases,
+      groups: groups.cases.semantic,
       section: 'concreteCases',
       code: 'AI_QUALITY_CASE_SEMANTIC_DUPLICATE_SUSPECTED',
       entityType: 'case',
       message: '多个具体案例候选高相似指向同一已有具体案例',
       matchPathSuffix: '/matches/0',
-      matchingId: qualifyingSemanticMatchId,
     }),
   ];
 }
 
 function sharedMatchIssues(options: SharedMatchIssueOptions): AiCaptureQualityIssue[] {
-  const byExistingId = new Map<string, Array<{ ref: string; index: number }>>();
-  options.candidates.forEach((candidate, index) => {
-    const existingId = options.matchingId(candidate);
-    if (!existingId) return;
-    const refs = byExistingId.get(existingId) ?? [];
-    refs.push({ ref: candidate.ref, index });
-    byExistingId.set(existingId, refs);
-  });
-
-  return [...byExistingId.values()].flatMap((matches) =>
+  return [...options.groups.values()].flatMap((matches) =>
     matches.length > 1
       ? [
           comparisonIssue({
@@ -505,85 +573,54 @@ function qualifyingSemanticMatchId(candidate: ComparisonCandidate): string | nul
     : null;
 }
 
-function duplicateEventNameIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
-  const seen = new Set<string>();
-  const issues: AiCaptureQualityIssue[] = [];
-
-  input.atomicEvents.forEach((event, index) => {
-    const name = normalizeEventName(event.name);
-    if (seen.has(name)) {
-      issues.push(
-        candidateIssue({
-          code: 'AI_QUALITY_DUPLICATE_EVENT_NAME',
-          severity: 'error',
-          entityType: 'event',
-          refs: [event.ref],
-          path: `/atomicEvents/${index}/name`,
-          message: '候选原子事件名称重复',
-        }),
-      );
-    }
-    seen.add(name);
-  });
-
-  return issues;
-}
-
-function duplicateCaseContentIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
-  const seen = new Set<string>();
-  const issues: AiCaptureQualityIssue[] = [];
-
-  input.concreteCases.forEach((concreteCase, index) => {
-    const content = concreteCase.content.trim();
-    if (seen.has(content)) {
-      issues.push(
-        candidateIssue({
-          code: 'AI_QUALITY_DUPLICATE_CASE_CONTENT',
-          severity: 'error',
-          entityType: 'case',
-          refs: [concreteCase.ref],
-          path: `/concreteCases/${index}/content`,
-          message: '候选具体案例内容重复',
-        }),
-      );
-    }
-    seen.add(content);
-  });
-
-  return issues;
-}
-
-function duplicateRelationIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
-  const seen = new Set<string>();
-  const issues: AiCaptureQualityIssue[] = [];
-
-  input.causalRelations.forEach((relation, index) => {
-    const key = relationKey(relation.causeEventRef, relation.effectEventRef);
-    if (seen.has(key)) {
-      issues.push(
-        candidateIssue({
-          code: 'AI_QUALITY_DUPLICATE_RELATION',
-          severity: 'error',
-          entityType: 'relation',
-          refs: [relation.ref],
-          path: `/causalRelations/${index}`,
-          message: '候选因果关系重复',
-        }),
-      );
-    }
-    seen.add(key);
-  });
-
-  return issues;
-}
-
-function orphanEventIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
-  const connectedRefs = new Set(
-    input.causalRelations.flatMap((relation) => [relation.causeEventRef, relation.effectEventRef]),
+function duplicateEventNameIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
+  return [...index.eventNames.values()].flatMap((entries) =>
+    entries.slice(1).map(({ value: event, index: eventIndex }) =>
+      candidateIssue({
+        code: 'AI_QUALITY_DUPLICATE_EVENT_NAME',
+        severity: 'error',
+        entityType: 'event',
+        refs: [event.ref],
+        path: `/atomicEvents/${eventIndex}/name`,
+        message: '候选原子事件名称重复',
+      }),
+    ),
   );
+}
 
-  return input.atomicEvents.flatMap((event, index) =>
-    connectedRefs.has(event.ref)
+function duplicateCaseContentIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
+  return [...index.caseContents.values()].flatMap((entries) =>
+    entries.slice(1).map(({ value: concreteCase, index: caseIndex }) =>
+      candidateIssue({
+        code: 'AI_QUALITY_DUPLICATE_CASE_CONTENT',
+        severity: 'error',
+        entityType: 'case',
+        refs: [concreteCase.ref],
+        path: `/concreteCases/${caseIndex}/content`,
+        message: '候选具体案例内容重复',
+      }),
+    ),
+  );
+}
+
+function duplicateRelationIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
+  return [...index.relationEndpoints.values()].flatMap((entries) =>
+    entries.slice(1).map(({ value: relation, index: relationIndex }) =>
+      candidateIssue({
+        code: 'AI_QUALITY_DUPLICATE_RELATION',
+        severity: 'error',
+        entityType: 'relation',
+        refs: [relation.ref],
+        path: `/causalRelations/${relationIndex}`,
+        message: '候选因果关系重复',
+      }),
+    ),
+  );
+}
+
+function orphanEventIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
+  return index.events.flatMap(({ value: event, index: eventIndex }) =>
+    index.connectedEventRefs.has(event.ref)
       ? []
       : [
           candidateIssue({
@@ -591,18 +628,16 @@ function orphanEventIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[
             severity: 'error',
             entityType: 'event',
             refs: [event.ref],
-            path: `/atomicEvents/${index}`,
+            path: `/atomicEvents/${eventIndex}`,
             message: '候选原子事件尚未关联因果关系',
           }),
         ],
   );
 }
 
-function orphanCaseIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
-  const linkedRefs = new Set(input.relationCaseLinks.map((link) => link.caseRef));
-
-  return input.concreteCases.flatMap((concreteCase, index) =>
-    linkedRefs.has(concreteCase.ref)
+function orphanCaseIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
+  return index.cases.flatMap(({ value: concreteCase, index: caseIndex }) =>
+    index.linkedCaseRefs.has(concreteCase.ref)
       ? []
       : [
           candidateIssue({
@@ -610,44 +645,50 @@ function orphanCaseIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[]
             severity: 'error',
             entityType: 'case',
             refs: [concreteCase.ref],
-            path: `/concreteCases/${index}`,
+            path: `/concreteCases/${caseIndex}`,
             message: '候选具体案例尚未关联因果关系',
           }),
         ],
   );
 }
 
-function candidateWarningIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
+function candidateWarningIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
   return [
-    ...compoundEventIssues(input),
-    ...aliasCollisionIssues(input),
-    ...relationWithoutCaseIssues(input),
-    ...transitiveShortcutIssues(input),
+    ...compoundEventIssues(index),
+    ...aliasCollisionIssues(index),
+    ...relationWithoutCaseIssues(index),
+    ...transitiveShortcutIssues(index),
   ];
 }
 
-function compoundEventIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
-  return input.atomicEvents.flatMap((event, index) =>
-    isCompoundEvent(event.name)
+function compoundEventIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
+  return index.events.flatMap(({ value: event, index: eventIndex }) => {
+    const field = isCompoundEvent(event.name)
+      ? 'name'
+      : event.description !== null && isCompoundEvent(event.description)
+        ? 'description'
+        : null;
+
+    return field
       ? [
           candidateIssue({
             code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED',
             severity: 'warning',
             entityType: 'event',
             refs: [event.ref],
-            path: `/atomicEvents/${index}/name`,
+            path: `/atomicEvents/${eventIndex}/${field}`,
             message: '候选原子事件可能包含多个独立变化',
           }),
         ]
-      : [],
-  );
+      : [];
+  });
 }
 
-function aliasCollisionIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
+function aliasCollisionIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
   const seen = new Map<string, { ref: string; isAlias: boolean }>();
   const issues: AiCaptureQualityIssue[] = [];
 
-  input.atomicEvents.forEach((event, eventIndex) => {
+  index.events.forEach(({ value: event, index: eventIndex }) => {
     const values = [
       { value: event.name, path: `/atomicEvents/${eventIndex}/name`, isAlias: false },
       ...event.aliases.map((alias, aliasIndex) => ({
@@ -679,11 +720,9 @@ function aliasCollisionIssues(input: AiCaptureCandidateSet): AiCaptureQualityIss
   return issues;
 }
 
-function relationWithoutCaseIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
-  const linkedRelations = new Set(input.relationCaseLinks.map((link) => link.relationRef));
-
-  return input.causalRelations.flatMap((relation, index) =>
-    linkedRelations.has(relation.ref)
+function relationWithoutCaseIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
+  return index.relations.flatMap(({ value: relation, index: relationIndex }) =>
+    index.linkedRelationRefs.has(relation.ref)
       ? []
       : [
           candidateIssue({
@@ -691,27 +730,26 @@ function relationWithoutCaseIssues(input: AiCaptureCandidateSet): AiCaptureQuali
             severity: 'warning',
             entityType: 'relation',
             refs: [relation.ref],
-            path: `/causalRelations/${index}`,
+            path: `/causalRelations/${relationIndex}`,
             message: '候选因果关系尚未关联具体案例',
           }),
         ],
   );
 }
 
-function transitiveShortcutIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {
-  const endpointKeys = new Set(
-    input.causalRelations.map((relation) =>
-      relationKey(relation.causeEventRef, relation.effectEventRef),
-    ),
-  );
-
-  return input.causalRelations.flatMap((relation, index) => {
-    const hasShortcut = input.causalRelations.some(
-      (first) =>
-        first.causeEventRef === relation.causeEventRef &&
-        first.effectEventRef !== relation.effectEventRef &&
-        endpointKeys.has(relationKey(first.effectEventRef, relation.effectEventRef)),
-    );
+function transitiveShortcutIssues(index: CandidateQualityIndex): AiCaptureQualityIssue[] {
+  return index.relations.flatMap(({ value: relation, index: relationIndex }) => {
+    const outgoing = index.outgoingByCause.get(relation.causeEventRef) ?? new Set<string>();
+    const incoming = index.incomingByEffect.get(relation.effectEventRef) ?? new Set<string>();
+    const [midpointCandidates, otherSide] =
+      outgoing.size <= incoming.size ? [outgoing, incoming] : [incoming, outgoing];
+    let hasShortcut = false;
+    for (const midpoint of midpointCandidates) {
+      if (otherSide.has(midpoint)) {
+        hasShortcut = true;
+        break;
+      }
+    }
 
     return hasShortcut
       ? [
@@ -720,7 +758,7 @@ function transitiveShortcutIssues(input: AiCaptureCandidateSet): AiCaptureQualit
             severity: 'warning',
             entityType: 'relation',
             refs: [relation.ref],
-            path: `/causalRelations/${index}`,
+            path: `/causalRelations/${relationIndex}`,
             message: '候选因果关系可能是传递路径的快捷边',
           }),
         ]
@@ -728,11 +766,11 @@ function transitiveShortcutIssues(input: AiCaptureCandidateSet): AiCaptureQualit
   });
 }
 
-function isCompoundEvent(name: string): boolean {
-  if (!compoundConnectorPattern.test(name)) return false;
+function isCompoundEvent(text: string): boolean {
+  if (!compoundConnectorPattern.test(text)) return false;
 
   return (
-    name.split(compoundSplitPattern).filter((part) => changePhrasePattern.test(part)).length >= 2
+    text.split(compoundSplitPattern).filter((part) => changePhrasePattern.test(part)).length >= 2
   );
 }
 
@@ -740,7 +778,7 @@ function normalizeEventName(value: string): string {
   return value.trim().toLocaleLowerCase('zh-CN');
 }
 
-function relationKey(causeEventRef: string, effectEventRef: string): string {
+function relationEndpointKey(causeEventRef: string, effectEventRef: string): string {
   return `${causeEventRef}\u0000${effectEventRef}`;
 }
 

@@ -20,6 +20,20 @@ const existingEventId = '10000000-0000-4000-8000-000000000001';
 const otherEventId = '10000000-0000-4000-8000-000000000002';
 const existingCaseId = '20000000-0000-4000-8000-000000000001';
 const updatedAt = '2026-07-29T00:00:00.000Z';
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+function trackIndexedReads<T>(items: T[]): { values: T[]; readCount: () => number } {
+  let reads = 0;
+  return {
+    values: new Proxy(items, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && arrayIndexPattern.test(property)) reads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+    readCount: () => reads,
+  };
+}
 
 function candidates(overrides: Partial<AiCaptureCandidateSet> = {}): AiCaptureCandidateSet {
   return {
@@ -429,6 +443,23 @@ describe('AiCaptureQualityGate', () => {
     }
   });
 
+  it('groups exact and semantic comparison matches in one indexed pass', () => {
+    const concreteCases = Array.from({ length: 300 }, (_, index) => ({
+      ref: `case-${index}`,
+      matches: [],
+    }));
+    const trackedCases = trackIndexedReads(concreteCases);
+
+    const report = gate.inspectComparison({
+      candidates: candidates(),
+      comparison: comparison({ concreteCases: trackedCases.values }),
+      topicRelevance: [],
+    });
+
+    expect(report.status).toBe('passed');
+    expect(trackedCases.readCount()).toBeLessThan(concreteCases.length * 2);
+  });
+
   it('preserves candidate issues and sorts topic signals without letting signals affect status', () => {
     const report = gate.inspectComparison({
       candidates: compoundEventInput,
@@ -475,12 +506,191 @@ describe('AiCaptureQualityGate', () => {
     expect(report.issues.every((issue) => issue.severity === 'warning')).toBe(true);
   });
 
+  it('uses indexed adjacency for a high-cardinality sparse relation set', () => {
+    const sourceRefs = Array.from({ length: 24 }, (_, index) => `source-${index}`);
+    const targetRefs = Array.from({ length: 24 }, (_, index) => `target-${index}`);
+    const relations = sourceRefs.flatMap((causeEventRef) =>
+      targetRefs.map((effectEventRef) => ({
+        ref: `relation-${causeEventRef}-${effectEventRef}`,
+        causeEventRef,
+        effectEventRef,
+        description: null,
+      })),
+    );
+    const trackedRelations = trackIndexedReads(relations);
+    const value = candidates({
+      atomicEvents: [...sourceRefs, ...targetRefs].map((ref) => ({
+        ref,
+        name: `事件 ${ref}`,
+        description: null,
+        aliases: [],
+        keywords: [],
+      })),
+      concreteCases: [],
+      causalRelations: trackedRelations.values,
+      relationCaseLinks: [],
+    });
+
+    const report = gate.inspectCandidates(value);
+
+    expect(
+      report.issues.filter((issue) => issue.code === 'AI_QUALITY_TRANSITIVE_SHORTCUT_SUSPECTED'),
+    ).toEqual([]);
+    expect(trackedRelations.readCount()).toBeLessThan(relations.length * 12);
+  });
+
+  it('builds candidate collection indexes once per quality inspection', () => {
+    const atomicEvents = [
+      ...Array.from({ length: 15 }, (_, index) => `source-${index}`),
+      ...Array.from({ length: 20 }, (_, index) => `target-${index}`),
+    ].map((ref) => ({
+      ref,
+      name: `事件 ${ref}`,
+      description: null,
+      aliases: [],
+      keywords: [],
+    }));
+    const concreteCases = Array.from({ length: 300 }, (_, index) => ({
+      ref: `case-${index}`,
+      content: `具体案例 ${index}`,
+    }));
+    const causalRelations = Array.from({ length: 300 }, (_, index) => ({
+      ref: `relation-${index}`,
+      causeEventRef: `source-${Math.floor(index / 20)}`,
+      effectEventRef: `target-${index % 20}`,
+      description: null,
+    }));
+    const relationCaseLinks = causalRelations.map((relation, index) => ({
+      relationRef: relation.ref,
+      caseRef: `case-${index}`,
+    }));
+    const trackedEvents = trackIndexedReads(atomicEvents);
+    const trackedCases = trackIndexedReads(concreteCases);
+    const trackedRelations = trackIndexedReads(causalRelations);
+    const trackedLinks = trackIndexedReads(relationCaseLinks);
+
+    const report = gate.inspectCandidates(
+      candidates({
+        atomicEvents: trackedEvents.values,
+        concreteCases: trackedCases.values,
+        causalRelations: trackedRelations.values,
+        relationCaseLinks: trackedLinks.values,
+      }),
+    );
+
+    expect(report.status).toBe('passed');
+    expect(trackedEvents.readCount()).toBeLessThan(atomicEvents.length * 2);
+    expect(trackedCases.readCount()).toBeLessThan(concreteCases.length * 2);
+    expect(trackedRelations.readCount()).toBeLessThan(causalRelations.length * 2);
+    expect(trackedLinks.readCount()).toBeLessThan(relationCaseLinks.length * 2);
+  });
+
+  it('maps high-cardinality plan issues to decision pointers with indexed reads', () => {
+    const concreteCases = Array.from({ length: 300 }, (_, index) => ({
+      ref: `case-${index.toString().padStart(3, '0')}`,
+      content: '相同的高基数具体案例',
+    }));
+    const value = planInput(
+      candidates({
+        atomicEvents: [],
+        concreteCases,
+        causalRelations: [],
+        relationCaseLinks: [],
+      }),
+    );
+    const trackedDecisions = trackIndexedReads(value.decisions.concreteCases);
+    value.decisions.concreteCases = trackedDecisions.values;
+
+    const report = gate.inspectPlan(value);
+
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({
+        code: 'AI_QUALITY_DUPLICATE_CASE_CONTENT',
+        refs: ['case-299'],
+        paths: ['/decisions/concreteCases/299'],
+      }),
+    );
+    expect(trackedDecisions.readCount()).toBeLessThan(concreteCases.length * 12);
+  });
+
   it('requires two independently recognizable changes before warning about a compound event', () => {
     const report = gate.inspectCandidates(
       candidates({
         atomicEvents: [
           { ref: 'event-a', name: '供应链并且韧性', description: null, aliases: [], keywords: [] },
           { ref: 'event-b', name: '生产成本上升', description: null, aliases: [], keywords: [] },
+        ],
+      }),
+    );
+
+    expect(report.issues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED' }),
+      ]),
+    );
+  });
+
+  it('warns on a compound description when the event name itself is atomic', () => {
+    const report = gate.inspectCandidates(
+      candidates({
+        atomicEvents: [
+          {
+            ref: 'event-a',
+            name: '供应链冲击',
+            description: '原材料供应减少并且生产成本上升',
+            aliases: [],
+            keywords: [],
+          },
+          { ref: 'event-b', name: '产品交付延迟', description: null, aliases: [], keywords: [] },
+        ],
+      }),
+    );
+
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({
+        code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED',
+        refs: ['event-a'],
+        paths: ['/atomicEvents/0/description'],
+      }),
+    );
+  });
+
+  it('prefers the event-name pointer when both name and description are compound', () => {
+    const report = gate.inspectCandidates(
+      candidates({
+        atomicEvents: [
+          {
+            ref: 'event-a',
+            name: '原材料供应减少并且生产成本上升',
+            description: '市场需求下降同时库存积压增加',
+            aliases: [],
+            keywords: [],
+          },
+          { ref: 'event-b', name: '产品交付延迟', description: null, aliases: [], keywords: [] },
+        ],
+      }),
+    );
+
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({
+        code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED',
+        paths: ['/atomicEvents/0/name'],
+      }),
+    );
+  });
+
+  it('does not warn for a descriptive explanation with only one change phrase', () => {
+    const report = gate.inspectCandidates(
+      candidates({
+        atomicEvents: [
+          {
+            ref: 'event-a',
+            name: '市场需求下降',
+            description: '用于说明市场需求下降以及相关背景',
+            aliases: [],
+            keywords: [],
+          },
+          { ref: 'event-b', name: '产品交付延迟', description: null, aliases: [], keywords: [] },
         ],
       }),
     );

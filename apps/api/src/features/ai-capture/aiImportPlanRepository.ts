@@ -16,6 +16,8 @@ import {
 import type { Pool, PoolClient } from 'pg';
 
 import { AiCaptureDataError } from './aiCaptureErrors.js';
+import { canonicalizeAiImportPlanInput } from './aiImportPlanCanonicalizer.js';
+import { aiImportPlanLinkKey } from './aiImportPlanLocationIndex.js';
 import {
   fingerprintDependency,
   type AiImportPlanPreparationState,
@@ -107,40 +109,6 @@ export interface AiImportPlanRepository {
   ): Promise<AiImportPlan>;
   status(planId: string): Promise<AiImportPlanStatus>;
   get(planId: string): Promise<AiImportPlan>;
-}
-
-function canonicalInput(input: PrepareAiImportPlanInput): PrepareAiImportPlanInput {
-  const byRef = <T extends { ref: string }>(values: readonly T[]) =>
-    values.toSorted((left, right) => left.ref.localeCompare(right.ref));
-  const byLink = <T extends { relationRef: string; caseRef: string }>(values: readonly T[]) =>
-    values.toSorted(
-      (left, right) =>
-        left.relationRef.localeCompare(right.relationRef) ||
-        left.caseRef.localeCompare(right.caseRef),
-    );
-  return {
-    candidates: {
-      ...input.candidates,
-      atomicEvents: byRef(input.candidates.atomicEvents),
-      concreteCases: byRef(input.candidates.concreteCases),
-      causalRelations: byRef(input.candidates.causalRelations),
-      relationCaseLinks: byLink(input.candidates.relationCaseLinks),
-    },
-    comparison: {
-      atomicEvents: byRef(input.comparison.atomicEvents),
-      concreteCases: byRef(input.comparison.concreteCases),
-      causalRelations: byRef(input.comparison.causalRelations),
-      relationCaseLinks: byLink(input.comparison.relationCaseLinks),
-      qualityReport: input.comparison.qualityReport,
-    },
-    decisions: {
-      atomicEvents: byRef(input.decisions.atomicEvents),
-      concreteCases: byRef(input.decisions.concreteCases),
-      causalRelations: byRef(input.decisions.causalRelations),
-      relationCaseLinks: byLink(input.decisions.relationCaseLinks),
-    },
-    ...(input.replacesPlanId ? { replacesPlanId: input.replacesPlanId } : {}),
-  };
 }
 
 function publicPlan(row: PlanRow): AiImportPlan {
@@ -240,14 +208,14 @@ export class PostgresAiImportPlanRepository implements AiImportPlanRepository {
     );
     const linkDecisionMap = new Map(
       input.decisions.relationCaseLinks.map((decision) => [
-        `${decision.relationRef}\u0000${decision.caseRef}`,
+        aiImportPlanLinkKey(decision.relationRef, decision.caseRef),
         decision,
       ]),
     );
     const links: LinkIdentity[] = [];
     for (const candidate of input.candidates.relationCaseLinks) {
       const linkDecision = linkDecisionMap.get(
-        `${candidate.relationRef}\u0000${candidate.caseRef}`,
+        aiImportPlanLinkKey(candidate.relationRef, candidate.caseRef),
       );
       const relationDecision = relationDecisionMap.get(candidate.relationRef);
       const concreteCaseDecision = caseDecisionMap.get(candidate.caseRef);
@@ -276,7 +244,7 @@ export class PostgresAiImportPlanRepository implements AiImportPlanRepository {
     rawInput: PrepareAiImportPlanInput,
     mutations: PreparedMutationSet,
   ): Promise<AiImportPlan> {
-    const input = canonicalInput(rawInput);
+    const input = canonicalizeAiImportPlanInput(rawInput);
     const planPayloadWithoutHash = {
       comparison: input.comparison,
       decisions: input.decisions,

@@ -5,6 +5,7 @@ import type {
 } from '@causality/contracts';
 
 import type { AiImportPlanRepository } from './aiImportPlanRepository.js';
+import { canonicalizeAiImportPlanInput } from './aiImportPlanCanonicalizer.js';
 import { AiCaptureDataError, AiCaptureQualityBlockedError } from './aiCaptureErrors.js';
 import { AiCaptureQualityGate, buildQualityReport } from './aiCaptureQualityGate.js';
 import {
@@ -24,18 +25,19 @@ export class AiImportPlanService {
   public async prepare(input: unknown): Promise<AiImportPlan> {
     const parsed: PrepareAiImportPlanInput = parseAiImportPlanInput(input);
     const state = await this.repository.loadPreparationState(parsed);
+    const canonicalInput = canonicalizeAiImportPlanInput(parsed);
     const topicRelevance = await this.semantic.topicRelevance(
-      parsed.candidates.topic,
-      parsed.candidates.atomicEvents,
+      canonicalInput.candidates.topic,
+      canonicalInput.candidates.atomicEvents,
     );
-    const planReport = this.qualityGate.inspectPlan(parsed);
+    const planReport = this.qualityGate.inspectPlan(canonicalInput);
     const report = buildQualityReport(planReport.issues, topicRelevance);
     if (report.status === 'blocked') {
       throw new AiCaptureQualityBlockedError('AI_PLAN_QUALITY_BLOCKED', report);
     }
     const trustedInput: PrepareAiImportPlanInput = {
-      ...parsed,
-      comparison: { ...parsed.comparison, qualityReport: report },
+      ...canonicalInput,
+      comparison: { ...canonicalInput.comparison, qualityReport: report },
     };
     try {
       const mutations = prepareAiImportMutations(trustedInput, state);

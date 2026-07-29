@@ -22,6 +22,20 @@ const caseId = '20000000-0000-4000-8000-000000000001';
 const relationId = '30000000-0000-4000-8000-000000000001';
 const otherId = '90000000-0000-4000-8000-000000000001';
 const updatedAt = '2026-07-28T10:00:00.000Z';
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+function trackIndexedReads<T>(items: T[]): { values: T[]; readCount: () => number } {
+  let reads = 0;
+  return {
+    values: new Proxy(items, {
+      get(target, property, receiver) {
+        if (typeof property === 'string' && arrayIndexPattern.test(property)) reads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+    readCount: () => reads,
+  };
+}
 
 function comparison(): AiCaptureComparison {
   return {
@@ -265,23 +279,45 @@ describe('AI import plan validation and normalization', () => {
   });
 
   it.each([
-    ['event name', 'atomicEvents'],
-    ['case content', 'concreteCases'],
-  ])('rejects creating a duplicate existing %s', (_name, section) => {
-    const value = input();
-    if (section === 'atomicEvents') {
-      value.decisions.atomicEvents[0] = { ref: 'event-a', action: 'create' };
-    } else {
-      value.decisions.concreteCases[0] = { ref: 'case-a', action: 'create' };
-      value.candidates.relationCaseLinks = [];
-      value.comparison.relationCaseLinks = [];
-      value.decisions.relationCaseLinks = [];
-    }
+    {
+      name: 'event',
+      change(value: PrepareAiImportPlanInput) {
+        value.decisions.atomicEvents[0] = { ref: 'event-a', action: 'create' };
+      },
+    },
+    {
+      name: 'case',
+      change(value: PrepareAiImportPlanInput) {
+        value.decisions.concreteCases[0] = { ref: 'case-a', action: 'create' };
+      },
+    },
+    {
+      name: 'relation',
+      change(value: PrepareAiImportPlanInput) {
+        value.decisions.causalRelations[0] = { ref: 'relation-a', action: 'create' };
+      },
+    },
+    {
+      name: 'relation-case link',
+      change(value: PrepareAiImportPlanInput) {
+        value.decisions.relationCaseLinks[0] = {
+          relationRef: 'relation-a',
+          caseRef: 'case-a',
+          action: 'create',
+        };
+      },
+    },
+  ])(
+    'uses the exact-existing conflict code for a create decision on an existing $name',
+    ({ change }) => {
+      const value = input();
+      change(value);
 
-    expect(() => prepareAiImportMutations(value, state())).toThrowError(
-      expect.objectContaining({ code: 'AI_PLAN_UNIQUE_CONFLICT' }),
-    );
-  });
+      expect(() => prepareAiImportMutations(value, state())).toThrowError(
+        expect.objectContaining({ code: 'AI_PLAN_CREATE_EXACT_CONFLICT' }),
+      );
+    },
+  );
 
   it.each([
     ['event rename', 'atomicEvents', { renameTo: '新名称' }],
@@ -395,6 +431,7 @@ describe('AI import plan validation and normalization', () => {
     {
       name: 'case content',
       change(value: PrepareAiImportPlanInput) {
+        value.candidates.concreteCases[0]!.content = '批次内新案例内容';
         value.candidates.concreteCases.push({
           ref: 'case-b',
           content: value.candidates.concreteCases[0]!.content,
@@ -619,32 +656,73 @@ describe('AI import plan validation and normalization', () => {
 
 describe('plan validation quality reports', () => {
   it.each([
-    ['AI_PLAN_INPUT_INVALID', 'AI_QUALITY_COMPARISON_COVERAGE_INVALID'],
-    ['AI_PLAN_DECISIONS_INVALID', 'AI_QUALITY_DECISION_COVERAGE_INVALID'],
-    ['AI_PLAN_REUSE_INVALID', 'AI_QUALITY_REUSE_TARGET_INVALID'],
-    ['AI_PLAN_DEPENDENCY_SKIPPED', 'AI_QUALITY_DECISION_DEPENDENCY_INVALID'],
-    ['AI_PLAN_UNIQUE_CONFLICT', 'AI_QUALITY_BATCH_UNIQUE_CONFLICT'],
-    ['AI_PLAN_COMPARISON_STALE', 'AI_QUALITY_COMPARISON_STALE'],
-  ] as const)('maps %s to %s with a stable decision path', (errorCode, qualityCode) => {
-    const report = qualityReportForPlanValidationError(
-      new AiCaptureDataError(errorCode, ['event-a']),
-      input(),
-    );
+    [
+      'AI_PLAN_INPUT_INVALID',
+      'AI_QUALITY_COMPARISON_COVERAGE_INVALID',
+      '方案候选与对比结果的覆盖范围不一致',
+      '重新对比完整候选集合并提交全部对比结果',
+    ],
+    [
+      'AI_PLAN_DECISIONS_INVALID',
+      'AI_QUALITY_DECISION_COVERAGE_INVALID',
+      '方案决策未完整且唯一覆盖全部候选',
+      '为每个候选和案例关联补齐唯一决策',
+    ],
+    [
+      'AI_PLAN_REUSE_INVALID',
+      'AI_QUALITY_REUSE_TARGET_INVALID',
+      '复用决策未指向该候选对比结果中的有效已有记录',
+      '仅复用同一候选对比结果中的已有记录',
+    ],
+    [
+      'AI_PLAN_DEPENDENCY_SKIPPED',
+      'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
+      '有效决策依赖了已跳过的上游候选',
+      '同步跳过依赖项或恢复其上游决策',
+    ],
+    [
+      'AI_PLAN_CREATE_EXACT_CONFLICT',
+      'AI_QUALITY_CREATE_EXACT_CONFLICT',
+      '创建决策对应的数据已存在',
+      '复用精确匹配的已有记录，或跳过该候选或关联',
+    ],
+    [
+      'AI_PLAN_UNIQUE_CONFLICT',
+      'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
+      '批次内多个创建决策指向同一唯一目标',
+      '合并最终指向同一记录或唯一键的批次项',
+    ],
+    [
+      'AI_PLAN_COMPARISON_STALE',
+      'AI_QUALITY_COMPARISON_STALE',
+      '对比完成后相关已有记录已发生变化',
+      '基于当前数据库状态重新执行候选对比',
+    ],
+  ] as const)(
+    'maps %s to %s with readable repair metadata and a stable decision path',
+    (errorCode, qualityCode, message, suggestedAction) => {
+      const report = qualityReportForPlanValidationError(
+        new AiCaptureDataError(errorCode, ['event-a']),
+        input(),
+      );
 
-    expect(report).toMatchObject({
-      status: 'blocked',
-      issues: [
-        expect.objectContaining({
-          code: qualityCode,
-          severity: 'error',
-          phase: 'plan',
-          entityType: 'event',
-          refs: ['event-a'],
-          paths: ['/candidates/atomicEvents/0', '/decisions/atomicEvents/0'],
-        }),
-      ],
-    });
-  });
+      expect(report).toMatchObject({
+        status: 'blocked',
+        issues: [
+          expect.objectContaining({
+            code: qualityCode,
+            severity: 'error',
+            phase: 'plan',
+            entityType: 'event',
+            refs: ['event-a'],
+            paths: ['/candidates/atomicEvents/0', '/decisions/atomicEvents/0'],
+            message,
+            suggestedAction,
+          }),
+        ],
+      });
+    },
+  );
 
   it('falls back to the decisions batch path when an error has no locatable ref', () => {
     const report = qualityReportForPlanValidationError(
@@ -691,6 +769,52 @@ describe('plan validation quality reports', () => {
         '/decisions/causalRelations/0',
       ],
     });
+  });
+
+  it('maps high-cardinality validator refs to candidate and decision paths with indexed reads', () => {
+    const concreteCases = Array.from({ length: 300 }, (_, index) => ({
+      ref: `case-${index.toString().padStart(3, '0')}`,
+      content: `具体案例 ${index}`,
+    }));
+    const decisions = concreteCases.map(({ ref }) => ({ ref, action: 'create' as const }));
+    const trackedCandidates = trackIndexedReads(concreteCases);
+    const trackedDecisions = trackIndexedReads(decisions);
+    const value = input();
+    value.candidates = {
+      ...value.candidates,
+      atomicEvents: [],
+      concreteCases: trackedCandidates.values,
+      causalRelations: [],
+      relationCaseLinks: [],
+    };
+    value.decisions = {
+      atomicEvents: [],
+      concreteCases: trackedDecisions.values,
+      causalRelations: [],
+      relationCaseLinks: [],
+    };
+
+    const report = qualityReportForPlanValidationError(
+      new AiCaptureDataError(
+        'AI_PLAN_REUSE_INVALID',
+        concreteCases.map(({ ref }) => ref),
+      ),
+      value,
+    );
+
+    expect(report.issues[0]).toMatchObject({
+      entityType: 'case',
+      paths: expect.arrayContaining([
+        '/candidates/concreteCases/0',
+        '/decisions/concreteCases/0',
+        '/candidates/concreteCases/299',
+        '/decisions/concreteCases/299',
+      ]),
+    });
+    expect(report.issues[0]!.paths).toHaveLength(concreteCases.length * 2);
+    expect(trackedCandidates.readCount() + trackedDecisions.readCount()).toBeLessThan(
+      concreteCases.length * 12,
+    );
   });
 });
 

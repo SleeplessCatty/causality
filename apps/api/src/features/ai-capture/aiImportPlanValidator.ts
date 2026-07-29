@@ -11,15 +11,57 @@ import {
 
 import { AiCaptureDataError, type AiCaptureErrorCode } from './aiCaptureErrors.js';
 import { buildQualityReport } from './aiCaptureQualityGate.js';
+import {
+  aiImportPlanLinkKey,
+  buildAiImportPlanLocationIndex,
+  linkEntriesForPlanRefs,
+  type IndexedPlanValue,
+  type RefPlanLocationIndex,
+} from './aiImportPlanLocationIndex.js';
 import { calculateAutomaticConfidence } from '../relations/relationConfidencePolicy.js';
 
-const planValidationCodeMap: Partial<Record<AiCaptureErrorCode, AiCaptureQualityIssueCode>> = {
-  AI_PLAN_INPUT_INVALID: 'AI_QUALITY_COMPARISON_COVERAGE_INVALID',
-  AI_PLAN_DECISIONS_INVALID: 'AI_QUALITY_DECISION_COVERAGE_INVALID',
-  AI_PLAN_REUSE_INVALID: 'AI_QUALITY_REUSE_TARGET_INVALID',
-  AI_PLAN_DEPENDENCY_SKIPPED: 'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
-  AI_PLAN_UNIQUE_CONFLICT: 'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
-  AI_PLAN_COMPARISON_STALE: 'AI_QUALITY_COMPARISON_STALE',
+interface PlanValidationMetadata {
+  qualityCode: AiCaptureQualityIssueCode;
+  message: string;
+  suggestedAction: string;
+}
+
+const planValidationMetadata: Partial<Record<AiCaptureErrorCode, PlanValidationMetadata>> = {
+  AI_PLAN_INPUT_INVALID: {
+    qualityCode: 'AI_QUALITY_COMPARISON_COVERAGE_INVALID',
+    message: '方案候选与对比结果的覆盖范围不一致',
+    suggestedAction: '重新对比完整候选集合并提交全部对比结果',
+  },
+  AI_PLAN_DECISIONS_INVALID: {
+    qualityCode: 'AI_QUALITY_DECISION_COVERAGE_INVALID',
+    message: '方案决策未完整且唯一覆盖全部候选',
+    suggestedAction: '为每个候选和案例关联补齐唯一决策',
+  },
+  AI_PLAN_REUSE_INVALID: {
+    qualityCode: 'AI_QUALITY_REUSE_TARGET_INVALID',
+    message: '复用决策未指向该候选对比结果中的有效已有记录',
+    suggestedAction: '仅复用同一候选对比结果中的已有记录',
+  },
+  AI_PLAN_DEPENDENCY_SKIPPED: {
+    qualityCode: 'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
+    message: '有效决策依赖了已跳过的上游候选',
+    suggestedAction: '同步跳过依赖项或恢复其上游决策',
+  },
+  AI_PLAN_CREATE_EXACT_CONFLICT: {
+    qualityCode: 'AI_QUALITY_CREATE_EXACT_CONFLICT',
+    message: '创建决策对应的数据已存在',
+    suggestedAction: '复用精确匹配的已有记录，或跳过该候选或关联',
+  },
+  AI_PLAN_UNIQUE_CONFLICT: {
+    qualityCode: 'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
+    message: '批次内多个创建决策指向同一唯一目标',
+    suggestedAction: '合并最终指向同一记录或唯一键的批次项',
+  },
+  AI_PLAN_COMPARISON_STALE: {
+    qualityCode: 'AI_QUALITY_COMPARISON_STALE',
+    message: '对比完成后相关已有记录已发生变化',
+    suggestedAction: '基于当前数据库状态重新执行候选对比',
+  },
 };
 
 export interface ExistingEventState {
@@ -174,10 +216,6 @@ export function fingerprintDependency(value: unknown): string {
     .digest('hex');
 }
 
-function linkKey(relationRef: string, caseRef: string): string {
-  return `${relationRef}\u0000${caseRef}`;
-}
-
 function relationPairKey(cause: PreparedEventEndpoint, effect: PreparedEventEndpoint): string {
   return `${eventEndpointKey(cause)}\u0000${eventEndpointKey(effect)}`;
 }
@@ -224,19 +262,21 @@ function exactLinkMap<T extends { relationRef: string; caseRef: string }>(
 ): Map<string, T> {
   const result = new Map<string, T>();
   for (const value of values) {
-    const key = linkKey(value.relationRef, value.caseRef);
+    const key = aiImportPlanLinkKey(value.relationRef, value.caseRef);
     if (result.has(key)) {
       throw new AiCaptureDataError(code, [value.relationRef, value.caseRef]);
     }
     result.set(key, value);
   }
-  const expectedKeys = new Set(expected.map((value) => linkKey(value.relationRef, value.caseRef)));
+  const expectedKeys = new Set(
+    expected.map((value) => aiImportPlanLinkKey(value.relationRef, value.caseRef)),
+  );
   const affected = [
     ...expected
-      .filter((value) => !result.has(linkKey(value.relationRef, value.caseRef)))
+      .filter((value) => !result.has(aiImportPlanLinkKey(value.relationRef, value.caseRef)))
       .flatMap((value) => [value.relationRef, value.caseRef]),
     ...values
-      .filter((value) => !expectedKeys.has(linkKey(value.relationRef, value.caseRef)))
+      .filter((value) => !expectedKeys.has(aiImportPlanLinkKey(value.relationRef, value.caseRef)))
       .flatMap((value) => [value.relationRef, value.caseRef]),
   ];
   if (affected.length > 0) {
@@ -283,20 +323,20 @@ export function qualityReportForPlanValidationError(
   error: AiCaptureDataError,
   input: PrepareAiImportPlanInput,
 ): AiCaptureQualityReport {
-  const code = planValidationCodeMap[error.code];
-  if (!code) throw error;
+  const metadata = planValidationMetadata[error.code];
+  if (!metadata) throw error;
 
   const location = planValidationLocation(input, error.affectedRefs);
   return buildQualityReport([
     {
-      code,
+      code: metadata.qualityCode,
       severity: 'error',
       phase: 'plan',
       entityType: location.entityType,
       refs: [...error.affectedRefs],
       paths: location.paths,
-      message: error.message,
-      suggestedAction: suggestionForPlanValidationCode(code),
+      message: metadata.message,
+      suggestedAction: metadata.suggestedAction,
       aiCanRepair: true,
     },
   ]);
@@ -306,53 +346,41 @@ function planValidationLocation(
   input: PrepareAiImportPlanInput,
   affectedRefs: readonly string[],
 ): { entityType: AiCaptureQualityEntityType; paths: string[] } {
+  const index = buildAiImportPlanLocationIndex(input);
   const paths: string[] = [];
+  const pathSet = new Set<string>();
   const entityTypes: AiCaptureQualityEntityType[] = [];
   const add = (path: string, entityType: AiCaptureQualityEntityType) => {
-    if (!paths.includes(path)) paths.push(path);
+    if (!pathSet.has(path)) {
+      pathSet.add(path);
+      paths.push(path);
+    }
     entityTypes.push(entityType);
+  };
+  const addFirst = <T>(
+    locationIndex: RefPlanLocationIndex<T>,
+    ref: string,
+    entityType: AiCaptureQualityEntityType,
+  ) => {
+    const entry: IndexedPlanValue<T> | undefined = locationIndex.byRef.get(ref)?.[0];
+    if (entry) add(entry.path, entityType);
   };
 
   for (const ref of affectedRefs) {
-    const candidateEventIndex = input.candidates.atomicEvents.findIndex(
-      (candidate) => candidate.ref === ref,
-    );
-    if (candidateEventIndex >= 0) {
-      add(`/candidates/atomicEvents/${candidateEventIndex}`, 'event');
-    }
-    const eventIndex = input.decisions.atomicEvents.findIndex((decision) => decision.ref === ref);
-    if (eventIndex >= 0) add(`/decisions/atomicEvents/${eventIndex}`, 'event');
-    const candidateCaseIndex = input.candidates.concreteCases.findIndex(
-      (candidate) => candidate.ref === ref,
-    );
-    if (candidateCaseIndex >= 0) {
-      add(`/candidates/concreteCases/${candidateCaseIndex}`, 'case');
-    }
-    const caseIndex = input.decisions.concreteCases.findIndex((decision) => decision.ref === ref);
-    if (caseIndex >= 0) add(`/decisions/concreteCases/${caseIndex}`, 'case');
-    const candidateRelationIndex = input.candidates.causalRelations.findIndex(
-      (candidate) => candidate.ref === ref,
-    );
-    if (candidateRelationIndex >= 0) {
-      add(`/candidates/causalRelations/${candidateRelationIndex}`, 'relation');
-    }
-    const relationIndex = input.decisions.causalRelations.findIndex(
-      (decision) => decision.ref === ref,
-    );
-    if (relationIndex >= 0) add(`/decisions/causalRelations/${relationIndex}`, 'relation');
+    addFirst(index.candidates.atomicEvents, ref, 'event');
+    addFirst(index.decisions.atomicEvents, ref, 'event');
+    addFirst(index.candidates.concreteCases, ref, 'case');
+    addFirst(index.decisions.concreteCases, ref, 'case');
+    addFirst(index.candidates.causalRelations, ref, 'relation');
+    addFirst(index.decisions.causalRelations, ref, 'relation');
   }
 
-  const refSet = new Set(affectedRefs);
-  input.candidates.relationCaseLinks.forEach((candidate, index) => {
-    if (refSet.has(candidate.relationRef) && refSet.has(candidate.caseRef)) {
-      add(`/candidates/relationCaseLinks/${index}`, 'link');
-    }
-  });
-  input.decisions.relationCaseLinks.forEach((decision, index) => {
-    if (refSet.has(decision.relationRef) && refSet.has(decision.caseRef)) {
-      add(`/decisions/relationCaseLinks/${index}`, 'link');
-    }
-  });
+  for (const entry of linkEntriesForPlanRefs(index.candidates.relationCaseLinks, affectedRefs)) {
+    add(entry.path, 'link');
+  }
+  for (const entry of linkEntriesForPlanRefs(index.decisions.relationCaseLinks, affectedRefs)) {
+    add(entry.path, 'link');
+  }
 
   if (paths.length === 0) return { entityType: 'batch', paths: ['/decisions'] };
   const uniqueEntityTypes = new Set(entityTypes);
@@ -362,25 +390,6 @@ function planValidationLocation(
       ? (entityTypes[0] ?? 'batch')
       : 'batch';
   return { entityType, paths };
-}
-
-function suggestionForPlanValidationCode(code: AiCaptureQualityIssueCode): string {
-  switch (code) {
-    case 'AI_QUALITY_COMPARISON_COVERAGE_INVALID':
-      return '重新对比完整候选集合并提交全部对比结果';
-    case 'AI_QUALITY_DECISION_COVERAGE_INVALID':
-      return '为每个候选和案例关联补齐唯一决策';
-    case 'AI_QUALITY_REUSE_TARGET_INVALID':
-      return '仅复用同一候选对比结果中的已有记录';
-    case 'AI_QUALITY_DECISION_DEPENDENCY_INVALID':
-      return '同步跳过依赖项或恢复其上游决策';
-    case 'AI_QUALITY_BATCH_UNIQUE_CONFLICT':
-      return '合并最终指向同一记录或唯一键的批次项';
-    case 'AI_QUALITY_COMPARISON_STALE':
-      return '基于当前数据库状态重新执行候选对比';
-    default:
-      return '修正完整方案后重新生成';
-  }
 }
 
 export function prepareAiImportMutations(
@@ -463,16 +472,17 @@ export function prepareAiImportMutations(
   for (const candidate of input.candidates.atomicEvents) {
     const decision = eventDecisions.get(candidate.ref)!;
     if (decision.action === 'create') {
+      const candidateTerms = new Set([candidate.name, ...candidate.aliases].map(normalize));
       if (
         eventComparisons
           .get(candidate.ref)!
           .matches.some(
             (match) =>
-              match.matchKind === 'exact_name' &&
-              normalize(match.name) === normalize(candidate.name),
+              (match.matchKind === 'exact_name' || match.matchKind === 'exact_alias') &&
+              [match.name, ...match.aliases].some((term) => candidateTerms.has(normalize(term))),
           )
       ) {
-        throw new AiCaptureDataError('AI_PLAN_UNIQUE_CONFLICT', [candidate.ref]);
+        throw new AiCaptureDataError('AI_PLAN_CREATE_EXACT_CONFLICT', [candidate.ref]);
       }
       createEvents.push({
         ...candidate,
@@ -556,7 +566,7 @@ export function prepareAiImportMutations(
             (match) => match.matchKind === 'exact_content' && match.content === candidate.content,
           )
       ) {
-        throw new AiCaptureDataError('AI_PLAN_UNIQUE_CONFLICT', [candidate.ref]);
+        throw new AiCaptureDataError('AI_PLAN_CREATE_EXACT_CONFLICT', [candidate.ref]);
       }
       createCases.push({ ...candidate });
       caseTargetsByRef.set(candidate.ref, `ref:${candidate.ref}`);
@@ -609,7 +619,7 @@ export function prepareAiImportMutations(
     const comparison = relationComparisons.get(candidate.ref)!;
     if (decision.action === 'create') {
       if (comparison.status === 'existing') {
-        throw new AiCaptureDataError('AI_PLAN_UNIQUE_CONFLICT', [candidate.ref]);
+        throw new AiCaptureDataError('AI_PLAN_CREATE_EXACT_CONFLICT', [candidate.ref]);
       }
       if (eventEndpointKey(causeEvent) === eventEndpointKey(effectEvent)) {
         throw new AiCaptureDataError('AI_PLAN_UNIQUE_CONFLICT', [candidate.ref]);
@@ -665,7 +675,7 @@ export function prepareAiImportMutations(
   );
 
   for (const candidate of input.candidates.relationCaseLinks) {
-    const key = linkKey(candidate.relationRef, candidate.caseRef);
+    const key = aiImportPlanLinkKey(candidate.relationRef, candidate.caseRef);
     const decision = linkDecisions.get(key)!;
     const relationDecision = relationDecisions.get(candidate.relationRef)!;
     const caseDecision = caseDecisions.get(candidate.caseRef)!;
@@ -696,7 +706,7 @@ export function prepareAiImportMutations(
       ]);
     }
     if (decision.action === 'create' && comparison.exists) {
-      throw new AiCaptureDataError('AI_PLAN_UNIQUE_CONFLICT', [
+      throw new AiCaptureDataError('AI_PLAN_CREATE_EXACT_CONFLICT', [
         candidate.relationRef,
         candidate.caseRef,
       ]);
@@ -812,7 +822,7 @@ export function prepareAiImportMutations(
     reuseCases: sorted(reuseCases, (item) => item.ref),
     createRelations: sorted(createRelations, (item) => item.ref),
     reuseRelations: sorted(reuseRelations, (item) => item.ref),
-    createLinks: sorted(createLinks, (item) => linkKey(item.relationRef, item.caseRef)),
+    createLinks: sorted(createLinks, (item) => aiImportPlanLinkKey(item.relationRef, item.caseRef)),
     confidenceChanges: sorted(confidenceChanges, (item) => item.relationRef),
     skipped: sorted(skipped, (item) => `${item.type}\u0000${item.ref}`),
     dependencies: sorted(

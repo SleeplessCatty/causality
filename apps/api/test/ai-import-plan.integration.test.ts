@@ -204,6 +204,105 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
     };
   }
 
+  function reorderedWarningInput(reverse: boolean): PrepareAiImportPlanInput {
+    const candidates: AiCaptureCandidateSet = {
+      topic: '供应链递进影响',
+      clientName: 'canonical-plan-test',
+      atomicEvents: [
+        {
+          ref: 'event-a',
+          name: '上游供应减少',
+          description: null,
+          aliases: [],
+          keywords: [],
+        },
+        {
+          ref: 'event-b',
+          name: '工厂库存下降',
+          description: null,
+          aliases: [],
+          keywords: [],
+        },
+        {
+          ref: 'event-c',
+          name: '客户交付延迟',
+          description: null,
+          aliases: [],
+          keywords: [],
+        },
+      ],
+      concreteCases: [
+        { ref: 'case-a', content: '2026年上游供应减少后工厂库存下降' },
+        { ref: 'case-b', content: '2026年工厂库存下降后客户交付延迟' },
+      ],
+      causalRelations: [
+        {
+          ref: 'relation-1',
+          causeEventRef: 'event-a',
+          effectEventRef: 'event-b',
+          description: null,
+        },
+        {
+          ref: 'relation-2',
+          causeEventRef: 'event-b',
+          effectEventRef: 'event-c',
+          description: null,
+        },
+        {
+          ref: 'relation-3',
+          causeEventRef: 'event-a',
+          effectEventRef: 'event-c',
+          description: null,
+        },
+      ],
+      relationCaseLinks: [
+        { relationRef: 'relation-1', caseRef: 'case-a' },
+        { relationRef: 'relation-2', caseRef: 'case-b' },
+      ],
+    };
+    const comparison = {
+      atomicEvents: candidates.atomicEvents.map(({ ref }) => ({ ref, matches: [] })),
+      concreteCases: candidates.concreteCases.map(({ ref }) => ({ ref, matches: [] })),
+      causalRelations: candidates.causalRelations.map(({ ref }) => ({
+        ref,
+        status: 'missing' as const,
+      })),
+      relationCaseLinks: candidates.relationCaseLinks.map((link) => ({ ...link, exists: false })),
+      qualityReport: {
+        version: 1 as const,
+        status: 'passed' as const,
+        issues: [],
+        topicRelevance: [],
+      },
+    };
+    const decisions: AiCaptureDecisionSet = {
+      atomicEvents: candidates.atomicEvents.map(({ ref }) => ({ ref, action: 'create' })),
+      concreteCases: candidates.concreteCases.map(({ ref }) => ({ ref, action: 'create' })),
+      causalRelations: candidates.causalRelations.map(({ ref }) => ({ ref, action: 'create' })),
+      relationCaseLinks: candidates.relationCaseLinks.map((link) => ({
+        ...link,
+        action: 'create',
+      })),
+    };
+
+    if (reverse) {
+      candidates.atomicEvents.reverse();
+      candidates.concreteCases.reverse();
+      candidates.causalRelations.reverse();
+      candidates.relationCaseLinks.reverse();
+      comparison.atomicEvents.reverse();
+      comparison.concreteCases.reverse();
+      comparison.causalRelations.reverse();
+      comparison.relationCaseLinks.reverse();
+      decisions.atomicEvents.reverse();
+      decisions.concreteCases.reverse();
+      decisions.causalRelations.reverse();
+      decisions.relationCaseLinks.reverse();
+    }
+
+    return { candidates, comparison, decisions };
+  }
+
   it('replaces V1 with V2 transactionally and assigns a 30-minute lifetime', async () => {
     const warnings: Error[] = [];
     const captureWarning = (warning: Error) => warnings.push(warning);
@@ -345,6 +444,94 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
     await expect(service.status(plan.id)).resolves.toBe('pending');
   });
 
+  it('canonicalizes reordered plan payloads before warning paths, hashing, and persistence', async () => {
+    const first = await service.prepare(reorderedWarningInput(true));
+    const second = await service.prepare(reorderedWarningInput(false));
+    const stored = await pool.query<{
+      id: string;
+      candidate_payload: AiCaptureCandidateSet;
+      plan_payload: {
+        comparison: AiImportPlan['comparison'];
+        decisions: AiCaptureDecisionSet;
+        payloadHash: string;
+      };
+    }>(
+      `select id, candidate_payload, plan_payload
+       from ai_import_plans
+       where id = any($1::uuid[])
+       order by id`,
+      [[first.id, second.id]],
+    );
+
+    for (const plan of [first, second]) {
+      const shortcut = plan.comparison.qualityReport.issues.find(
+        (issue) => issue.code === 'AI_QUALITY_TRANSITIVE_SHORTCUT_SUSPECTED',
+      );
+      expect(plan.candidates.atomicEvents.map(({ ref }) => ref)).toEqual([
+        'event-a',
+        'event-b',
+        'event-c',
+      ]);
+      expect(plan.candidates.concreteCases.map(({ ref }) => ref)).toEqual(['case-a', 'case-b']);
+      expect(plan.candidates.causalRelations.map(({ ref }) => ref)).toEqual([
+        'relation-1',
+        'relation-2',
+        'relation-3',
+      ]);
+      expect(plan.candidates.relationCaseLinks).toEqual([
+        { relationRef: 'relation-1', caseRef: 'case-a' },
+        { relationRef: 'relation-2', caseRef: 'case-b' },
+      ]);
+      expect(plan.comparison.atomicEvents.map(({ ref }) => ref)).toEqual([
+        'event-a',
+        'event-b',
+        'event-c',
+      ]);
+      expect(plan.comparison.concreteCases.map(({ ref }) => ref)).toEqual(['case-a', 'case-b']);
+      expect(plan.comparison.causalRelations.map(({ ref }) => ref)).toEqual([
+        'relation-1',
+        'relation-2',
+        'relation-3',
+      ]);
+      expect(
+        plan.comparison.relationCaseLinks.map(({ relationRef, caseRef }) => [relationRef, caseRef]),
+      ).toEqual([
+        ['relation-1', 'case-a'],
+        ['relation-2', 'case-b'],
+      ]);
+      expect(plan.decisions.atomicEvents.map(({ ref }) => ref)).toEqual([
+        'event-a',
+        'event-b',
+        'event-c',
+      ]);
+      expect(plan.decisions.concreteCases.map(({ ref }) => ref)).toEqual(['case-a', 'case-b']);
+      expect(plan.decisions.causalRelations.map(({ ref }) => ref)).toEqual([
+        'relation-1',
+        'relation-2',
+        'relation-3',
+      ]);
+      expect(
+        plan.decisions.relationCaseLinks.map(({ relationRef, caseRef }) => [relationRef, caseRef]),
+      ).toEqual([
+        ['relation-1', 'case-a'],
+        ['relation-2', 'case-b'],
+      ]);
+      expect(plan.decisions.causalRelations[2]).toMatchObject({ ref: 'relation-3' });
+      expect(shortcut).toMatchObject({
+        refs: ['relation-3'],
+        paths: ['/decisions/causalRelations/2'],
+      });
+
+      const row = stored.rows.find((candidate) => candidate.id === plan.id)!;
+      expect(row.candidate_payload).toEqual(plan.candidates);
+      expect(row.plan_payload.decisions).toEqual(plan.decisions);
+      expect(row.plan_payload.comparison).toEqual(plan.comparison);
+    }
+
+    expect(first.comparison.qualityReport).toEqual(second.comparison.qualityReport);
+    expect(stored.rows[0]!.plan_payload.payloadHash).toBe(stored.rows[1]!.plan_payload.payloadHash);
+  });
+
   it('accepts a legacy comparison without a quality report and stores a fresh report', async () => {
     const value = await prepareInput();
     delete (value.comparison as unknown as { qualityReport?: unknown }).qualityReport;
@@ -439,6 +626,91 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
       },
     });
     const count = await pool.query<{ count: string }>(`select count(*) from ai_import_plans`);
+    expect(Number(count.rows[0]!.count)).toBe(0);
+  });
+
+  it.each([
+    {
+      scenario: 'candidate name matches a stored alias',
+      name: '港口停工',
+      aliases: [] as string[],
+    },
+    {
+      scenario: 'candidate alias matches the stored name',
+      name: '港口作业中断',
+      aliases: ['港口停止作业'],
+    },
+  ])(
+    'treats an exact event-alias create as an exact-existing conflict when $scenario',
+    async ({ name, aliases }) => {
+      const value = await prepareInput();
+      value.candidates.atomicEvents[0]!.name = name;
+      value.candidates.atomicEvents[0]!.aliases = aliases;
+      value.comparison.atomicEvents[0]!.matches[0]!.matchKind = 'exact_alias';
+      value.decisions.atomicEvents[0] = { ref: 'event-a', action: 'create' };
+
+      await expect(service.prepare(value)).rejects.toMatchObject({
+        code: 'AI_PLAN_QUALITY_BLOCKED',
+        qualityReport: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: 'AI_QUALITY_CREATE_EXACT_CONFLICT',
+              refs: ['event-a'],
+              suggestedAction: '复用精确匹配的已有记录，或跳过该候选或关联',
+            }),
+          ]),
+        },
+      });
+      const count = await pool.query<{ count: string }>(`select count(*) from ai_import_plans`);
+      expect(Number(count.rows[0]!.count)).toBe(0);
+    },
+  );
+
+  it('keeps exact-existing creates distinct from intra-batch conflicts without inserting plans', async () => {
+    const exactExisting = await prepareInput();
+    exactExisting.decisions.atomicEvents[0] = { ref: 'event-a', action: 'create' };
+
+    await expect(service.prepare(exactExisting)).rejects.toMatchObject({
+      code: 'AI_PLAN_QUALITY_BLOCKED',
+      qualityReport: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: 'AI_QUALITY_CREATE_EXACT_CONFLICT',
+            message: '创建决策对应的数据已存在',
+            suggestedAction: '复用精确匹配的已有记录，或跳过该候选或关联',
+          }),
+        ]),
+      },
+    });
+    let count = await pool.query<{ count: string }>(`select count(*) from ai_import_plans`);
+    expect(Number(count.rows[0]!.count)).toBe(0);
+
+    const batchConflict = await prepareInput();
+    batchConflict.comparison.atomicEvents[1]!.matches = [
+      batchConflict.comparison.atomicEvents[0]!.matches[0]!,
+    ];
+    batchConflict.decisions.atomicEvents[1] = {
+      ref: 'event-b',
+      action: 'reuse',
+      existingId: eventAId,
+      appendAliases: [],
+      appendKeywords: [],
+    };
+    batchConflict.comparison.causalRelations = [{ ref: 'relation-a', status: 'missing' }];
+    batchConflict.decisions.causalRelations = [{ ref: 'relation-a', action: 'create' }];
+
+    await expect(service.prepare(batchConflict)).rejects.toMatchObject({
+      code: 'AI_PLAN_QUALITY_BLOCKED',
+      qualityReport: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: 'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
+            message: '批次内多个创建决策指向同一唯一目标',
+          }),
+        ]),
+      },
+    });
+    count = await pool.query<{ count: string }>(`select count(*) from ai_import_plans`);
     expect(Number(count.rows[0]!.count)).toBe(0);
   });
 
