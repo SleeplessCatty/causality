@@ -132,6 +132,12 @@ describe.sequential('AI capture typed HTTP workflow', () => {
       concreteCases: [],
       causalRelations: [],
       relationCaseLinks: [],
+      qualityReport: {
+        version: 1,
+        status: 'passed' as const,
+        issues: [],
+        topicRelevance: [],
+      },
     };
     const prepared = await context.app.inject({
       method: 'POST',

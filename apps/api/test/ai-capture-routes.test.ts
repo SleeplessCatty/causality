@@ -1,6 +1,7 @@
 import type {
   AiCaptureCandidateSet,
   AiCaptureComparison,
+  AiCaptureQualityReport,
   AiImportBatchDetail,
   AiImportBatchListResponse,
   AiImportCommitResult,
@@ -10,11 +11,15 @@ import type {
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { AiCaptureDataError } from '../src/features/ai-capture/aiCaptureErrors.js';
+import {
+  AiCaptureDataError,
+  AiCaptureQualityBlockedError,
+} from '../src/features/ai-capture/aiCaptureErrors.js';
 import {
   registerAiCaptureRoutes,
   type AiCaptureRouteDependencies,
 } from '../src/features/ai-capture/aiCaptureRoutes.js';
+import { classifyAiImportCommitError } from '../src/features/ai-capture/aiWorkflowErrorClassifier.js';
 import { SemanticQueryError } from '../src/features/semantic/semanticQueryService.js';
 
 const token = 'a'.repeat(64);
@@ -24,6 +29,32 @@ const existingRelationId = '00000000-0000-4000-8000-000000000003';
 const planId = '10000000-0000-4000-8000-000000000001';
 const historyId = '20000000-0000-4000-8000-000000000001';
 const timestamp = '2026-07-28T12:00:00.000Z';
+
+const emptyQualityReport: AiCaptureQualityReport = {
+  version: 1,
+  status: 'passed',
+  issues: [],
+  topicRelevance: [],
+};
+
+const blockedQualityReport: AiCaptureQualityReport = {
+  version: 1,
+  status: 'blocked',
+  issues: [
+    {
+      code: 'AI_QUALITY_SCHEMA_INVALID',
+      severity: 'error',
+      phase: 'candidate',
+      entityType: 'event',
+      refs: ['event-invalid'],
+      paths: ['/atomicEvents/0/name'],
+      message: '事件名称不能为空',
+      suggestedAction: '按字段路径修正参数',
+      aiCanRepair: true,
+    },
+  ],
+  topicRelevance: [],
+};
 
 const candidates: AiCaptureCandidateSet = {
   topic: '供应链变化',
@@ -39,6 +70,7 @@ const comparison: AiCaptureComparison = {
   concreteCases: [],
   causalRelations: [],
   relationCaseLinks: [],
+  qualityReport: emptyQualityReport,
 };
 
 const nonEmptyCandidates: AiCaptureCandidateSet = {
@@ -108,6 +140,7 @@ const nonEmptyComparison: AiCaptureComparison = {
     },
   ],
   relationCaseLinks: [],
+  qualityReport: emptyQualityReport,
 };
 
 const counts = {
@@ -319,6 +352,138 @@ describe('AI capture routes', () => {
     expect(dependencies.compareCalls).toBe(0);
   });
 
+  it('returns a candidate quality report with the invalid compare field path', async () => {
+    const { app, dependencies } = await createApp();
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ai-captures/compare',
+      headers: { 'x-causality-mcp-token': token },
+      payload: {
+        ...candidates,
+        atomicEvents: [
+          {
+            ref: 'event-invalid',
+            name: '',
+            description: null,
+            aliases: [],
+            keywords: [],
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      category: 'data',
+      code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+      aiCanRepair: true,
+      retryCurrentPlan: false,
+      qualityReport: {
+        status: 'blocked',
+        issues: [
+          expect.objectContaining({
+            phase: 'candidate',
+            paths: ['/atomicEvents/0/name'],
+          }),
+        ],
+      },
+    });
+    expect(dependencies.compareCalls).toBe(0);
+  });
+
+  it('returns a plan quality report with the invalid plan field path', async () => {
+    const { app, dependencies } = await createApp();
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ai-captures/plans',
+      headers: { 'x-causality-mcp-token': token },
+      payload: {
+        candidates: {
+          ...candidates,
+          atomicEvents: [
+            {
+              ref: 'event-invalid',
+              name: '',
+              description: null,
+              aliases: [],
+              keywords: [],
+            },
+          ],
+        },
+        comparison,
+        decisions: plan.decisions,
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      category: 'data',
+      code: 'AI_PLAN_QUALITY_BLOCKED',
+      aiCanRepair: true,
+      retryCurrentPlan: false,
+      suggestedAction: '根据质量报告修正完整决策集合后重新生成方案',
+      qualityReport: {
+        status: 'blocked',
+        issues: [
+          expect.objectContaining({
+            phase: 'plan',
+            paths: ['/candidates/atomicEvents/0/name'],
+          }),
+        ],
+      },
+    });
+    expect(dependencies.prepareCalls).toBe(0);
+  });
+
+  it('preserves an exact quality report when classifying a blocked commit workflow', () => {
+    const classified = classifyAiImportCommitError(
+      new AiCaptureQualityBlockedError('AI_CANDIDATE_QUALITY_BLOCKED', blockedQualityReport),
+    );
+
+    expect(classified).toEqual({
+      category: 'data',
+      code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+      message: '候选集合存在必须修复的质量问题',
+      affectedRefs: ['event-invalid'],
+      aiCanRepair: true,
+      retryCurrentPlan: false,
+      suggestedAction: '根据质量报告修正完整候选集合后重新对比',
+      qualityReport: blockedQualityReport,
+    });
+  });
+
+  it('serializes the exact quality report from a dedicated quality-blocked error', async () => {
+    const dependencies = new RecordingDependencies();
+    dependencies.comparisonService.compare = async () => {
+      throw new AiCaptureQualityBlockedError('AI_CANDIDATE_QUALITY_BLOCKED', blockedQualityReport);
+    };
+    const { app } = await createApp(dependencies);
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ai-captures/compare',
+      headers: { 'x-causality-mcp-token': token },
+      payload: candidates,
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      category: 'data',
+      code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+      message: '候选集合存在必须修复的质量问题',
+      affectedRefs: ['event-invalid'],
+      aiCanRepair: true,
+      retryCurrentPlan: false,
+      suggestedAction: '根据质量报告修正完整候选集合后重新对比',
+      qualityReport: blockedQualityReport,
+    });
+  });
+
   it('rejects bodies above 8 MiB before comparison or plan creation', async () => {
     const { app, dependencies } = await createApp();
     apps.push(app);
@@ -496,6 +661,7 @@ describe('AI capture routes', () => {
       code: 'SEMANTIC_MODEL_UNAVAILABLE',
       aiCanRepair: false,
     });
+    expect(unavailable.json()).not.toHaveProperty('qualityReport');
   });
 
   it.each([
@@ -547,6 +713,7 @@ describe('AI capture routes', () => {
       aiCanRepair: false,
       retryCurrentPlan: true,
     });
+    expect(response.json()).not.toHaveProperty('qualityReport');
   });
 
   it('returns 400 for malformed JSON and 404 for missing history or result', async () => {
@@ -576,6 +743,10 @@ describe('AI capture routes', () => {
     });
 
     expect(malformed.statusCode).toBe(400);
+    expect(malformed.json()).toEqual({
+      code: 'VALIDATION_ERROR',
+      message: '请求 JSON 格式不合法',
+    });
     expect(missingHistory.statusCode).toBe(404);
     expect(missingResult.statusCode).toBe(404);
   });

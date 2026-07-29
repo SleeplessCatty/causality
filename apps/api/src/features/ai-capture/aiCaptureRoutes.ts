@@ -11,6 +11,8 @@ import {
   apiErrorSchema,
   prepareAiImportPlanInputSchema,
   type AiCaptureComparison,
+  type AiCaptureQualityEntityType,
+  type AiCaptureQualityPhase,
   type AiImportBatchDetail,
   type AiImportBatchListResponse,
   type AiImportCommitResult,
@@ -32,15 +34,15 @@ import type { Pool } from 'pg';
 
 import { PostgresAiCandidateComparisonRepository } from './aiCandidateComparisonRepository.js';
 import { AiCandidateComparisonService } from './aiCandidateComparisonService.js';
-import { AiCaptureDataError } from './aiCaptureErrors.js';
-import { AiCaptureQualityGate } from './aiCaptureQualityGate.js';
+import { AiCaptureDataError, AiCaptureQualityBlockedError } from './aiCaptureErrors.js';
+import { AiCaptureQualityGate, buildQualityReport, toJsonPointer } from './aiCaptureQualityGate.js';
 import { PostgresAiImportCommitRepository } from './aiImportCommitRepository.js';
 import { AiImportCommitService } from './aiImportCommitService.js';
 import { PostgresAiImportHistoryRepository } from './aiImportHistoryRepository.js';
 import { PostgresAiImportPlanRepository } from './aiImportPlanRepository.js';
 import { AiImportPlanService } from './aiImportPlanService.js';
 import { AiSemanticCandidateService } from './aiSemanticCandidateService.js';
-import { AiImportCommitError } from './aiWorkflowErrorClassifier.js';
+import { AiImportCommitError, qualityBlockedWorkflowError } from './aiWorkflowErrorClassifier.js';
 import {
   PostgresSemanticQueryContextRepository,
   SemanticQueryError,
@@ -179,6 +181,9 @@ function sendWorkflowError(error: unknown, reply: FastifyReply) {
         : '在参数配置中完成模型下载、加载和索引后重新执行候选对比',
     } satisfies AiWorkflowError);
   }
+  if (error instanceof AiCaptureQualityBlockedError) {
+    return reply.status(400).send(qualityBlockedWorkflowError(error));
+  }
   if (error instanceof AiCaptureDataError) {
     return reply.status(workflowStatus(error.code)).send({
       category: 'data',
@@ -243,9 +248,77 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise
   }
 }
 
-function routeParserError(error: FastifyError, reply: FastifyReply): FastifyReply {
+type ValidationDetail = {
+  instancePath?: unknown;
+  message?: unknown;
+  params?: {
+    issue?: {
+      path?: unknown;
+    };
+  };
+};
+
+function normalizedValidationPath(detail: ValidationDetail): string {
+  const zodPath = detail.params?.issue?.path;
+  if (Array.isArray(zodPath)) return toJsonPointer(zodPath);
+  if (typeof detail.instancePath !== 'string' || detail.instancePath.length === 0) return '/';
+
+  const tokens = detail.instancePath
+    .replace(/^\//, '')
+    .split('/')
+    .map((token) => token.replaceAll('~1', '/').replaceAll('~0', '~'));
+  return toJsonPointer(tokens);
+}
+
+function validationEntityType(path: string): AiCaptureQualityEntityType {
+  const tokens = path.split('/').slice(1);
+  if (tokens.includes('atomicEvents')) return 'event';
+  if (tokens.includes('concreteCases')) return 'case';
+  if (tokens.includes('causalRelations')) return 'relation';
+  if (tokens.includes('relationCaseLinks')) return 'link';
+  return 'batch';
+}
+
+function validationQualityError(
+  validation: readonly ValidationDetail[],
+  phase: AiCaptureQualityPhase,
+): AiCaptureQualityBlockedError {
+  const report = buildQualityReport(
+    validation.map((detail) => {
+      const path = normalizedValidationPath(detail);
+      return {
+        code: 'AI_QUALITY_SCHEMA_INVALID' as const,
+        severity: 'error' as const,
+        phase,
+        entityType: validationEntityType(path),
+        refs: [],
+        paths: [path],
+        message: typeof detail.message === 'string' ? detail.message : '请求参数不合法',
+        suggestedAction: '按字段路径修正参数',
+        aiCanRepair: true,
+      };
+    }),
+  );
+
+  return new AiCaptureQualityBlockedError(
+    phase === 'candidate' ? 'AI_CANDIDATE_QUALITY_BLOCKED' : 'AI_PLAN_QUALITY_BLOCKED',
+    report,
+  );
+}
+
+function routeParserError(
+  error: FastifyError,
+  reply: FastifyReply,
+  phase?: AiCaptureQualityPhase,
+): FastifyReply {
   if (error.code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
     return sendError(reply, 413, 'REQUEST_BODY_TOO_LARGE', '请求内容不能超过 8 MiB');
+  }
+  if (error.validation && phase) {
+    return sendWorkflowError(
+      validationQualityError(error.validation as ValidationDetail[], phase),
+      reply,
+    );
   }
   if (error.validation) {
     return sendError(reply, 400, 'VALIDATION_ERROR', '请求参数不合法');
@@ -270,8 +343,16 @@ export function registerAiCaptureRoutes(
   const batchParamsSchema = z.object({ batchId: z.uuid() }).strict();
   const pageQuerySchema = z.object({ page: z.coerce.number().int().min(1).default(1) }).strict();
   const recordsQuerySchema = pageQuerySchema.extend({ type: aiImportRecordTypeSchema }).strict();
-  const parserErrorHandler = (error: FastifyError, _request: FastifyRequest, reply: FastifyReply) =>
-    routeParserError(error, reply);
+  const candidateParserErrorHandler = (
+    error: FastifyError,
+    _request: FastifyRequest,
+    reply: FastifyReply,
+  ) => routeParserError(error, reply, 'candidate');
+  const planParserErrorHandler = (
+    error: FastifyError,
+    _request: FastifyRequest,
+    reply: FastifyReply,
+  ) => routeParserError(error, reply, 'plan');
   const workflowAuth = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!(await authorizeWorkflow(request, reply, dependencies.authorizer))) return reply;
   };
@@ -280,7 +361,7 @@ export function registerAiCaptureRoutes(
     '/api/ai-captures/compare',
     {
       bodyLimit: AI_CAPTURE_BODY_LIMIT,
-      errorHandler: parserErrorHandler,
+      errorHandler: candidateParserErrorHandler,
       preValidation: workflowAuth,
       schema: {
         tags: ['ai-captures'],
@@ -307,7 +388,7 @@ export function registerAiCaptureRoutes(
     '/api/ai-captures/plans',
     {
       bodyLimit: AI_CAPTURE_BODY_LIMIT,
-      errorHandler: parserErrorHandler,
+      errorHandler: planParserErrorHandler,
       preValidation: workflowAuth,
       schema: {
         tags: ['ai-captures'],

@@ -1,6 +1,6 @@
 import type { AiWorkflowError } from '@causality/contracts';
 
-import { AiCaptureDataError } from './aiCaptureErrors.js';
+import { AiCaptureDataError, AiCaptureQualityBlockedError } from './aiCaptureErrors.js';
 
 interface ErrorWithCode extends Error {
   code?: string;
@@ -36,8 +36,28 @@ export class AiImportCommitError extends Error {
   }
 }
 
+export function qualityBlockedWorkflowError(error: AiCaptureQualityBlockedError): AiWorkflowError {
+  return {
+    category: 'data',
+    code: error.code,
+    message: error.message,
+    affectedRefs: error.affectedRefs,
+    aiCanRepair: true,
+    retryCurrentPlan: false,
+    suggestedAction:
+      error.code === 'AI_CANDIDATE_QUALITY_BLOCKED'
+        ? '根据质量报告修正完整候选集合后重新对比'
+        : '根据质量报告修正完整决策集合后重新生成方案',
+    qualityReport: error.qualityReport,
+  };
+}
+
 export function classifyAiImportCommitError(error: unknown): AiWorkflowError {
   if (error instanceof AiImportCommitError) return error.workflowError;
+
+  if (error instanceof AiCaptureQualityBlockedError) {
+    return qualityBlockedWorkflowError(error);
+  }
 
   if (error instanceof AiCaptureDataError) {
     return {
