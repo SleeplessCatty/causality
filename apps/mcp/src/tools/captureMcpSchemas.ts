@@ -178,6 +178,7 @@ const changeCounts = z
     relationCreated: count,
     relationReused: count,
     relationCaseCreated: count,
+    relationCaseReused: count,
     confidenceChanged: count,
   })
   .strict();

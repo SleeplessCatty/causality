@@ -678,6 +678,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
       relationCreated: mutations.createRelations.length,
       relationReused: mutations.reuseRelations.length,
       relationCaseCreated: mutations.createLinks.length,
+      relationCaseReused: reuseLinks.length,
       confidenceChanged,
     };
     return { counts, records, noChanges: !isBusinessChange(counts) };
@@ -745,11 +746,11 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
          event_created, event_reused, event_updated,
          case_created, case_reused,
          relation_created, relation_reused,
-         relation_case_created, confidence_changed
+         relation_case_created, relation_case_reused, confidence_changed
        )
        values (
          $1, $2, $3, $4,
-         $5, $6, $7, $8, $9, $10, $11, $12, $13
+         $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
        )
        returning id, completed_at`,
       [
@@ -765,6 +766,7 @@ export class PostgresAiImportCommitRepository implements AiImportCommitRepositor
         applied.counts.relationCreated,
         applied.counts.relationReused,
         applied.counts.relationCaseCreated,
+        applied.counts.relationCaseReused,
         applied.counts.confidenceChanged,
       ],
     );

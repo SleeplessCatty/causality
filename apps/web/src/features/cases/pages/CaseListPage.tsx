@@ -163,9 +163,7 @@ export function CaseListPage() {
                 <th scope="col">案例内容</th>
                 <th scope="col">关联关系数</th>
                 <th scope="col">更新时间</th>
-                <th scope="col">
-                  <span className="sr-only">操作</span>
-                </th>
+                <th scope="col">操作</th>
               </tr>
             </thead>
             <tbody>

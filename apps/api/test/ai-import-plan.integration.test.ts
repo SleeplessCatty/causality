@@ -315,6 +315,7 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
     expect(plan.summary).toMatchObject({
       eventUpdated: 1,
       relationCaseCreated: 1,
+      relationCaseReused: 1,
       confidenceChanged: 1,
     });
   });

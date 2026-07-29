@@ -43,12 +43,14 @@ describe.sequential('AI import successful history PostgreSQL queries', () => {
            event_created, event_reused, event_updated,
            case_created, case_reused,
            relation_created, relation_reused,
-           relation_case_created, confidence_changed
+           relation_case_created, relation_case_reused, confidence_changed
          )
          values (
            $1, $2, $3, 1, 'history-test',
            '2026-07-28T00:00:00Z'::timestamptz + ($4 * interval '1 minute'),
-           $4, 0, 0, 0, 0, 0, 0, 0, 0
+           $4, 0, 0, 0, 0, 0, 0, 0,
+           case when $4 = 51 then 1 else 0 end,
+           0
          )`,
         [batchId, planId, `历史主题 ${index}`, index],
       );
@@ -79,7 +81,7 @@ describe.sequential('AI import successful history PostgreSQL queries', () => {
       [
         3,
         'relation',
-        'created',
+        'reused',
         relationId,
         null,
         { ref: 'relation-1', causeEventId, effectEventId },
@@ -153,7 +155,7 @@ describe.sequential('AI import successful history PostgreSQL queries', () => {
     expect(detail).toMatchObject({
       id: newestBatchId,
       topic: '历史主题 51',
-      counts: { eventCreated: 51 },
+      counts: { eventCreated: 51, relationCaseCreated: 0, relationCaseReused: 1 },
     });
     const records = await Promise.all(
       (['event', 'case', 'relation', 'relation_case', 'confidence'] as const).map((type) =>

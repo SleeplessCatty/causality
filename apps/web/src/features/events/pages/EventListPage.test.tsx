@@ -71,6 +71,7 @@ describe('EventListPage', () => {
     expect(screen.getByText('油价上涨、原油上涨、国际油价上涨')).toBeTruthy();
     expect(screen.getByText('+1')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: '关联关系数' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '操作' }).querySelector('.sr-only')).toBeNull();
     expect(screen.getByRole('cell', { name: '2' })).toBeTruthy();
     expect(screen.getByRole('link', { name: '创建事件' }).getAttribute('href')).toBe('/events/new');
     expect(screen.getByRole('link', { name: '原油价格上涨' }).getAttribute('href')).toBe(

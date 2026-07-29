@@ -111,6 +111,7 @@ const counts = {
   relationCreated: 1,
   relationReused: 0,
   relationCaseCreated: 1,
+  relationCaseReused: 0,
   confidenceChanged: 1,
 };
 
@@ -305,6 +306,7 @@ describe('capture workflow tools', () => {
     expect(text).toContain('case-port：新增');
     expect(text).toContain('relation-delay：新增');
     expect(text).toContain('relation-delay + case-port：新增关联');
+    expect(text).toContain('新增/复用案例关联：1/0');
     expect(text).toContain('置信度变化：1');
     expect(text).toContain('失效时间：2026-07-28T12:30:00.000Z');
   });

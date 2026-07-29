@@ -161,6 +161,7 @@ const counts = {
   relationCreated: 0,
   relationReused: 0,
   relationCaseCreated: 0,
+  relationCaseReused: 0,
   confidenceChanged: 0,
 };
 

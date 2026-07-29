@@ -25,6 +25,7 @@ const committedResult: AiImportCommitResult = {
     relationCreated: 0,
     relationReused: 0,
     relationCaseCreated: 0,
+    relationCaseReused: 0,
     confidenceChanged: 0,
   },
   completedAt: '2026-07-28T12:00:00.000Z',

@@ -182,6 +182,15 @@ function state(): AiImportPlanPreparationState {
 }
 
 describe('AI import plan validation and normalization', () => {
+  it('counts an existing relation-case link as reused', () => {
+    const result = prepareAiImportMutations(input(), state());
+
+    expect(result.summary).toMatchObject({
+      relationCaseCreated: 0,
+      relationCaseReused: 1,
+    });
+  });
+
   it('rejects a reuse decision without its required existing ID', () => {
     const invalid = input() as unknown as {
       decisions: { atomicEvents: Array<Record<string, unknown>> };

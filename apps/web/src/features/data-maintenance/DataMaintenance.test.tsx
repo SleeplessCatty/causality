@@ -448,7 +448,7 @@ describe('DataMaintenance', () => {
       '严重程度',
       '问题类型',
       '问题来源',
-      '处理入口',
+      '操作',
     ]);
     expect(screen.queryByRole('columnheader', { name: '问题描述' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '处理建议' })).toBeNull();

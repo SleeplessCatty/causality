@@ -32,6 +32,7 @@ const batch: AiImportBatchDetail = {
     relationCreated: 2,
     relationReused: 1,
     relationCaseCreated: 5,
+    relationCaseReused: 4,
     confidenceChanged: 2,
   },
 };
@@ -127,7 +128,7 @@ describe('AiImportDetailPage', () => {
     expect(await screen.findByRole('heading', { name: batch.topic })).toBeTruthy();
     expect(screen.getByText('版本 3')).toBeTruthy();
     expect(screen.getByText(batch.clientName)).toBeTruthy();
-    expect(screen.getByText('新增 5')).toBeTruthy();
+    expect(screen.getByText('新增 5 / 复用 4')).toBeTruthy();
     expect(screen.queryByText('属性与关联')).toBeNull();
     expect(screen.queryByText('事件更新 1 / 案例关联 5 / 置信度变化 2')).toBeNull();
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([

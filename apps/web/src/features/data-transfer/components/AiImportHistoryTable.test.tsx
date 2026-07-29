@@ -23,6 +23,7 @@ const data: AiImportBatchListResponse = {
         relationCreated: 0,
         relationReused: 1,
         relationCaseCreated: 0,
+        relationCaseReused: 1,
         confidenceChanged: 0,
       },
     },
@@ -58,8 +59,7 @@ describe('AiImportHistoryTable', () => {
       '操作',
     ]);
     expect(screen.getByText('新增 0 / 复用 2 / 更新 0')).toBeTruthy();
-    expect(screen.getAllByText('新增 0 / 复用 1')).toHaveLength(2);
-    expect(screen.getByText('新增 0', { selector: 'td' })).toBeTruthy();
+    expect(screen.getAllByText('新增 0 / 复用 1')).toHaveLength(3);
     expect(screen.queryByText('成功·无变化')).toBeNull();
     expect(screen.getByText('共 51 条 · 第 2/2 页')).toBeTruthy();
     expect(screen.getByRole('link', { name: '查看 AI 导入详情' }).getAttribute('href')).toBe(

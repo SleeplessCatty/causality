@@ -51,11 +51,11 @@ async function insertBatch(database: Pool | PoolClient, id: string, planId: stri
        event_created, event_reused, event_updated,
        case_created, case_reused,
        relation_created, relation_reused,
-       relation_case_created, confidence_changed
+       relation_case_created, relation_case_reused, confidence_changed
      )
      values (
        $1, $2, '供应链中断的影响', 1, 'integration-test',
-       1, 0, 0, 0, 0, 0, 0, 0, 0
+       1, 0, 0, 0, 0, 0, 0, 0, 0, 0
      )`,
     [id, planId],
   );

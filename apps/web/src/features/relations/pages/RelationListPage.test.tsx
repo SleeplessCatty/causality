@@ -99,6 +99,7 @@ describe('RelationListPage', () => {
     const router = renderList();
 
     expect(await screen.findByText('原油价格上涨')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: '操作' }).querySelector('.sr-only')).toBeNull();
     expect(screen.getByRole('link', { name: '原油价格上涨' }).getAttribute('href')).toBe(
       `/events/${relation.causeEvent.id}`,
     );

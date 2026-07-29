@@ -25,6 +25,7 @@ const emptyCounts: AiImportChangeCounts = {
   relationCreated: 0,
   relationReused: 0,
   relationCaseCreated: 0,
+  relationCaseReused: 0,
   confidenceChanged: 0,
 };
 
@@ -199,6 +200,7 @@ describe.sequential('AI import commit PostgreSQL transaction', () => {
       relationCreated: 1,
       relationReused: 1,
       relationCaseCreated: 2,
+      relationCaseReused: 0,
       confidenceChanged: 2,
     };
     const planId = await insertPlan(pool, mutations);
@@ -310,6 +312,69 @@ describe.sequential('AI import commit PostgreSQL transaction', () => {
       [planId],
     );
     expect(batches.rows[0]?.count).toBe(1);
+  });
+
+  it('records an existing relation-case link as reused without changing confidence', async () => {
+    await pool.query(
+      `insert into causal_relation_cases (causal_relation_id, concrete_case_id)
+       values ($1, $2)`,
+      [existingRelationId, existingCaseId],
+    );
+    const linked = await pool.query<{ linked_at: Date }>(
+      `select linked_at from causal_relation_cases
+       where causal_relation_id = $1 and concrete_case_id = $2`,
+      [existingRelationId, existingCaseId],
+    );
+    const mutations = emptyMutations();
+    mutations.reuseCases = [{ ref: 'case-existing', id: existingCaseId }];
+    mutations.reuseRelations = [{ ref: 'relation-existing', id: existingRelationId }];
+    mutations.dependencies = [
+      {
+        type: 'link',
+        id: existingRelationId,
+        relatedId: existingCaseId,
+        fingerprint: fingerprintDependency({
+          relationId: existingRelationId,
+          caseId: existingCaseId,
+          exists: true,
+          linkedAt: linked.rows[0]!.linked_at.toISOString(),
+        }),
+      },
+    ];
+    mutations.summary = {
+      ...emptyCounts,
+      caseReused: 1,
+      relationReused: 1,
+      relationCaseReused: 1,
+    };
+    const planId = await insertPlan(pool, mutations);
+
+    const result = await service.commit(planId);
+
+    expect(result).toMatchObject({
+      noChanges: true,
+      counts: {
+        caseReused: 1,
+        relationReused: 1,
+        relationCaseCreated: 0,
+        relationCaseReused: 1,
+        confidenceChanged: 0,
+      },
+    });
+    const history = await pool.query<{
+      relation_case_reused: number;
+      confidence_changed: number;
+      action: string;
+    }>(
+      `select batch.relation_case_reused, batch.confidence_changed, record.action
+       from ai_import_batches batch
+       join ai_import_records record on record.batch_id = batch.id
+       where batch.plan_id = $1 and record.record_type = 'relation_case'`,
+      [planId],
+    );
+    expect(history.rows).toEqual([
+      { relation_case_reused: 1, confidence_changed: 0, action: 'reused' },
+    ]);
   });
 
   it('rolls back every business mutation when successful-history creation fails', async () => {

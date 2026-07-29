@@ -460,6 +460,7 @@ export const aiImportChangeCountsSchema = z
     relationCreated: nonnegativeCountSchema,
     relationReused: nonnegativeCountSchema,
     relationCaseCreated: nonnegativeCountSchema,
+    relationCaseReused: nonnegativeCountSchema.default(0),
     confidenceChanged: nonnegativeCountSchema,
   })
   .strict();

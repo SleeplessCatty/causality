@@ -33,6 +33,7 @@ export const aiImportBatches = pgTable(
     relationCreated: integer('relation_created').notNull(),
     relationReused: integer('relation_reused').notNull(),
     relationCaseCreated: integer('relation_case_created').notNull(),
+    relationCaseReused: integer('relation_case_reused').notNull(),
     confidenceChanged: integer('confidence_changed').notNull(),
   },
   (table) => [
@@ -57,6 +58,7 @@ export const aiImportBatches = pgTable(
         and ${table.relationCreated} >= 0
         and ${table.relationReused} >= 0
         and ${table.relationCaseCreated} >= 0
+        and ${table.relationCaseReused} >= 0
         and ${table.confidenceChanged} >= 0`,
     ),
   ],

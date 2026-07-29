@@ -141,6 +141,13 @@
       "when": 1785321061000,
       "tag": "0019_ai_import_history_readability",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785325842848,
+      "tag": "0020_ai_import_relation_case_reuse",
+      "breakpoints": true
     }
   ]
 }

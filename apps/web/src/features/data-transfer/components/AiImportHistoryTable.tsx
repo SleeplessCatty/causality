@@ -77,7 +77,9 @@ export function AiImportHistoryTable({
                   <td>
                     新增 {batch.counts.relationCreated} / 复用 {batch.counts.relationReused}
                   </td>
-                  <td>新增 {batch.counts.relationCaseCreated}</td>
+                  <td>
+                    新增 {batch.counts.relationCaseCreated} / 复用 {batch.counts.relationCaseReused}
+                  </td>
                   <td>
                     <Link
                       className="text-button"

@@ -59,6 +59,7 @@ const aiBatch: AiImportBatchSummary = {
     relationCreated: 1,
     relationReused: 1,
     relationCaseCreated: 2,
+    relationCaseReused: 3,
     confidenceChanged: 1,
   },
 };
@@ -185,12 +186,14 @@ describe('DataTransferPage', () => {
 
     expect(await screen.findByRole('heading', { name: '导出 CSV' })).toBeTruthy();
     expect(router.state.location.search).toBe('?tab=export&page=2');
-    expect(screen.getByRole('tab', { name: '导出' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: '文件导出' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
     expect(screen.queryByText('导入历史')).toBeNull();
     expect(screen.queryByText('导出历史')).toBeNull();
     expect(getImportHistory).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
+    fireEvent.click(screen.getByRole('tab', { name: '文件导入' }));
     expect(await screen.findByText(batch.filename)).toBeTruthy();
     expect(router.state.location.search).toBe('?tab=import&page=2');
   });
@@ -205,8 +208,8 @@ describe('DataTransferPage', () => {
       'true',
     );
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      '导入',
-      '导出',
+      '文件导入',
+      '文件导出',
       'AI 导入历史',
     ]);
     expect(getAiImportHistory).toHaveBeenCalledWith(2, expect.any(AbortSignal));

@@ -16,8 +16,8 @@ import { getAiImportHistory, getImportHistory, uploadImport } from './dataTransf
 import { useImportNavigationProtection } from './useImportNavigationProtection';
 
 const dataTransferTabs = [
-  { value: 'import', label: '导入' },
-  { value: 'export', label: '导出' },
+  { value: 'import', label: '文件导入' },
+  { value: 'export', label: '文件导出' },
   { value: 'aiHistory', label: 'AI 导入历史' },
 ] as const;
 

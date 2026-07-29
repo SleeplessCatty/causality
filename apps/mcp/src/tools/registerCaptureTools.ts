@@ -146,7 +146,7 @@ function planText(plan: AiImportPlan): string {
     `- 新增/复用/更新原子事件：${summary.eventCreated}/${summary.eventReused}/${summary.eventUpdated}`,
     `- 新增/复用具体案例：${summary.caseCreated}/${summary.caseReused}`,
     `- 新增/复用因果关系：${summary.relationCreated}/${summary.relationReused}`,
-    `- 新增案例关联：${summary.relationCaseCreated}`,
+    `- 新增/复用案例关联：${summary.relationCaseCreated}/${summary.relationCaseReused}`,
     `- 置信度变化：${summary.confidenceChanged}`,
     '',
     '只有用户明确确认这份最新完整方案后，才能提交入库。',

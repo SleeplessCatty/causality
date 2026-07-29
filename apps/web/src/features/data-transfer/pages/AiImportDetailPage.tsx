@@ -304,7 +304,9 @@ export function AiImportDetailPage() {
         </div>
         <div>
           <dt>案例关联</dt>
-          <dd>新增 {counts.relationCaseCreated}</dd>
+          <dd>
+            新增 {counts.relationCaseCreated} / 复用 {counts.relationCaseReused}
+          </dd>
         </div>
       </dl>
 

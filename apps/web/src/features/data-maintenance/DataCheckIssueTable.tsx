@@ -115,7 +115,7 @@ export function DataCheckIssueTable({ snapshotId, queryState }: DataCheckIssueTa
               <th scope="col">严重程度</th>
               <th scope="col">问题类型</th>
               <th scope="col">问题来源</th>
-              <th scope="col">处理入口</th>
+              <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody>

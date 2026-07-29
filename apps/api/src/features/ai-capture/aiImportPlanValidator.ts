@@ -332,6 +332,7 @@ export function prepareAiImportMutations(
   const createRelations: PreparedRelationCreate[] = [];
   const reuseRelations: PreparedRelationReuse[] = [];
   const createLinks: PreparedLinkCreate[] = [];
+  let relationCaseReused = 0;
   const confidenceChanges: PreparedConfidenceChange[] = [];
   const skipped: PreparedSkippedItem[] = [];
   const dependencies: PreparedDependencyVersion[] = [];
@@ -612,6 +613,8 @@ export function prepareAiImportMutations(
       }
       createdLinkTargets.add(targetKey);
       createLinks.push({ ...candidate });
+    } else {
+      relationCaseReused += 1;
     }
   }
 
@@ -672,6 +675,7 @@ export function prepareAiImportMutations(
     relationCreated: createRelations.length,
     relationReused: reuseRelations.length,
     relationCaseCreated: createLinks.length,
+    relationCaseReused,
     confidenceChanged: confidenceChanges.length,
   };
   const uniqueDependencies = [

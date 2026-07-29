@@ -26,6 +26,7 @@ interface BatchRow {
   relation_created: number;
   relation_reused: number;
   relation_case_created: number;
+  relation_case_reused: number;
   confidence_changed: number;
 }
 
@@ -108,6 +109,7 @@ function batch(row: BatchRow): AiImportBatchDetail {
       relationCreated: row.relation_created,
       relationReused: row.relation_reused,
       relationCaseCreated: row.relation_case_created,
+      relationCaseReused: row.relation_case_reused,
       confidenceChanged: row.confidence_changed,
     },
   };
@@ -117,7 +119,7 @@ const batchColumns = `id, plan_id, topic, plan_version, client_name, completed_a
                       event_created, event_reused, event_updated,
                       case_created, case_reused,
                       relation_created, relation_reused,
-                      relation_case_created, confidence_changed`;
+                      relation_case_created, relation_case_reused, confidence_changed`;
 
 export class PostgresAiImportHistoryRepository {
   public constructor(private readonly pool: Pool) {}
