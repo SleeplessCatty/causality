@@ -29,10 +29,53 @@ const caseIds = {
   abSecond: 'c1000000-0000-4000-8000-000000000003',
 } as const;
 
+const branchEventIds = [
+  'd1000000-0000-4000-8000-000000000001',
+  'd1000000-0000-4000-8000-000000000002',
+  'd1000000-0000-4000-8000-000000000003',
+  'd1000000-0000-4000-8000-000000000004',
+  'd1000000-0000-4000-8000-000000000005',
+] as const;
+
+const branchRelationIds = [
+  'e1000000-0000-4000-8000-000000000001',
+  'e1000000-0000-4000-8000-000000000002',
+  'e1000000-0000-4000-8000-000000000003',
+  'e1000000-0000-4000-8000-000000000004',
+  'e1000000-0000-4000-8000-000000000005',
+  'e1000000-0000-4000-8000-000000000006',
+  'e1000000-0000-4000-8000-000000000007',
+  'e1000000-0000-4000-8000-000000000008',
+] as const;
+
 function pathUrl(sourceEventId: string, targetEventId: string, suffix = ''): string {
   return (
     '/api/causal-paths?sourceEventId=' + sourceEventId + '&targetEventId=' + targetEventId + suffix
   );
+}
+
+async function businessTableFingerprint(database: Pool): Promise<Record<string, unknown>> {
+  const [events, relations, cases, links] = await Promise.all([
+    database.query<{ value: unknown }>(
+      "select json_build_object('count', count(*), 'maxUpdatedAt', max(updated_at)) as value from abstract_events",
+    ),
+    database.query<{ value: unknown }>(
+      "select json_build_object('count', count(*), 'maxUpdatedAt', max(updated_at)) as value from causal_relations",
+    ),
+    database.query<{ value: unknown }>(
+      "select json_build_object('count', count(*), 'maxUpdatedAt', max(updated_at)) as value from concrete_cases",
+    ),
+    database.query<{ value: unknown }>(
+      "select json_build_object('count', count(*), 'maxLinkedAt', max(linked_at)) as value from causal_relation_cases",
+    ),
+  ]);
+
+  return {
+    abstractEvents: events.rows[0]!.value,
+    causalRelations: relations.rows[0]!.value,
+    concreteCases: cases.rows[0]!.value,
+    causalRelationCases: links.rows[0]!.value,
+  };
 }
 
 describe.sequential('causal evidence REST API', () => {
@@ -296,5 +339,62 @@ describe.sequential('causal evidence REST API', () => {
 
     expect(document.paths['/api/causal-evidence-bundles']).toHaveProperty('post');
     expect(document.paths['/api/causal-evidence-bundles']).not.toHaveProperty('get');
+  });
+
+  it('bounds a real three-hop branching query and leaves all business tables unchanged', async () => {
+    await pool!.query(
+      [
+        'insert into abstract_events (id, name) values',
+        "($1, '第一层事件 A'), ($2, '第一层事件 B'),",
+        "($3, '第二层事件 A'), ($4, '第二层事件 B'), ($5, '分支目标事件')",
+      ].join(' '),
+      [...branchEventIds],
+    );
+    await pool!.query(
+      [
+        'insert into causal_relations (',
+        'id, cause_event_id, effect_event_id, confidence, baseline_confidence, baseline_case_count',
+        ') values',
+        '($1, $9, $10, 60, 60, 0), ($2, $9, $11, 60, 60, 0),',
+        '($3, $10, $12, 60, 60, 0), ($4, $10, $13, 60, 60, 0),',
+        '($5, $11, $12, 60, 60, 0), ($6, $11, $13, 60, 60, 0),',
+        '($7, $12, $14, 60, 60, 0), ($8, $13, $14, 60, 60, 0)',
+      ].join(' '),
+      [
+        ...branchRelationIds,
+        eventIds.d,
+        branchEventIds[0],
+        branchEventIds[1],
+        branchEventIds[2],
+        branchEventIds[3],
+        branchEventIds[4],
+      ],
+    );
+    const before = await businessTableFingerprint(pool!);
+
+    const pathResponse = await app!.inject({
+      method: 'GET',
+      url: pathUrl(eventIds.d, branchEventIds[4], '&maxDepth=3&pathLimit=10'),
+    });
+    const paths = causalPathResponseSchema.parse(pathResponse.json());
+    expect(pathResponse.statusCode).toBe(200);
+    expect(paths.paths).toHaveLength(4);
+    expect(paths.paths.length).toBeLessThanOrEqual(10);
+    expect(paths.expandedStateCount).toBeLessThanOrEqual(10_000);
+    expect(paths.paths.every((path) => path.hopCount === 3)).toBe(true);
+
+    const evidenceResponse = await app!.inject({
+      method: 'POST',
+      url: '/api/causal-evidence-bundles',
+      payload: {
+        relationIds: paths.paths[0]!.relations.map((relation) => relation.id),
+        caseLimitPerRelation: 5,
+      },
+    });
+    expect(evidenceResponse.statusCode).toBe(200);
+    expect(causalEvidenceBundleResponseSchema.parse(evidenceResponse.json()).hopCount).toBe(3);
+
+    const after = await businessTableFingerprint(pool!);
+    expect(after).toEqual(before);
   });
 });

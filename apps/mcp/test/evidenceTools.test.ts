@@ -119,6 +119,7 @@ class FakeEvidenceApi implements CausalityEvidenceApi {
   } | null = null;
   public pathInput: CausalPathQuery | null = null;
   public evidenceInput: CausalEvidenceBundleInput | null = null;
+  public captureCalls = { compare: 0, prepare: 0, commit: 0 };
 
   public async getCase(): Promise<CaseDetail> {
     return concreteCase;
@@ -151,6 +152,21 @@ class FakeEvidenceApi implements CausalityEvidenceApi {
   ): Promise<CausalEvidenceBundleResponse> {
     this.evidenceInput = input;
     return evidenceBundle;
+  }
+
+  public async compare(): Promise<never> {
+    this.captureCalls.compare += 1;
+    throw new Error('capture flow must not be called');
+  }
+
+  public async prepare(): Promise<never> {
+    this.captureCalls.prepare += 1;
+    throw new Error('capture flow must not be called');
+  }
+
+  public async commit(): Promise<never> {
+    this.captureCalls.commit += 1;
+    throw new Error('capture flow must not be called');
   }
 }
 
@@ -309,6 +325,26 @@ describe('read-only evidence tools', () => {
     expect(textContent(result)).toContain('供应链中断 → 交付周期延长');
     expect(textContent(result)).toContain('无案例依据');
     expect(textContent(result)).not.toContain('已验证');
+  });
+
+  it('keeps the relation-search, path, and evidence workflow read-only and API-isomorphic', async () => {
+    const searchResult = await client.callTool({
+      name: 'search_causal_relations',
+      arguments: { query: '供应链', searchMode: 'standard', page: 1 },
+    });
+    const pathResult = await client.callTool({
+      name: 'find_causal_paths',
+      arguments: { sourceEventId: eventId, targetEventId: effectEventId },
+    });
+    const evidenceResult = await client.callTool({
+      name: 'get_causal_evidence_bundle',
+      arguments: { relationIds: [relationId] },
+    });
+
+    expect(searchResult.structuredContent).toEqual(relationSearch);
+    expect(pathResult.structuredContent).toEqual(pathResponse);
+    expect(evidenceResult.structuredContent).toEqual(evidenceBundle);
+    expect(api.captureCalls).toEqual({ compare: 0, prepare: 0, commit: 0 });
   });
 
   it('rejects invalid limits and unknown fields before API calls', async () => {

@@ -69,6 +69,10 @@ class MemorySnapshot implements CausalPathSnapshot {
     private readonly relations: CausalPathRelation[],
   ) {}
 
+  get maxBatchSize(): number {
+    return Math.max(0, ...this.outgoingCalls.map((causeEventIds) => causeEventIds.length));
+  }
+
   async findEvents(ids: string[]): Promise<CausalPathEvent[]> {
     this.eventCalls.push([...ids]);
     const requested = new Set(ids);
@@ -211,10 +215,8 @@ describe('CausalPathService', () => {
 
   it('stops after exactly 10000 expanded states', async () => {
     const branchIds = eventIds.slice(2, 10_003);
-    const graph = setup(
-      [event(eventAId), event(eventBId), ...branchIds.map(event)],
-      branchIds.map((branchId, index) => relation(index, eventAId, branchId)),
-    );
+    const relations = branchIds.map((branchId, index) => relation(index, eventAId, branchId));
+    const graph = setup([event(eventAId), event(eventBId), ...branchIds.map(event)], relations);
 
     const result = await graph.service.query(query({ targetEventId: eventBId, maxDepth: 1 }));
 
@@ -222,7 +224,9 @@ describe('CausalPathService', () => {
     expect(result.expandedStateCount).toBe(10_000);
     expect(result.truncated).toBe(true);
     expect(result.truncatedReason).toBe('expansion_limit');
+    expect(result.paths.length).toBeLessThanOrEqual(10);
     expect(graph.snapshot.outgoingLimits).toEqual([10_001]);
+    expect(graph.snapshot.maxBatchSize).toBeLessThan(relations.length);
   });
 
   it.each([
