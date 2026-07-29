@@ -36,10 +36,17 @@ function candidateSet(overrides: Partial<AiCaptureCandidateSet> = {}): AiCapture
   return {
     topic: '供应链分析',
     clientName: 'Codex',
-    atomicEvents: [event('event-1', '原材料供应减少')],
+    atomicEvents: [event('event-1', '原材料供应减少'), event('event-2', '生产成本上升')],
     concreteCases: [concreteCase('case-1', '2026年某地区原材料供应量下降')],
-    causalRelations: [],
-    relationCaseLinks: [],
+    causalRelations: [
+      {
+        ref: 'relation-1',
+        causeEventRef: 'event-1',
+        effectEventRef: 'event-2',
+        description: null,
+      },
+    ],
+    relationCaseLinks: [{ relationRef: 'relation-1', caseRef: 'case-1' }],
     ...overrides,
   };
 }
@@ -103,64 +110,229 @@ function semantic(
 }
 
 describe('AiCandidateComparisonService', () => {
-  it('rejects more than 50 atomic events before querying any dependency', async () => {
-    const data = candidateSet({
-      atomicEvents: Array.from({ length: 51 }, (_, index) =>
-        event(`event-${index + 1}`, `原子事件 ${index + 1}`),
-      ),
-      concreteCases: [],
-    });
+  async function expectBlockedBeforeDependencies(rawInput: unknown, issueCode: string) {
     const dataRepository = repository();
     const semanticService = semantic();
     const service = new AiCandidateComparisonService(dataRepository, semanticService);
 
-    await expect(service.compare(data)).rejects.toMatchObject({
-      code: 'AI_EVENT_LIMIT_EXCEEDED',
-      affectedRefs: ['event-51'],
+    await expect(service.compare(rawInput)).rejects.toMatchObject({
+      code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+      qualityReport: {
+        status: 'blocked',
+        issues: expect.arrayContaining([expect.objectContaining({ code: issueCode })]),
+      },
     });
     expect(dataRepository.findEventMatches).not.toHaveBeenCalled();
+    expect(dataRepository.findCaseMatches).not.toHaveBeenCalled();
+    expect(dataRepository.findEventsByIds).not.toHaveBeenCalled();
+    expect(dataRepository.findCasesByIds).not.toHaveBeenCalled();
+    expect(dataRepository.findRelationMatches).not.toHaveBeenCalled();
+    expect(dataRepository.findLinkMatches).not.toHaveBeenCalled();
     expect(semanticService.compare).not.toHaveBeenCalled();
+  }
+
+  it.each([
+    [
+      'field length errors',
+      candidateSet({
+        atomicEvents: [event('event-1', '事'.repeat(51)), event('event-2', '生产成本上升')],
+      }),
+      'AI_QUALITY_SCHEMA_INVALID',
+    ],
+    [
+      'missing references',
+      candidateSet({
+        causalRelations: [
+          {
+            ref: 'relation-1',
+            causeEventRef: 'event-missing',
+            effectEventRef: 'event-2',
+            description: null,
+          },
+        ],
+      }),
+      'AI_QUALITY_REFERENCE_MISSING',
+    ],
+    [
+      'self loops',
+      candidateSet({
+        causalRelations: [
+          {
+            ref: 'relation-1',
+            causeEventRef: 'event-1',
+            effectEventRef: 'event-1',
+            description: null,
+          },
+        ],
+      }),
+      'AI_QUALITY_SELF_LOOP',
+    ],
+    [
+      'duplicate refs',
+      candidateSet({
+        atomicEvents: [event('event-1', '原材料供应减少'), event('event-1', '生产成本上升')],
+      }),
+      'AI_QUALITY_DUPLICATE_REF',
+    ],
+    [
+      'duplicate links',
+      candidateSet({
+        relationCaseLinks: [
+          { relationRef: 'relation-1', caseRef: 'case-1' },
+          { relationRef: 'relation-1', caseRef: 'case-1' },
+        ],
+      }),
+      'AI_QUALITY_DUPLICATE_LINK',
+    ],
+    [
+      'the event limit',
+      candidateSet({
+        atomicEvents: Array.from({ length: 51 }, (_, index) =>
+          event(`event-${index + 1}`, `原子事件 ${index + 1}`),
+        ),
+      }),
+      'AI_QUALITY_EVENT_LIMIT_EXCEEDED',
+    ],
+  ] as const)('blocks %s before querying any dependency', async (_name, rawInput, issueCode) => {
+    await expectBlockedBeforeDependencies(rawInput, issueCode);
   });
 
-  it('queries duplicate event and case content once while preserving every candidate ref', async () => {
+  it.each([
+    [
+      'duplicate event names',
+      candidateSet({
+        atomicEvents: [event('event-1', '需求下降'), event('event-2', '  需求下降  ')],
+      }),
+      'AI_QUALITY_DUPLICATE_EVENT_NAME',
+    ],
+    [
+      'duplicate case content',
+      candidateSet({
+        concreteCases: [
+          concreteCase('case-1', '2026年某企业订单下降'),
+          concreteCase('case-2', '  2026年某企业订单下降  '),
+        ],
+        relationCaseLinks: [
+          { relationRef: 'relation-1', caseRef: 'case-1' },
+          { relationRef: 'relation-1', caseRef: 'case-2' },
+        ],
+      }),
+      'AI_QUALITY_DUPLICATE_CASE_CONTENT',
+    ],
+    [
+      'duplicate relations',
+      candidateSet({
+        causalRelations: [
+          {
+            ref: 'relation-1',
+            causeEventRef: 'event-1',
+            effectEventRef: 'event-2',
+            description: null,
+          },
+          {
+            ref: 'relation-2',
+            causeEventRef: 'event-1',
+            effectEventRef: 'event-2',
+            description: null,
+          },
+        ],
+      }),
+      'AI_QUALITY_DUPLICATE_RELATION',
+    ],
+    [
+      'orphan events',
+      candidateSet({
+        atomicEvents: [
+          event('event-1', '原材料供应减少'),
+          event('event-2', '生产成本上升'),
+          event('event-3', '市场需求下降'),
+        ],
+      }),
+      'AI_QUALITY_ORPHAN_EVENT',
+    ],
+    [
+      'orphan cases',
+      candidateSet({
+        concreteCases: [
+          concreteCase('case-1', '2026年某地区原材料供应量下降'),
+          concreteCase('case-2', '未关联的具体案例'),
+        ],
+      }),
+      'AI_QUALITY_ORPHAN_CASE',
+    ],
+  ] as const)(
+    'blocks parsed %s before querying any dependency',
+    async (_name, input, issueCode) => {
+      await expectBlockedBeforeDependencies(input, issueCode);
+    },
+  );
+
+  it('queries and maps every accepted candidate one-to-one in input order', async () => {
+    const firstEvent = eventMatch(eventIds[0]!, 'exact_name');
+    const secondEvent = eventMatch(eventIds[1]!, 'exact_name');
+    const firstCase = caseMatch(caseIds[0]!, 'exact_content');
+    const secondCase = caseMatch(caseIds[1]!, 'exact_content');
     const data = candidateSet({
-      atomicEvents: [
-        { ...event('event-1', '需求下降'), aliases: ['市场需求回落'] },
-        { ...event('event-2', '需求下降'), keywords: ['需求'] },
-      ],
       concreteCases: [
         concreteCase('case-1', '2026年某企业订单下降'),
-        concreteCase('case-2', '2026年某企业订单下降'),
+        concreteCase('case-2', '2026年另一企业成本上升'),
+      ],
+      relationCaseLinks: [
+        { relationRef: 'relation-1', caseRef: 'case-1' },
+        { relationRef: 'relation-1', caseRef: 'case-2' },
       ],
     });
-    const exactEvent = eventMatch(eventIds[0]!, 'exact_name');
-    const exactCase = caseMatch(caseIds[0]!, 'exact_content');
     const dataRepository = repository({
-      findEventMatches: vi.fn().mockResolvedValue([[exactEvent]]),
-      findCaseMatches: vi.fn().mockResolvedValue([[exactCase]]),
+      findEventMatches: vi.fn().mockResolvedValue([[firstEvent], [secondEvent]]),
+      findCaseMatches: vi.fn().mockResolvedValue([[firstCase], [secondCase]]),
     });
-    const service = new AiCandidateComparisonService(dataRepository, semantic([[]], [[]]));
+    const service = new AiCandidateComparisonService(dataRepository, semantic([[], []], [[], []]));
 
     const result = await service.compare(data);
 
-    expect(dataRepository.findEventMatches).toHaveBeenCalledWith([
-      expect.objectContaining({
-        name: '需求下降',
-        aliases: ['市场需求回落'],
-        keywords: ['需求'],
-      }),
-    ]);
-    expect(dataRepository.findCaseMatches).toHaveBeenCalledWith([
-      expect.objectContaining({ content: '2026年某企业订单下降' }),
-    ]);
+    expect(dataRepository.findEventMatches).toHaveBeenCalledWith(data.atomicEvents);
+    expect(dataRepository.findCaseMatches).toHaveBeenCalledWith(data.concreteCases);
     expect(result.atomicEvents).toEqual([
-      { ref: 'event-1', matches: [exactEvent] },
-      { ref: 'event-2', matches: [exactEvent] },
+      { ref: 'event-1', matches: [firstEvent] },
+      { ref: 'event-2', matches: [secondEvent] },
     ]);
     expect(result.concreteCases).toEqual([
-      { ref: 'case-1', matches: [exactCase] },
-      { ref: 'case-2', matches: [exactCase] },
+      { ref: 'case-1', matches: [firstCase] },
+      { ref: 'case-2', matches: [secondCase] },
     ]);
+    expect(result.qualityReport).toEqual({
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [],
+    });
+  });
+
+  it('continues to PostgreSQL and semantic comparison for warning-only candidates', async () => {
+    const data = candidateSet({
+      atomicEvents: [
+        event('event-1', '原材料供应减少并且生产成本上升'),
+        event('event-2', '产品交付延迟'),
+      ],
+    });
+    const dataRepository = repository({
+      findEventMatches: vi.fn().mockResolvedValue([[], []]),
+      findCaseMatches: vi.fn().mockResolvedValue([[]]),
+    });
+    const semanticService = semantic([[], []], [[]]);
+    const service = new AiCandidateComparisonService(dataRepository, semanticService);
+
+    const result = await service.compare(data);
+
+    expect(dataRepository.findEventMatches).toHaveBeenCalledOnce();
+    expect(dataRepository.findCaseMatches).toHaveBeenCalledOnce();
+    expect(semanticService.compare).toHaveBeenCalledTimes(2);
+    expect(result.qualityReport).toMatchObject({
+      status: 'warning',
+      issues: expect.arrayContaining([
+        expect.objectContaining({ code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED' }),
+      ]),
+    });
   });
 
   it('does not collapse case-sensitive content that PostgreSQL stores as separate cases', async () => {
@@ -178,6 +350,10 @@ describe('AiCandidateComparisonService', () => {
           concreteCase('case-1', 'ACME库存上升'),
           concreteCase('case-2', 'Acme库存上升'),
         ],
+        relationCaseLinks: [
+          { relationRef: 'relation-1', caseRef: 'case-1' },
+          { relationRef: 'relation-1', caseRef: 'case-2' },
+        ],
       }),
     );
 
@@ -189,37 +365,6 @@ describe('AiCandidateComparisonService', () => {
       { ref: 'case-1', matches: [upperCase] },
       { ref: 'case-2', matches: [titleCase] },
     ]);
-  });
-
-  it('reports missing relation endpoint refs as a repairable data error', async () => {
-    const data = candidateSet({
-      causalRelations: [
-        {
-          ref: 'relation-1',
-          causeEventRef: 'event-1',
-          effectEventRef: 'event-missing',
-          description: null,
-        },
-      ],
-    });
-    const service = new AiCandidateComparisonService(repository(), semantic());
-
-    await expect(service.compare(data)).rejects.toMatchObject({
-      code: 'AI_CANDIDATE_DEPENDENCY_INVALID',
-      affectedRefs: ['relation-1', 'event-missing'],
-    });
-  });
-
-  it('reports missing case-link refs as a repairable data error', async () => {
-    const data = candidateSet({
-      relationCaseLinks: [{ relationRef: 'relation-missing', caseRef: 'case-missing' }],
-    });
-    const service = new AiCandidateComparisonService(repository(), semantic());
-
-    await expect(service.compare(data)).rejects.toMatchObject({
-      code: 'AI_CANDIDATE_DEPENDENCY_INVALID',
-      affectedRefs: ['relation-missing', 'case-missing'],
-    });
   });
 
   it('ranks exact event matches before fuzzy and semantic matches and keeps 10 unique IDs', async () => {

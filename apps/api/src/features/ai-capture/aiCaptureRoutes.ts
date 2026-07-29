@@ -10,7 +10,6 @@ import {
   aiWorkflowErrorSchema,
   apiErrorSchema,
   prepareAiImportPlanInputSchema,
-  type AiCaptureCandidateSet,
   type AiCaptureComparison,
   type AiImportBatchDetail,
   type AiImportBatchListResponse,
@@ -53,7 +52,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const workflowErrorResponseSchema = z.union([apiErrorSchema, aiWorkflowErrorSchema]);
 
 interface CandidateComparisonService {
-  compare(input: AiCaptureCandidateSet): Promise<AiCaptureComparison>;
+  compare(input: unknown): Promise<AiCaptureComparison>;
 }
 
 interface ImportPlanService {
@@ -136,6 +135,8 @@ function workflowStatus(code: string): 400 | 404 | 409 | 410 {
     code === 'AI_EVENT_LIMIT_EXCEEDED' ||
     code === 'AI_CANDIDATE_DEPENDENCY_INVALID' ||
     code === 'AI_CANDIDATE_INVALID' ||
+    code === 'AI_CANDIDATE_QUALITY_BLOCKED' ||
+    code === 'AI_PLAN_QUALITY_BLOCKED' ||
     code === 'AI_PLAN_INPUT_INVALID' ||
     code === 'AI_PLAN_DECISIONS_INVALID' ||
     code === 'AI_PLAN_DEPENDENCY_SKIPPED'
