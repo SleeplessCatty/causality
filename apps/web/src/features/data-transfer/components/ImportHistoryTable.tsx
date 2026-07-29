@@ -56,7 +56,7 @@ export function ImportHistoryTable({
               <th scope="col">具体案例</th>
               <th scope="col">因果关系</th>
               <th scope="col">案例关联</th>
-              <th scope="col">查看详情</th>
+              <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody>

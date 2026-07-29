@@ -167,7 +167,7 @@ describe('DataTransferPage', () => {
       '具体案例',
       '因果关系',
       '案例关联',
-      '查看详情',
+      '操作',
     ]);
     expect(screen.getByText('新增 2 / 复用 1')).toBeTruthy();
     expect(screen.getByText('新增 3 / 复用 2')).toBeTruthy();

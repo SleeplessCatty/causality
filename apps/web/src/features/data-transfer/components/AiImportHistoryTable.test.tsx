@@ -41,7 +41,7 @@ function TableWithLocation() {
 }
 
 describe('AiImportHistoryTable', () => {
-  it('shows the approved columns, no-change result, pagination, and detail target', () => {
+  it('shows separate business-data columns, pagination, and the detail target', () => {
     render(
       <MemoryRouter initialEntries={['/data-transfer?tab=aiHistory&page=2']}>
         <TableWithLocation />
@@ -51,11 +51,16 @@ describe('AiImportHistoryTable', () => {
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       '完成时间',
       '采集主题',
-      '处理结果',
-      '数据变化',
+      '原子事件',
+      '具体案例',
+      '因果关系',
+      '案例关联',
       '操作',
     ]);
-    expect(screen.getByText('成功·无变化')).toBeTruthy();
+    expect(screen.getByText('新增 0 / 复用 2 / 更新 0')).toBeTruthy();
+    expect(screen.getAllByText('新增 0 / 复用 1')).toHaveLength(2);
+    expect(screen.getByText('新增 0', { selector: 'td' })).toBeTruthy();
+    expect(screen.queryByText('成功·无变化')).toBeNull();
     expect(screen.getByText('共 51 条 · 第 2/2 页')).toBeTruthy();
     expect(screen.getByRole('link', { name: '查看 AI 导入详情' }).getAttribute('href')).toBe(
       `/data-transfer/ai-imports/${data.items[0]!.id}?tab=events&eventPage=1&casePage=1&relationPage=1&relationCasePage=1&confidencePage=1`,

@@ -349,15 +349,11 @@
 }
 
 .data-transfer-ai-history-table th:nth-child(2) {
-  width: 24%;
+  width: 21%;
 }
 
-.data-transfer-ai-history-table th:nth-child(3) {
-  width: 12%;
-}
-
-.data-transfer-ai-history-table th:nth-child(4) {
-  width: 41%;
+.data-transfer-ai-history-table th:nth-child(n + 3):nth-child(-n + 6) {
+  width: 14%;
 }
 
 .data-transfer-ai-history-table th:last-child {
@@ -369,8 +365,12 @@
 }
 
 .data-transfer-ai-history-table td:last-child,
-.data-transfer-ai-history-table td:nth-child(3) {
+.data-transfer-ai-history-table th:last-child {
   text-align: center;
+}
+
+.data-transfer-ai-history-table td:nth-child(n + 3):nth-child(-n + 6) {
+  font-size: 12px;
 }
 
 .data-transfer-detail-page {

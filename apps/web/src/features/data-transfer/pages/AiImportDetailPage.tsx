@@ -303,11 +303,8 @@ export function AiImportDetailPage() {
           </dd>
         </div>
         <div>
-          <dt>属性与关联</dt>
-          <dd>
-            事件更新 {counts.eventUpdated} / 案例关联 {counts.relationCaseCreated} / 置信度变化{' '}
-            {counts.confidenceChanged}
-          </dd>
+          <dt>案例关联</dt>
+          <dd>新增 {counts.relationCaseCreated}</dd>
         </div>
       </dl>
 

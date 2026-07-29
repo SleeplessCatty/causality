@@ -127,6 +127,9 @@ describe('AiImportDetailPage', () => {
     expect(await screen.findByRole('heading', { name: batch.topic })).toBeTruthy();
     expect(screen.getByText('版本 3')).toBeTruthy();
     expect(screen.getByText(batch.clientName)).toBeTruthy();
+    expect(screen.getByText('新增 5')).toBeTruthy();
+    expect(screen.queryByText('属性与关联')).toBeNull();
+    expect(screen.queryByText('事件更新 1 / 案例关联 5 / 置信度变化 2')).toBeNull();
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
       '原子事件',
       '具体案例',
