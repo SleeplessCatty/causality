@@ -6,13 +6,16 @@ import {
   aiImportPlanSchema,
   aiWorkflowErrorSchema,
   apiErrorSchema,
+  caseDetailSchema,
   caseListResponseSchema,
+  caseRelationListResponseSchema,
   causalGraphResponseSchema,
   eventDetailSchema,
   eventListResponseSchema,
   eventRelationListResponseSchema,
   relationCaseListResponseSchema,
   relationDetailSchema,
+  relationListResponseSchema,
   type AiCaptureCandidateSet,
   type AiCaptureComparison,
   type AiCaptureQualityReport,
@@ -20,7 +23,9 @@ import {
   type AiImportPlan,
   type AiImportPlanStatus,
   type AiWorkflowError,
+  type CaseDetail,
   type CaseListResponse,
+  type CaseRelationListResponse,
   type CausalGraphQuery,
   type CausalGraphResponse,
   type EventDetail,
@@ -29,6 +34,7 @@ import {
   type PrepareAiImportPlanInput,
   type RelationCaseListResponse,
   type RelationDetail,
+  type RelationListResponse,
 } from '@causality/contracts';
 import type { z } from 'zod';
 
@@ -183,6 +189,33 @@ export class CausalityApiClient {
     return this.request('/api/cases', {
       query: { q: query, page },
       schema: caseListResponseSchema,
+    });
+  }
+
+  public getCase(id: string): Promise<CaseDetail> {
+    return this.request(`/api/cases/${encodeURIComponent(id)}`, {
+      schema: caseDetailSchema,
+    });
+  }
+
+  public getCaseRelations(
+    id: string,
+    input: { limit: number; cursor?: string },
+  ): Promise<CaseRelationListResponse> {
+    return this.request(`/api/cases/${encodeURIComponent(id)}/relations`, {
+      query: { limit: input.limit, cursor: input.cursor },
+      schema: caseRelationListResponseSchema,
+    });
+  }
+
+  public searchRelations(
+    query: string,
+    searchMode: 'standard' | 'enhanced',
+    page = 1,
+  ): Promise<RelationListResponse> {
+    return this.request('/api/relations', {
+      query: { q: query, searchMode, page },
+      schema: relationListResponseSchema,
     });
   }
 

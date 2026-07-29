@@ -7,11 +7,15 @@ import {
   type McpCaptureLogger,
 } from '../tools/registerCaptureTools.js';
 import {
+  registerEvidenceTools,
+  type CausalityEvidenceApi,
+} from '../tools/registerEvidenceTools.js';
+import {
   registerKnowledgeTools,
   type CausalityKnowledgeApi,
 } from '../tools/registerKnowledgeTools.js';
 
-export type CausalityMcpApi = CausalityKnowledgeApi & CausalityCaptureApi;
+export type CausalityMcpApi = CausalityKnowledgeApi & CausalityEvidenceApi & CausalityCaptureApi;
 
 export interface CreateCausalityMcpServerOptions {
   apiClient: CausalityMcpApi;
@@ -24,6 +28,7 @@ export function createCausalityMcpServer(options: CreateCausalityMcpServerOption
     version: '0.1.0',
   });
   registerKnowledgeTools(server, options.apiClient);
+  registerEvidenceTools(server, options.apiClient);
   registerCaptureTools(server, options.apiClient, options.logger);
   registerCapturePrompt(server);
   return server;

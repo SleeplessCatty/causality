@@ -4,7 +4,9 @@ import type {
   AiCaptureQualityReport,
   AiImportCommitResult,
   AiImportPlan,
+  CaseDetail,
   CaseListResponse,
+  CaseRelationListResponse,
   CausalGraphResponse,
   EventDetail,
   EventListResponse,
@@ -12,6 +14,7 @@ import type {
   PrepareAiImportPlanInput,
   RelationCaseListResponse,
   RelationDetail,
+  RelationListResponse,
 } from '@causality/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -80,6 +83,43 @@ const caseList: CaseListResponse = {
     },
   ],
   page: 1,
+  pageSize: 50,
+  totalItems: 1,
+  totalPages: 1,
+  semanticIndexNotice: null,
+};
+
+const caseDetail: CaseDetail = {
+  ...caseList.items[0]!,
+  listPage: 1,
+  createdAt: timestamp,
+};
+
+const caseRelations: CaseRelationListResponse = {
+  items: [
+    {
+      id: relationId,
+      causeEvent: { id: eventId, name: eventDetail.name },
+      effectEvent: { id: effectEventId, name: '交付周期延长' },
+      linkedAt: timestamp,
+    },
+  ],
+  nextCursor: 'next-case-relations',
+  hasMore: true,
+};
+
+const relationList: RelationListResponse = {
+  items: [
+    {
+      id: relationId,
+      causeEvent: { id: eventId, name: eventDetail.name },
+      effectEvent: { id: effectEventId, name: '交付周期延长' },
+      confidence: 20,
+      caseCount: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  page: 2,
   pageSize: 50,
   totalItems: 1,
   totalPages: 1,
@@ -321,6 +361,38 @@ describe('CausalityApiClient', () => {
     });
   });
 
+  it('reads a case with relation continuation and performs explicit relation search', async () => {
+    const requests: Array<{ url: URL; init?: RequestInit }> = [];
+    const fetchImplementation: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({ url, ...(init ? { init } : {}) });
+      if (url.pathname === `/api/cases/${caseId}`) return jsonResponse(caseDetail);
+      if (url.pathname === `/api/cases/${caseId}/relations`) {
+        return jsonResponse(caseRelations);
+      }
+      return jsonResponse(relationList);
+    };
+    const client = createClient(fetchImplementation);
+
+    await client.getCase(caseId);
+    await client.getCaseRelations(caseId, {
+      limit: 20,
+      cursor: 'next-case-relations',
+    });
+    await client.searchRelations('融资成本', 'standard', 2);
+
+    expect(requests.map(({ url }) => [url.pathname, Object.fromEntries(url.searchParams)])).toEqual(
+      [
+        [`/api/cases/${caseId}`, {}],
+        [`/api/cases/${caseId}/relations`, { limit: '20', cursor: 'next-case-relations' }],
+        ['/api/relations', { q: '融资成本', searchMode: 'standard', page: '2' }],
+      ],
+    );
+    for (const request of requests) {
+      expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBeNull();
+    }
+  });
+
   it('keeps API adapter pagination defaults for existing callers', async () => {
     const urls: URL[] = [];
     const fetchImplementation: typeof fetch = async (input) => {
@@ -435,6 +507,23 @@ describe('CausalityApiClient', () => {
     const client = createClient(async () => jsonResponse({ items: [] }));
 
     await expect(client.searchEvents('供应链')).rejects.toMatchObject({
+      kind: 'contract',
+      code: 'INVALID_API_RESPONSE',
+    } satisfies Partial<CausalityApiClientError>);
+  });
+
+  it('rejects invalid case detail, case relations, and relation search responses', async () => {
+    const client = createClient(async () => jsonResponse({ items: [] }));
+
+    await expect(client.getCase(caseId)).rejects.toMatchObject({
+      kind: 'contract',
+      code: 'INVALID_API_RESPONSE',
+    } satisfies Partial<CausalityApiClientError>);
+    await expect(client.getCaseRelations(caseId, { limit: 20 })).rejects.toMatchObject({
+      kind: 'contract',
+      code: 'INVALID_API_RESPONSE',
+    } satisfies Partial<CausalityApiClientError>);
+    await expect(client.searchRelations('供应链', 'standard')).rejects.toMatchObject({
       kind: 'contract',
       code: 'INVALID_API_RESPONSE',
     } satisfies Partial<CausalityApiClientError>);

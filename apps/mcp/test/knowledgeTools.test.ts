@@ -3,13 +3,16 @@ import type {
   AiImportCommitResult,
   AiImportPlan,
   AiImportPlanStatus,
+  CaseDetail,
   CaseListResponse,
+  CaseRelationListResponse,
   CausalGraphResponse,
   EventDetail,
   EventListResponse,
   EventRelationListResponse,
   RelationCaseListResponse,
   RelationDetail,
+  RelationListResponse,
 } from '@causality/contracts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -69,6 +72,36 @@ const cases: CaseListResponse = {
       id: caseId,
       content: '港口停运后工厂原料延迟到货',
       relationCount: 1,
+      updatedAt: timestamp,
+    },
+  ],
+  page: 1,
+  pageSize: 50,
+  totalItems: 1,
+  totalPages: 1,
+  semanticIndexNotice: null,
+};
+
+const concreteCase: CaseDetail = {
+  ...cases.items[0]!,
+  listPage: 1,
+  createdAt: timestamp,
+};
+
+const caseRelations: CaseRelationListResponse = {
+  items: eventRelations.items,
+  nextCursor: 'next-case-relation-page',
+  hasMore: true,
+};
+
+const relationList: RelationListResponse = {
+  items: [
+    {
+      id: relationId,
+      causeEvent: { id: eventId, name: event.name },
+      effectEvent: { id: effectEventId, name: '交付周期延长' },
+      confidence: 20,
+      caseCount: 1,
       updatedAt: timestamp,
     },
   ],
@@ -153,6 +186,18 @@ class FakeKnowledgeApi implements CausalityMcpApi {
     return cases;
   }
 
+  public async getCase(): Promise<CaseDetail> {
+    return concreteCase;
+  }
+
+  public async getCaseRelations(): Promise<CaseRelationListResponse> {
+    return caseRelations;
+  }
+
+  public async searchRelations(): Promise<RelationListResponse> {
+    return relationList;
+  }
+
   public async getRelation(): Promise<RelationDetail> {
     return relation;
   }
@@ -219,7 +264,7 @@ describe('read-only knowledge tools', () => {
     await mcpServer.close();
   });
 
-  it('lists exactly six strictly validated read-only tools', async () => {
+  it('lists every strictly validated read-only tool', async () => {
     const listed = await mcpClient.listTools();
     const readTools = listed.tools.filter((tool) => tool.annotations?.readOnlyHint);
 
@@ -230,6 +275,8 @@ describe('read-only knowledge tools', () => {
       'get_causal_relation',
       'get_relation_cases',
       'query_local_causal_graph',
+      'get_concrete_case',
+      'search_causal_relations',
       'compare_knowledge_candidates',
       'get_import_plan_status',
       'get_import_result',
@@ -251,7 +298,7 @@ describe('read-only knowledge tools', () => {
   it('exposes read, capture, and canonical prompt capabilities from one server factory', async () => {
     const [tools, prompts] = await Promise.all([mcpClient.listTools(), mcpClient.listPrompts()]);
 
-    expect(tools.tools).toHaveLength(11);
+    expect(tools.tools).toHaveLength(13);
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(['causality_capture']);
   });
 
