@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  aiCaptureCandidateSetOutputSchema,
   aiCaptureCandidateSetSchema,
   aiCaptureDecisionSetSchema,
   aiImportBatchListResponseSchema,
@@ -219,6 +220,7 @@ describe('AI capture candidate contracts', () => {
     },
   ])('rejects $name', ({ value }) => {
     expect(aiCaptureCandidateSetSchema.safeParse(value).success).toBe(false);
+    expect(aiCaptureCandidateSetOutputSchema.safeParse(value).success).toBe(false);
   });
 
   it('reuses the 100-character concrete-case limit', () => {

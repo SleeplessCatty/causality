@@ -1,5 +1,5 @@
 import {
-  aiCaptureCandidateSetSchema,
+  aiCaptureCandidateSetInputSchema,
   prepareAiImportPlanInputSchema,
   type AiCaptureCandidateSet,
   type AiCaptureComparison,
@@ -29,6 +29,14 @@ export interface CausalityCaptureApi {
   commit(id: string): Promise<AiImportCommitResult>;
   result(historyId: string): Promise<AiImportCommitResult>;
 }
+
+export interface McpCaptureLogger {
+  error(entry: Record<string, unknown>): void;
+}
+
+const silentLogger: McpCaptureLogger = {
+  error: () => undefined,
+};
 
 const annotations = {
   compare_knowledge_candidates: {
@@ -206,7 +214,35 @@ function errorResult(error: unknown) {
   };
 }
 
-export function registerCaptureTools(server: McpServer, apiClient: CausalityCaptureApi): void {
+function logToolFailure(logger: McpCaptureLogger, tool: string, error: unknown): void {
+  if (error instanceof CausalityApiClientError) {
+    logger.error({
+      event: 'mcp_tool_failed',
+      tool,
+      errorKind: error.kind,
+      errorCode: error.code,
+      httpStatus: error.status ?? null,
+      traceId: error.traceId ?? null,
+      category: error.category ?? null,
+      aiCanRepair: error.aiCanRepair ?? null,
+      retryCurrentPlan: error.retryCurrentPlan ?? null,
+    });
+    return;
+  }
+  logger.error({
+    event: 'mcp_tool_failed',
+    tool,
+    errorKind: 'unexpected',
+    errorCode: 'MCP_TOOL_FAILURE',
+    errorName: error instanceof Error ? error.name : 'UnknownError',
+  });
+}
+
+export function registerCaptureTools(
+  server: McpServer,
+  apiClient: CausalityCaptureApi,
+  logger: McpCaptureLogger = silentLogger,
+): void {
   server.registerTool(
     'compare_knowledge_candidates',
     {
@@ -218,9 +254,10 @@ export function registerCaptureTools(server: McpServer, apiClient: CausalityCapt
     },
     async (input) => {
       try {
-        const result = await apiClient.compare(aiCaptureCandidateSetSchema.parse(input));
+        const result = await apiClient.compare(aiCaptureCandidateSetInputSchema.parse(input));
         return textResult(comparisonText(result), { ...result });
       } catch (error) {
+        logToolFailure(logger, 'compare_knowledge_candidates', error);
         return errorResult(error);
       }
     },
@@ -240,6 +277,7 @@ export function registerCaptureTools(server: McpServer, apiClient: CausalityCapt
         const result = await apiClient.prepare(prepareAiImportPlanInputSchema.parse(input));
         return textResult(planText(result), { ...result });
       } catch (error) {
+        logToolFailure(logger, 'prepare_knowledge_changes', error);
         return errorResult(error);
       }
     },
@@ -259,6 +297,7 @@ export function registerCaptureTools(server: McpServer, apiClient: CausalityCapt
         const status = await apiClient.planStatus(planId);
         return textResult(`方案 ${planId} 当前状态：${status}`, { planId, status });
       } catch (error) {
+        logToolFailure(logger, 'get_import_plan_status', error);
         return errorResult(error);
       }
     },
@@ -278,6 +317,7 @@ export function registerCaptureTools(server: McpServer, apiClient: CausalityCapt
         const result = await apiClient.commit(planId);
         return textResult(commitText(result), { ...result });
       } catch (error) {
+        logToolFailure(logger, 'commit_knowledge_changes', error);
         return errorResult(error);
       }
     },
@@ -297,6 +337,7 @@ export function registerCaptureTools(server: McpServer, apiClient: CausalityCapt
         const result = await apiClient.result(historyId);
         return textResult(commitText(result), { ...result });
       } catch (error) {
+        logToolFailure(logger, 'get_import_result', error);
         return errorResult(error);
       }
     },

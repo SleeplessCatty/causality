@@ -1,5 +1,5 @@
 import {
-  aiCaptureCandidateSetSchema,
+  aiCaptureCandidateSetInputSchema,
   aiCaptureComparisonSchema,
   aiImportBatchDetailSchema,
   aiImportBatchListResponseSchema,
@@ -276,7 +276,7 @@ export function registerAiCaptureRoutes(
       preValidation: workflowAuth,
       schema: {
         tags: ['ai-captures'],
-        body: aiCaptureCandidateSetSchema,
+        body: aiCaptureCandidateSetInputSchema,
         response: {
           200: aiCaptureComparisonSchema,
           400: workflowErrorResponseSchema,

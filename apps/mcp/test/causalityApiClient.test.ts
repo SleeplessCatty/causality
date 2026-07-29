@@ -241,7 +241,11 @@ describe('CausalityApiClient', () => {
       ['/api/events', '供应 链/港口'],
       ['/api/cases', '停运 后'],
     ]);
-    expect(requests.every(({ init }) => init?.headers === undefined)).toBe(true);
+    for (const request of requests) {
+      const headers = new Headers(request.init?.headers);
+      expect(headers.get('x-causality-mcp-token')).toBeNull();
+      expect(headers.get('x-causality-trace-id')).toMatch(/^[0-9a-f-]{36}$/);
+    }
   });
 
   it('uses bounded relation pagination and complete graph query parameters', async () => {
@@ -325,6 +329,9 @@ describe('CausalityApiClient', () => {
     expect(requests).toHaveLength(5);
     for (const request of requests) {
       expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBe(token);
+      expect(new Headers(request.init?.headers).get('x-causality-trace-id')).toMatch(
+        /^[0-9a-f-]{36}$/,
+      );
     }
     expect(requests[0]?.init?.method).toBe('POST');
     expect(requests[1]?.init?.method).toBe('POST');

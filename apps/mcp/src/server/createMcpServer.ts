@@ -1,7 +1,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { registerCapturePrompt } from '../prompts/capturePrompt.js';
-import { registerCaptureTools, type CausalityCaptureApi } from '../tools/registerCaptureTools.js';
+import {
+  registerCaptureTools,
+  type CausalityCaptureApi,
+  type McpCaptureLogger,
+} from '../tools/registerCaptureTools.js';
 import {
   registerKnowledgeTools,
   type CausalityKnowledgeApi,
@@ -11,6 +15,7 @@ export type CausalityMcpApi = CausalityKnowledgeApi & CausalityCaptureApi;
 
 export interface CreateCausalityMcpServerOptions {
   apiClient: CausalityMcpApi;
+  logger?: McpCaptureLogger;
 }
 
 export function createCausalityMcpServer(options: CreateCausalityMcpServerOptions): McpServer {
@@ -19,7 +24,7 @@ export function createCausalityMcpServer(options: CreateCausalityMcpServerOption
     version: '0.1.0',
   });
   registerKnowledgeTools(server, options.apiClient);
-  registerCaptureTools(server, options.apiClient);
+  registerCaptureTools(server, options.apiClient, options.logger);
   registerCapturePrompt(server);
   return server;
 }

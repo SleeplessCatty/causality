@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   aiCaptureComparisonSchema,
   aiImportCommitResultSchema,
@@ -36,6 +38,7 @@ interface CausalityApiClientErrorOptions {
   code: string;
   message: string;
   status?: number;
+  traceId?: string;
   workflowError?: AiWorkflowError;
   cause?: unknown;
 }
@@ -44,6 +47,7 @@ export class CausalityApiClientError extends Error {
   public readonly kind: CausalityApiClientErrorKind;
   public readonly code: string;
   public readonly status: number | undefined;
+  public readonly traceId: string | undefined;
   public readonly category: AiWorkflowError['category'] | undefined;
   public readonly affectedRefs: string[];
   public readonly aiCanRepair: boolean | undefined;
@@ -56,6 +60,7 @@ export class CausalityApiClientError extends Error {
     this.kind = options.kind;
     this.code = options.code;
     this.status = options.status;
+    this.traceId = options.traceId;
     this.category = options.workflowError?.category;
     this.affectedRefs = options.workflowError?.affectedRefs ?? [];
     this.aiCanRepair = options.workflowError?.aiCanRepair;
@@ -82,12 +87,13 @@ interface RequestOptions<T> {
 const DEFAULT_TIMEOUT_MS = 35_000;
 const DEFAULT_RELATION_PAGE_SIZE = 20;
 
-function apiFailure(status: number, payload: unknown): CausalityApiClientError {
+function apiFailure(status: number, payload: unknown, traceId: string): CausalityApiClientError {
   const workflow = aiWorkflowErrorSchema.safeParse(payload);
   if (workflow.success) {
     return new CausalityApiClientError({
       kind: 'api',
       status,
+      traceId,
       code: workflow.data.code,
       message: workflow.data.message,
       workflowError: workflow.data,
@@ -99,6 +105,7 @@ function apiFailure(status: number, payload: unknown): CausalityApiClientError {
     return new CausalityApiClientError({
       kind: 'api',
       status,
+      traceId,
       code: api.data.code,
       message: api.data.message,
     });
@@ -107,6 +114,7 @@ function apiFailure(status: number, payload: unknown): CausalityApiClientError {
   return new CausalityApiClientError({
     kind: 'api',
     status,
+    traceId,
     code: 'API_REQUEST_FAILED',
     message: `Causality API 请求失败（HTTP ${status}）`,
   });
@@ -233,11 +241,13 @@ export class CausalityApiClient {
   }
 
   private async request<T>(path: string, options: RequestOptions<T>): Promise<T> {
+    const traceId = randomUUID();
     if (options.protected && !this.token) {
       throw new CausalityApiClientError({
         kind: 'configuration',
         code: 'MCP_TOKEN_MISSING',
         message: 'MCP 访问令牌尚未配置',
+        traceId,
       });
     }
 
@@ -247,6 +257,7 @@ export class CausalityApiClient {
     }
 
     const headers = new Headers();
+    headers.set('x-causality-trace-id', traceId);
     if (options.body !== undefined) headers.set('content-type', 'application/json');
     if (options.protected) headers.set('x-causality-mcp-token', this.token!);
     const controller = new AbortController();
@@ -268,19 +279,21 @@ export class CausalityApiClient {
           kind: 'system',
           code: 'API_REQUEST_ABORTED',
           message: 'Causality API 请求已超时或被取消',
+          traceId,
         });
       }
       throw new CausalityApiClientError({
         kind: 'system',
         code: 'API_UNAVAILABLE',
         message: '无法连接 Causality API',
+        traceId,
         cause: error,
       });
     } finally {
       clearTimeout(timer);
     }
 
-    if (!response.ok) throw apiFailure(response.status, payload);
+    if (!response.ok) throw apiFailure(response.status, payload, traceId);
 
     const parsed = options.schema.safeParse(payload);
     if (!parsed.success) {
@@ -288,6 +301,7 @@ export class CausalityApiClient {
         kind: 'contract',
         code: 'INVALID_API_RESPONSE',
         message: 'Causality API 返回了不符合契约的数据',
+        traceId,
       });
     }
     return parsed.data;

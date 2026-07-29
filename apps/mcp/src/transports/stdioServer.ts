@@ -29,7 +29,7 @@ export async function connectCausalityMcpStdioServer(
     fetch: fetchImplementation,
     ...(options.apiTimeoutMs === undefined ? {} : { timeoutMs: options.apiTimeoutMs }),
   });
-  const server = createCausalityMcpServer({ apiClient });
+  const server = createCausalityMcpServer({ apiClient, logger: console });
   await server.connect(options.transport ?? new StdioServerTransport());
   return server;
 }

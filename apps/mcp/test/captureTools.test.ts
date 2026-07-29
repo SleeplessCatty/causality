@@ -188,19 +188,24 @@ function workflowClientError(workflowError: AiWorkflowError, status: number) {
     status,
     code: workflowError.code,
     message: workflowError.message,
+    traceId: '60000000-0000-4000-8000-000000000001',
     workflowError,
   });
 }
 
 describe('capture workflow tools', () => {
   let api: FakeCaptureApi;
+  let errorLogs: unknown[];
   let mcpClient: Client;
   let mcpServer: McpServer;
 
   beforeEach(async () => {
     api = new FakeCaptureApi();
+    errorLogs = [];
     mcpServer = new McpServer({ name: 'capture-tools-test', version: '1.0.0' });
-    registerCaptureTools(mcpServer, api);
+    registerCaptureTools(mcpServer, api, {
+      error: (entry: unknown) => errorLogs.push(entry),
+    });
     mcpClient = new Client({ name: 'capture-tools-client', version: '1.0.0' });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await mcpServer.connect(serverTransport);
@@ -353,6 +358,18 @@ describe('capture workflow tools', () => {
       aiCanRepair: true,
       retryCurrentPlan: false,
     });
+    expect(errorLogs).toEqual([
+      expect.objectContaining({
+        event: 'mcp_tool_failed',
+        tool: 'compare_knowledge_candidates',
+        errorKind: 'api',
+        errorCode: 'AI_PLAN_COMPARISON_STALE',
+        httpStatus: 409,
+        traceId: '60000000-0000-4000-8000-000000000001',
+      }),
+    ]);
+    expect(JSON.stringify(errorLogs)).not.toContain(candidates.topic);
+    expect(JSON.stringify(errorLogs)).not.toContain(candidates.atomicEvents[0]!.description);
   });
 
   it('preserves retry guidance for system failures', async () => {

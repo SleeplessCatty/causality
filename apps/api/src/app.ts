@@ -128,7 +128,7 @@ export function buildApp(options: BuildAppOptions = {}) {
     app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());
   });
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     const validationError = error as { validation?: Array<{ message?: string }> };
     if (validationError.validation) {
       const isRelationSelfLoop = validationError.validation.some(
@@ -148,7 +148,15 @@ export function buildApp(options: BuildAppOptions = {}) {
       });
       return;
     }
-    app.log.error(error);
+    const rawTraceId = request.headers['x-causality-trace-id'];
+    const traceId = Array.isArray(rawTraceId) ? rawTraceId[0] : rawTraceId;
+    request.log.error(
+      {
+        err: error,
+        traceId: typeof traceId === 'string' ? traceId : null,
+      },
+      'request failed',
+    );
     void reply.status(500).send({ code: 'INTERNAL_ERROR', message: '服务器内部错误' });
   });
 

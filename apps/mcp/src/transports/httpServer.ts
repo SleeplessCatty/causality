@@ -211,7 +211,7 @@ export async function startCausalityMcpHttpServer(
 
     try {
       if (!session && !sessionId && request.method === 'POST' && isInitializeRequest(body)) {
-        const server = createCausalityMcpServer({ apiClient: scopedApi });
+        const server = createCausalityMcpServer({ apiClient: scopedApi, logger });
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: randomUUID,
           enableJsonResponse: true,
@@ -234,8 +234,11 @@ export async function startCausalityMcpHttpServer(
       await requestStorage.run(apiClient, () =>
         session!.transport.handleRequest(request, response, body),
       );
-    } catch {
-      logger.error('MCP request handling failed');
+    } catch (error) {
+      logger.error({
+        event: 'mcp_request_failed',
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+      });
       sendJson(response, 500, { error: 'internal_error' });
     }
   });

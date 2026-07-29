@@ -14,13 +14,14 @@ const timestampSchema = z.iso.datetime({ offset: true });
 const candidateRefSchema = z.string().trim().min(1).max(100);
 const topicSchema = z.string().trim().min(1).max(200);
 const clientNameSchema = z.string().trim().min(1).max(100);
-const descriptionSchema = z
+const descriptionInputSchema = z
   .string()
   .trim()
   .max(2_000)
   .nullable()
   .optional()
   .transform((value) => value || null);
+const descriptionOutputSchema = z.string().max(2_000).nullable();
 const nonnegativeCountSchema = z.number().int().nonnegative();
 const fixedPageSizeSchema = z.literal(MAIN_LIST_PAGE_SIZE);
 
@@ -28,9 +29,19 @@ export const atomicEventCandidateSchema = z
   .object({
     ref: candidateRefSchema,
     name: eventNameSchema,
-    description: descriptionSchema,
+    description: descriptionInputSchema,
     aliases: z.array(eventAliasSchema).max(20).default([]),
     keywords: z.array(eventKeywordSchema).max(20).default([]),
+  })
+  .strict();
+
+export const atomicEventCandidateOutputSchema = z
+  .object({
+    ref: candidateRefSchema,
+    name: eventNameSchema,
+    description: descriptionOutputSchema,
+    aliases: z.array(eventAliasSchema).max(20),
+    keywords: z.array(eventKeywordSchema).max(20),
   })
   .strict();
 
@@ -47,6 +58,15 @@ export const causalRelationCandidateSchema = z
     causeEventRef: candidateRefSchema,
     effectEventRef: candidateRefSchema,
     description: relationDescriptionSchema,
+  })
+  .strict();
+
+export const causalRelationCandidateOutputSchema = z
+  .object({
+    ref: candidateRefSchema,
+    causeEventRef: candidateRefSchema,
+    effectEventRef: candidateRefSchema,
+    description: descriptionOutputSchema,
   })
   .strict();
 
@@ -75,7 +95,85 @@ function addDuplicateRefIssues(
   });
 }
 
-export const aiCaptureCandidateSetSchema = z
+interface CandidateSetReferences {
+  atomicEvents: readonly { ref: string }[];
+  concreteCases: readonly { ref: string }[];
+  causalRelations: readonly {
+    ref: string;
+    causeEventRef: string;
+    effectEventRef: string;
+  }[];
+  relationCaseLinks: readonly {
+    relationRef: string;
+    caseRef: string;
+  }[];
+}
+
+function addCandidateSetReferenceIssues(
+  value: CandidateSetReferences,
+  context: z.core.$RefinementCtx,
+): void {
+  addDuplicateRefIssues(value.atomicEvents, 'atomicEvents', context);
+  addDuplicateRefIssues(value.concreteCases, 'concreteCases', context);
+  addDuplicateRefIssues(value.causalRelations, 'causalRelations', context);
+
+  const eventRefs = new Set(value.atomicEvents.map((event) => event.ref));
+  const caseRefs = new Set(value.concreteCases.map((concreteCase) => concreteCase.ref));
+  const relationRefs = new Set(value.causalRelations.map((relation) => relation.ref));
+
+  value.causalRelations.forEach((relation, index) => {
+    if (!eventRefs.has(relation.causeEventRef)) {
+      context.addIssue({
+        code: 'custom',
+        message: `原因事件引用 ${relation.causeEventRef} 不存在`,
+        path: ['causalRelations', index, 'causeEventRef'],
+      });
+    }
+    if (!eventRefs.has(relation.effectEventRef)) {
+      context.addIssue({
+        code: 'custom',
+        message: `结果事件引用 ${relation.effectEventRef} 不存在`,
+        path: ['causalRelations', index, 'effectEventRef'],
+      });
+    }
+    if (relation.causeEventRef === relation.effectEventRef) {
+      context.addIssue({
+        code: 'custom',
+        message: '因果关系不能形成自环',
+        path: ['causalRelations', index, 'effectEventRef'],
+      });
+    }
+  });
+
+  const linkKeys = new Set<string>();
+  value.relationCaseLinks.forEach((link, index) => {
+    if (!relationRefs.has(link.relationRef)) {
+      context.addIssue({
+        code: 'custom',
+        message: `因果关系引用 ${link.relationRef} 不存在`,
+        path: ['relationCaseLinks', index, 'relationRef'],
+      });
+    }
+    if (!caseRefs.has(link.caseRef)) {
+      context.addIssue({
+        code: 'custom',
+        message: `具体案例引用 ${link.caseRef} 不存在`,
+        path: ['relationCaseLinks', index, 'caseRef'],
+      });
+    }
+    const key = `${link.relationRef}\u0000${link.caseRef}`;
+    if (linkKeys.has(key)) {
+      context.addIssue({
+        code: 'custom',
+        message: '候选案例关联重复',
+        path: ['relationCaseLinks', index],
+      });
+    }
+    linkKeys.add(key);
+  });
+}
+
+export const aiCaptureCandidateSetInputSchema = z
   .object({
     topic: topicSchema,
     clientName: clientNameSchema,
@@ -85,66 +183,22 @@ export const aiCaptureCandidateSetSchema = z
     relationCaseLinks: z.array(relationCaseLinkCandidateSchema),
   })
   .strict()
-  .superRefine((value, context) => {
-    addDuplicateRefIssues(value.atomicEvents, 'atomicEvents', context);
-    addDuplicateRefIssues(value.concreteCases, 'concreteCases', context);
-    addDuplicateRefIssues(value.causalRelations, 'causalRelations', context);
+  .superRefine(addCandidateSetReferenceIssues);
 
-    const eventRefs = new Set(value.atomicEvents.map((event) => event.ref));
-    const caseRefs = new Set(value.concreteCases.map((concreteCase) => concreteCase.ref));
-    const relationRefs = new Set(value.causalRelations.map((relation) => relation.ref));
+// Backward-compatible input alias for existing callers.
+export const aiCaptureCandidateSetSchema = aiCaptureCandidateSetInputSchema;
 
-    value.causalRelations.forEach((relation, index) => {
-      if (!eventRefs.has(relation.causeEventRef)) {
-        context.addIssue({
-          code: 'custom',
-          message: `原因事件引用 ${relation.causeEventRef} 不存在`,
-          path: ['causalRelations', index, 'causeEventRef'],
-        });
-      }
-      if (!eventRefs.has(relation.effectEventRef)) {
-        context.addIssue({
-          code: 'custom',
-          message: `结果事件引用 ${relation.effectEventRef} 不存在`,
-          path: ['causalRelations', index, 'effectEventRef'],
-        });
-      }
-      if (relation.causeEventRef === relation.effectEventRef) {
-        context.addIssue({
-          code: 'custom',
-          message: '因果关系不能形成自环',
-          path: ['causalRelations', index, 'effectEventRef'],
-        });
-      }
-    });
-
-    const linkKeys = new Set<string>();
-    value.relationCaseLinks.forEach((link, index) => {
-      if (!relationRefs.has(link.relationRef)) {
-        context.addIssue({
-          code: 'custom',
-          message: `因果关系引用 ${link.relationRef} 不存在`,
-          path: ['relationCaseLinks', index, 'relationRef'],
-        });
-      }
-      if (!caseRefs.has(link.caseRef)) {
-        context.addIssue({
-          code: 'custom',
-          message: `具体案例引用 ${link.caseRef} 不存在`,
-          path: ['relationCaseLinks', index, 'caseRef'],
-        });
-      }
-      const key = `${link.relationRef}\u0000${link.caseRef}`;
-      if (linkKeys.has(key)) {
-        context.addIssue({
-          code: 'custom',
-          message: '候选案例关联重复',
-          path: ['relationCaseLinks', index],
-        });
-      }
-      linkKeys.add(key);
-    });
-  });
+export const aiCaptureCandidateSetOutputSchema = z
+  .object({
+    topic: topicSchema,
+    clientName: clientNameSchema,
+    atomicEvents: z.array(atomicEventCandidateOutputSchema).max(MAX_AI_CAPTURE_EVENTS),
+    concreteCases: z.array(concreteCaseCandidateSchema),
+    causalRelations: z.array(causalRelationCandidateOutputSchema),
+    relationCaseLinks: z.array(relationCaseLinkCandidateSchema),
+  })
+  .strict()
+  .superRefine(addCandidateSetReferenceIssues);
 
 export const aiMatchKindSchema = z.enum([
   'exact_name',
@@ -160,7 +214,7 @@ export const aiEventMatchSchema = z
   .object({
     id: z.uuid(),
     name: eventNameSchema,
-    description: descriptionSchema,
+    description: descriptionOutputSchema,
     aliases: z.array(eventAliasSchema),
     keywords: z.array(eventKeywordSchema),
     matchKind: aiMatchKindSchema,
@@ -184,7 +238,7 @@ export const aiRelationMatchSchema = z
     id: z.uuid(),
     causeEventId: z.uuid(),
     effectEventId: z.uuid(),
-    description: relationDescriptionSchema,
+    description: descriptionOutputSchema,
     confidence: relationConfidenceSchema,
     caseCount: nonnegativeCountSchema,
     updatedAt: timestampSchema,
@@ -249,7 +303,7 @@ export const aiEventDecisionSchema = z.discriminatedUnion('action', [
       existingId: z.uuid(),
       appendAliases: z.array(eventAliasSchema).max(20),
       appendKeywords: z.array(eventKeywordSchema).max(20),
-      replaceDescription: descriptionSchema.optional(),
+      replaceDescription: descriptionInputSchema.optional(),
     })
     .strict(),
   z
@@ -257,6 +311,27 @@ export const aiEventDecisionSchema = z.discriminatedUnion('action', [
       ref: candidateRefSchema,
       action: z.literal('skip'),
       reason: z.string().trim().min(1).max(1_000),
+    })
+    .strict(),
+]);
+
+export const aiEventDecisionOutputSchema = z.discriminatedUnion('action', [
+  z.object({ ref: candidateRefSchema, action: z.literal('create') }).strict(),
+  z
+    .object({
+      ref: candidateRefSchema,
+      action: z.literal('reuse'),
+      existingId: z.uuid(),
+      appendAliases: z.array(eventAliasSchema).max(20),
+      appendKeywords: z.array(eventKeywordSchema).max(20),
+      replaceDescription: descriptionOutputSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ref: candidateRefSchema,
+      action: z.literal('skip'),
+      reason: z.string().min(1).max(1_000),
     })
     .strict(),
 ]);
@@ -322,7 +397,7 @@ export const aiLinkDecisionSchema = z.discriminatedUnion('action', [
     .strict(),
 ]);
 
-export const aiCaptureDecisionSetSchema = z
+export const aiCaptureDecisionSetInputSchema = z
   .object({
     atomicEvents: z.array(aiEventDecisionSchema),
     concreteCases: z.array(aiCaseDecisionSchema),
@@ -331,11 +406,23 @@ export const aiCaptureDecisionSetSchema = z
   })
   .strict();
 
+// Backward-compatible input alias for existing callers.
+export const aiCaptureDecisionSetSchema = aiCaptureDecisionSetInputSchema;
+
+export const aiCaptureDecisionSetOutputSchema = z
+  .object({
+    atomicEvents: z.array(aiEventDecisionOutputSchema),
+    concreteCases: z.array(aiCaseDecisionSchema),
+    causalRelations: z.array(aiRelationDecisionSchema),
+    relationCaseLinks: z.array(aiLinkDecisionSchema),
+  })
+  .strict();
+
 export const prepareAiImportPlanInputSchema = z
   .object({
-    candidates: aiCaptureCandidateSetSchema,
+    candidates: aiCaptureCandidateSetInputSchema,
     comparison: aiCaptureComparisonSchema,
-    decisions: aiCaptureDecisionSetSchema,
+    decisions: aiCaptureDecisionSetInputSchema,
     replacesPlanId: z.uuid().optional(),
   })
   .strict();
@@ -396,9 +483,9 @@ export const aiImportPlanSchema = z
     status: aiImportPlanStatusSchema,
     topic: topicSchema,
     clientName: clientNameSchema,
-    candidates: aiCaptureCandidateSetSchema,
+    candidates: aiCaptureCandidateSetOutputSchema,
     comparison: aiCaptureComparisonSchema,
-    decisions: aiCaptureDecisionSetSchema,
+    decisions: aiCaptureDecisionSetOutputSchema,
     summary: aiImportChangeCountsSchema,
     createdAt: timestampSchema,
     expiresAt: timestampSchema,
@@ -468,9 +555,9 @@ export type AtomicEventCandidate = z.infer<typeof atomicEventCandidateSchema>;
 export type ConcreteCaseCandidate = z.infer<typeof concreteCaseCandidateSchema>;
 export type CausalRelationCandidate = z.infer<typeof causalRelationCandidateSchema>;
 export type RelationCaseLinkCandidate = z.infer<typeof relationCaseLinkCandidateSchema>;
-export type AiCaptureCandidateSet = z.infer<typeof aiCaptureCandidateSetSchema>;
+export type AiCaptureCandidateSet = z.infer<typeof aiCaptureCandidateSetInputSchema>;
 export type AiCaptureComparison = z.infer<typeof aiCaptureComparisonSchema>;
-export type AiCaptureDecisionSet = z.infer<typeof aiCaptureDecisionSetSchema>;
+export type AiCaptureDecisionSet = z.infer<typeof aiCaptureDecisionSetInputSchema>;
 export type PrepareAiImportPlanInput = z.infer<typeof prepareAiImportPlanInputSchema>;
 export type AiImportPlanStatus = z.infer<typeof aiImportPlanStatusSchema>;
 export type AiWorkflowError = z.infer<typeof aiWorkflowErrorSchema>;

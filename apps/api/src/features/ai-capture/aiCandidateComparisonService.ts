@@ -1,5 +1,5 @@
 import {
-  aiCaptureCandidateSetSchema,
+  aiCaptureCandidateSetInputSchema,
   MAX_AI_CAPTURE_EVENTS,
   type AiCaptureCandidateSet,
   type AiCaptureComparison,
@@ -131,7 +131,7 @@ export class AiCandidateComparisonService {
 
   public async compare(rawInput: AiCaptureCandidateSet): Promise<AiCaptureComparison> {
     this.assertDependencies(rawInput);
-    const parsed = aiCaptureCandidateSetSchema.safeParse(rawInput);
+    const parsed = aiCaptureCandidateSetInputSchema.safeParse(rawInput);
     if (!parsed.success) {
       throw new AiCaptureDataError(
         'AI_CANDIDATE_INVALID',
