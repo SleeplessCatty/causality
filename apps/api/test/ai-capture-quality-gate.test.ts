@@ -310,7 +310,7 @@ describe('qualityReportFromZodError', () => {
         }),
         expect.objectContaining({
           code: 'AI_QUALITY_EVENT_LIMIT_EXCEEDED',
-          entityType: 'event',
+          entityType: 'batch',
           paths: ['/atomicEvents'],
         }),
         expect.objectContaining({
@@ -320,6 +320,31 @@ describe('qualityReportFromZodError', () => {
         }),
       ],
     });
+  });
+
+  it('keeps a nested atomic-event size failure as a field-level schema issue', () => {
+    const raw = {
+      atomicEvents: [{ ref: 'event-1', name: '事'.repeat(51) }],
+    };
+    const error = new z.ZodError([
+      {
+        code: 'too_big',
+        message: '事件名称最多 50 个字符',
+        path: ['atomicEvents', 0, 'name'],
+        origin: 'string',
+        maximum: 50,
+        inclusive: true,
+      },
+    ]);
+
+    expect(qualityReportFromZodError(raw, error).issues).toEqual([
+      expect.objectContaining({
+        code: 'AI_QUALITY_SCHEMA_INVALID',
+        entityType: 'event',
+        refs: ['event-1'],
+        paths: ['/atomicEvents/0/name'],
+      }),
+    ]);
   });
 
   it('uses contract schema errors without losing their path-derived references', () => {

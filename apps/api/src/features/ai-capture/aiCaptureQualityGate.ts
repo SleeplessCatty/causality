@@ -363,7 +363,7 @@ export function qualityReportFromZodError(raw: unknown, error: z.ZodError): AiCa
       return candidateIssue({
         code,
         severity: 'error',
-        entityType: entityTypeFromPath(issue.path),
+        entityType: entityTypeFromIssue(issue),
         refs: refsFromPath(raw, issue.path),
         path: toJsonPointer(issue.path),
         message: issue.message,
@@ -378,13 +378,27 @@ function qualityCodeFromIssue(issue: z.core.$ZodIssue): AiCaptureQualityIssueCod
     return params.qualityCode;
   }
 
-  return issue.code === 'too_big' && issue.path[0] === 'atomicEvents'
+  return isAtomicEventsLimitIssue(issue)
     ? 'AI_QUALITY_EVENT_LIMIT_EXCEEDED'
     : 'AI_QUALITY_SCHEMA_INVALID';
 }
 
+function isAtomicEventsLimitIssue(issue: z.core.$ZodIssue): boolean {
+  return (
+    issue.code === 'too_big' &&
+    issue.origin === 'array' &&
+    issue.maximum === 50 &&
+    issue.path.length === 1 &&
+    issue.path[0] === 'atomicEvents'
+  );
+}
+
 function isQualityCode(value: unknown): value is AiCaptureQualityIssueCode {
   return typeof value === 'string' && qualityCodes.has(value as AiCaptureQualityIssueCode);
+}
+
+function entityTypeFromIssue(issue: z.core.$ZodIssue): AiCaptureQualityEntityType {
+  return isAtomicEventsLimitIssue(issue) ? 'batch' : entityTypeFromPath(issue.path);
 }
 
 function entityTypeFromPath(path: readonly PropertyKey[]): AiCaptureQualityEntityType {
