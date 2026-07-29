@@ -157,6 +157,18 @@ describe('causality capture prompt', () => {
     expect(prompt).toContain('询问用户是修改方案还是确认最新方案');
   });
 
+  it('repairs server quality reports before producing the first plan', () => {
+    const prompt = buildCausalityCapturePrompt();
+
+    expect(prompt).toContain('服务端质量报告优先于 AI 自检结论');
+    expect(prompt).toContain('报告状态为 blocked');
+    expect(prompt).toContain('必须重新提交完整候选集合');
+    expect(prompt).toContain('无法修复的内容移入忽略数据');
+    expect(prompt).toContain('报告状态为 warning');
+    expect(prompt).toContain('默认归入存疑数据并使用 skip');
+    expect(prompt).toContain('不得根据 topicRelevance 单独建立或否定因果关系');
+  });
+
   it('keeps the portable Markdown prompt byte-identical to the canonical source', async () => {
     const portable = await readFile(resolve(workspaceRoot, 'prompts/causality-capture.md'), 'utf8');
 
