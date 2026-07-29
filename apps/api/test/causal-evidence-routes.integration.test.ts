@@ -1,4 +1,8 @@
-import { causalPathResponseSchema, type CausalPathResponse } from '@causality/contracts';
+import {
+  causalEvidenceBundleResponseSchema,
+  causalPathResponseSchema,
+  type CausalPathResponse,
+} from '@causality/contracts';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -22,6 +26,7 @@ const relationIds = {
 const caseIds = {
   ab: 'c1000000-0000-4000-8000-000000000001',
   bc: 'c1000000-0000-4000-8000-000000000002',
+  abSecond: 'c1000000-0000-4000-8000-000000000003',
 } as const;
 
 function pathUrl(sourceEventId: string, targetEventId: string, suffix = ''): string {
@@ -180,5 +185,116 @@ describe.sequential('causal evidence REST API', () => {
 
     expect(document.paths['/api/causal-paths']).toHaveProperty('get');
     expect(document.paths['/api/causal-paths']).not.toHaveProperty('post');
+  });
+
+  it('builds a continuous evidence bundle with limited relation cases', async () => {
+    await pool!.query('insert into concrete_cases (id, content) values ($1, $2)', [
+      caseIds.abSecond,
+      '事件 A 后再次观察到事件 B',
+    ]);
+    await pool!.query(
+      'insert into causal_relation_cases (causal_relation_id, concrete_case_id) values ($1, $2)',
+      [relationIds.ab, caseIds.abSecond],
+    );
+    const response = await app!.inject({
+      method: 'POST',
+      url: '/api/causal-evidence-bundles',
+      payload: {
+        relationIds: [relationIds.ab, relationIds.bc],
+        caseLimitPerRelation: 1,
+      },
+    });
+    const body = causalEvidenceBundleResponseSchema.parse(response.json());
+
+    expect(response.statusCode).toBe(200);
+    expect(body.events.map((event) => event.id)).toEqual([eventIds.a, eventIds.b, eventIds.c]);
+    expect(body).toMatchObject({
+      hopCount: 2,
+      minimumConfidence: 70,
+      totalCaseCount: 3,
+      relations: [
+        {
+          id: relationIds.ab,
+          caseCount: 2,
+          returnedCaseCount: 1,
+          casesTruncated: true,
+          evidenceStatus: 'supported',
+        },
+        {
+          id: relationIds.bc,
+          caseCount: 1,
+          returnedCaseCount: 1,
+          casesTruncated: false,
+          evidenceStatus: 'supported',
+        },
+      ],
+    });
+  });
+
+  it('marks a relation without cases instead of claiming evidence', async () => {
+    const response = await app!.inject({
+      method: 'POST',
+      url: '/api/causal-evidence-bundles',
+      payload: { relationIds: [relationIds.ac] },
+    });
+    const body = causalEvidenceBundleResponseSchema.parse(response.json());
+
+    expect(response.statusCode).toBe(200);
+    expect(body.relations[0]).toMatchObject({
+      id: relationIds.ac,
+      caseCount: 0,
+      cases: [],
+      evidenceStatus: 'no_cases',
+    });
+  });
+
+  it('returns structured missing, invalid-order, and cycle errors', async () => {
+    const missingId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const missing = await app!.inject({
+      method: 'POST',
+      url: '/api/causal-evidence-bundles',
+      payload: { relationIds: [missingId] },
+    });
+    const invalidOrder = await app!.inject({
+      method: 'POST',
+      url: '/api/causal-evidence-bundles',
+      payload: { relationIds: [relationIds.bc, relationIds.ab] },
+    });
+    const cycle = await app!.inject({
+      method: 'POST',
+      url: '/api/causal-evidence-bundles',
+      payload: { relationIds: [relationIds.bc, relationIds.cb] },
+    });
+
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toEqual({
+      code: 'EVIDENCE_RELATION_NOT_FOUND',
+      message: '证据包中的因果关系不存在',
+      fields: { 'relationIds.0': '重新查询路径并使用当前存在的关系' },
+    });
+    expect(invalidOrder.statusCode).toBe(409);
+    expect(invalidOrder.json()).toEqual({
+      code: 'EVIDENCE_PATH_INVALID',
+      message: '证据包关系顺序不连续或路径数据已变化',
+      fields: { 'relationIds.1': '重新查询路径或调整关系顺序' },
+    });
+    expect(cycle.statusCode).toBe(409);
+    expect(cycle.json()).toEqual({
+      code: 'EVIDENCE_PATH_CYCLE',
+      message: '证据包路径形成循环',
+      fields: { 'relationIds.1': '移除导致循环的关系并重新查询路径' },
+    });
+  });
+
+  it('publishes only POST for the evidence bundle endpoint', async () => {
+    const document = (
+      await app!.inject({
+        method: 'GET',
+        url: '/api/openapi.json',
+      })
+    ).json<{ paths: Record<string, Record<string, unknown>> }>();
+
+    expect(document.paths['/api/causal-evidence-bundles']).toHaveProperty('post');
+    expect(document.paths['/api/causal-evidence-bundles']).not.toHaveProperty('get');
   });
 });
