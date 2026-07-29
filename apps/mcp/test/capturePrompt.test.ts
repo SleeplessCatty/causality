@@ -113,7 +113,7 @@ describe('causality capture prompt', () => {
     expect(prompt).toContain('不把 JSON 包装成 Markdown、字符串或 CSV');
     expect(prompt).toContain('原子事件始终显式提供 `aliases` 和 `keywords` 数组');
     expect(prompt).toContain('`event-001`、`case-001`、`relation-001`');
-    expect(prompt).toContain('为每条原子事件、具体案例和因果关系候选分配');
+    expect(prompt).toContain('为进入候选集合的原子事件、具体案例和因果关系分配');
     expect(prompt).not.toContain('为每条候选分配本批次内稳定且唯一的 `ref`');
     expect(prompt).toContain('对比结果必须原样随候选集合交给方案生成工具');
     expect(prompt).toContain('依赖项被 skip 时，其关系或案例关联也必须同步 skip');
@@ -140,6 +140,21 @@ describe('causality capture prompt', () => {
     expect(prompt).toContain('不通过改写业务数据规避系统或配置错误');
     expect(prompt).toContain('不得在工具失败、响应不明或方案失效时宣称入库成功');
     expect(prompt).toContain('重新自检受影响候选');
+  });
+
+  it('automatically classifies every extracted item before asking the user to review', () => {
+    const prompt = buildCausalityCapturePrompt();
+
+    expect(prompt).toContain('首次完整方案生成之前，所有提取、检查、对比和决策都由 AI 自动完成');
+    expect(prompt).toContain('将全部提取结果分为三类');
+    expect(prompt).toContain('**确信数据**');
+    expect(prompt).toContain('默认采用 create 或 reuse');
+    expect(prompt).toContain('**存疑数据**');
+    expect(prompt).toContain('默认采用 skip');
+    expect(prompt).toContain('**忽略数据**');
+    expect(prompt).toContain('不进入候选写入集合，但必须在用户可读方案中列出');
+    expect(prompt).toContain('用户直接确认时，只提交确信数据');
+    expect(prompt).toContain('询问用户是修改方案还是确认最新方案');
   });
 
   it('keeps the portable Markdown prompt byte-identical to the canonical source', async () => {
