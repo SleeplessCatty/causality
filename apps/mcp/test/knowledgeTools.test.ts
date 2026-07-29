@@ -126,9 +126,13 @@ const graph: CausalGraphResponse = {
 };
 
 class FakeKnowledgeApi implements CausalityMcpApi {
+  public eventSearchInput: { query: string; page: number } | null = null;
   public eventRelationInput: { id: string; limit: number; cursor?: string } | null = null;
+  public caseSearchInput: { query: string; page: number } | null = null;
+  public relationCaseInput: { id: string; limit: number; cursor?: string } | null = null;
 
-  public async searchEvents(): Promise<EventListResponse> {
+  public async searchEvents(query: string, page = 1): Promise<EventListResponse> {
+    this.eventSearchInput = { query, page };
     return events;
   }
 
@@ -144,7 +148,8 @@ class FakeKnowledgeApi implements CausalityMcpApi {
     return eventRelations;
   }
 
-  public async searchCases(): Promise<CaseListResponse> {
+  public async searchCases(query: string, page = 1): Promise<CaseListResponse> {
+    this.caseSearchInput = { query, page };
     return cases;
   }
 
@@ -152,7 +157,11 @@ class FakeKnowledgeApi implements CausalityMcpApi {
     return relation;
   }
 
-  public async getRelationCases(): Promise<RelationCaseListResponse> {
+  public async getRelationCases(
+    id: string,
+    input: { limit: number; cursor?: string } = { limit: 20 },
+  ): Promise<RelationCaseListResponse> {
+    this.relationCaseInput = { id, ...input };
     return relationCases;
   }
 
@@ -316,6 +325,48 @@ describe('read-only knowledge tools', () => {
     expect(textContent(result)).toContain('还有更多关联关系');
   });
 
+  it('forwards explicit search pages and relation-case continuation inputs', async () => {
+    await mcpClient.callTool({
+      name: 'search_atomic_events',
+      arguments: { query: '供应链', page: 3 },
+    });
+    await mcpClient.callTool({
+      name: 'search_concrete_cases',
+      arguments: { query: '港口停运', page: 4 },
+    });
+    await mcpClient.callTool({
+      name: 'get_relation_cases',
+      arguments: { relationId, caseLimit: 50, caseCursor: 'case-cursor' },
+    });
+
+    expect(api.eventSearchInput).toEqual({ query: '供应链', page: 3 });
+    expect(api.caseSearchInput).toEqual({ query: '港口停运', page: 4 });
+    expect(api.relationCaseInput).toEqual({
+      id: relationId,
+      limit: 50,
+      cursor: 'case-cursor',
+    });
+  });
+
+  it('keeps legacy knowledge-tool calls compatible through pagination defaults', async () => {
+    await mcpClient.callTool({
+      name: 'search_atomic_events',
+      arguments: { query: '供应链' },
+    });
+    await mcpClient.callTool({
+      name: 'search_concrete_cases',
+      arguments: { query: '港口停运' },
+    });
+    await mcpClient.callTool({
+      name: 'get_relation_cases',
+      arguments: { relationId },
+    });
+
+    expect(api.eventSearchInput).toEqual({ query: '供应链', page: 1 });
+    expect(api.caseSearchInput).toEqual({ query: '港口停运', page: 1 });
+    expect(api.relationCaseInput).toEqual({ id: relationId, limit: 20 });
+  });
+
   it('rejects unknown fields and unsupported graph limits before calling the API', async () => {
     const extraField = await mcpClient.callTool({
       name: 'search_atomic_events',
@@ -331,8 +382,18 @@ describe('read-only knowledge tools', () => {
         minCaseCount: 0,
       },
     });
+    const invalidPage = await mcpClient.callTool({
+      name: 'search_concrete_cases',
+      arguments: { query: '港口停运', page: 0 },
+    });
+    const invalidCaseLimit = await mcpClient.callTool({
+      name: 'get_relation_cases',
+      arguments: { relationId, caseLimit: 101 },
+    });
 
     expect(extraField.isError).toBe(true);
     expect(unsupportedLimit.isError).toBe(true);
+    expect(invalidPage.isError).toBe(true);
+    expect(invalidCaseLimit.isError).toBe(true);
   });
 });

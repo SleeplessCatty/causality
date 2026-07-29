@@ -233,14 +233,20 @@ describe('CausalityApiClient', () => {
     };
     const client = createClient(fetchImplementation);
 
-    const events = await client.searchEvents('供应 链/港口');
-    const cases = await client.searchCases('停运 后');
+    const events = await client.searchEvents('供应 链/港口', 3);
+    const cases = await client.searchCases('停运 后', 4);
 
     expect(events.items[0]?.name).toBe('供应链中断');
     expect(cases.items[0]?.content).toBe('港口停运后工厂原料延迟到货');
-    expect(requests.map(({ url }) => [url.pathname, url.searchParams.get('q')])).toEqual([
-      ['/api/events', '供应 链/港口'],
-      ['/api/cases', '停运 后'],
+    expect(
+      requests.map(({ url }) => [
+        url.pathname,
+        url.searchParams.get('q'),
+        url.searchParams.get('page'),
+      ]),
+    ).toEqual([
+      ['/api/events', '供应 链/港口', '3'],
+      ['/api/cases', '停运 后', '4'],
     ]);
     for (const request of requests) {
       const headers = new Headers(request.init?.headers);
@@ -261,7 +267,7 @@ describe('CausalityApiClient', () => {
     const client = createClient(fetchImplementation);
 
     await client.getEventRelations(eventId, { limit: 20, cursor: 'cursor value' });
-    await client.getRelationCases(relationId);
+    await client.getRelationCases(relationId, { limit: 50, cursor: 'case cursor' });
     await client.queryGraph({
       centerEventId: eventId,
       direction: 'both',
@@ -276,7 +282,10 @@ describe('CausalityApiClient', () => {
       cursor: 'cursor value',
     });
     expect(urls[1]?.pathname).toBe(`/api/relations/${relationId}/cases`);
-    expect(Object.fromEntries(urls[1]!.searchParams)).toEqual({ limit: '20' });
+    expect(Object.fromEntries(urls[1]!.searchParams)).toEqual({
+      limit: '50',
+      cursor: 'case cursor',
+    });
     expect(Object.fromEntries(urls[2]!.searchParams)).toEqual({
       centerEventId: eventId,
       direction: 'both',
@@ -284,6 +293,26 @@ describe('CausalityApiClient', () => {
       minConfidence: '10',
       minCaseCount: '1',
     });
+  });
+
+  it('keeps API adapter pagination defaults for existing callers', async () => {
+    const urls: URL[] = [];
+    const fetchImplementation: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      urls.push(url);
+      if (url.pathname === '/api/events') return jsonResponse(eventList);
+      if (url.pathname === '/api/cases') return jsonResponse(caseList);
+      return jsonResponse(relationCases);
+    };
+    const client = createClient(fetchImplementation);
+
+    await client.searchEvents('供应链');
+    await client.searchCases('港口停运');
+    await client.getRelationCases(relationId);
+
+    expect(Object.fromEntries(urls[0]!.searchParams)).toEqual({ q: '供应链', page: '1' });
+    expect(Object.fromEntries(urls[1]!.searchParams)).toEqual({ q: '港口停运', page: '1' });
+    expect(Object.fromEntries(urls[2]!.searchParams)).toEqual({ limit: '20' });
   });
 
   it('parses event and relation detail contracts', async () => {

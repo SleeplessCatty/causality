@@ -19,15 +19,18 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 export interface CausalityKnowledgeApi {
-  searchEvents(query: string): Promise<EventListResponse>;
+  searchEvents(query: string, page?: number): Promise<EventListResponse>;
   getEvent(id: string): Promise<EventDetail>;
   getEventRelations(
     id: string,
     input: { limit: number; cursor?: string },
   ): Promise<EventRelationListResponse>;
-  searchCases(query: string): Promise<CaseListResponse>;
+  searchCases(query: string, page?: number): Promise<CaseListResponse>;
   getRelation(id: string): Promise<RelationDetail>;
-  getRelationCases(id: string): Promise<RelationCaseListResponse>;
+  getRelationCases(
+    id: string,
+    input?: { limit: number; cursor?: string },
+  ): Promise<RelationCaseListResponse>;
   queryGraph(input: CausalGraphQuery): Promise<CausalGraphResponse>;
 }
 
@@ -41,6 +44,7 @@ const readOnlyAnnotations = {
 const searchEventsInputSchema = z
   .object({
     query: z.string().trim().min(1).max(80).describe('原子事件名称、别名或关键词'),
+    page: z.number().int().min(1).max(100_000).default(1).describe('结果页码'),
   })
   .strict();
 
@@ -55,12 +59,21 @@ const getEventInputSchema = z
 const searchCasesInputSchema = z
   .object({
     query: z.string().trim().min(1).max(100).describe('具体案例内容关键词'),
+    page: z.number().int().min(1).max(100_000).default(1).describe('结果页码'),
   })
   .strict();
 
 const relationInputSchema = z
   .object({
     relationId: z.uuid().describe('因果关系 ID'),
+  })
+  .strict();
+
+const relationCasesInputSchema = z
+  .object({
+    relationId: z.uuid().describe('因果关系 ID'),
+    caseLimit: z.number().int().min(1).max(100).default(20).describe('本次具体案例数量'),
+    caseCursor: z.string().min(1).max(2_000).optional().describe('具体案例续页游标'),
   })
   .strict();
 
@@ -178,8 +191,8 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
       outputSchema: eventListResponseSchema,
       annotations: readOnlyAnnotations,
     },
-    async ({ query }) => {
-      const result = await apiClient.searchEvents(query);
+    async ({ query, page }) => {
+      const result = await apiClient.searchEvents(query, page);
       return textResult(eventSearchText(result), { ...result });
     },
   );
@@ -215,8 +228,8 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
       outputSchema: caseListResponseSchema,
       annotations: readOnlyAnnotations,
     },
-    async ({ query }) => {
-      const result = await apiClient.searchCases(query);
+    async ({ query, page }) => {
+      const result = await apiClient.searchCases(query, page);
       return textResult(caseSearchText(result), { ...result });
     },
   );
@@ -241,12 +254,16 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
     {
       title: '查看关系案例',
       description: '读取一条因果关系当前返回页中的关联具体案例。',
-      inputSchema: relationInputSchema,
+      inputSchema: relationCasesInputSchema,
       outputSchema: relationCaseListResponseSchema,
       annotations: readOnlyAnnotations,
     },
-    async ({ relationId }) => {
-      const result = await apiClient.getRelationCases(relationId);
+    async ({ relationId, caseLimit, caseCursor }) => {
+      const caseInput = {
+        limit: caseLimit,
+        ...(caseCursor === undefined ? {} : { cursor: caseCursor }),
+      };
+      const result = await apiClient.getRelationCases(relationId, caseInput);
       return textResult(relationCasesText(result), { ...result });
     },
   );

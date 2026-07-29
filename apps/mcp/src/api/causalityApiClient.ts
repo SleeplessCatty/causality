@@ -149,9 +149,9 @@ export class CausalityApiClient {
     this.fetchImplementation = options.fetch ?? fetch;
   }
 
-  public searchEvents(query: string): Promise<EventListResponse> {
+  public searchEvents(query: string, page = 1): Promise<EventListResponse> {
     return this.request('/api/events', {
-      query: { q: query },
+      query: { q: query, page },
       schema: eventListResponseSchema,
     });
   }
@@ -172,9 +172,9 @@ export class CausalityApiClient {
     });
   }
 
-  public searchCases(query: string): Promise<CaseListResponse> {
+  public searchCases(query: string, page = 1): Promise<CaseListResponse> {
     return this.request('/api/cases', {
-      query: { q: query },
+      query: { q: query, page },
       schema: caseListResponseSchema,
     });
   }
@@ -185,9 +185,12 @@ export class CausalityApiClient {
     });
   }
 
-  public getRelationCases(id: string): Promise<RelationCaseListResponse> {
+  public getRelationCases(
+    id: string,
+    input: { limit: number; cursor?: string } = { limit: DEFAULT_RELATION_PAGE_SIZE },
+  ): Promise<RelationCaseListResponse> {
     return this.request(`/api/relations/${encodeURIComponent(id)}/cases`, {
-      query: { limit: DEFAULT_RELATION_PAGE_SIZE },
+      query: { limit: input.limit, cursor: input.cursor },
       schema: relationCaseListResponseSchema,
     });
   }
