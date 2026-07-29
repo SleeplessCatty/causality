@@ -1,5 +1,6 @@
 import {
   type AiCaptureCandidateSet,
+  type AiCaptureComparison,
   type AiCaptureQualityEntityType,
   type AiCaptureQualityIssue,
   type AiCaptureQualityIssueCode,
@@ -10,6 +11,7 @@ import {
 import type { z } from 'zod';
 
 const severityRank = { error: 0, warning: 1 } as const;
+const SEMANTIC_DUPLICATE_THRESHOLD = 0.9;
 const compoundConnectorPattern = /并且|同时|以及|并/;
 const compoundSplitPattern = /并且|同时|以及|并/;
 const changePhrasePattern =
@@ -55,6 +57,25 @@ interface IssueDetails {
   message: string;
 }
 
+interface ComparisonCandidate {
+  ref: string;
+  matches: readonly {
+    id: string;
+    matchKind: AiCaptureComparison['atomicEvents'][number]['matches'][number]['matchKind'];
+    similarity: number | null;
+  }[];
+}
+
+interface SharedMatchIssueOptions {
+  candidates: readonly ComparisonCandidate[];
+  section: 'atomicEvents' | 'concreteCases';
+  code: AiCaptureQualityIssueCode;
+  entityType: Extract<AiCaptureQualityEntityType, 'event' | 'case'>;
+  message: string;
+  matchPathSuffix: '/matches' | '/matches/0';
+  matchingId(candidate: ComparisonCandidate): string | null;
+}
+
 function issueOrder(left: AiCaptureQualityIssue, right: AiCaptureQualityIssue): number {
   return (
     severityRank[left.severity] - severityRank[right.severity] ||
@@ -72,6 +93,22 @@ function candidateIssue(details: IssueDetails): AiCaptureQualityIssue {
     entityType: details.entityType,
     refs: details.refs,
     paths: [details.path],
+    message: details.message,
+    suggestedAction: suggestionForCode(details.code),
+    aiCanRepair: true,
+  };
+}
+
+function comparisonIssue(
+  details: Omit<IssueDetails, 'path'> & { paths: string[] },
+): AiCaptureQualityIssue {
+  return {
+    code: details.code,
+    severity: details.severity,
+    phase: 'comparison',
+    entityType: details.entityType,
+    refs: details.refs,
+    paths: details.paths,
     message: details.message,
     suggestedAction: suggestionForCode(details.code),
     aiCanRepair: true,
@@ -115,6 +152,120 @@ export class AiCaptureQualityGate {
       ...candidateWarningIssues(input),
     ]);
   }
+
+  public inspectComparison(input: {
+    candidates: AiCaptureCandidateSet;
+    comparison: AiCaptureComparison;
+    topicRelevance: AiCaptureTopicRelevanceSignal[];
+  }): AiCaptureQualityReport {
+    return buildQualityReport(
+      [
+        ...this.inspectCandidates(input.candidates).issues,
+        ...sharedExactMatchIssues(input.comparison),
+        ...sharedSemanticMatchIssues(input.comparison),
+      ],
+      input.topicRelevance,
+    );
+  }
+}
+
+function sharedExactMatchIssues(comparison: AiCaptureComparison): AiCaptureQualityIssue[] {
+  return [
+    ...sharedMatchIssues({
+      candidates: comparison.atomicEvents,
+      section: 'atomicEvents',
+      code: 'AI_QUALITY_EVENTS_SHARE_EXACT_MATCH',
+      entityType: 'event',
+      message: '多个原子事件候选唯一精确匹配同一已有原子事件',
+      matchPathSuffix: '/matches',
+      matchingId: (candidate) => uniqueExactMatchId(candidate.matches),
+    }),
+    ...sharedMatchIssues({
+      candidates: comparison.concreteCases,
+      section: 'concreteCases',
+      code: 'AI_QUALITY_CASES_SHARE_EXACT_MATCH',
+      entityType: 'case',
+      message: '多个具体案例候选唯一精确匹配同一已有具体案例',
+      matchPathSuffix: '/matches',
+      matchingId: (candidate) => uniqueExactMatchId(candidate.matches),
+    }),
+  ];
+}
+
+function sharedSemanticMatchIssues(comparison: AiCaptureComparison): AiCaptureQualityIssue[] {
+  return [
+    ...sharedMatchIssues({
+      candidates: comparison.atomicEvents,
+      section: 'atomicEvents',
+      code: 'AI_QUALITY_EVENT_SEMANTIC_DUPLICATE_SUSPECTED',
+      entityType: 'event',
+      message: '多个原子事件候选高相似指向同一已有原子事件',
+      matchPathSuffix: '/matches/0',
+      matchingId: qualifyingSemanticMatchId,
+    }),
+    ...sharedMatchIssues({
+      candidates: comparison.concreteCases,
+      section: 'concreteCases',
+      code: 'AI_QUALITY_CASE_SEMANTIC_DUPLICATE_SUSPECTED',
+      entityType: 'case',
+      message: '多个具体案例候选高相似指向同一已有具体案例',
+      matchPathSuffix: '/matches/0',
+      matchingId: qualifyingSemanticMatchId,
+    }),
+  ];
+}
+
+function sharedMatchIssues(options: SharedMatchIssueOptions): AiCaptureQualityIssue[] {
+  const byExistingId = new Map<string, Array<{ ref: string; index: number }>>();
+  options.candidates.forEach((candidate, index) => {
+    const existingId = options.matchingId(candidate);
+    if (!existingId) return;
+    const refs = byExistingId.get(existingId) ?? [];
+    refs.push({ ref: candidate.ref, index });
+    byExistingId.set(existingId, refs);
+  });
+
+  return [...byExistingId.values()].flatMap((matches) =>
+    matches.length > 1
+      ? [
+          comparisonIssue({
+            code: options.code,
+            severity: 'warning',
+            entityType: options.entityType,
+            refs: matches.map((match) => match.ref),
+            paths: matches.map(
+              (match) => `/${options.section}/${match.index}${options.matchPathSuffix}`,
+            ),
+            message: options.message,
+          }),
+        ]
+      : [],
+  );
+}
+
+export function uniqueExactMatchId(
+  matches: readonly ComparisonCandidate['matches'][number][],
+): string | null {
+  const exactIds = new Set(
+    matches
+      .filter(
+        (match) =>
+          match.matchKind === 'exact_name' ||
+          match.matchKind === 'exact_alias' ||
+          match.matchKind === 'exact_content',
+      )
+      .map((match) => match.id),
+  );
+  return exactIds.size === 1 ? [...exactIds][0]! : null;
+}
+
+function qualifyingSemanticMatchId(candidate: ComparisonCandidate): string | null {
+  const firstMatch = candidate.matches[0];
+  return firstMatch?.matchKind === 'semantic' &&
+    firstMatch.similarity !== null &&
+    firstMatch.similarity >= SEMANTIC_DUPLICATE_THRESHOLD
+    ? firstMatch.id
+    : null;
 }
 
 function duplicateEventNameIssues(input: AiCaptureCandidateSet): AiCaptureQualityIssue[] {

@@ -1,4 +1,5 @@
 import type {
+  AiCaptureTopicRelevanceSignal,
   SemanticEntityType,
   SemanticModelCode,
   SemanticModelFileStatus,
@@ -45,6 +46,36 @@ interface QueryChunk {
 
 export class AiSemanticCandidateService {
   public constructor(private readonly options: AiSemanticCandidateServiceOptions) {}
+
+  public async topicRelevance(
+    topic: string,
+    events: readonly { ref: string; name: string }[],
+  ): Promise<AiCaptureTopicRelevanceSignal[]> {
+    if (events.length === 0) return [];
+
+    const context = await this.options.contextRepository.activeContext();
+    this.assertReady(context);
+
+    let vectors: number[][];
+    try {
+      vectors = await this.options.workerClient.embedQueries(context.modelCode, [
+        topic,
+        ...events.map((event) => event.name),
+      ]);
+    } catch (error) {
+      if (error instanceof SemanticWorkerClientError) {
+        throw new SemanticQueryError('SEMANTIC_WORKER_UNAVAILABLE');
+      }
+      throw error;
+    }
+
+    this.assertVectors(vectors, events.length + 1, MODEL_CATALOG[context.modelCode].dimensions);
+    const topicVector = vectors[0]!;
+    return events.map((event, index) => ({
+      ref: event.ref,
+      similarity: cosineSimilarity(topicVector, vectors[index + 1]!),
+    }));
+  }
 
   public async compare(
     entityType: Extract<SemanticEntityType, 'event' | 'case'>,
@@ -216,4 +247,25 @@ export class AiSemanticCandidateService {
     }
     return matches;
   }
+}
+
+function cosineSimilarity(left: readonly number[], right: readonly number[]): number {
+  let dotProduct = 0;
+  let leftSquaredNorm = 0;
+  let rightSquaredNorm = 0;
+
+  for (let index = 0; index < left.length; index += 1) {
+    const leftValue = left[index]!;
+    const rightValue = right[index]!;
+    dotProduct += leftValue * rightValue;
+    leftSquaredNorm += leftValue * leftValue;
+    rightSquaredNorm += rightValue * rightValue;
+  }
+
+  const denominator = Math.sqrt(leftSquaredNorm) * Math.sqrt(rightSquaredNorm);
+  const similarity = dotProduct / denominator;
+  if (denominator === 0 || !Number.isFinite(denominator) || !Number.isFinite(similarity)) {
+    throw new SemanticQueryError('SEMANTIC_WORKER_UNAVAILABLE');
+  }
+  return Math.max(0, Math.min(1, similarity));
 }

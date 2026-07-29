@@ -99,17 +99,45 @@ function repository(
 function semantic(
   eventResults: Array<Array<{ id: string; similarity: number }>> = [],
   caseResults: Array<Array<{ id: string; similarity: number }>> = [],
-): Pick<AiSemanticCandidateService, 'compare'> {
+  topicResults: Array<{ ref: string; similarity: number }> = [],
+): Pick<AiSemanticCandidateService, 'compare' | 'topicRelevance'> {
   return {
     compare: vi
       .fn()
       .mockImplementation(async (entityType) =>
         entityType === 'event' ? eventResults : caseResults,
       ),
+    topicRelevance: vi.fn().mockResolvedValue(topicResults),
   };
 }
 
 describe('AiCandidateComparisonService', () => {
+  it('returns server-generated topic relevance without changing a passed status', async () => {
+    const data = candidateSet();
+    const semanticService = semantic(
+      [[], []],
+      [[]],
+      [
+        { ref: 'event-1', similarity: 0.82 },
+        { ref: 'event-2', similarity: 0.31 },
+      ],
+    );
+    const service = new AiCandidateComparisonService(repository(), semanticService);
+
+    const result = await service.compare(data);
+
+    expect(semanticService.topicRelevance).toHaveBeenCalledWith(data.topic, data.atomicEvents);
+    expect(result.qualityReport).toEqual({
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [
+        { ref: 'event-1', similarity: 0.82 },
+        { ref: 'event-2', similarity: 0.31 },
+      ],
+    });
+  });
+
   async function expectBlockedBeforeDependencies(rawInput: unknown, issueCode: string) {
     const dataRepository = repository();
     const semanticService = semantic();
@@ -129,6 +157,7 @@ describe('AiCandidateComparisonService', () => {
     expect(dataRepository.findRelationMatches).not.toHaveBeenCalled();
     expect(dataRepository.findLinkMatches).not.toHaveBeenCalled();
     expect(semanticService.compare).not.toHaveBeenCalled();
+    expect(semanticService.topicRelevance).not.toHaveBeenCalled();
   }
 
   it.each([
@@ -332,6 +361,48 @@ describe('AiCandidateComparisonService', () => {
       issues: expect.arrayContaining([
         expect.objectContaining({ code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED' }),
       ]),
+    });
+  });
+
+  it('merges exact and semantic sharing warnings without removing comparison matches', async () => {
+    const sharedEvent = eventMatch(eventIds[0]!, 'exact_name');
+    const sharedCase = caseMatch(caseIds[0]!, 'semantic');
+    const data = candidateSet({
+      concreteCases: [
+        concreteCase('case-1', '2026年某企业订单下降'),
+        concreteCase('case-2', '2026年另一企业成本上升'),
+      ],
+      relationCaseLinks: [
+        { relationRef: 'relation-1', caseRef: 'case-1' },
+        { relationRef: 'relation-1', caseRef: 'case-2' },
+      ],
+    });
+    const dataRepository = repository({
+      findEventMatches: vi.fn().mockResolvedValue([[sharedEvent], [sharedEvent]]),
+      findCaseMatches: vi.fn().mockResolvedValue([[], []]),
+      findCasesByIds: vi.fn().mockResolvedValue([sharedCase]),
+    });
+    const service = new AiCandidateComparisonService(
+      dataRepository,
+      semantic(
+        [[], []],
+        [[{ id: caseIds[0]!, similarity: 0.93 }], [{ id: caseIds[0]!, similarity: 0.92 }]],
+      ),
+    );
+
+    const result = await service.compare(data);
+
+    expect(result.atomicEvents.map((item) => item.matches)).toEqual([[sharedEvent], [sharedEvent]]);
+    expect(result.concreteCases.map((item) => item.matches[0]?.id)).toEqual([
+      caseIds[0],
+      caseIds[0],
+    ]);
+    expect(result.qualityReport).toMatchObject({
+      status: 'warning',
+      issues: [
+        expect.objectContaining({ code: 'AI_QUALITY_CASE_SEMANTIC_DUPLICATE_SUSPECTED' }),
+        expect.objectContaining({ code: 'AI_QUALITY_EVENTS_SHARE_EXACT_MATCH' }),
+      ],
     });
   });
 

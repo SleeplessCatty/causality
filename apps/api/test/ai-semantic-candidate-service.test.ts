@@ -82,6 +82,135 @@ function candidatePool(options: { delayQueries?: boolean } = {}): {
 }
 
 describe('AiSemanticCandidateService', () => {
+  it('scores topic relevance with one topic vector and one vector per event', async () => {
+    const worker = workerClient();
+    const database = candidatePool();
+    const firstDimension = [1, ...Array.from({ length: 383 }, () => 0)];
+    const secondDimension = [0, 1, ...Array.from({ length: 382 }, () => 0)];
+    vi.mocked(worker.embedQueries).mockResolvedValue([
+      firstDimension,
+      firstDimension,
+      secondDimension,
+    ]);
+    const service = new AiSemanticCandidateService({
+      contextRepository: contextRepository('ready'),
+      workerClient: worker,
+      pool: database.pool,
+    });
+
+    await expect(
+      service.topicRelevance('利率传导', [
+        { ref: 'event-001', name: '政策利率上升' },
+        { ref: 'event-002', name: '汽车销量下降' },
+      ]),
+    ).resolves.toEqual([
+      { ref: 'event-001', similarity: 1 },
+      { ref: 'event-002', similarity: 0 },
+    ]);
+    expect(worker.embedQueries).toHaveBeenCalledWith('multilingual-e5-small', [
+      '利率传导',
+      '政策利率上升',
+      '汽车销量下降',
+    ]);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it('returns no topic signals without reading model state when there are no events', async () => {
+    const contexts = contextRepository('ready');
+    const worker = workerClient();
+    const database = candidatePool();
+    const service = new AiSemanticCandidateService({
+      contextRepository: contexts,
+      workerClient: worker,
+      pool: database.pool,
+    });
+
+    await expect(service.topicRelevance('主题', [])).resolves.toEqual([]);
+    expect(contexts.activeContext).not.toHaveBeenCalled();
+    expect(worker.embedQueries).not.toHaveBeenCalled();
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it('clamps negative cosine similarity into the public zero-to-one signal range', async () => {
+    const worker = workerClient();
+    const positive = [1, ...Array.from({ length: 383 }, () => 0)];
+    const negative = [-1, ...Array.from({ length: 383 }, () => 0)];
+    vi.mocked(worker.embedQueries).mockResolvedValue([positive, negative]);
+    const service = new AiSemanticCandidateService({
+      contextRepository: contextRepository('ready'),
+      workerClient: worker,
+      pool: candidatePool().pool,
+    });
+
+    await expect(
+      service.topicRelevance('主题', [{ ref: 'event-001', name: '事件' }]),
+    ).resolves.toEqual([{ ref: 'event-001', similarity: 0 }]);
+  });
+
+  it.each([
+    ['wrong vector count', [[1, ...Array.from({ length: 383 }, () => 0)]]],
+    [
+      'wrong vector dimensions',
+      [
+        [1, ...Array.from({ length: 383 }, () => 0)],
+        [1, ...Array.from({ length: 382 }, () => 0)],
+      ],
+    ],
+    [
+      'non-finite vector value',
+      [
+        [1, ...Array.from({ length: 383 }, () => 0)],
+        [Number.NaN, ...Array.from({ length: 383 }, () => 0)],
+      ],
+    ],
+    [
+      'zero-norm event vector',
+      [[1, ...Array.from({ length: 383 }, () => 0)], Array.from({ length: 384 }, () => 0)],
+    ],
+  ] as const)('maps %s to the stable Worker error', async (_name, vectors) => {
+    const worker = workerClient();
+    vi.mocked(worker.embedQueries).mockResolvedValue(vectors.map((vector) => [...vector]));
+    const service = new AiSemanticCandidateService({
+      contextRepository: contextRepository('ready'),
+      workerClient: worker,
+      pool: candidatePool().pool,
+    });
+
+    await expect(
+      service.topicRelevance('主题', [{ ref: 'event-001', name: '事件' }]),
+    ).rejects.toMatchObject({ code: 'SEMANTIC_WORKER_UNAVAILABLE' });
+  });
+
+  it('maps topic embedding Worker failures to the stable Worker error', async () => {
+    const worker = workerClient();
+    vi.mocked(worker.embedQueries).mockRejectedValue(new SemanticWorkerClientError());
+    const service = new AiSemanticCandidateService({
+      contextRepository: contextRepository('ready'),
+      workerClient: worker,
+      pool: candidatePool().pool,
+    });
+
+    await expect(
+      service.topicRelevance('主题', [{ ref: 'event-001', name: '事件' }]),
+    ).rejects.toMatchObject({ code: 'SEMANTIC_WORKER_UNAVAILABLE' });
+  });
+
+  it('maps a non-finite cosine calculation to the stable Worker error', async () => {
+    const worker = workerClient();
+    const hugeFirstDimension = [1e308, ...Array.from({ length: 383 }, () => 0)];
+    const hugeSecondDimension = [0, 1e308, ...Array.from({ length: 382 }, () => 0)];
+    vi.mocked(worker.embedQueries).mockResolvedValue([hugeFirstDimension, hugeSecondDimension]);
+    const service = new AiSemanticCandidateService({
+      contextRepository: contextRepository('ready'),
+      workerClient: worker,
+      pool: candidatePool().pool,
+    });
+
+    await expect(
+      service.topicRelevance('主题', [{ ref: 'event-001', name: '事件' }]),
+    ).rejects.toMatchObject({ code: 'SEMANTIC_WORKER_UNAVAILABLE' });
+  });
+
   it.each([
     ['empty', null, null, 'SEMANTIC_MODEL_UNAVAILABLE'],
     ['waiting_model', 'multilingual-e5-small', 'downloading', 'SEMANTIC_MODEL_DOWNLOADING'],

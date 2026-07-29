@@ -70,7 +70,7 @@ describe.sequential('AI candidate comparison PostgreSQL integration', () => {
   });
 
   it('separates ranked event, case, relation, and relation-case comparisons', async () => {
-    const semantic: Pick<AiSemanticCandidateService, 'compare'> = {
+    const semantic: Pick<AiSemanticCandidateService, 'compare' | 'topicRelevance'> = {
       compare: async (entityType) =>
         entityType === 'event'
           ? [
@@ -83,6 +83,8 @@ describe.sequential('AI candidate comparison PostgreSQL integration', () => {
               [{ id: otherOccurrenceCaseId, similarity: 0.82 }],
               [{ id: exactCaseId, similarity: 0.81 }],
             ],
+      topicRelevance: async (_topic, events) =>
+        events.map((event, index) => ({ ref: event.ref, similarity: 0.8 - index / 10 })),
     };
     const service = new AiCandidateComparisonService(
       new PostgresAiCandidateComparisonRepository(pool!),
@@ -218,5 +220,17 @@ describe.sequential('AI candidate comparison PostgreSQL integration', () => {
       { relationRef: 'relation-existing', caseRef: 'case-linked', exists: true },
       { relationRef: 'relation-existing', caseRef: 'case-unlinked', exists: false },
     ]);
+    expect(result.qualityReport).toMatchObject({
+      status: 'warning',
+      issues: expect.arrayContaining([
+        expect.objectContaining({ code: 'AI_QUALITY_RELATION_WITHOUT_CASE' }),
+      ]),
+      topicRelevance: [
+        { ref: 'event-alias', similarity: 0.7000000000000001 },
+        { ref: 'event-exact', similarity: 0.8 },
+        { ref: 'event-fuzzy', similarity: 0.6000000000000001 },
+        { ref: 'event-semantic', similarity: 0.5 },
+      ],
+    });
   });
 });

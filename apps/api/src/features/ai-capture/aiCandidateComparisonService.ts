@@ -11,7 +11,11 @@ import {
   type ResolvedRelationProbe,
 } from './aiCandidateComparisonRepository.js';
 import { AiCaptureQualityBlockedError } from './aiCaptureErrors.js';
-import { AiCaptureQualityGate, qualityReportFromZodError } from './aiCaptureQualityGate.js';
+import {
+  AiCaptureQualityGate,
+  qualityReportFromZodError,
+  uniqueExactMatchId,
+} from './aiCaptureQualityGate.js';
 import type { AiSemanticCandidateService, SemanticMatch } from './aiSemanticCandidateService.js';
 
 const MAX_MATCHES = 10;
@@ -61,24 +65,10 @@ function mergeMatches<T extends EventMatchRow | CaseMatchRow>(
     .slice(0, MAX_MATCHES);
 }
 
-function exactIdentity(matches: readonly EventMatchRow[] | readonly CaseMatchRow[]): string | null {
-  const exactIds = unique(
-    matches
-      .filter(
-        (match) =>
-          match.matchKind === 'exact_name' ||
-          match.matchKind === 'exact_alias' ||
-          match.matchKind === 'exact_content',
-      )
-      .map((match) => match.id),
-  );
-  return exactIds.length === 1 ? exactIds[0]! : null;
-}
-
 export class AiCandidateComparisonService {
   public constructor(
     private readonly repository: AiCandidateComparisonRepository,
-    private readonly semantic: Pick<AiSemanticCandidateService, 'compare'>,
+    private readonly semantic: Pick<AiSemanticCandidateService, 'compare' | 'topicRelevance'>,
     private readonly qualityGate = new AiCaptureQualityGate(),
   ) {}
 
@@ -96,18 +86,20 @@ export class AiCandidateComparisonService {
       throw new AiCaptureQualityBlockedError('AI_CANDIDATE_QUALITY_BLOCKED', candidateReport);
     }
 
-    const [normalEvents, normalCases, semanticEvents, semanticCases] = await Promise.all([
-      this.repository.findEventMatches(input.atomicEvents),
-      this.repository.findCaseMatches(input.concreteCases),
-      this.semantic.compare(
-        'event',
-        input.atomicEvents.map((event) => event.name),
-      ),
-      this.semantic.compare(
-        'case',
-        input.concreteCases.map((concreteCase) => concreteCase.content),
-      ),
-    ]);
+    const [normalEvents, normalCases, semanticEvents, semanticCases, topicRelevance] =
+      await Promise.all([
+        this.repository.findEventMatches(input.atomicEvents),
+        this.repository.findCaseMatches(input.concreteCases),
+        this.semantic.compare(
+          'event',
+          input.atomicEvents.map((event) => event.name),
+        ),
+        this.semantic.compare(
+          'case',
+          input.concreteCases.map((concreteCase) => concreteCase.content),
+        ),
+        this.semantic.topicRelevance(input.topic, input.atomicEvents),
+      ]);
 
     const semanticEventIds = unique(semanticEvents.flat().map((match) => match.id));
     const semanticCaseIds = unique(semanticCases.flat().map((match) => match.id));
@@ -136,8 +128,10 @@ export class AiCandidateComparisonService {
 
     const relationProbes: ResolvedRelationProbe[] = [];
     for (const relation of input.causalRelations) {
-      const causeEventId = exactIdentity(eventMatchesByRef.get(relation.causeEventRef) ?? []);
-      const effectEventId = exactIdentity(eventMatchesByRef.get(relation.effectEventRef) ?? []);
+      const causeEventId = uniqueExactMatchId(eventMatchesByRef.get(relation.causeEventRef) ?? []);
+      const effectEventId = uniqueExactMatchId(
+        eventMatchesByRef.get(relation.effectEventRef) ?? [],
+      );
       if (causeEventId && effectEventId) {
         relationProbes.push({ ref: relation.ref, causeEventId, effectEventId });
       }
@@ -148,7 +142,7 @@ export class AiCandidateComparisonService {
     const linkProbes: ResolvedLinkProbe[] = [];
     for (const link of input.relationCaseLinks) {
       const relationMatch = relationMatchByRef.get(link.relationRef);
-      const caseId = exactIdentity(caseMatchesByRef.get(link.caseRef) ?? []);
+      const caseId = uniqueExactMatchId(caseMatchesByRef.get(link.caseRef) ?? []);
       if (relationMatch?.direction === 'existing' && caseId) {
         linkProbes.push({
           relationRef: link.relationRef,
@@ -164,7 +158,7 @@ export class AiCandidateComparisonService {
       ),
     );
 
-    return {
+    const comparison: AiCaptureComparison = {
       atomicEvents: input.atomicEvents.map((event) => ({
         ref: event.ref,
         matches: eventMatchesByRef.get(event.ref) ?? [],
@@ -184,6 +178,15 @@ export class AiCandidateComparisonService {
         exists: existingLinks.has(`${link.relationRef}\u0000${link.caseRef}`),
       })),
       qualityReport: candidateReport,
+    };
+
+    return {
+      ...comparison,
+      qualityReport: this.qualityGate.inspectComparison({
+        candidates: input,
+        comparison,
+        topicRelevance,
+      }),
     };
   }
 

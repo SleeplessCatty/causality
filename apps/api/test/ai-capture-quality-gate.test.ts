@@ -1,6 +1,7 @@
 import {
   aiCaptureCandidateSetSchema,
   type AiCaptureCandidateSet,
+  type AiCaptureComparison,
   type AiCaptureQualityIssue,
 } from '@causality/contracts';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +15,10 @@ import {
 } from '../src/features/ai-capture/aiCaptureQualityGate.js';
 
 const gate = new AiCaptureQualityGate();
+const existingEventId = '10000000-0000-4000-8000-000000000001';
+const otherEventId = '10000000-0000-4000-8000-000000000002';
+const existingCaseId = '20000000-0000-4000-8000-000000000001';
+const updatedAt = '2026-07-29T00:00:00.000Z';
 
 function candidates(overrides: Partial<AiCaptureCandidateSet> = {}): AiCaptureCandidateSet {
   return {
@@ -33,6 +38,17 @@ function candidates(overrides: Partial<AiCaptureCandidateSet> = {}): AiCaptureCa
       },
     ],
     relationCaseLinks: [{ relationRef: 'relation-ab', caseRef: 'case-a' }],
+    ...overrides,
+  };
+}
+
+function comparison(overrides: Partial<AiCaptureComparison> = {}): AiCaptureComparison {
+  return {
+    atomicEvents: [],
+    concreteCases: [],
+    causalRelations: [],
+    relationCaseLinks: [],
+    qualityReport: buildQualityReport([]),
     ...overrides,
   };
 }
@@ -159,6 +175,236 @@ const transitiveInput = candidates({
 });
 
 describe('AiCaptureQualityGate', () => {
+  it('warns when two candidates share the same unique exact match', () => {
+    const input = comparison({
+      atomicEvents: ['event-a', 'event-b'].map((ref) => ({
+        ref,
+        matches: [
+          {
+            id: existingEventId,
+            name: '市场需求下降',
+            description: null,
+            aliases: [],
+            keywords: [],
+            matchKind: 'exact_name',
+            similarity: null,
+            updatedAt,
+          },
+        ],
+      })),
+    });
+
+    expect(
+      gate.inspectComparison({
+        candidates: candidates(),
+        comparison: input,
+        topicRelevance: [],
+      }).issues,
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'AI_QUALITY_EVENTS_SHARE_EXACT_MATCH',
+        severity: 'warning',
+        phase: 'comparison',
+        entityType: 'event',
+        refs: ['event-a', 'event-b'],
+      }),
+    );
+  });
+
+  it('warns when two concrete cases share the same unique exact match', () => {
+    const input = comparison({
+      concreteCases: ['case-a', 'case-b'].map((ref) => ({
+        ref,
+        matches: [
+          {
+            id: existingCaseId,
+            content: '同一已有具体案例',
+            matchKind: 'exact_content',
+            similarity: null,
+            updatedAt,
+          },
+        ],
+      })),
+    });
+
+    expect(
+      gate.inspectComparison({
+        candidates: candidates(),
+        comparison: input,
+        topicRelevance: [],
+      }).issues,
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'AI_QUALITY_CASES_SHARE_EXACT_MATCH',
+        severity: 'warning',
+        phase: 'comparison',
+        entityType: 'case',
+        refs: ['case-a', 'case-b'],
+      }),
+    );
+  });
+
+  it('warns when candidate events first match the same semantic event at the threshold', () => {
+    const input = comparison({
+      atomicEvents: ['event-a', 'event-b'].map((ref) => ({
+        ref,
+        matches: [
+          {
+            id: existingEventId,
+            name: '市场需求下降',
+            description: null,
+            aliases: [],
+            keywords: [],
+            matchKind: 'semantic',
+            similarity: 0.9,
+            updatedAt,
+          },
+        ],
+      })),
+    });
+
+    expect(
+      gate.inspectComparison({
+        candidates: candidates(),
+        comparison: input,
+        topicRelevance: [],
+      }).issues,
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'AI_QUALITY_EVENT_SEMANTIC_DUPLICATE_SUSPECTED',
+        refs: ['event-a', 'event-b'],
+      }),
+    );
+  });
+
+  it('warns when candidate cases first match the same semantic case above the threshold', () => {
+    const input = comparison({
+      concreteCases: ['case-a', 'case-b'].map((ref) => ({
+        ref,
+        matches: [
+          {
+            id: existingCaseId,
+            content: '同一已有具体案例',
+            matchKind: 'semantic',
+            similarity: 0.91,
+            updatedAt,
+          },
+        ],
+      })),
+    });
+
+    expect(
+      gate.inspectComparison({
+        candidates: candidates(),
+        comparison: input,
+        topicRelevance: [],
+      }).issues,
+    ).toContainEqual(
+      expect.objectContaining({
+        code: 'AI_QUALITY_CASE_SEMANTIC_DUPLICATE_SUSPECTED',
+        refs: ['case-a', 'case-b'],
+      }),
+    );
+  });
+
+  it('does not warn for ambiguous exact identities', () => {
+    const exactMatch = (id: string) => ({
+      id,
+      name: `已有事件 ${id}`,
+      description: null,
+      aliases: [],
+      keywords: [],
+      matchKind: 'exact_name' as const,
+      similarity: null,
+      updatedAt,
+    });
+    const input = comparison({
+      atomicEvents: [
+        { ref: 'event-a', matches: [exactMatch(existingEventId), exactMatch(otherEventId)] },
+        { ref: 'event-b', matches: [exactMatch(existingEventId)] },
+      ],
+    });
+
+    const report = gate.inspectComparison({
+      candidates: candidates(),
+      comparison: input,
+      topicRelevance: [],
+    });
+
+    expect(report.issues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'AI_QUALITY_EVENTS_SHARE_EXACT_MATCH' }),
+      ]),
+    );
+  });
+
+  it('does not warn unless every shared semantic target is the first match at 0.90 or higher', () => {
+    const semanticMatch = (id: string, similarity: number) => ({
+      id,
+      name: `已有事件 ${id}`,
+      description: null,
+      aliases: [],
+      keywords: [],
+      matchKind: 'semantic' as const,
+      similarity,
+      updatedAt,
+    });
+    const fuzzyMatch = {
+      ...semanticMatch(otherEventId, 0.99),
+      matchKind: 'fuzzy' as const,
+    };
+
+    const belowThreshold = comparison({
+      atomicEvents: [
+        { ref: 'event-a', matches: [semanticMatch(existingEventId, 0.899)] },
+        { ref: 'event-b', matches: [semanticMatch(existingEventId, 0.9)] },
+      ],
+    });
+    const notFirst = comparison({
+      atomicEvents: [
+        {
+          ref: 'event-a',
+          matches: [fuzzyMatch, semanticMatch(existingEventId, 0.99)],
+        },
+        { ref: 'event-b', matches: [semanticMatch(existingEventId, 0.99)] },
+      ],
+    });
+
+    for (const input of [belowThreshold, notFirst]) {
+      expect(
+        gate.inspectComparison({
+          candidates: candidates(),
+          comparison: input,
+          topicRelevance: [],
+        }).issues,
+      ).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'AI_QUALITY_EVENT_SEMANTIC_DUPLICATE_SUSPECTED' }),
+        ]),
+      );
+    }
+  });
+
+  it('preserves candidate issues and sorts topic signals without letting signals affect status', () => {
+    const report = gate.inspectComparison({
+      candidates: compoundEventInput,
+      comparison: comparison(),
+      topicRelevance: [
+        { ref: 'event-b', similarity: 0.01 },
+        { ref: 'event-a', similarity: 0.99 },
+      ],
+    });
+
+    expect(report).toMatchObject({
+      status: 'warning',
+      issues: [expect.objectContaining({ code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED' })],
+      topicRelevance: [
+        { ref: 'event-a', similarity: 0.99 },
+        { ref: 'event-b', similarity: 0.01 },
+      ],
+    });
+  });
+
   it.each([
     ['duplicate event name', duplicateEventNameInput, 'AI_QUALITY_DUPLICATE_EVENT_NAME'],
     ['duplicate case content', duplicateCaseInput, 'AI_QUALITY_DUPLICATE_CASE_CONTENT'],
