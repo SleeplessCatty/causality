@@ -322,7 +322,11 @@ export const aiCaptureComparisonSchema = z
     concreteCases: z.array(caseComparisonSchema),
     causalRelations: z.array(relationComparisonSchema),
     relationCaseLinks: z.array(linkComparisonSchema),
-    qualityReport: aiCaptureQualityReportSchema.default(EMPTY_AI_CAPTURE_QUALITY_REPORT),
+    qualityReport: aiCaptureQualityReportSchema.default(() => ({
+      ...EMPTY_AI_CAPTURE_QUALITY_REPORT,
+      issues: [],
+      topicRelevance: [],
+    })),
   })
   .strict();
 

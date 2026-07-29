@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  EMPTY_AI_CAPTURE_QUALITY_REPORT,
   aiCaptureCandidateSetOutputSchema,
   aiCaptureCandidateSetSchema,
   aiCaptureComparisonSchema,
@@ -274,6 +275,27 @@ describe('AI capture workflow contracts', () => {
   it('defaults a missing comparison quality report to an empty V1 report', () => {
     const { qualityReport: _qualityReport, ...comparisonWithoutQuality } = comparison;
     expect(aiCaptureComparisonSchema.parse(comparisonWithoutQuality).qualityReport).toEqual({
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [],
+    });
+  });
+
+  it('isolates the empty quality report across legacy comparison parses', () => {
+    const { qualityReport: _qualityReport, ...comparisonWithoutQuality } = comparison;
+    const firstReport = aiCaptureComparisonSchema.parse(comparisonWithoutQuality).qualityReport;
+
+    firstReport.issues.push(qualityReport.issues[0]!);
+    firstReport.topicRelevance.push(qualityReport.topicRelevance[0]!);
+
+    expect(aiCaptureComparisonSchema.parse(comparisonWithoutQuality).qualityReport).toEqual({
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [],
+    });
+    expect(EMPTY_AI_CAPTURE_QUALITY_REPORT).toEqual({
       version: 1,
       status: 'passed',
       issues: [],
