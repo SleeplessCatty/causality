@@ -36,6 +36,12 @@ const comparison: AiCaptureComparison = {
   concreteCases: [],
   causalRelations: [],
   relationCaseLinks: [],
+  qualityReport: {
+    version: 1,
+    status: 'passed',
+    issues: [],
+    topicRelevance: [],
+  },
 };
 
 function createApiFetch(calls: Array<{ path: string; token: string | null }>): typeof fetch {
