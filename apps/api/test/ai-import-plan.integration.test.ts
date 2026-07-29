@@ -666,7 +666,7 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
     },
   );
 
-  it('keeps exact-existing creates distinct from intra-batch conflicts without inserting plans', async () => {
+  it('keeps exact-existing creates distinct from reuse-resolved self-loops without inserting plans', async () => {
     const exactExisting = await prepareInput();
     exactExisting.decisions.atomicEvents[0] = { ref: 'event-a', action: 'create' };
 
@@ -685,27 +685,29 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
     let count = await pool.query<{ count: string }>(`select count(*) from ai_import_plans`);
     expect(Number(count.rows[0]!.count)).toBe(0);
 
-    const batchConflict = await prepareInput();
-    batchConflict.comparison.atomicEvents[1]!.matches = [
-      batchConflict.comparison.atomicEvents[0]!.matches[0]!,
+    const selfLoop = await prepareInput();
+    selfLoop.comparison.atomicEvents[1]!.matches = [
+      selfLoop.comparison.atomicEvents[0]!.matches[0]!,
     ];
-    batchConflict.decisions.atomicEvents[1] = {
+    selfLoop.decisions.atomicEvents[1] = {
       ref: 'event-b',
       action: 'reuse',
       existingId: eventAId,
       appendAliases: [],
       appendKeywords: [],
     };
-    batchConflict.comparison.causalRelations = [{ ref: 'relation-a', status: 'missing' }];
-    batchConflict.decisions.causalRelations = [{ ref: 'relation-a', action: 'create' }];
+    selfLoop.comparison.causalRelations = [{ ref: 'relation-a', status: 'missing' }];
+    selfLoop.decisions.causalRelations = [{ ref: 'relation-a', action: 'create' }];
 
-    await expect(service.prepare(batchConflict)).rejects.toMatchObject({
+    await expect(service.prepare(selfLoop)).rejects.toMatchObject({
       code: 'AI_PLAN_QUALITY_BLOCKED',
       qualityReport: {
         issues: expect.arrayContaining([
           expect.objectContaining({
-            code: 'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
-            message: '批次内多个创建决策指向同一唯一目标',
+            code: 'AI_QUALITY_SELF_LOOP',
+            refs: ['relation-a'],
+            message: '关系两端在复用后指向同一个原子事件',
+            suggestedAction: '修改原因事件或结果事件的复用目标，或跳过该因果关系',
           }),
         ]),
       },

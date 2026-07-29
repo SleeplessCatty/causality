@@ -52,6 +52,11 @@ const planValidationMetadata: Partial<Record<AiCaptureErrorCode, PlanValidationM
     message: '创建决策对应的数据已存在',
     suggestedAction: '复用精确匹配的已有记录，或跳过该候选或关联',
   },
+  AI_PLAN_RELATION_SELF_LOOP: {
+    qualityCode: 'AI_QUALITY_SELF_LOOP',
+    message: '关系两端在复用后指向同一个原子事件',
+    suggestedAction: '修改原因事件或结果事件的复用目标，或跳过该因果关系',
+  },
   AI_PLAN_UNIQUE_CONFLICT: {
     qualityCode: 'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
     message: '批次内多个创建决策指向同一唯一目标',
@@ -622,7 +627,7 @@ export function prepareAiImportMutations(
         throw new AiCaptureDataError('AI_PLAN_CREATE_EXACT_CONFLICT', [candidate.ref]);
       }
       if (eventEndpointKey(causeEvent) === eventEndpointKey(effectEvent)) {
-        throw new AiCaptureDataError('AI_PLAN_UNIQUE_CONFLICT', [candidate.ref]);
+        throw new AiCaptureDataError('AI_PLAN_RELATION_SELF_LOOP', [candidate.ref]);
       }
       createRelations.push({
         ref: candidate.ref,

@@ -6,6 +6,7 @@ import type {
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AiImportPlanRepository } from '../src/features/ai-capture/aiImportPlanRepository.js';
+import { canonicalizeAiImportPlanInput } from '../src/features/ai-capture/aiImportPlanCanonicalizer.js';
 import { AiImportPlanService } from '../src/features/ai-capture/aiImportPlanService.js';
 import type { AiSemanticCandidateService } from '../src/features/ai-capture/aiSemanticCandidateService.js';
 import { AiCaptureDataError } from '../src/features/ai-capture/aiCaptureErrors.js';
@@ -166,6 +167,33 @@ function input(): PrepareAiImportPlanInput {
     },
   };
 }
+
+describe('canonicalizeAiImportPlanInput', () => {
+  it('uses a total order for distinct refs that compare equal under locale collation', () => {
+    const composed = 'é';
+    const decomposed = 'e\u0301';
+
+    const orderedRefs = (refs: [string, string]) => {
+      const value = input();
+      value.candidates.atomicEvents = refs.map((ref, index) => ({
+        ...value.candidates.atomicEvents[index]!,
+        ref,
+      }));
+      value.comparison.atomicEvents = refs.map((ref, index) => ({
+        ...value.comparison.atomicEvents[index]!,
+        ref,
+      }));
+      value.decisions.atomicEvents = refs.map((ref, index) => ({
+        ...value.decisions.atomicEvents[index]!,
+        ref,
+      }));
+
+      return canonicalizeAiImportPlanInput(value).candidates.atomicEvents.map(({ ref }) => ref);
+    };
+
+    expect(orderedRefs([composed, decomposed])).toEqual(orderedRefs([decomposed, composed]));
+  });
+});
 
 function state(): AiImportPlanPreparationState {
   return {
@@ -570,7 +598,7 @@ describe('AI import plan validation and normalization', () => {
 
     expect(() => prepareAiImportMutations(value, state())).toThrowError(
       expect.objectContaining({
-        code: 'AI_PLAN_UNIQUE_CONFLICT',
+        code: 'AI_PLAN_RELATION_SELF_LOOP',
         affectedRefs: ['relation-a'],
       }),
     );
@@ -691,6 +719,12 @@ describe('plan validation quality reports', () => {
       'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
       '批次内多个创建决策指向同一唯一目标',
       '合并最终指向同一记录或唯一键的批次项',
+    ],
+    [
+      'AI_PLAN_RELATION_SELF_LOOP',
+      'AI_QUALITY_SELF_LOOP',
+      '关系两端在复用后指向同一个原子事件',
+      '修改原因事件或结果事件的复用目标，或跳过该因果关系',
     ],
     [
       'AI_PLAN_COMPARISON_STALE',

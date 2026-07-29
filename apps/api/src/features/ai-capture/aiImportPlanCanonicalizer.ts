@@ -1,14 +1,17 @@
 import type { PrepareAiImportPlanInput } from '@causality/contracts';
 
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function byRef<T extends { ref: string }>(values: readonly T[]): T[] {
-  return values.toSorted((left, right) => left.ref.localeCompare(right.ref));
+  return values.toSorted((left, right) => compareText(left.ref, right.ref));
 }
 
 function byLink<T extends { relationRef: string; caseRef: string }>(values: readonly T[]): T[] {
   return values.toSorted(
     (left, right) =>
-      left.relationRef.localeCompare(right.relationRef) ||
-      left.caseRef.localeCompare(right.caseRef),
+      compareText(left.relationRef, right.relationRef) || compareText(left.caseRef, right.caseRef),
   );
 }
 
