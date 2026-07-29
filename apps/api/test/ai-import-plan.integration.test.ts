@@ -69,14 +69,19 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
       [relationId, linkedCaseId],
     );
 
-    const semantic: Pick<AiSemanticCandidateService, 'compare'> = {
+    const semantic: Pick<AiSemanticCandidateService, 'compare' | 'topicRelevance'> = {
       compare: async (_entityType, texts) => texts.map(() => []),
+      topicRelevance: async (_topic, events) =>
+        events.map((event, index) => ({
+          ref: event.ref,
+          similarity: index === 0 ? 0.4 : 0.6,
+        })),
     };
     comparisonService = new AiCandidateComparisonService(
       new PostgresAiCandidateComparisonRepository(pool),
       semantic,
     );
-    service = new AiImportPlanService(new PostgresAiImportPlanRepository(pool));
+    service = new AiImportPlanService(new PostgresAiImportPlanRepository(pool), semantic);
   }, 120_000);
 
   beforeEach(async () => {
@@ -338,5 +343,136 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
       confidenceChanges: [],
     });
     await expect(service.status(plan.id)).resolves.toBe('pending');
+  });
+
+  it('accepts a legacy comparison without a quality report and stores a fresh report', async () => {
+    const value = await prepareInput();
+    delete (value.comparison as unknown as { qualityReport?: unknown }).qualityReport;
+
+    const plan = await service.prepare(value);
+
+    expect(plan.comparison.qualityReport).toEqual({
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [
+        { ref: 'event-a', similarity: 0.4 },
+        { ref: 'event-b', similarity: 0.6 },
+      ],
+    });
+  });
+
+  it('reads an old persisted plan without a quality report as an empty V1 report', async () => {
+    const plan = await service.prepare(await prepareInput());
+    await pool.query(
+      `update ai_import_plans
+       set plan_payload = plan_payload #- '{comparison,qualityReport}'
+       where id = $1`,
+      [plan.id],
+    );
+
+    const restored = await service.get(plan.id);
+
+    expect(restored.comparison.qualityReport).toEqual({
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [],
+    });
+  });
+
+  it('allows and persists recomputed warnings', async () => {
+    const value = await prepareInput();
+    value.candidates.atomicEvents[0]!.name = '港口停止作业并且零部件到货延迟';
+
+    const plan = await service.prepare(value);
+
+    expect(plan.comparison.qualityReport).toMatchObject({
+      status: 'warning',
+      issues: [
+        expect.objectContaining({
+          code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED',
+          severity: 'warning',
+          phase: 'plan',
+          paths: ['/decisions/atomicEvents/0'],
+        }),
+      ],
+    });
+    const stored = await pool.query<{ plan_payload: { comparison: AiImportPlan['comparison'] } }>(
+      `select plan_payload from ai_import_plans where id = $1`,
+      [plan.id],
+    );
+    expect(stored.rows[0]!.plan_payload.comparison.qualityReport.status).toBe('warning');
+  });
+
+  it('does not insert a plan when the recomputed gate blocks', async () => {
+    const value = await prepareInput();
+    value.decisions.causalRelations[0] = {
+      ref: 'relation-a',
+      action: 'skip',
+      reason: '关系暂不入库',
+    };
+    value.decisions.relationCaseLinks[0] = {
+      relationRef: 'relation-a',
+      caseRef: 'case-linked',
+      action: 'skip',
+      reason: '关联随关系跳过',
+    };
+
+    await expect(service.prepare(value)).rejects.toMatchObject({
+      code: 'AI_PLAN_QUALITY_BLOCKED',
+    });
+    const count = await pool.query<{ count: string }>(`select count(*) from ai_import_plans`);
+    expect(Number(count.rows[0]!.count)).toBe(0);
+  });
+
+  it('does not insert a plan when existing mutation validation is mapped', async () => {
+    const value = await prepareInput();
+    value.comparison.atomicEvents[0]!.matches[0]!.updatedAt = '2026-07-28T09:59:59.000Z';
+
+    await expect(service.prepare(value)).rejects.toMatchObject({
+      code: 'AI_PLAN_QUALITY_BLOCKED',
+      qualityReport: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({ code: 'AI_QUALITY_COMPARISON_STALE' }),
+        ]),
+      },
+    });
+    const count = await pool.query<{ count: string }>(`select count(*) from ai_import_plans`);
+    expect(Number(count.rows[0]!.count)).toBe(0);
+  });
+
+  it('does not persist forged client status, issues, or topic signals', async () => {
+    const value = await prepareInput();
+    value.comparison.qualityReport = {
+      version: 1,
+      status: 'blocked',
+      issues: [
+        {
+          code: 'AI_QUALITY_REPORT_BLOCKED',
+          severity: 'error',
+          phase: 'plan',
+          entityType: 'batch',
+          refs: ['forged-ref'],
+          paths: ['/decisions'],
+          message: '伪造问题',
+          suggestedAction: '不应保存',
+          aiCanRepair: true,
+        },
+      ],
+      topicRelevance: [{ ref: 'event-a', similarity: 1 }],
+    };
+
+    const plan = await service.prepare(value);
+
+    expect(plan.comparison.qualityReport).toEqual({
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [
+        { ref: 'event-a', similarity: 0.4 },
+        { ref: 'event-b', similarity: 0.6 },
+      ],
+    });
   });
 });

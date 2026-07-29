@@ -3,6 +3,7 @@ import {
   type AiCaptureCandidateSet,
   type AiCaptureComparison,
   type AiCaptureQualityIssue,
+  type PrepareAiImportPlanInput,
 } from '@causality/contracts';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -50,6 +51,49 @@ function comparison(overrides: Partial<AiCaptureComparison> = {}): AiCaptureComp
     relationCaseLinks: [],
     qualityReport: buildQualityReport([]),
     ...overrides,
+  };
+}
+
+function planInput(
+  candidateSet: AiCaptureCandidateSet = candidates(),
+  comparisonOverrides: Partial<AiCaptureComparison> = {},
+): PrepareAiImportPlanInput {
+  return {
+    candidates: candidateSet,
+    comparison: comparison({
+      atomicEvents: candidateSet.atomicEvents.map((event) => ({ ref: event.ref, matches: [] })),
+      concreteCases: candidateSet.concreteCases.map((concreteCase) => ({
+        ref: concreteCase.ref,
+        matches: [],
+      })),
+      causalRelations: candidateSet.causalRelations.map((relation) => ({
+        ref: relation.ref,
+        status: 'missing',
+      })),
+      relationCaseLinks: candidateSet.relationCaseLinks.map((link) => ({
+        ...link,
+        exists: false,
+      })),
+      ...comparisonOverrides,
+    }),
+    decisions: {
+      atomicEvents: candidateSet.atomicEvents.map((event) => ({
+        ref: event.ref,
+        action: 'create',
+      })),
+      concreteCases: candidateSet.concreteCases.map((concreteCase) => ({
+        ref: concreteCase.ref,
+        action: 'create',
+      })),
+      causalRelations: candidateSet.causalRelations.map((relation) => ({
+        ref: relation.ref,
+        action: 'create',
+      })),
+      relationCaseLinks: candidateSet.relationCaseLinks.map((link) => ({
+        ...link,
+        action: 'create',
+      })),
+    },
   };
 }
 
@@ -512,6 +556,192 @@ describe('AiCaptureQualityGate', () => {
     ]);
     expect(gate.inspectCandidates(transitiveInput)).toEqual(
       gate.inspectCandidates(transitiveInput),
+    );
+  });
+
+  it('blocks active events and cases orphaned by skipped relation decisions', () => {
+    const value = planInput();
+    value.decisions.causalRelations[0] = {
+      ref: 'relation-ab',
+      action: 'skip',
+      reason: '关系暂不入库',
+    };
+    value.decisions.relationCaseLinks[0] = {
+      relationRef: 'relation-ab',
+      caseRef: 'case-a',
+      action: 'skip',
+      reason: '关联随关系跳过',
+    };
+
+    const report = gate.inspectPlan(value);
+
+    expect(report.status).toBe('blocked');
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'AI_QUALITY_ACTIVE_EVENT_ORPHANED',
+          phase: 'plan',
+          refs: ['event-a'],
+          paths: ['/decisions/atomicEvents/0'],
+        }),
+        expect.objectContaining({
+          code: 'AI_QUALITY_ACTIVE_CASE_ORPHANED',
+          phase: 'plan',
+          refs: ['case-a'],
+          paths: ['/decisions/concreteCases/0'],
+        }),
+      ]),
+    );
+  });
+
+  it('blocks active relations and links that depend on skipped decisions', () => {
+    const value = planInput();
+    value.decisions.atomicEvents[0] = {
+      ref: 'event-a',
+      action: 'skip',
+      reason: '事件暂不入库',
+    };
+    value.decisions.concreteCases[0] = {
+      ref: 'case-a',
+      action: 'skip',
+      reason: '案例暂不入库',
+    };
+
+    const report = gate.inspectPlan(value);
+
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
+          entityType: 'relation',
+          refs: ['relation-ab', 'event-a'],
+          paths: ['/decisions/causalRelations/0', '/decisions/atomicEvents/0'],
+        }),
+        expect.objectContaining({
+          code: 'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
+          entityType: 'link',
+          refs: ['relation-ab', 'case-a'],
+          paths: ['/decisions/relationCaseLinks/0', '/decisions/concreteCases/0'],
+        }),
+      ]),
+    );
+    expect(
+      report.issues.every((issue) => issue.paths.every((path) => path.startsWith('/decisions'))),
+    ).toBe(true);
+  });
+
+  it('keeps recomputed candidate and comparison warnings as plan-phase warnings', () => {
+    const sharedMatch = {
+      id: existingEventId,
+      name: '已有事件',
+      description: null,
+      aliases: [],
+      keywords: [],
+      matchKind: 'exact_name' as const,
+      similarity: null,
+      updatedAt,
+    };
+    const value = planInput(compoundEventInput, {
+      atomicEvents: [
+        { ref: 'event-a', matches: [sharedMatch] },
+        { ref: 'event-b', matches: [sharedMatch] },
+      ],
+    });
+
+    const report = gate.inspectPlan(value);
+
+    expect(report.status).toBe('warning');
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'AI_QUALITY_COMPOUND_EVENT_SUSPECTED',
+          severity: 'warning',
+          phase: 'plan',
+          paths: ['/decisions/atomicEvents/0'],
+        }),
+        expect.objectContaining({
+          code: 'AI_QUALITY_EVENTS_SHARE_EXACT_MATCH',
+          severity: 'warning',
+          phase: 'plan',
+          paths: ['/decisions/atomicEvents/0', '/decisions/atomicEvents/1'],
+        }),
+      ]),
+    );
+  });
+
+  it('warns when an active relation loses all cases through final decisions', () => {
+    const value = planInput();
+    value.decisions.concreteCases[0] = {
+      ref: 'case-a',
+      action: 'skip',
+      reason: '案例暂不入库',
+    };
+    value.decisions.relationCaseLinks[0] = {
+      relationRef: 'relation-ab',
+      caseRef: 'case-a',
+      action: 'skip',
+      reason: '关联随案例跳过',
+    };
+
+    const report = gate.inspectPlan(value);
+
+    expect(report).toMatchObject({
+      status: 'warning',
+      issues: [
+        expect.objectContaining({
+          code: 'AI_QUALITY_RELATION_WITHOUT_CASE',
+          severity: 'warning',
+          phase: 'plan',
+          refs: ['relation-ab'],
+          paths: ['/decisions/causalRelations/0'],
+        }),
+      ],
+    });
+  });
+
+  it('ignores a forged blocked client report when recomputed inputs pass', () => {
+    const value = planInput();
+    value.comparison.qualityReport = buildQualityReport([
+      {
+        code: 'AI_QUALITY_REPORT_BLOCKED',
+        severity: 'error',
+        phase: 'plan',
+        entityType: 'batch',
+        refs: ['forged-ref'],
+        paths: ['/decisions'],
+        message: '伪造问题',
+        suggestedAction: '不应保留',
+        aiCanRepair: true,
+      },
+    ]);
+
+    expect(gate.inspectPlan(value)).toMatchObject({
+      status: 'passed',
+      issues: [],
+      topicRelevance: [],
+    });
+  });
+
+  it('reports a recomputed blocked candidate set at the plan phase', () => {
+    const report = gate.inspectPlan(planInput(duplicateEventNameInput));
+
+    expect(report.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'AI_QUALITY_DUPLICATE_EVENT_NAME',
+          severity: 'error',
+          phase: 'plan',
+          refs: ['event-b'],
+          paths: ['/decisions/atomicEvents/1'],
+        }),
+        expect.objectContaining({
+          code: 'AI_QUALITY_REPORT_BLOCKED',
+          severity: 'error',
+          phase: 'plan',
+          refs: ['event-b'],
+          paths: ['/decisions'],
+        }),
+      ]),
     );
   });
 });

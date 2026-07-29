@@ -1,9 +1,19 @@
-import type { AiCaptureComparison, PrepareAiImportPlanInput } from '@causality/contracts';
-import { describe, expect, it } from 'vitest';
+import type {
+  AiCaptureComparison,
+  AiImportPlan,
+  PrepareAiImportPlanInput,
+} from '@causality/contracts';
+import { describe, expect, it, vi } from 'vitest';
 
+import type { AiImportPlanRepository } from '../src/features/ai-capture/aiImportPlanRepository.js';
+import { AiImportPlanService } from '../src/features/ai-capture/aiImportPlanService.js';
+import type { AiSemanticCandidateService } from '../src/features/ai-capture/aiSemanticCandidateService.js';
+import { AiCaptureDataError } from '../src/features/ai-capture/aiCaptureErrors.js';
+import { AiCaptureQualityGate } from '../src/features/ai-capture/aiCaptureQualityGate.js';
 import {
   type AiImportPlanPreparationState,
   prepareAiImportMutations,
+  qualityReportForPlanValidationError,
 } from '../src/features/ai-capture/aiImportPlanValidator.js';
 
 const eventAId = '10000000-0000-4000-8000-000000000001';
@@ -77,6 +87,12 @@ function comparison(): AiCaptureComparison {
       },
     ],
     relationCaseLinks: [{ relationRef: 'relation-a', caseRef: 'case-a', exists: true }],
+    qualityReport: {
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [],
+    },
   };
 }
 
@@ -598,5 +614,230 @@ describe('AI import plan validation and normalization', () => {
       relationCaseCreated: 2,
       confidenceChanged: 1,
     });
+  });
+});
+
+describe('plan validation quality reports', () => {
+  it.each([
+    ['AI_PLAN_INPUT_INVALID', 'AI_QUALITY_COMPARISON_COVERAGE_INVALID'],
+    ['AI_PLAN_DECISIONS_INVALID', 'AI_QUALITY_DECISION_COVERAGE_INVALID'],
+    ['AI_PLAN_REUSE_INVALID', 'AI_QUALITY_REUSE_TARGET_INVALID'],
+    ['AI_PLAN_DEPENDENCY_SKIPPED', 'AI_QUALITY_DECISION_DEPENDENCY_INVALID'],
+    ['AI_PLAN_UNIQUE_CONFLICT', 'AI_QUALITY_BATCH_UNIQUE_CONFLICT'],
+    ['AI_PLAN_COMPARISON_STALE', 'AI_QUALITY_COMPARISON_STALE'],
+  ] as const)('maps %s to %s with a stable decision path', (errorCode, qualityCode) => {
+    const report = qualityReportForPlanValidationError(
+      new AiCaptureDataError(errorCode, ['event-a']),
+      input(),
+    );
+
+    expect(report).toMatchObject({
+      status: 'blocked',
+      issues: [
+        expect.objectContaining({
+          code: qualityCode,
+          severity: 'error',
+          phase: 'plan',
+          entityType: 'event',
+          refs: ['event-a'],
+          paths: ['/candidates/atomicEvents/0', '/decisions/atomicEvents/0'],
+        }),
+      ],
+    });
+  });
+
+  it('falls back to the decisions batch path when an error has no locatable ref', () => {
+    const report = qualityReportForPlanValidationError(
+      new AiCaptureDataError('AI_PLAN_INPUT_INVALID'),
+      input(),
+    );
+
+    expect(report.issues[0]).toMatchObject({
+      entityType: 'batch',
+      refs: [],
+      paths: ['/decisions'],
+    });
+  });
+
+  it('uses a batch entity when the same ref is ambiguous across decision types', () => {
+    const value = input();
+    value.candidates.causalRelations[0]!.ref = 'event-a';
+    value.candidates.relationCaseLinks[0]!.relationRef = 'event-a';
+    value.comparison.causalRelations[0]!.ref = 'event-a';
+    value.comparison.relationCaseLinks[0]!.relationRef = 'event-a';
+    value.decisions.causalRelations[0] = {
+      ref: 'event-a',
+      action: 'reuse',
+      existingId: relationId,
+    };
+    value.decisions.relationCaseLinks[0] = {
+      relationRef: 'event-a',
+      caseRef: 'case-a',
+      action: 'reuse',
+    };
+
+    const report = qualityReportForPlanValidationError(
+      new AiCaptureDataError('AI_PLAN_REUSE_INVALID', ['event-a']),
+      value,
+    );
+
+    expect(report.issues[0]).toMatchObject({
+      entityType: 'batch',
+      refs: ['event-a'],
+      paths: [
+        '/candidates/atomicEvents/0',
+        '/decisions/atomicEvents/0',
+        '/candidates/causalRelations/0',
+        '/decisions/causalRelations/0',
+      ],
+    });
+  });
+});
+
+describe('AiImportPlanService quality gate', () => {
+  function dependencies() {
+    const repository = {
+      loadPreparationState: vi.fn().mockResolvedValue(state()),
+      createPlan: vi.fn().mockResolvedValue({ id: 'plan-id' } as AiImportPlan),
+      status: vi.fn(),
+      get: vi.fn(),
+    } satisfies AiImportPlanRepository;
+    const semantic = {
+      topicRelevance: vi.fn().mockResolvedValue([
+        { ref: 'event-a', similarity: 0.4 },
+        { ref: 'event-b', similarity: 0.6 },
+      ]),
+    } satisfies Pick<AiSemanticCandidateService, 'topicRelevance'>;
+    return { repository, semantic };
+  }
+
+  it('recomputes and replaces a forged client quality report', async () => {
+    const { repository, semantic } = dependencies();
+    const value = input();
+    value.comparison.qualityReport = {
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [{ ref: 'event-a', similarity: 1 }],
+    };
+    const service = new AiImportPlanService(repository, semantic);
+
+    await service.prepare(value);
+
+    expect(repository.loadPreparationState).toHaveBeenCalledWith(value);
+    expect(semantic.topicRelevance).toHaveBeenCalledWith(
+      value.candidates.topic,
+      value.candidates.atomicEvents,
+    );
+    expect(repository.createPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        comparison: expect.objectContaining({
+          qualityReport: {
+            version: 1,
+            status: 'passed',
+            issues: [],
+            topicRelevance: [
+              { ref: 'event-a', similarity: 0.4 },
+              { ref: 'event-b', similarity: 0.6 },
+            ],
+          },
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it('loads current state before semantic recomputation and plan inspection', async () => {
+    const { repository, semantic } = dependencies();
+    const calls: string[] = [];
+    repository.loadPreparationState.mockImplementation(async () => {
+      calls.push('load-state');
+      return state();
+    });
+    semantic.topicRelevance.mockImplementation(async () => {
+      calls.push('topic-relevance');
+      return [];
+    });
+    repository.createPlan.mockImplementation(async () => {
+      calls.push('create-plan');
+      return { id: 'plan-id' } as AiImportPlan;
+    });
+    const qualityGate = new AiCaptureQualityGate();
+    const inspectPlan = qualityGate.inspectPlan.bind(qualityGate);
+    vi.spyOn(qualityGate, 'inspectPlan').mockImplementation((value) => {
+      calls.push('inspect-plan');
+      return inspectPlan(value);
+    });
+    const service = new AiImportPlanService(repository, semantic, qualityGate);
+
+    await service.prepare(input());
+
+    expect(calls).toEqual(['load-state', 'topic-relevance', 'inspect-plan', 'create-plan']);
+  });
+
+  it('rejects malformed input before loading state or calling semantic services', async () => {
+    const { repository, semantic } = dependencies();
+    const service = new AiImportPlanService(repository, semantic);
+
+    await expect(service.prepare({})).rejects.toMatchObject({ code: 'AI_PLAN_INPUT_INVALID' });
+    expect(repository.loadPreparationState).not.toHaveBeenCalled();
+    expect(semantic.topicRelevance).not.toHaveBeenCalled();
+    expect(repository.createPlan).not.toHaveBeenCalled();
+  });
+
+  it('does not create a plan when an active event becomes orphaned', async () => {
+    const { repository, semantic } = dependencies();
+    const value = input();
+    value.decisions.causalRelations[0] = {
+      ref: 'relation-a',
+      action: 'skip',
+      reason: '关系暂不入库',
+    };
+    value.decisions.relationCaseLinks[0] = {
+      relationRef: 'relation-a',
+      caseRef: 'case-a',
+      action: 'skip',
+      reason: '关联随关系跳过',
+    };
+    const service = new AiImportPlanService(repository, semantic);
+
+    await expect(service.prepare(value)).rejects.toMatchObject({
+      code: 'AI_PLAN_QUALITY_BLOCKED',
+      qualityReport: {
+        status: 'blocked',
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: 'AI_QUALITY_ACTIVE_EVENT_ORPHANED',
+            phase: 'plan',
+            paths: expect.arrayContaining(['/decisions/atomicEvents/0']),
+          }),
+        ]),
+      },
+    });
+    expect(repository.createPlan).not.toHaveBeenCalled();
+  });
+
+  it('maps existing mutation validation failures and does not create a plan', async () => {
+    const { repository, semantic } = dependencies();
+    const changedState = state();
+    changedState.events[0]!.aliases.push('对比完成后新增的别名');
+    repository.loadPreparationState.mockResolvedValue(changedState);
+    const service = new AiImportPlanService(repository, semantic);
+
+    await expect(service.prepare(input())).rejects.toMatchObject({
+      code: 'AI_PLAN_QUALITY_BLOCKED',
+      qualityReport: {
+        status: 'blocked',
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: 'AI_QUALITY_COMPARISON_STALE',
+            phase: 'plan',
+            refs: ['event-a'],
+            paths: ['/candidates/atomicEvents/0', '/decisions/atomicEvents/0'],
+          }),
+        ]),
+      },
+    });
+    expect(repository.createPlan).not.toHaveBeenCalled();
   });
 });

@@ -8,7 +8,11 @@ import type {
   AiWorkflowError,
   PrepareAiImportPlanInput,
 } from '@causality/contracts';
-import { aiImportCommitResultSchema, aiWorkflowErrorSchema } from '@causality/contracts';
+import {
+  aiCaptureComparisonSchema,
+  aiImportCommitResultSchema,
+  aiWorkflowErrorSchema,
+} from '@causality/contracts';
 import type { Pool, PoolClient } from 'pg';
 
 import { AiCaptureDataError } from './aiCaptureErrors.js';
@@ -127,6 +131,7 @@ function canonicalInput(input: PrepareAiImportPlanInput): PrepareAiImportPlanInp
       concreteCases: byRef(input.comparison.concreteCases),
       causalRelations: byRef(input.comparison.causalRelations),
       relationCaseLinks: byLink(input.comparison.relationCaseLinks),
+      qualityReport: input.comparison.qualityReport,
     },
     decisions: {
       atomicEvents: byRef(input.decisions.atomicEvents),
@@ -155,7 +160,7 @@ function publicPlan(row: PlanRow): AiImportPlan {
     topic: row.topic,
     clientName: row.client_name,
     candidates: row.candidate_payload,
-    comparison: row.plan_payload.comparison,
+    comparison: aiCaptureComparisonSchema.parse(row.plan_payload.comparison),
     decisions: row.plan_payload.decisions,
     summary: row.plan_payload.mutations.summary,
     createdAt: row.created_at.toISOString(),

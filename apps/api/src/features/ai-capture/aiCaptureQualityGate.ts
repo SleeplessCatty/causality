@@ -7,6 +7,7 @@ import {
   type AiCaptureQualityReport,
   type AiCaptureQualitySeverity,
   type AiCaptureTopicRelevanceSignal,
+  type PrepareAiImportPlanInput,
 } from '@causality/contracts';
 import type { z } from 'zod';
 
@@ -115,6 +116,22 @@ function comparisonIssue(
   };
 }
 
+function planIssue(
+  details: Omit<IssueDetails, 'path'> & { paths: string[] },
+): AiCaptureQualityIssue {
+  return {
+    code: details.code,
+    severity: details.severity,
+    phase: 'plan',
+    entityType: details.entityType,
+    refs: details.refs,
+    paths: details.paths.length > 0 ? details.paths : ['/decisions'],
+    message: details.message,
+    suggestedAction: suggestionForCode(details.code),
+    aiCanRepair: true,
+  };
+}
+
 export function buildQualityReport(
   issues: readonly AiCaptureQualityIssue[],
   topicRelevance: readonly AiCaptureTopicRelevanceSignal[] = [],
@@ -166,6 +183,226 @@ export class AiCaptureQualityGate {
       ],
       input.topicRelevance,
     );
+  }
+
+  public inspectPlan(input: PrepareAiImportPlanInput): AiCaptureQualityReport {
+    const candidateReport = this.inspectCandidates(input.candidates);
+    const comparisonReport = buildQualityReport([
+      ...sharedExactMatchIssues(input.comparison),
+      ...sharedSemanticMatchIssues(input.comparison),
+    ]);
+    const candidateIssues = candidateReport.issues
+      .filter((issue) => issue.code !== 'AI_QUALITY_RELATION_WITHOUT_CASE')
+      .map((issue) => issueForPlan(input, issue));
+    const comparisonWarnings = comparisonReport.issues.map((issue) => issueForPlan(input, issue));
+    const blockedCandidateIssues = candidateReport.issues.filter(
+      (issue) => issue.severity === 'error',
+    );
+
+    return buildQualityReport([
+      ...candidateIssues,
+      ...comparisonWarnings,
+      ...(blockedCandidateIssues.length > 0
+        ? [
+            planIssue({
+              code: 'AI_QUALITY_REPORT_BLOCKED',
+              severity: 'error',
+              entityType: 'batch',
+              refs: [...new Set(blockedCandidateIssues.flatMap((issue) => issue.refs))],
+              paths: ['/decisions'],
+              message: '候选集合重新检查后仍存在阻断问题',
+            }),
+          ]
+        : []),
+      ...planDecisionIssues(input),
+    ]);
+  }
+}
+
+function issueForPlan(
+  input: PrepareAiImportPlanInput,
+  issue: AiCaptureQualityIssue,
+): AiCaptureQualityIssue {
+  return planIssue({
+    code: issue.code,
+    severity: issue.severity,
+    entityType: issue.entityType,
+    refs: issue.refs,
+    paths: decisionPaths(input, issue.entityType, issue.refs),
+    message: issue.message,
+  });
+}
+
+function planDecisionIssues(input: PrepareAiImportPlanInput): AiCaptureQualityIssue[] {
+  const eventDecisions = new Map(
+    input.decisions.atomicEvents.map((decision, index) => [decision.ref, { decision, index }]),
+  );
+  const caseDecisions = new Map(
+    input.decisions.concreteCases.map((decision, index) => [decision.ref, { decision, index }]),
+  );
+  const relationDecisions = new Map(
+    input.decisions.causalRelations.map((decision, index) => [decision.ref, { decision, index }]),
+  );
+  const linkDecisions = new Map(
+    input.decisions.relationCaseLinks.map((decision, index) => [
+      relationKey(decision.relationRef, decision.caseRef),
+      { decision, index },
+    ]),
+  );
+  const activeRelationRefs = new Set(
+    input.decisions.causalRelations.flatMap((decision) =>
+      decision.action === 'skip' ? [] : [decision.ref],
+    ),
+  );
+  const activeLinkKeys = new Set(
+    input.decisions.relationCaseLinks.flatMap((decision) =>
+      decision.action === 'skip' ? [] : [relationKey(decision.relationRef, decision.caseRef)],
+    ),
+  );
+  const connectedEventRefs = new Set(
+    input.candidates.causalRelations.flatMap((relation) =>
+      activeRelationRefs.has(relation.ref) ? [relation.causeEventRef, relation.effectEventRef] : [],
+    ),
+  );
+  const linkedCaseRefs = new Set(
+    input.candidates.relationCaseLinks.flatMap((link) =>
+      activeLinkKeys.has(relationKey(link.relationRef, link.caseRef)) ? [link.caseRef] : [],
+    ),
+  );
+  const linkedRelationRefs = new Set(
+    input.candidates.relationCaseLinks.flatMap((link) =>
+      activeLinkKeys.has(relationKey(link.relationRef, link.caseRef)) ? [link.relationRef] : [],
+    ),
+  );
+  const issues: AiCaptureQualityIssue[] = [];
+
+  input.decisions.atomicEvents.forEach((decision, index) => {
+    if (decision.action !== 'skip' && !connectedEventRefs.has(decision.ref)) {
+      issues.push(
+        planIssue({
+          code: 'AI_QUALITY_ACTIVE_EVENT_ORPHANED',
+          severity: 'error',
+          entityType: 'event',
+          refs: [decision.ref],
+          paths: [`/decisions/atomicEvents/${index}`],
+          message: '有效原子事件尚未进入有效因果关系决策',
+        }),
+      );
+    }
+  });
+
+  input.decisions.concreteCases.forEach((decision, index) => {
+    if (decision.action !== 'skip' && !linkedCaseRefs.has(decision.ref)) {
+      issues.push(
+        planIssue({
+          code: 'AI_QUALITY_ACTIVE_CASE_ORPHANED',
+          severity: 'error',
+          entityType: 'case',
+          refs: [decision.ref],
+          paths: [`/decisions/concreteCases/${index}`],
+          message: '有效具体案例尚未进入有效案例关联决策',
+        }),
+      );
+    }
+  });
+
+  input.decisions.causalRelations.forEach((decision, index) => {
+    if (decision.action !== 'skip' && !linkedRelationRefs.has(decision.ref)) {
+      issues.push(
+        planIssue({
+          code: 'AI_QUALITY_RELATION_WITHOUT_CASE',
+          severity: 'warning',
+          entityType: 'relation',
+          refs: [decision.ref],
+          paths: [`/decisions/causalRelations/${index}`],
+          message: '有效因果关系尚未关联具体案例',
+        }),
+      );
+    }
+  });
+
+  input.candidates.causalRelations.forEach((relation) => {
+    const relationEntry = relationDecisions.get(relation.ref);
+    if (!relationEntry || relationEntry.decision.action === 'skip') return;
+    const skippedEventRefs = [relation.causeEventRef, relation.effectEventRef].filter(
+      (ref) => eventDecisions.get(ref)?.decision.action === 'skip',
+    );
+    if (skippedEventRefs.length === 0) return;
+    issues.push(
+      planIssue({
+        code: 'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
+        severity: 'error',
+        entityType: 'relation',
+        refs: [relation.ref, ...skippedEventRefs],
+        paths: [
+          `/decisions/causalRelations/${relationEntry.index}`,
+          ...skippedEventRefs.flatMap((ref) => {
+            const entry = eventDecisions.get(ref);
+            return entry ? [`/decisions/atomicEvents/${entry.index}`] : [];
+          }),
+        ],
+        message: '有效因果关系依赖已跳过的原子事件决策',
+      }),
+    );
+  });
+
+  input.candidates.relationCaseLinks.forEach((link) => {
+    const key = relationKey(link.relationRef, link.caseRef);
+    const linkEntry = linkDecisions.get(key);
+    if (!linkEntry || linkEntry.decision.action === 'skip') return;
+    const relationEntry = relationDecisions.get(link.relationRef);
+    const caseEntry = caseDecisions.get(link.caseRef);
+    const relationSkipped = relationEntry?.decision.action === 'skip';
+    const caseSkipped = caseEntry?.decision.action === 'skip';
+    if (!relationSkipped && !caseSkipped) return;
+    issues.push(
+      planIssue({
+        code: 'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
+        severity: 'error',
+        entityType: 'link',
+        refs: [link.relationRef, link.caseRef],
+        paths: [
+          `/decisions/relationCaseLinks/${linkEntry.index}`,
+          ...(relationSkipped && relationEntry
+            ? [`/decisions/causalRelations/${relationEntry.index}`]
+            : []),
+          ...(caseSkipped && caseEntry ? [`/decisions/concreteCases/${caseEntry.index}`] : []),
+        ],
+        message: '有效案例关联依赖已跳过的因果关系或具体案例决策',
+      }),
+    );
+  });
+
+  return issues;
+}
+
+function decisionPaths(
+  input: PrepareAiImportPlanInput,
+  entityType: AiCaptureQualityEntityType,
+  refs: readonly string[],
+): string[] {
+  const refSet = new Set(refs);
+  switch (entityType) {
+    case 'event':
+      return input.decisions.atomicEvents.flatMap((decision, index) =>
+        refSet.has(decision.ref) ? [`/decisions/atomicEvents/${index}`] : [],
+      );
+    case 'case':
+      return input.decisions.concreteCases.flatMap((decision, index) =>
+        refSet.has(decision.ref) ? [`/decisions/concreteCases/${index}`] : [],
+      );
+    case 'relation':
+      return input.decisions.causalRelations.flatMap((decision, index) =>
+        refSet.has(decision.ref) ? [`/decisions/causalRelations/${index}`] : [],
+      );
+    case 'link':
+      return input.decisions.relationCaseLinks.flatMap((decision, index) =>
+        refSet.has(decision.relationRef) && refSet.has(decision.caseRef)
+          ? [`/decisions/relationCaseLinks/${index}`]
+          : [],
+      );
+    case 'batch':
+      return ['/decisions'];
   }
 }
 

@@ -3,11 +3,24 @@ import { createHash } from 'node:crypto';
 import {
   prepareAiImportPlanInputSchema,
   type AiImportChangeCounts,
+  type AiCaptureQualityEntityType,
+  type AiCaptureQualityIssueCode,
+  type AiCaptureQualityReport,
   type PrepareAiImportPlanInput,
 } from '@causality/contracts';
 
-import { AiCaptureDataError } from './aiCaptureErrors.js';
+import { AiCaptureDataError, type AiCaptureErrorCode } from './aiCaptureErrors.js';
+import { buildQualityReport } from './aiCaptureQualityGate.js';
 import { calculateAutomaticConfidence } from '../relations/relationConfidencePolicy.js';
+
+const planValidationCodeMap: Partial<Record<AiCaptureErrorCode, AiCaptureQualityIssueCode>> = {
+  AI_PLAN_INPUT_INVALID: 'AI_QUALITY_COMPARISON_COVERAGE_INVALID',
+  AI_PLAN_DECISIONS_INVALID: 'AI_QUALITY_DECISION_COVERAGE_INVALID',
+  AI_PLAN_REUSE_INVALID: 'AI_QUALITY_REUSE_TARGET_INVALID',
+  AI_PLAN_DEPENDENCY_SKIPPED: 'AI_QUALITY_DECISION_DEPENDENCY_INVALID',
+  AI_PLAN_UNIQUE_CONFLICT: 'AI_QUALITY_BATCH_UNIQUE_CONFLICT',
+  AI_PLAN_COMPARISON_STALE: 'AI_QUALITY_COMPARISON_STALE',
+};
 
 export interface ExistingEventState {
   id: string;
@@ -264,6 +277,110 @@ export function parseAiImportPlanInput(input: unknown): PrepareAiImportPlanInput
     throw new AiCaptureDataError('AI_PLAN_INPUT_INVALID');
   }
   return parsed.data;
+}
+
+export function qualityReportForPlanValidationError(
+  error: AiCaptureDataError,
+  input: PrepareAiImportPlanInput,
+): AiCaptureQualityReport {
+  const code = planValidationCodeMap[error.code];
+  if (!code) throw error;
+
+  const location = planValidationLocation(input, error.affectedRefs);
+  return buildQualityReport([
+    {
+      code,
+      severity: 'error',
+      phase: 'plan',
+      entityType: location.entityType,
+      refs: [...error.affectedRefs],
+      paths: location.paths,
+      message: error.message,
+      suggestedAction: suggestionForPlanValidationCode(code),
+      aiCanRepair: true,
+    },
+  ]);
+}
+
+function planValidationLocation(
+  input: PrepareAiImportPlanInput,
+  affectedRefs: readonly string[],
+): { entityType: AiCaptureQualityEntityType; paths: string[] } {
+  const paths: string[] = [];
+  const entityTypes: AiCaptureQualityEntityType[] = [];
+  const add = (path: string, entityType: AiCaptureQualityEntityType) => {
+    if (!paths.includes(path)) paths.push(path);
+    entityTypes.push(entityType);
+  };
+
+  for (const ref of affectedRefs) {
+    const candidateEventIndex = input.candidates.atomicEvents.findIndex(
+      (candidate) => candidate.ref === ref,
+    );
+    if (candidateEventIndex >= 0) {
+      add(`/candidates/atomicEvents/${candidateEventIndex}`, 'event');
+    }
+    const eventIndex = input.decisions.atomicEvents.findIndex((decision) => decision.ref === ref);
+    if (eventIndex >= 0) add(`/decisions/atomicEvents/${eventIndex}`, 'event');
+    const candidateCaseIndex = input.candidates.concreteCases.findIndex(
+      (candidate) => candidate.ref === ref,
+    );
+    if (candidateCaseIndex >= 0) {
+      add(`/candidates/concreteCases/${candidateCaseIndex}`, 'case');
+    }
+    const caseIndex = input.decisions.concreteCases.findIndex((decision) => decision.ref === ref);
+    if (caseIndex >= 0) add(`/decisions/concreteCases/${caseIndex}`, 'case');
+    const candidateRelationIndex = input.candidates.causalRelations.findIndex(
+      (candidate) => candidate.ref === ref,
+    );
+    if (candidateRelationIndex >= 0) {
+      add(`/candidates/causalRelations/${candidateRelationIndex}`, 'relation');
+    }
+    const relationIndex = input.decisions.causalRelations.findIndex(
+      (decision) => decision.ref === ref,
+    );
+    if (relationIndex >= 0) add(`/decisions/causalRelations/${relationIndex}`, 'relation');
+  }
+
+  const refSet = new Set(affectedRefs);
+  input.candidates.relationCaseLinks.forEach((candidate, index) => {
+    if (refSet.has(candidate.relationRef) && refSet.has(candidate.caseRef)) {
+      add(`/candidates/relationCaseLinks/${index}`, 'link');
+    }
+  });
+  input.decisions.relationCaseLinks.forEach((decision, index) => {
+    if (refSet.has(decision.relationRef) && refSet.has(decision.caseRef)) {
+      add(`/decisions/relationCaseLinks/${index}`, 'link');
+    }
+  });
+
+  if (paths.length === 0) return { entityType: 'batch', paths: ['/decisions'] };
+  const uniqueEntityTypes = new Set(entityTypes);
+  const entityType = uniqueEntityTypes.has('link')
+    ? 'link'
+    : uniqueEntityTypes.size === 1
+      ? (entityTypes[0] ?? 'batch')
+      : 'batch';
+  return { entityType, paths };
+}
+
+function suggestionForPlanValidationCode(code: AiCaptureQualityIssueCode): string {
+  switch (code) {
+    case 'AI_QUALITY_COMPARISON_COVERAGE_INVALID':
+      return '重新对比完整候选集合并提交全部对比结果';
+    case 'AI_QUALITY_DECISION_COVERAGE_INVALID':
+      return '为每个候选和案例关联补齐唯一决策';
+    case 'AI_QUALITY_REUSE_TARGET_INVALID':
+      return '仅复用同一候选对比结果中的已有记录';
+    case 'AI_QUALITY_DECISION_DEPENDENCY_INVALID':
+      return '同步跳过依赖项或恢复其上游决策';
+    case 'AI_QUALITY_BATCH_UNIQUE_CONFLICT':
+      return '合并最终指向同一记录或唯一键的批次项';
+    case 'AI_QUALITY_COMPARISON_STALE':
+      return '基于当前数据库状态重新执行候选对比';
+    default:
+      return '修正完整方案后重新生成';
+  }
 }
 
 export function prepareAiImportMutations(

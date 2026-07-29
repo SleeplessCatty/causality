@@ -33,6 +33,7 @@ import type { Pool } from 'pg';
 import { PostgresAiCandidateComparisonRepository } from './aiCandidateComparisonRepository.js';
 import { AiCandidateComparisonService } from './aiCandidateComparisonService.js';
 import { AiCaptureDataError } from './aiCaptureErrors.js';
+import { AiCaptureQualityGate } from './aiCaptureQualityGate.js';
 import { PostgresAiImportCommitRepository } from './aiImportCommitRepository.js';
 import { AiImportCommitService } from './aiImportCommitService.js';
 import { PostgresAiImportHistoryRepository } from './aiImportHistoryRepository.js';
@@ -100,12 +101,18 @@ export function createAiCaptureRouteDependencies(
     workerClient: semanticWorkerClient,
     pool,
   });
+  const qualityGate = new AiCaptureQualityGate();
   return {
     comparisonService: new AiCandidateComparisonService(
       new PostgresAiCandidateComparisonRepository(pool),
       semanticCandidates,
+      qualityGate,
     ),
-    planService: new AiImportPlanService(new PostgresAiImportPlanRepository(pool)),
+    planService: new AiImportPlanService(
+      new PostgresAiImportPlanRepository(pool),
+      semanticCandidates,
+      qualityGate,
+    ),
     commitService: new AiImportCommitService(new PostgresAiImportCommitRepository(pool)),
     historyRepository: new PostgresAiImportHistoryRepository(pool),
     authorizer: new PostgresMcpSettingsRepository(pool),
