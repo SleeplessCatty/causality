@@ -56,6 +56,26 @@ export {
 } from './ai-capture/aiCaptureSchemas.js';
 
 export {
+  EMPTY_AI_CAPTURE_QUALITY_REPORT,
+  aiCaptureQualityEntityTypeSchema,
+  aiCaptureQualityIssueCodeSchema,
+  aiCaptureQualityIssueSchema,
+  aiCaptureQualityPhaseSchema,
+  aiCaptureQualityReportSchema,
+  aiCaptureQualitySeveritySchema,
+  aiCaptureQualityStatusSchema,
+  aiCaptureTopicRelevanceSignalSchema,
+  type AiCaptureQualityEntityType,
+  type AiCaptureQualityIssue,
+  type AiCaptureQualityIssueCode,
+  type AiCaptureQualityPhase,
+  type AiCaptureQualityReport,
+  type AiCaptureQualitySeverity,
+  type AiCaptureQualityStatus,
+  type AiCaptureTopicRelevanceSignal,
+} from './ai-capture/aiCaptureQualitySchemas.js';
+
+export {
   caseCandidateListResponseSchema,
   caseCandidateQuerySchema,
   caseContentSchema,

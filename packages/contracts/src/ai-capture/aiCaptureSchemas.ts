@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+import {
+  EMPTY_AI_CAPTURE_QUALITY_REPORT,
+  aiCaptureQualityReportSchema,
+} from './aiCaptureQualitySchemas.js';
 import { caseContentSchema } from '../cases/caseSchemas.js';
 import { eventAliasSchema, eventKeywordSchema, eventNameSchema } from '../events/eventSchemas.js';
 import { MAIN_LIST_PAGE_SIZE } from '../pagination/pageSchemas.js';
@@ -89,6 +93,9 @@ function addDuplicateRefIssues(
         code: 'custom',
         message: `候选引用 ${value.ref} 重复`,
         path: [path, index, 'ref'],
+        params: {
+          qualityCode: 'AI_QUALITY_DUPLICATE_REF',
+        },
       });
     }
     seen.add(value.ref);
@@ -127,6 +134,10 @@ function addCandidateSetReferenceIssues(
         code: 'custom',
         message: `原因事件引用 ${relation.causeEventRef} 不存在`,
         path: ['causalRelations', index, 'causeEventRef'],
+        params: {
+          qualityCode: 'AI_QUALITY_REFERENCE_MISSING',
+          entityType: 'relation',
+        },
       });
     }
     if (!eventRefs.has(relation.effectEventRef)) {
@@ -134,6 +145,10 @@ function addCandidateSetReferenceIssues(
         code: 'custom',
         message: `结果事件引用 ${relation.effectEventRef} 不存在`,
         path: ['causalRelations', index, 'effectEventRef'],
+        params: {
+          qualityCode: 'AI_QUALITY_REFERENCE_MISSING',
+          entityType: 'relation',
+        },
       });
     }
     if (relation.causeEventRef === relation.effectEventRef) {
@@ -141,6 +156,10 @@ function addCandidateSetReferenceIssues(
         code: 'custom',
         message: '因果关系不能形成自环',
         path: ['causalRelations', index, 'effectEventRef'],
+        params: {
+          qualityCode: 'AI_QUALITY_SELF_LOOP',
+          entityType: 'relation',
+        },
       });
     }
   });
@@ -152,6 +171,10 @@ function addCandidateSetReferenceIssues(
         code: 'custom',
         message: `因果关系引用 ${link.relationRef} 不存在`,
         path: ['relationCaseLinks', index, 'relationRef'],
+        params: {
+          qualityCode: 'AI_QUALITY_REFERENCE_MISSING',
+          entityType: 'link',
+        },
       });
     }
     if (!caseRefs.has(link.caseRef)) {
@@ -159,6 +182,10 @@ function addCandidateSetReferenceIssues(
         code: 'custom',
         message: `具体案例引用 ${link.caseRef} 不存在`,
         path: ['relationCaseLinks', index, 'caseRef'],
+        params: {
+          qualityCode: 'AI_QUALITY_REFERENCE_MISSING',
+          entityType: 'link',
+        },
       });
     }
     const key = `${link.relationRef}\u0000${link.caseRef}`;
@@ -167,6 +194,10 @@ function addCandidateSetReferenceIssues(
         code: 'custom',
         message: '候选案例关联重复',
         path: ['relationCaseLinks', index],
+        params: {
+          qualityCode: 'AI_QUALITY_DUPLICATE_LINK',
+          entityType: 'link',
+        },
       });
     }
     linkKeys.add(key);
@@ -291,6 +322,7 @@ export const aiCaptureComparisonSchema = z
     concreteCases: z.array(caseComparisonSchema),
     causalRelations: z.array(relationComparisonSchema),
     relationCaseLinks: z.array(linkComparisonSchema),
+    qualityReport: aiCaptureQualityReportSchema.default(EMPTY_AI_CAPTURE_QUALITY_REPORT),
   })
   .strict();
 
@@ -447,6 +479,7 @@ export const aiWorkflowErrorSchema = z
     aiCanRepair: z.boolean(),
     retryCurrentPlan: z.boolean(),
     suggestedAction: z.string().min(1),
+    qualityReport: aiCaptureQualityReportSchema.optional(),
   })
   .strict();
 

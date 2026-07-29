@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   aiCaptureCandidateSetOutputSchema,
   aiCaptureCandidateSetSchema,
+  aiCaptureComparisonSchema,
   aiCaptureDecisionSetSchema,
+  aiCaptureQualityReportSchema,
   aiImportBatchListResponseSchema,
   aiImportCommitResultSchema,
   aiImportPlanSchema,
@@ -101,6 +103,12 @@ const comparison = {
     },
   ],
   relationCaseLinks: [{ relationRef: 'relation-1', caseRef: 'case-1', exists: true }],
+  qualityReport: {
+    version: 1,
+    status: 'passed' as const,
+    issues: [],
+    topicRelevance: [],
+  },
 };
 
 const decisions = {
@@ -131,6 +139,25 @@ const zeroCounts = {
   relationCaseCreated: 0,
   relationCaseReused: 0,
   confidenceChanged: 0,
+};
+
+const qualityReport = {
+  version: 1,
+  status: 'warning' as const,
+  issues: [
+    {
+      code: 'AI_QUALITY_ORPHAN_EVENT' as const,
+      severity: 'warning' as const,
+      phase: 'candidate' as const,
+      entityType: 'event' as const,
+      refs: ['event-1'],
+      paths: ['/atomicEvents/0'],
+      message: '原子事件尚未关联因果关系',
+      suggestedAction: '补充因果关系或确认保留',
+      aiCanRepair: true,
+    },
+  ],
+  topicRelevance: [{ ref: 'event-1', similarity: 0.7 }],
 };
 
 describe('AI capture candidate contracts', () => {
@@ -244,6 +271,34 @@ describe('AI capture candidate contracts', () => {
 });
 
 describe('AI capture workflow contracts', () => {
+  it('defaults a missing comparison quality report to an empty V1 report', () => {
+    const { qualityReport: _qualityReport, ...comparisonWithoutQuality } = comparison;
+    expect(aiCaptureComparisonSchema.parse(comparisonWithoutQuality).qualityReport).toEqual({
+      version: 1,
+      status: 'passed',
+      issues: [],
+      topicRelevance: [],
+    });
+  });
+
+  it('accepts an optional workflow quality report and rejects unknown fields', () => {
+    const workflowError = {
+      category: 'data' as const,
+      code: 'AI_PLAN_STALE',
+      message: '依赖数据已经变化',
+      affectedRefs: ['event-1'],
+      aiCanRepair: true,
+      retryCurrentPlan: false,
+      suggestedAction: '重新对比并生成方案',
+    };
+    expect(aiWorkflowErrorSchema.parse({ ...workflowError, qualityReport }).qualityReport).toEqual(
+      qualityReport,
+    );
+    expect(aiCaptureQualityReportSchema.safeParse({ ...qualityReport, extra: true }).success).toBe(
+      false,
+    );
+  });
+
   it('accepts strict decisions and immutable plan preparation input', () => {
     expect(aiCaptureDecisionSetSchema.parse(decisions)).toEqual(decisions);
     expect(
