@@ -1,9 +1,15 @@
 import {
   caseDetailSchema,
   caseRelationListResponseSchema,
+  causalEvidenceBundleResponseSchema,
+  causalPathResponseSchema,
   relationListResponseSchema,
   type CaseDetail,
   type CaseRelationListResponse,
+  type CausalEvidenceBundleInput,
+  type CausalEvidenceBundleResponse,
+  type CausalPathQuery,
+  type CausalPathResponse,
   type RelationListResponse,
   type SearchMode,
 } from '@causality/contracts';
@@ -21,6 +27,8 @@ export interface CausalityEvidenceApi {
     searchMode: SearchMode,
     page?: number,
   ): Promise<RelationListResponse>;
+  findCausalPaths(input: CausalPathQuery): Promise<CausalPathResponse>;
+  getCausalEvidenceBundle(input: CausalEvidenceBundleInput): Promise<CausalEvidenceBundleResponse>;
 }
 
 const readOnlyAnnotations = {
@@ -50,6 +58,30 @@ const caseWithRelationsSchema = z
   .object({
     concreteCase: caseDetailSchema,
     relations: caseRelationListResponseSchema,
+  })
+  .strict();
+
+const findPathsInputSchema = z
+  .object({
+    sourceEventId: z.uuid().describe('起点原子事件 ID'),
+    targetEventId: z.uuid().describe('终点原子事件 ID'),
+    maxDepth: z.number().int().min(1).max(10).default(5).describe('最大关系层数'),
+    pathLimit: z.number().int().min(1).max(10).default(10).describe('最多返回路径数'),
+    minConfidence: z.number().min(0).max(100).default(0).describe('最低置信度百分比'),
+    minCaseCount: z.number().int().min(0).max(1_000).default(0).describe('最少案例数'),
+  })
+  .strict();
+
+const evidenceBundleInputSchema = z
+  .object({
+    relationIds: z.array(z.uuid()).min(1).max(10).describe('按路径顺序排列的关系 ID'),
+    caseLimitPerRelation: z
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .default(5)
+      .describe('每条关系返回的案例数'),
   })
   .strict();
 
@@ -111,6 +143,86 @@ function relationSearchText(result: RelationListResponse): string {
   ].join('\n');
 }
 
+function pathText(result: CausalPathResponse): string {
+  const lines = result.paths.map((path, index) => {
+    const eventChain = path.events.map((event) => event.name).join(' → ');
+    const relationIds = path.relations.map((relation) => relation.id).join('、');
+    return (
+      '- 路径 ' +
+      String(index + 1) +
+      '：' +
+      eventChain +
+      '（关系 ID: ' +
+      relationIds +
+      '；跳数: ' +
+      path.hopCount +
+      '；最低置信度: ' +
+      path.minimumConfidence +
+      '%；案例总数: ' +
+      path.totalCaseCount +
+      '）'
+    );
+  });
+  return [
+    result.truncated
+      ? '结果不完整；停止原因：' + result.truncatedReason + '。'
+      : '路径查询已经在当前限制内完成。',
+    '从 ' +
+      result.sourceEvent.name +
+      ' 到 ' +
+      result.targetEvent.name +
+      ' 找到 ' +
+      result.paths.length +
+      ' 条有向路径。',
+    ...(lines.length > 0 ? lines : ['当前筛选条件下没有找到有向路径。']),
+  ].join('\n');
+}
+
+function evidenceBundleText(result: CausalEvidenceBundleResponse): string {
+  const names = new Map(result.events.map((event) => [event.id, event.name]));
+  const relationLines = result.relations.flatMap((relation) => {
+    const header =
+      '- ' +
+      (names.get(relation.causeEventId) ?? relation.causeEventId) +
+      ' → ' +
+      (names.get(relation.effectEventId) ?? relation.effectEventId) +
+      '（关系 ID: ' +
+      relation.id +
+      '；置信度: ' +
+      relation.confidence +
+      '%；案例总数: ' +
+      relation.caseCount +
+      '；说明: ' +
+      (relation.description ?? '无') +
+      '）';
+    if (relation.evidenceStatus === 'no_cases') return [header, '  无案例依据'];
+    return [
+      header,
+      ...relation.cases.map(
+        (concreteCase) =>
+          '  案例：' +
+          concreteCase.content +
+          '（案例 ID: ' +
+          concreteCase.id +
+          '；关联时间: ' +
+          concreteCase.linkedAt +
+          '）',
+      ),
+      relation.casesTruncated ? '  仍有更多案例，可使用关系案例工具继续查询。' : '',
+    ].filter(Boolean);
+  });
+  return [
+    '证据路径：' + result.events.map((event) => event.name).join(' → '),
+    '跳数：' +
+      result.hopCount +
+      '；最低置信度：' +
+      result.minimumConfidence +
+      '%；案例总数：' +
+      result.totalCaseCount,
+    ...relationLines,
+  ].join('\n');
+}
+
 export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvidenceApi): void {
   server.registerTool(
     'get_concrete_case',
@@ -149,6 +261,36 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
     async ({ query, searchMode, page }) => {
       const result = await apiClient.searchRelations(query, searchMode, page);
       return textResult(relationSearchText(result), { ...result });
+    },
+  );
+
+  server.registerTool(
+    'find_causal_paths',
+    {
+      title: '查询因果路径',
+      description: '沿真实因果方向查询两个原子事件之间受深度、数量和质量限制的简单路径。',
+      inputSchema: findPathsInputSchema,
+      outputSchema: causalPathResponseSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (input) => {
+      const result = await apiClient.findCausalPaths(input);
+      return textResult(pathText(result), { ...result });
+    },
+  );
+
+  server.registerTool(
+    'get_causal_evidence_bundle',
+    {
+      title: '生成因果证据包',
+      description: '按一条已选择路径中的有序关系 ID 读取关系详情和限量案例依据。',
+      inputSchema: evidenceBundleInputSchema,
+      outputSchema: causalEvidenceBundleResponseSchema,
+      annotations: readOnlyAnnotations,
+    },
+    async (input) => {
+      const result = await apiClient.getCausalEvidenceBundle(input);
+      return textResult(evidenceBundleText(result), { ...result });
     },
   );
 }

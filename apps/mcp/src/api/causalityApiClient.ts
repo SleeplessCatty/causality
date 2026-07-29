@@ -6,6 +6,8 @@ import {
   aiImportPlanSchema,
   aiWorkflowErrorSchema,
   apiErrorSchema,
+  causalEvidenceBundleResponseSchema,
+  causalPathResponseSchema,
   caseDetailSchema,
   caseListResponseSchema,
   caseRelationListResponseSchema,
@@ -23,11 +25,15 @@ import {
   type AiImportPlan,
   type AiImportPlanStatus,
   type AiWorkflowError,
+  type CausalEvidenceBundleInput,
+  type CausalEvidenceBundleResponse,
   type CaseDetail,
   type CaseListResponse,
   type CaseRelationListResponse,
   type CausalGraphQuery,
   type CausalGraphResponse,
+  type CausalPathQuery,
+  type CausalPathResponse,
   type EventDetail,
   type EventListResponse,
   type EventRelationListResponse,
@@ -239,6 +245,23 @@ export class CausalityApiClient {
     return this.request('/api/causal-graph', {
       query: input,
       schema: causalGraphResponseSchema,
+    });
+  }
+
+  public findCausalPaths(input: CausalPathQuery): Promise<CausalPathResponse> {
+    return this.request('/api/causal-paths', {
+      query: input,
+      schema: causalPathResponseSchema,
+    });
+  }
+
+  public getCausalEvidenceBundle(
+    input: CausalEvidenceBundleInput,
+  ): Promise<CausalEvidenceBundleResponse> {
+    return this.request('/api/causal-evidence-bundles', {
+      method: 'POST',
+      body: input,
+      schema: causalEvidenceBundleResponseSchema,
     });
   }
 

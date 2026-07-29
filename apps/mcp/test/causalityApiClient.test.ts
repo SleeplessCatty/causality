@@ -7,7 +7,9 @@ import type {
   CaseDetail,
   CaseListResponse,
   CaseRelationListResponse,
+  CausalEvidenceBundleResponse,
   CausalGraphResponse,
+  CausalPathResponse,
   EventDetail,
   EventListResponse,
   EventRelationListResponse,
@@ -175,6 +177,57 @@ const graph: CausalGraphResponse = {
     relationCount: 1,
     stopReason: 'exhausted',
   },
+};
+
+const pathResponse: CausalPathResponse = {
+  sourceEvent: { id: eventId, name: eventDetail.name },
+  targetEvent: { id: effectEventId, name: '交付周期延长' },
+  paths: [
+    {
+      events: [
+        { id: eventId, name: eventDetail.name },
+        { id: effectEventId, name: '交付周期延长' },
+      ],
+      relations: [
+        {
+          id: relationId,
+          causeEventId: eventId,
+          effectEventId,
+          confidence: 20,
+          caseCount: 1,
+        },
+      ],
+      hopCount: 1,
+      minimumConfidence: 20,
+      totalCaseCount: 1,
+    },
+  ],
+  truncated: false,
+  truncatedReason: null,
+  expandedStateCount: 1,
+};
+
+const evidenceBundle: CausalEvidenceBundleResponse = {
+  events: pathResponse.paths[0]!.events,
+  relations: [
+    {
+      ...pathResponse.paths[0]!.relations[0]!,
+      description: '物流受阻会延长交付周期',
+      cases: [
+        {
+          id: caseId,
+          content: caseList.items[0]!.content,
+          linkedAt: timestamp,
+        },
+      ],
+      returnedCaseCount: 1,
+      casesTruncated: false,
+      evidenceStatus: 'supported',
+    },
+  ],
+  hopCount: 1,
+  minimumConfidence: 20,
+  totalCaseCount: 1,
 };
 
 const candidates: AiCaptureCandidateSet = {
@@ -393,6 +446,46 @@ describe('CausalityApiClient', () => {
     }
   });
 
+  it('queries bounded causal paths and posts an ordered evidence bundle', async () => {
+    const requests: Array<{ url: URL; init?: RequestInit }> = [];
+    const fetchImplementation: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({ url, ...(init ? { init } : {}) });
+      return jsonResponse(url.pathname === '/api/causal-paths' ? pathResponse : evidenceBundle);
+    };
+    const client = createClient(fetchImplementation);
+
+    await client.findCausalPaths({
+      sourceEventId: eventId,
+      targetEventId: effectEventId,
+      maxDepth: 5,
+      pathLimit: 10,
+      minConfidence: 10,
+      minCaseCount: 1,
+    });
+    await client.getCausalEvidenceBundle({
+      relationIds: [relationId],
+      caseLimitPerRelation: 5,
+    });
+
+    expect(requests[0]?.url.pathname).toBe('/api/causal-paths');
+    expect(Object.fromEntries(requests[0]!.url.searchParams)).toEqual({
+      sourceEventId: eventId,
+      targetEventId: effectEventId,
+      maxDepth: '5',
+      pathLimit: '10',
+      minConfidence: '10',
+      minCaseCount: '1',
+    });
+    expect(requests[0]?.init?.method).toBe('GET');
+    expect(requests[1]?.url.pathname).toBe('/api/causal-evidence-bundles');
+    expect(requests[1]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({
+      relationIds: [relationId],
+      caseLimitPerRelation: 5,
+    });
+  });
+
   it('keeps API adapter pagination defaults for existing callers', async () => {
     const urls: URL[] = [];
     const fetchImplementation: typeof fetch = async (input) => {
@@ -524,6 +617,33 @@ describe('CausalityApiClient', () => {
       code: 'INVALID_API_RESPONSE',
     } satisfies Partial<CausalityApiClientError>);
     await expect(client.searchRelations('供应链', 'standard')).rejects.toMatchObject({
+      kind: 'contract',
+      code: 'INVALID_API_RESPONSE',
+    } satisfies Partial<CausalityApiClientError>);
+  });
+
+  it('rejects invalid path and evidence responses', async () => {
+    const client = createClient(async () => jsonResponse({ paths: [] }));
+
+    await expect(
+      client.findCausalPaths({
+        sourceEventId: eventId,
+        targetEventId: effectEventId,
+        maxDepth: 5,
+        pathLimit: 10,
+        minConfidence: 0,
+        minCaseCount: 0,
+      }),
+    ).rejects.toMatchObject({
+      kind: 'contract',
+      code: 'INVALID_API_RESPONSE',
+    } satisfies Partial<CausalityApiClientError>);
+    await expect(
+      client.getCausalEvidenceBundle({
+        relationIds: [relationId],
+        caseLimitPerRelation: 5,
+      }),
+    ).rejects.toMatchObject({
       kind: 'contract',
       code: 'INVALID_API_RESPONSE',
     } satisfies Partial<CausalityApiClientError>);

@@ -6,7 +6,11 @@ import type {
   CaseDetail,
   CaseListResponse,
   CaseRelationListResponse,
+  CausalEvidenceBundleInput,
+  CausalEvidenceBundleResponse,
   CausalGraphResponse,
+  CausalPathQuery,
+  CausalPathResponse,
   EventDetail,
   EventListResponse,
   EventRelationListResponse,
@@ -214,6 +218,16 @@ class FakeKnowledgeApi implements CausalityMcpApi {
     return graph;
   }
 
+  public async findCausalPaths(_input: CausalPathQuery): Promise<CausalPathResponse> {
+    throw new Error('not used');
+  }
+
+  public async getCausalEvidenceBundle(
+    _input: CausalEvidenceBundleInput,
+  ): Promise<CausalEvidenceBundleResponse> {
+    throw new Error('not used');
+  }
+
   public async compare(): Promise<AiCaptureComparison> {
     throw new Error('not used');
   }
@@ -277,6 +291,8 @@ describe('read-only knowledge tools', () => {
       'query_local_causal_graph',
       'get_concrete_case',
       'search_causal_relations',
+      'find_causal_paths',
+      'get_causal_evidence_bundle',
       'compare_knowledge_candidates',
       'get_import_plan_status',
       'get_import_result',
@@ -298,7 +314,7 @@ describe('read-only knowledge tools', () => {
   it('exposes read, capture, and canonical prompt capabilities from one server factory', async () => {
     const [tools, prompts] = await Promise.all([mcpClient.listTools(), mcpClient.listPrompts()]);
 
-    expect(tools.tools).toHaveLength(13);
+    expect(tools.tools).toHaveLength(15);
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(['causality_capture']);
   });
 

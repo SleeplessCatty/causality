@@ -85,7 +85,7 @@ describe('stdio MCP transport', () => {
       client.callTool({ name: 'compare_knowledge_candidates', arguments: candidates }),
     ]);
 
-    expect(tools.tools).toHaveLength(13);
+    expect(tools.tools).toHaveLength(15);
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(['causality_capture']);
     expect(compared.structuredContent).toEqual(comparison);
     expect(calls).toEqual([

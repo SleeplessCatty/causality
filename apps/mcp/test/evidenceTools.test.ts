@@ -1,6 +1,10 @@
 import type {
   CaseDetail,
   CaseRelationListResponse,
+  CausalEvidenceBundleInput,
+  CausalEvidenceBundleResponse,
+  CausalPathQuery,
+  CausalPathResponse,
   RelationListResponse,
 } from '@causality/contracts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -60,6 +64,52 @@ const relationSearch: RelationListResponse = {
   semanticIndexNotice: null,
 };
 
+const pathResponse: CausalPathResponse = {
+  sourceEvent: { id: eventId, name: '供应链中断' },
+  targetEvent: { id: effectEventId, name: '交付周期延长' },
+  paths: [
+    {
+      events: [
+        { id: eventId, name: '供应链中断' },
+        { id: effectEventId, name: '交付周期延长' },
+      ],
+      relations: [
+        {
+          id: relationId,
+          causeEventId: eventId,
+          effectEventId,
+          confidence: 20,
+          caseCount: 1,
+        },
+      ],
+      hopCount: 1,
+      minimumConfidence: 20,
+      totalCaseCount: 1,
+    },
+  ],
+  truncated: true,
+  truncatedReason: 'expansion_limit',
+  expandedStateCount: 10_000,
+};
+
+const evidenceBundle: CausalEvidenceBundleResponse = {
+  events: pathResponse.paths[0]!.events,
+  relations: [
+    {
+      ...pathResponse.paths[0]!.relations[0]!,
+      description: '物流受阻会延长交付周期',
+      caseCount: 0,
+      cases: [],
+      returnedCaseCount: 0,
+      casesTruncated: false,
+      evidenceStatus: 'no_cases',
+    },
+  ],
+  hopCount: 1,
+  minimumConfidence: 20,
+  totalCaseCount: 0,
+};
+
 class FakeEvidenceApi implements CausalityEvidenceApi {
   public caseRelationInput: { id: string; limit: number; cursor?: string } | null = null;
   public relationSearchInput: {
@@ -67,6 +117,8 @@ class FakeEvidenceApi implements CausalityEvidenceApi {
     searchMode: 'standard' | 'enhanced';
     page: number;
   } | null = null;
+  public pathInput: CausalPathQuery | null = null;
+  public evidenceInput: CausalEvidenceBundleInput | null = null;
 
   public async getCase(): Promise<CaseDetail> {
     return concreteCase;
@@ -87,6 +139,18 @@ class FakeEvidenceApi implements CausalityEvidenceApi {
   ): Promise<RelationListResponse> {
     this.relationSearchInput = { query, searchMode, page };
     return relationSearch;
+  }
+
+  public async findCausalPaths(input: CausalPathQuery): Promise<CausalPathResponse> {
+    this.pathInput = input;
+    return pathResponse;
+  }
+
+  public async getCausalEvidenceBundle(
+    input: CausalEvidenceBundleInput,
+  ): Promise<CausalEvidenceBundleResponse> {
+    this.evidenceInput = input;
+    return evidenceBundle;
   }
 }
 
@@ -120,12 +184,14 @@ describe('read-only evidence tools', () => {
     await server.close();
   });
 
-  it('registers the first two strict read-only evidence tools', async () => {
+  it('registers all four strict read-only evidence tools', async () => {
     const tools = await client.listTools();
 
     expect(tools.tools.map((tool) => tool.name)).toEqual([
       'get_concrete_case',
       'search_causal_relations',
+      'find_causal_paths',
+      'get_causal_evidence_bundle',
     ]);
     for (const tool of tools.tools) {
       expect(tool.annotations).toMatchObject({
@@ -196,6 +262,53 @@ describe('read-only evidence tools', () => {
       searchMode: 'standard',
       page: 1,
     });
+  });
+
+  it('returns bounded paths and clearly warns about incomplete expansion', async () => {
+    const result = await client.callTool({
+      name: 'find_causal_paths',
+      arguments: {
+        sourceEventId: eventId,
+        targetEventId: effectEventId,
+        maxDepth: 5,
+        pathLimit: 10,
+        minConfidence: 0,
+        minCaseCount: 0,
+      },
+    });
+
+    expect(api.pathInput).toEqual({
+      sourceEventId: eventId,
+      targetEventId: effectEventId,
+      maxDepth: 5,
+      pathLimit: 10,
+      minConfidence: 0,
+      minCaseCount: 0,
+    });
+    expect(result.structuredContent).toEqual(pathResponse);
+    expect(textContent(result)).toContain('供应链中断 → 交付周期延长');
+    expect(textContent(result)).toContain('关系 ID: ' + relationId);
+    expect(textContent(result)).toContain('结果不完整');
+    expect(textContent(result)).toContain('expansion_limit');
+  });
+
+  it('returns a readable evidence bundle without inventing case support', async () => {
+    const result = await client.callTool({
+      name: 'get_causal_evidence_bundle',
+      arguments: {
+        relationIds: [relationId],
+        caseLimitPerRelation: 5,
+      },
+    });
+
+    expect(api.evidenceInput).toEqual({
+      relationIds: [relationId],
+      caseLimitPerRelation: 5,
+    });
+    expect(result.structuredContent).toEqual(evidenceBundle);
+    expect(textContent(result)).toContain('供应链中断 → 交付周期延长');
+    expect(textContent(result)).toContain('无案例依据');
+    expect(textContent(result)).not.toContain('已验证');
   });
 
   it('rejects invalid limits and unknown fields before API calls', async () => {
