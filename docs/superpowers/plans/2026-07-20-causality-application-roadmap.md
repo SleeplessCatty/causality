@@ -1,8 +1,8 @@
 # 通用因果知识应用总体实施阶段路线图
 
-版本：V1.23
+版本：V1.24
 日期：2026-07-30
-状态：第一阶段 v0.1.0 已正式发布，第二阶段已结束，P3-01 基础交付已完成，P3-01R1 Task 1–3 已完成，Task 4 实施计划等待审核
+状态：第一阶段 v0.1.0 已正式发布，第二阶段已结束，P3-01 基础交付已完成，P3-01R1 Task 1–3 已完成，Task 4 实施完成并等待人工复核
 
 ## 1. 路线图目标
 
@@ -570,7 +570,7 @@ docs/superpowers/specs/2026-07-28-p3-01-mcp-ai-capture-design.md
 
 ### P3-01R1 MCP 查询完整性与采集质量优化
 
-**状态：** Task 1、Task 2、Task 3 已完成；Task 4 实施计划等待审核。P3-01R1 未标记完成。
+**状态：** Task 1、Task 2、Task 3 已完成；Task 4 实施完成，等待人工复核。P3-01R1 未标记完成。
 
 **目标：** 在不引入应用内在线 AI、不扩大通用写权限的前提下，补齐现有 MCP 查询接口，改进采集规范和服务端质量门禁，并增加供外部 AI 分析因果链的高价值只读入口。
 
@@ -590,7 +590,7 @@ docs/superpowers/specs/2026-07-28-p3-01-mcp-ai-capture-design.md
 docs/superpowers/specs/2026-07-29-p3-01r1-mcp-quality-query-optimization-design.md
 ```
 
-Task 3 已通过自动化门禁和人工复核。最终回归为 122 个测试文件、881 项单元测试及 19 项相关数据库集成测试通过；全仓 `lint`、`format:check`、六工作区 `typecheck` 和构建全部通过。Task 4 设计文档为 `docs/superpowers/specs/2026-07-30-p3-01r1-task4-readonly-query-evidence-tools-design.md`。
+Task 3 已通过自动化门禁和人工复核。Task 4 已完成实施和自动化验证，最终回归为 126 个测试文件、917 项单元测试、API 27 个文件/237 项及 Semantic Worker 2 个文件/47 项集成测试、8 项 Compose 合约测试通过；全仓 `lint`、`format:check`、六工作区 `typecheck`、构建和差异检查全部通过。Task 4 设计文档为 `docs/superpowers/specs/2026-07-30-p3-01r1-task4-readonly-query-evidence-tools-design.md`，当前等待人工复核。
 
 ### P3-02 基于知识库的结果推测
 
@@ -654,7 +654,7 @@ Task 3 已通过自动化门禁和人工复核。最终回归为 122 个测试�
 | P2-05 历史案例检索与路径分析           | 已跳过       |
 | P2-06 生产运维与安全增强               | 已跳过       |
 | P3-01 MCP 与外部 AI 会话采集入库       | 已完成       |
-| P3-01R1 MCP 查询与采集质量优化         | 等待实施计划审核 |
+| P3-01R1 MCP 查询与采集质量优化         | 等待人工复核 |
 | P3-02 基于知识库的结果推测             | 未开始       |
 
 ## 13. 下一步
@@ -729,4 +729,4 @@ docs/superpowers/plans/2026-07-28-p3-01-mcp-ai-capture-implementation.md
 
 实施计划已完成执行；MCP 查询、受控采集入库、成功历史和使用文档已经形成基础闭环。
 
-P3-01R1 阶段设计已经审核通过。Task 1“查询分页与游标完整性”、Task 2“统一采集规范与 V2 Prompt”和 Task 3“服务端候选质量门禁”已经完成；Task 4“只读查询与证据工具”设计已审核通过，实施计划等待审核。P3-01R1 在 Task 4、Task 5 完成前不标记为“已完成”。用户已明确取消跨模型采集质量测试集。
+P3-01R1 阶段设计已经审核通过。Task 1“查询分页与游标完整性”、Task 2“统一采集规范与 V2 Prompt”和 Task 3“服务端候选质量门禁”已经完成；Task 4“只读查询与证据工具”已经完成实施和自动化验证，当前等待人工复核。P3-01R1 在 Task 4、Task 5 完成前不标记为“已完成”。用户已明确取消跨模型采集质量测试集。
