@@ -7,3 +7,5 @@ playwright-report
 test-results
 .vscode
 pnpm-lock.yaml
+database/migrations/meta/0020_snapshot.json
+research

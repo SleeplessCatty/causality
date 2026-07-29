@@ -349,6 +349,18 @@ describe('AI capture routes', () => {
     });
 
     expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+      qualityReport: {
+        issues: [
+          expect.objectContaining({
+            code: 'AI_QUALITY_EVENT_LIMIT_EXCEEDED',
+            entityType: 'batch',
+            paths: ['/atomicEvents'],
+          }),
+        ],
+      },
+    });
     expect(dependencies.compareCalls).toBe(0);
   });
 
@@ -386,6 +398,61 @@ describe('AI capture routes', () => {
           expect.objectContaining({
             phase: 'candidate',
             paths: ['/atomicEvents/0/name'],
+          }),
+        ],
+      },
+    });
+    expect(dependencies.compareCalls).toBe(0);
+  });
+
+  it('preserves cross-reference and self-loop quality metadata from route validation', async () => {
+    const { app, dependencies } = await createApp();
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/ai-captures/compare',
+      headers: { 'x-causality-mcp-token': token },
+      payload: {
+        ...nonEmptyCandidates,
+        causalRelations: [
+          {
+            ref: 'relation-self-loop',
+            causeEventRef: 'event-cause',
+            effectEventRef: 'event-cause',
+            description: null,
+          },
+          {
+            ref: 'relation-missing-ref',
+            causeEventRef: 'event-missing',
+            effectEventRef: 'event-effect',
+            description: null,
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      category: 'data',
+      code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+      affectedRefs: ['relation-missing-ref', 'relation-self-loop'],
+      qualityReport: {
+        status: 'blocked',
+        issues: [
+          expect.objectContaining({
+            code: 'AI_QUALITY_REFERENCE_MISSING',
+            entityType: 'relation',
+            refs: ['relation-missing-ref'],
+            paths: ['/causalRelations/1/causeEventRef'],
+            suggestedAction: '补齐引用或移除依赖项',
+          }),
+          expect.objectContaining({
+            code: 'AI_QUALITY_SELF_LOOP',
+            entityType: 'relation',
+            refs: ['relation-self-loop'],
+            paths: ['/causalRelations/0/effectEventRef'],
+            suggestedAction: '修正端点或移除关系',
           }),
         ],
       },

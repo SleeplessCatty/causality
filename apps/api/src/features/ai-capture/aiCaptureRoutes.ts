@@ -1,6 +1,8 @@
 import {
   aiCaptureCandidateSetInputSchema,
   aiCaptureComparisonSchema,
+  aiCaptureQualityEntityTypeSchema,
+  aiCaptureQualityIssueCodeSchema,
   aiImportBatchDetailSchema,
   aiImportBatchListResponseSchema,
   aiImportCommitResultSchema,
@@ -12,6 +14,7 @@ import {
   prepareAiImportPlanInputSchema,
   type AiCaptureComparison,
   type AiCaptureQualityEntityType,
+  type AiCaptureQualityIssueCode,
   type AiCaptureQualityPhase,
   type AiImportBatchDetail,
   type AiImportBatchListResponse,
@@ -249,25 +252,121 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise
 }
 
 type ValidationDetail = {
+  keyword?: unknown;
   instancePath?: unknown;
   message?: unknown;
   params?: {
+    limit?: unknown;
+    origin?: unknown;
+    maximum?: unknown;
+    params?: {
+      qualityCode?: unknown;
+      entityType?: unknown;
+    };
     issue?: {
       path?: unknown;
+      code?: unknown;
+      origin?: unknown;
+      maximum?: unknown;
+      params?: {
+        qualityCode?: unknown;
+        entityType?: unknown;
+      };
     };
   };
 };
 
-function normalizedValidationPath(detail: ValidationDetail): string {
-  const zodPath = detail.params?.issue?.path;
-  if (Array.isArray(zodPath)) return toJsonPointer(zodPath);
-  if (typeof detail.instancePath !== 'string' || detail.instancePath.length === 0) return '/';
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
-  const tokens = detail.instancePath
+function validationIssuePath(detail: ValidationDetail): readonly PropertyKey[] {
+  const path = detail.params?.issue?.path;
+  if (Array.isArray(path)) return path;
+  if (typeof detail.instancePath !== 'string' || detail.instancePath.length === 0) return [];
+
+  return detail.instancePath
     .replace(/^\//, '')
     .split('/')
-    .map((token) => token.replaceAll('~1', '/').replaceAll('~0', '~'));
-  return toJsonPointer(tokens);
+    .map((token) => token.replaceAll('~1', '/').replaceAll('~0', '~'))
+    .map((token) => (/^(0|[1-9]\d*)$/.test(token) ? Number(token) : token));
+}
+
+function validationCustomParams(detail: ValidationDetail): {
+  qualityCode?: unknown;
+  entityType?: unknown;
+} {
+  return detail.params?.issue?.params ?? detail.params?.params ?? {};
+}
+
+function normalizedValidationPath(detail: ValidationDetail): string {
+  const zodPath = validationIssuePath(detail);
+  if (zodPath.length > 0) return toJsonPointer(zodPath);
+  return '/';
+}
+
+function validationQualityCode(detail: ValidationDetail): AiCaptureQualityIssueCode {
+  const issue = detail.params?.issue;
+  const customCode = aiCaptureQualityIssueCodeSchema.safeParse(
+    validationCustomParams(detail).qualityCode,
+  );
+  if (customCode.success) return customCode.data;
+
+  return (issue?.code === 'too_big' || detail.keyword === 'too_big') &&
+    (issue?.origin === 'array' || detail.params?.origin === 'array') &&
+    (issue?.maximum === 50 || detail.params?.maximum === 50) &&
+    validationIssuePath(detail).at(-1) === 'atomicEvents'
+    ? 'AI_QUALITY_EVENT_LIMIT_EXCEEDED'
+    : 'AI_QUALITY_SCHEMA_INVALID';
+}
+
+function validationSuggestedAction(code: AiCaptureQualityIssueCode): string {
+  switch (code) {
+    case 'AI_QUALITY_EVENT_LIMIT_EXCEEDED':
+      return '保留主线数据并移除其余内容';
+    case 'AI_QUALITY_DUPLICATE_REF':
+      return '合并候选并保留一个稳定 ref';
+    case 'AI_QUALITY_REFERENCE_MISSING':
+      return '补齐引用或移除依赖项';
+    case 'AI_QUALITY_SELF_LOOP':
+      return '修正端点或移除关系';
+    case 'AI_QUALITY_DUPLICATE_LINK':
+      return '合并重复关联';
+    default:
+      return '按字段路径修正参数';
+  }
+}
+
+function validationRefs(raw: unknown, detail: ValidationDetail): string[] {
+  const path = validationIssuePath(detail);
+  const sectionIndex = path.findIndex(
+    (part) =>
+      part === 'atomicEvents' ||
+      part === 'concreteCases' ||
+      part === 'causalRelations' ||
+      part === 'relationCaseLinks',
+  );
+  const candidateIndex = path[sectionIndex + 1];
+  if (sectionIndex < 0 || typeof candidateIndex !== 'number') return [];
+
+  let value = raw;
+  for (const part of path.slice(0, sectionIndex + 2)) {
+    if (typeof part === 'number') {
+      if (!Array.isArray(value)) return [];
+      value = value[part];
+    } else {
+      if (!isRecord(value)) return [];
+      value = value[String(part)];
+    }
+  }
+  if (!isRecord(value)) return [];
+
+  if (path[sectionIndex] === 'relationCaseLinks') {
+    return [value.relationRef, value.caseRef].filter(
+      (ref): ref is string => typeof ref === 'string',
+    );
+  }
+  return typeof value.ref === 'string' ? [value.ref] : [];
 }
 
 function validationEntityType(path: string): AiCaptureQualityEntityType {
@@ -282,19 +381,29 @@ function validationEntityType(path: string): AiCaptureQualityEntityType {
 function validationQualityError(
   validation: readonly ValidationDetail[],
   phase: AiCaptureQualityPhase,
+  raw: unknown,
 ): AiCaptureQualityBlockedError {
   const report = buildQualityReport(
     validation.map((detail) => {
       const path = normalizedValidationPath(detail);
+      const code = validationQualityCode(detail);
+      const customEntityType = aiCaptureQualityEntityTypeSchema.safeParse(
+        validationCustomParams(detail).entityType,
+      );
       return {
-        code: 'AI_QUALITY_SCHEMA_INVALID' as const,
+        code,
         severity: 'error' as const,
         phase,
-        entityType: validationEntityType(path),
-        refs: [],
+        entityType:
+          code === 'AI_QUALITY_EVENT_LIMIT_EXCEEDED'
+            ? 'batch'
+            : customEntityType.success
+              ? customEntityType.data
+              : validationEntityType(path),
+        refs: validationRefs(raw, detail),
         paths: [path],
         message: typeof detail.message === 'string' ? detail.message : '请求参数不合法',
-        suggestedAction: '按字段路径修正参数',
+        suggestedAction: validationSuggestedAction(code),
         aiCanRepair: true,
       };
     }),
@@ -310,13 +419,14 @@ function routeParserError(
   error: FastifyError,
   reply: FastifyReply,
   phase?: AiCaptureQualityPhase,
+  raw?: unknown,
 ): FastifyReply {
   if (error.code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
     return sendError(reply, 413, 'REQUEST_BODY_TOO_LARGE', '请求内容不能超过 8 MiB');
   }
   if (error.validation && phase) {
     return sendWorkflowError(
-      validationQualityError(error.validation as ValidationDetail[], phase),
+      validationQualityError(error.validation as ValidationDetail[], phase, raw),
       reply,
     );
   }
@@ -345,14 +455,14 @@ export function registerAiCaptureRoutes(
   const recordsQuerySchema = pageQuerySchema.extend({ type: aiImportRecordTypeSchema }).strict();
   const candidateParserErrorHandler = (
     error: FastifyError,
-    _request: FastifyRequest,
+    request: FastifyRequest,
     reply: FastifyReply,
-  ) => routeParserError(error, reply, 'candidate');
+  ) => routeParserError(error, reply, 'candidate', request.body);
   const planParserErrorHandler = (
     error: FastifyError,
-    _request: FastifyRequest,
+    request: FastifyRequest,
     reply: FastifyReply,
-  ) => routeParserError(error, reply, 'plan');
+  ) => routeParserError(error, reply, 'plan', request.body);
   const workflowAuth = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!(await authorizeWorkflow(request, reply, dependencies.authorizer))) return reply;
   };

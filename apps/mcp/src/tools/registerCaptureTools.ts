@@ -1,6 +1,4 @@
 import {
-  aiCaptureCandidateSetInputSchema,
-  prepareAiImportPlanInputSchema,
   type AiCaptureCandidateSet,
   type AiCaptureComparison,
   type AiCaptureQualityReport,
@@ -78,6 +76,58 @@ function textResult(text: string, structuredContent: Record<string, unknown>) {
   return {
     content: [{ type: 'text' as const, text }],
     structuredContent,
+  };
+}
+
+function candidateSetForApi(
+  input: z.infer<typeof captureCandidateSetMcpSchema>,
+): AiCaptureCandidateSet {
+  return {
+    topic: input.topic,
+    clientName: input.clientName,
+    atomicEvents: input.atomicEvents.map((event) => ({
+      ...event,
+      description: event.description ?? null,
+    })),
+    concreteCases: input.concreteCases,
+    causalRelations: input.causalRelations.map((relation) => ({
+      ...relation,
+      description: relation.description ?? null,
+    })),
+    relationCaseLinks: input.relationCaseLinks,
+  };
+}
+
+function preparePlanForApi(
+  input: z.infer<typeof prepareImportPlanMcpSchema>,
+): PrepareAiImportPlanInput {
+  return {
+    candidates: candidateSetForApi(input.candidates),
+    comparison: {
+      atomicEvents: input.comparison.atomicEvents.map((candidate) => ({
+        ...candidate,
+        matches: candidate.matches.map((match) => ({
+          ...match,
+          description: match.description ?? null,
+        })),
+      })),
+      concreteCases: input.comparison.concreteCases,
+      causalRelations: input.comparison.causalRelations.map((candidate) =>
+        candidate.status === 'missing'
+          ? candidate
+          : {
+              ...candidate,
+              relation: {
+                ...candidate.relation,
+                description: candidate.relation.description ?? null,
+              },
+            },
+      ),
+      relationCaseLinks: input.comparison.relationCaseLinks,
+      qualityReport: input.comparison.qualityReport,
+    },
+    decisions: input.decisions,
+    ...(input.replacesPlanId === undefined ? {} : { replacesPlanId: input.replacesPlanId }),
   };
 }
 
@@ -285,7 +335,9 @@ export function registerCaptureTools(
     },
     async (input) => {
       try {
-        const result = await apiClient.compare(aiCaptureCandidateSetInputSchema.parse(input));
+        // The transport schema owns the MCP wire shape. Cross-field validation belongs to the
+        // API so clients receive its canonical structured quality report for repairable batches.
+        const result = await apiClient.compare(candidateSetForApi(input));
         return textResult(comparisonText(result), { ...result });
       } catch (error) {
         logToolFailure(logger, 'compare_knowledge_candidates', error);
@@ -305,7 +357,8 @@ export function registerCaptureTools(
     },
     async (input) => {
       try {
-        const result = await apiClient.prepare(prepareAiImportPlanInputSchema.parse(input));
+        // As with candidate comparison, the API owns canonical cross-field plan validation.
+        const result = await apiClient.prepare(preparePlanForApi(input));
         return textResult(planText(result), { ...result });
       } catch (error) {
         logToolFailure(logger, 'prepare_knowledge_changes', error);

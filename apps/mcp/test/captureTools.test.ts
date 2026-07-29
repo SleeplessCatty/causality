@@ -186,17 +186,22 @@ class FakeCaptureApi implements CausalityCaptureApi {
   public comparedInput: AiCaptureCandidateSet | null = null;
   public preparedInput: PrepareAiImportPlanInput | null = null;
   public compareError: Error | null = null;
+  public prepareError: Error | null = null;
   public commitError: Error | null = null;
+  public comparisonResult: AiCaptureComparison = comparison;
+  public planResult: AiImportPlan = plan;
+  public commitCalls = 0;
 
   public async compare(input: AiCaptureCandidateSet): Promise<AiCaptureComparison> {
-    if (this.compareError) throw this.compareError;
     this.comparedInput = input;
-    return comparison;
+    if (this.compareError) throw this.compareError;
+    return this.comparisonResult;
   }
 
   public async prepare(input: PrepareAiImportPlanInput): Promise<AiImportPlan> {
     this.preparedInput = input;
-    return plan;
+    if (this.prepareError) throw this.prepareError;
+    return this.planResult;
   }
 
   public async planStatus(): Promise<AiImportPlanStatus> {
@@ -204,6 +209,7 @@ class FakeCaptureApi implements CausalityCaptureApi {
   }
 
   public async commit(): Promise<AiImportCommitResult> {
+    this.commitCalls += 1;
     if (this.commitError) throw this.commitError;
     return commitResult;
   }
@@ -334,6 +340,370 @@ describe('capture workflow tools', () => {
     expect(textContent(result)).toContain('存疑问题：1');
     expect(textContent(result)).toContain('[AI_QUALITY_RELATION_WITHOUT_CASE]');
     expect(textContent(result)).not.toContain('0.83');
+  });
+
+  it('carries a repaired warning workflow through MCP without calling commit', async () => {
+    const malformedCandidates: AiCaptureCandidateSet = {
+      topic: '港口停运影响供应链',
+      clientName: 'capture-repair-flow',
+      atomicEvents: [
+        {
+          ref: 'event-port-closed',
+          name: '港口停止作业',
+          description: null,
+          aliases: [],
+          keywords: ['港口'],
+        },
+        {
+          ref: 'event-port-closed-copy',
+          name: '港口停止作业',
+          description: null,
+          aliases: [],
+          keywords: ['港口'],
+        },
+        {
+          ref: 'event-parts-delayed',
+          name: '零部件到货延迟',
+          description: null,
+          aliases: [],
+          keywords: ['零部件'],
+        },
+        {
+          ref: 'event-production-down',
+          name: '工厂产量下降',
+          description: null,
+          aliases: [],
+          keywords: ['产量'],
+        },
+      ],
+      concreteCases: [
+        { ref: 'case-port', content: '2026年某港口停运后零部件到货延迟' },
+        { ref: 'case-port-copy', content: '2026年某港口停运后零部件到货延迟' },
+      ],
+      causalRelations: [
+        {
+          ref: 'relation-self-loop',
+          causeEventRef: 'event-port-closed',
+          effectEventRef: 'event-port-closed',
+          description: null,
+        },
+        {
+          ref: 'relation-missing-ref',
+          causeEventRef: 'event-missing',
+          effectEventRef: 'event-parts-delayed',
+          description: null,
+        },
+      ],
+      relationCaseLinks: [
+        { relationRef: 'relation-self-loop', caseRef: 'case-port' },
+        { relationRef: 'relation-missing-ref', caseRef: 'case-port-copy' },
+      ],
+    };
+    const repairedCandidates: AiCaptureCandidateSet = {
+      topic: malformedCandidates.topic,
+      clientName: malformedCandidates.clientName,
+      atomicEvents: [
+        malformedCandidates.atomicEvents[0]!,
+        malformedCandidates.atomicEvents[2]!,
+        malformedCandidates.atomicEvents[3]!,
+      ],
+      concreteCases: [malformedCandidates.concreteCases[0]!],
+      causalRelations: [
+        {
+          ref: 'relation-port-delay',
+          causeEventRef: 'event-port-closed',
+          effectEventRef: 'event-parts-delayed',
+          description: '港口停运使零部件物流延迟',
+        },
+        {
+          ref: 'relation-delay-production',
+          causeEventRef: 'event-parts-delayed',
+          effectEventRef: 'event-production-down',
+          description: '零部件迟到导致产量下降',
+        },
+        {
+          ref: 'relation-port-production',
+          causeEventRef: 'event-port-closed',
+          effectEventRef: 'event-production-down',
+          description: '港口停运后产量下降',
+        },
+      ],
+      relationCaseLinks: [
+        { relationRef: 'relation-port-delay', caseRef: 'case-port' },
+        { relationRef: 'relation-delay-production', caseRef: 'case-port' },
+      ],
+    };
+    const repairedReport: AiCaptureQualityReport = {
+      version: 1,
+      status: 'warning',
+      issues: [
+        {
+          code: 'AI_QUALITY_RELATION_WITHOUT_CASE',
+          severity: 'warning',
+          phase: 'comparison',
+          entityType: 'relation',
+          refs: ['relation-port-production'],
+          paths: ['/causalRelations/2'],
+          message: '候选因果关系尚未关联具体案例',
+          suggestedAction: '补充案例关联或确认保留',
+          aiCanRepair: true,
+        },
+        {
+          code: 'AI_QUALITY_TRANSITIVE_SHORTCUT_SUSPECTED',
+          severity: 'warning',
+          phase: 'comparison',
+          entityType: 'relation',
+          refs: ['relation-port-production'],
+          paths: ['/causalRelations/2'],
+          message: '候选因果关系可能是传递路径的快捷边',
+          suggestedAction: '确认是否存在独立的直接因果依据',
+          aiCanRepair: true,
+        },
+      ],
+      topicRelevance: repairedCandidates.atomicEvents.map(({ ref }) => ({ ref, similarity: 1 })),
+    };
+    const repairedComparison: AiCaptureComparison = {
+      atomicEvents: repairedCandidates.atomicEvents.map(({ ref }) => ({ ref, matches: [] })),
+      concreteCases: [{ ref: 'case-port', matches: [] }],
+      causalRelations: repairedCandidates.causalRelations.map(({ ref }) => ({
+        ref,
+        status: 'missing' as const,
+      })),
+      relationCaseLinks: repairedCandidates.relationCaseLinks.map((link) => ({
+        ...link,
+        exists: false,
+      })),
+      qualityReport: repairedReport,
+    };
+    const repairedDecisions: PrepareAiImportPlanInput['decisions'] = {
+      atomicEvents: repairedCandidates.atomicEvents.map(({ ref }) => ({
+        ref,
+        action: 'create',
+      })),
+      concreteCases: [{ ref: 'case-port', action: 'create' }],
+      causalRelations: [
+        { ref: 'relation-port-delay', action: 'create' },
+        { ref: 'relation-delay-production', action: 'create' },
+        {
+          ref: 'relation-port-production',
+          action: 'skip',
+          reason: '缺少独立案例且可能是传递快捷边',
+        },
+      ],
+      relationCaseLinks: [
+        { relationRef: 'relation-port-delay', caseRef: 'case-port', action: 'create' },
+        { relationRef: 'relation-delay-production', caseRef: 'case-port', action: 'create' },
+      ],
+    };
+    const repairedPlan: AiImportPlan = {
+      ...plan,
+      topic: repairedCandidates.topic,
+      clientName: repairedCandidates.clientName,
+      candidates: repairedCandidates,
+      comparison: repairedComparison,
+      decisions: repairedDecisions,
+      summary: {
+        ...counts,
+        eventCreated: 3,
+        caseCreated: 1,
+        relationCreated: 2,
+        relationCaseCreated: 2,
+      },
+    };
+    const firstBlockedReport: AiCaptureQualityReport = {
+      version: 1,
+      status: 'blocked',
+      issues: [
+        {
+          code: 'AI_QUALITY_DUPLICATE_EVENT_NAME',
+          severity: 'error',
+          phase: 'candidate',
+          entityType: 'event',
+          refs: ['event-port-closed-copy'],
+          paths: ['/atomicEvents/1/name'],
+          message: '候选原子事件名称重复',
+          suggestedAction: '合并为一个事件候选',
+          aiCanRepair: true,
+        },
+        {
+          code: 'AI_QUALITY_DUPLICATE_CASE_CONTENT',
+          severity: 'error',
+          phase: 'candidate',
+          entityType: 'case',
+          refs: ['case-port-copy'],
+          paths: ['/concreteCases/1/content'],
+          message: '候选具体案例内容重复',
+          suggestedAction: '合并为一个案例候选',
+          aiCanRepair: true,
+        },
+        {
+          code: 'AI_QUALITY_REFERENCE_MISSING',
+          severity: 'error',
+          phase: 'candidate',
+          entityType: 'relation',
+          refs: ['relation-missing-ref'],
+          paths: ['/causalRelations/1/causeEventRef'],
+          message: '原因事件引用不存在',
+          suggestedAction: '补齐引用或移除依赖项',
+          aiCanRepair: true,
+        },
+        {
+          code: 'AI_QUALITY_SELF_LOOP',
+          severity: 'error',
+          phase: 'candidate',
+          entityType: 'relation',
+          refs: ['relation-self-loop'],
+          paths: ['/causalRelations/0/effectEventRef'],
+          message: '因果关系不能形成自环',
+          suggestedAction: '修正端点或移除关系',
+          aiCanRepair: true,
+        },
+      ],
+      topicRelevance: [],
+    };
+    api.compareError = workflowClientError(
+      {
+        category: 'data',
+        code: 'AI_CANDIDATE_QUALITY_BLOCKED',
+        message: '候选集合存在必须修复的质量问题',
+        affectedRefs: firstBlockedReport.issues.flatMap((issue) => issue.refs),
+        aiCanRepair: true,
+        retryCurrentPlan: false,
+        suggestedAction: '根据质量报告修正完整候选集合后重新对比',
+        qualityReport: firstBlockedReport,
+      },
+      400,
+    );
+
+    const blocked = await mcpClient.callTool({
+      name: 'compare_knowledge_candidates',
+      arguments: malformedCandidates,
+    });
+
+    expect(blocked.isError).toBe(true);
+    expect(api.comparedInput).toEqual(malformedCandidates);
+    expect(blocked.structuredContent).toMatchObject({ qualityReport: firstBlockedReport });
+    for (const issue of firstBlockedReport.issues) {
+      expect(textContent(blocked)).toContain(`[${issue.code}]`);
+    }
+
+    api.compareError = null;
+    api.comparisonResult = repairedComparison;
+    const compared = await mcpClient.callTool({
+      name: 'compare_knowledge_candidates',
+      arguments: repairedCandidates,
+    });
+
+    expect(compared.isError).not.toBe(true);
+    expect(compared.structuredContent).toMatchObject({ qualityReport: repairedReport });
+    expect(textContent(compared)).toContain('质量检查：存疑');
+    expect(textContent(compared)).toContain('存疑问题：2');
+    for (const issue of repairedReport.issues) {
+      expect(textContent(compared)).toContain(`[${issue.code}]`);
+    }
+
+    const malformedComparison: AiCaptureComparison = {
+      atomicEvents: malformedCandidates.atomicEvents.map(({ ref }) => ({ ref, matches: [] })),
+      concreteCases: malformedCandidates.concreteCases.map(({ ref }) => ({ ref, matches: [] })),
+      causalRelations: malformedCandidates.causalRelations.map(({ ref }) => ({
+        ref,
+        status: 'missing' as const,
+      })),
+      relationCaseLinks: malformedCandidates.relationCaseLinks.map((link) => ({
+        ...link,
+        exists: false,
+      })),
+      qualityReport: firstBlockedReport,
+    };
+    const malformedDecisions: PrepareAiImportPlanInput['decisions'] = {
+      atomicEvents: malformedCandidates.atomicEvents.map(({ ref }) => ({
+        ref,
+        action: 'create',
+      })),
+      concreteCases: malformedCandidates.concreteCases.map(({ ref }) => ({
+        ref,
+        action: 'create',
+      })),
+      causalRelations: malformedCandidates.causalRelations.map(({ ref }) => ({
+        ref,
+        action: 'create',
+      })),
+      relationCaseLinks: malformedCandidates.relationCaseLinks.map((link) => ({
+        ...link,
+        action: 'create' as const,
+      })),
+    };
+    const planBlockedReport: AiCaptureQualityReport = {
+      version: 1,
+      status: 'blocked',
+      issues: [
+        {
+          code: 'AI_QUALITY_REPORT_BLOCKED',
+          severity: 'error',
+          phase: 'plan',
+          entityType: 'batch',
+          refs: ['relation-missing-ref', 'relation-self-loop'],
+          paths: ['/decisions'],
+          message: '候选集合重新检查后仍存在阻断问题',
+          suggestedAction: '检查质量报告中的关联候选并修正',
+          aiCanRepair: true,
+        },
+      ],
+      topicRelevance: [],
+    };
+    api.prepareError = workflowClientError(
+      {
+        category: 'data',
+        code: 'AI_PLAN_QUALITY_BLOCKED',
+        message: '入库方案存在必须修复的质量问题',
+        affectedRefs: ['relation-missing-ref', 'relation-self-loop'],
+        aiCanRepair: true,
+        retryCurrentPlan: false,
+        suggestedAction: '根据质量报告修正完整决策集合后重新生成方案',
+        qualityReport: planBlockedReport,
+      },
+      400,
+    );
+
+    const blockedPlan = await mcpClient.callTool({
+      name: 'prepare_knowledge_changes',
+      arguments: {
+        candidates: malformedCandidates,
+        comparison: malformedComparison,
+        decisions: malformedDecisions,
+      },
+    });
+
+    expect(blockedPlan.isError).toBe(true);
+    expect(api.preparedInput).toMatchObject({ candidates: malformedCandidates });
+    expect(blockedPlan.structuredContent).toMatchObject({ qualityReport: planBlockedReport });
+    expect(textContent(blockedPlan)).toContain('[AI_QUALITY_REPORT_BLOCKED]');
+
+    api.prepareError = null;
+    api.planResult = repairedPlan;
+    const prepared = await mcpClient.callTool({
+      name: 'prepare_knowledge_changes',
+      arguments: {
+        candidates: repairedCandidates,
+        comparison: repairedComparison,
+        decisions: repairedDecisions,
+      },
+    });
+
+    expect(prepared.isError).not.toBe(true);
+    expect(prepared.structuredContent).toMatchObject({
+      decisions: {
+        causalRelations: expect.arrayContaining([
+          expect.objectContaining({ ref: 'relation-port-production', action: 'skip' }),
+        ]),
+      },
+      comparison: { qualityReport: repairedReport },
+    });
+    expect(textContent(prepared)).toContain('relation-port-production：暂不入库');
+    for (const issue of repairedReport.issues) {
+      expect(textContent(prepared)).toContain(`[${issue.code}]`);
+    }
+    expect(api.commitCalls).toBe(0);
   });
 
   it('returns a readable complete plan together with the full structured plan', async () => {

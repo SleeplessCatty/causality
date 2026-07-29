@@ -273,7 +273,8 @@ describe('AI capture candidate contracts', () => {
 
 describe('AI capture workflow contracts', () => {
   it('defaults a missing comparison quality report to an empty V1 report', () => {
-    const { qualityReport: _qualityReport, ...comparisonWithoutQuality } = comparison;
+    const comparisonWithoutQuality = { ...comparison };
+    delete (comparisonWithoutQuality as Partial<typeof comparison>).qualityReport;
     expect(aiCaptureComparisonSchema.parse(comparisonWithoutQuality).qualityReport).toEqual({
       version: 1,
       status: 'passed',
@@ -283,7 +284,8 @@ describe('AI capture workflow contracts', () => {
   });
 
   it('isolates the empty quality report across legacy comparison parses', () => {
-    const { qualityReport: _qualityReport, ...comparisonWithoutQuality } = comparison;
+    const comparisonWithoutQuality = { ...comparison };
+    delete (comparisonWithoutQuality as Partial<typeof comparison>).qualityReport;
     const firstReport = aiCaptureComparisonSchema.parse(comparisonWithoutQuality).qualityReport;
 
     firstReport.issues.push(qualityReport.issues[0]!);

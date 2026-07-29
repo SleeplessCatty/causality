@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // The canonical business schemas normalize values with Zod transforms, which MCP cannot
 // represent as JSON Schema. These transport-only mirrors describe the same wire shape;
-// tool handlers still parse every input with the canonical contracts before calling the API.
+// the API remains the canonical cross-field validation and normalization boundary.
 const ref = z.string().min(1).max(100);
 const eventName = z.string().min(1).max(50);
 const eventAlias = z.string().min(1).max(80);

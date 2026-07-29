@@ -1,7 +1,7 @@
 # P3-01R1 MCP 查询完整性与采集质量优化设计
 
 日期：2026-07-29
-状态：设计审核通过；Task 1 已完成；Task 2 已实施，等待人工复核
+状态：设计审核通过；Task 1、Task 2 已完成；Task 3 实施完成，等待人工复核
 
 ## 1. 目标
 
@@ -55,25 +55,25 @@
 
 Task 1 保持原工具名称不变，新增的可选输入如下：
 
-| 工具 | 新增输入 | 默认值 | 约束 |
-| --- | --- | --- | --- |
-| `search_atomic_events` | `page` | `1` | `1..100000` |
-| `search_concrete_cases` | `page` | `1` | `1..100000` |
-| `get_relation_cases` | `caseLimit` | `20` | `1..100` |
-| `get_relation_cases` | `caseCursor` | 无 | 使用上次响应的 `nextCursor`，最长 2000 字符 |
+| 工具                    | 新增输入     | 默认值 | 约束                                        |
+| ----------------------- | ------------ | ------ | ------------------------------------------- |
+| `search_atomic_events`  | `page`       | `1`    | `1..100000`                                 |
+| `search_concrete_cases` | `page`       | `1`    | `1..100000`                                 |
+| `get_relation_cases`    | `caseLimit`  | `20`   | `1..100`                                    |
+| `get_relation_cases`    | `caseCursor` | 无     | 使用上次响应的 `nextCursor`，最长 2000 字符 |
 
 在 MCP Inspector 或任意支持工具调用的客户端中，可以依次使用以下参数进行人工复核：
 
 ```json
-{"query":"供应链","page":2}
+{ "query": "供应链", "page": 2 }
 ```
 
 ```json
-{"query":"港口停运","page":2}
+{ "query": "港口停运", "page": 2 }
 ```
 
 ```json
-{"relationId":"<因果关系 UUID>","caseLimit":20,"caseCursor":"<上次返回的 nextCursor>"}
+{ "relationId": "<因果关系 UUID>", "caseLimit": 20, "caseCursor": "<上次返回的 nextCursor>" }
 ```
 
 首次调用可以省略 `page`、`caseLimit` 和 `caseCursor`。HTTP 与 stdio 入口使用同一个 MCP Server 工厂和同一组 Schema，因此参数、默认值和输出一致。
@@ -129,3 +129,20 @@ Task 1 保持原工具名称不变，新增的可选输入如下：
 每个 Task 独立完成设计审核、自动化测试和人工复核后，才能进入下一个 Task。经审核的当前 Task 设计即作为本次渐进式实施的范围依据；只有在任务需要进一步拆分时，才追加独立实施计划审核。前一任务交付的 MCP 契约必须保持向后兼容；如确需不兼容修改，必须在对应设计文档中单独说明版本迁移方式。
 
 阶段完成时应满足：现有查询能够完整续页、采集规则符合当前原子事件定义、无效候选在写库前被阻止、外部 AI 能以受限只读工具查询路径和具体案例依据。
+
+## 8. Task 3 实施交付记录
+
+Task 3 于 2026-07-29 完成实施和自动化验证，当前等待人工复核，不提前标记为“已完成”。
+
+自动化结果：
+
+- `pnpm --filter @causality/contracts test`：11 个测试文件、85 项测试通过；
+- `pnpm --filter @causality/api test`：34 个测试文件、353 项测试通过；
+- `pnpm --filter @causality/mcp test`：6 个测试文件、47 项测试通过；
+- `pnpm test:integration`：API 26 个文件/222 项和 Semantic Worker 2 个文件/47 项通过，使用当前 Docker context 的 PostgreSQL；
+- `pnpm lint` 和 `pnpm format:check`：通过；
+- `pnpm typecheck`：6 个工作区通过；
+- `pnpm test`：122 个测试文件、868 项测试通过；
+- `pnpm build`：6 个工作区构建通过。
+
+人工复核仍需确认阻断后自动修复、存疑问题的 `skip` 策略、服务端报告重算、主题信号边界，以及用户确认前不调用提交工具。
