@@ -15,6 +15,7 @@ import type {
   RelationCaseListResponse,
   RelationDetail,
   RelationListResponse,
+  SearchMode,
 } from '@causality/contracts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -162,13 +163,17 @@ const graph: CausalGraphResponse = {
 };
 
 class FakeKnowledgeApi implements CausalityMcpApi {
-  public eventSearchInput: { query: string; page: number } | null = null;
+  public eventSearchInput: { query: string; page: number; searchMode: SearchMode } | null = null;
   public eventRelationInput: { id: string; limit: number; cursor?: string } | null = null;
   public caseSearchInput: { query: string; page: number } | null = null;
   public relationCaseInput: { id: string; limit: number; cursor?: string } | null = null;
 
-  public async searchEvents(query: string, page = 1): Promise<EventListResponse> {
-    this.eventSearchInput = { query, page };
+  public async searchEvents(
+    query: string,
+    page = 1,
+    searchMode: SearchMode = 'standard',
+  ): Promise<EventListResponse> {
+    this.eventSearchInput = { query, page, searchMode };
     return events;
   }
 
@@ -400,7 +405,7 @@ describe('read-only knowledge tools', () => {
   it('forwards explicit search pages and relation-case continuation inputs', async () => {
     await mcpClient.callTool({
       name: 'search_atomic_events',
-      arguments: { query: '供应链', page: 3 },
+      arguments: { query: '供应链', page: 3, searchMode: 'enhanced' },
     });
     await mcpClient.callTool({
       name: 'search_concrete_cases',
@@ -411,7 +416,11 @@ describe('read-only knowledge tools', () => {
       arguments: { relationId, caseLimit: 50, caseCursor: 'case-cursor' },
     });
 
-    expect(api.eventSearchInput).toEqual({ query: '供应链', page: 3 });
+    expect(api.eventSearchInput).toEqual({
+      query: '供应链',
+      page: 3,
+      searchMode: 'enhanced',
+    });
     expect(api.caseSearchInput).toEqual({ query: '港口停运', page: 4 });
     expect(api.relationCaseInput).toEqual({
       id: relationId,
@@ -434,7 +443,11 @@ describe('read-only knowledge tools', () => {
       arguments: { relationId },
     });
 
-    expect(api.eventSearchInput).toEqual({ query: '供应链', page: 1 });
+    expect(api.eventSearchInput).toEqual({
+      query: '供应链',
+      page: 1,
+      searchMode: 'standard',
+    });
     expect(api.caseSearchInput).toEqual({ query: '港口停运', page: 1 });
     expect(api.relationCaseInput).toEqual({ id: relationId, limit: 20 });
   });
@@ -443,6 +456,10 @@ describe('read-only knowledge tools', () => {
     const extraField = await mcpClient.callTool({
       name: 'search_atomic_events',
       arguments: { query: '供应链', unexpected: true },
+    });
+    const invalidSearchMode = await mcpClient.callTool({
+      name: 'search_atomic_events',
+      arguments: { query: '供应链', searchMode: 'semantic' },
     });
     const unsupportedLimit = await mcpClient.callTool({
       name: 'query_local_causal_graph',
@@ -464,6 +481,7 @@ describe('read-only knowledge tools', () => {
     });
 
     expect(extraField.isError).toBe(true);
+    expect(invalidSearchMode.isError).toBe(true);
     expect(unsupportedLimit.isError).toBe(true);
     expect(invalidPage.isError).toBe(true);
     expect(invalidCaseLimit.isError).toBe(true);

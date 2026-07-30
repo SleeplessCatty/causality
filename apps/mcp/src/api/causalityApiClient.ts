@@ -46,6 +46,7 @@ import {
   type RelationCaseListResponse,
   type RelationDetail,
   type RelationListResponse,
+  type SearchMode,
   type SemanticLifecycleSnapshot,
 } from '@causality/contracts';
 import type { z } from 'zod';
@@ -177,9 +178,17 @@ export class CausalityApiClient {
     this.fetchImplementation = options.fetch ?? fetch;
   }
 
-  public searchEvents(query: string, page = 1): Promise<EventListResponse> {
+  public searchEvents(
+    query: string,
+    page = 1,
+    searchMode: SearchMode = 'standard',
+  ): Promise<EventListResponse> {
     return this.request('/api/events', {
-      query: { q: query, page },
+      query: {
+        q: query,
+        page,
+        ...(searchMode === 'enhanced' ? { searchMode } : {}),
+      },
       schema: eventListResponseSchema,
     });
   }

@@ -14,6 +14,7 @@ import {
   type EventRelationListResponse,
   type RelationCaseListResponse,
   type RelationDetail,
+  type SearchMode,
 } from '@causality/contracts';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
@@ -21,7 +22,7 @@ import { z } from 'zod';
 import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
 
 export interface CausalityKnowledgeApi {
-  searchEvents(query: string, page?: number): Promise<EventListResponse>;
+  searchEvents(query: string, page?: number, searchMode?: SearchMode): Promise<EventListResponse>;
   getEvent(id: string): Promise<EventDetail>;
   getEventRelations(
     id: string,
@@ -47,6 +48,7 @@ const searchEventsInputSchema = z
   .object({
     query: z.string().trim().min(1).max(80).describe('原子事件名称、别名或关键词'),
     page: z.number().int().min(1).max(100_000).default(1).describe('结果页码'),
+    searchMode: z.enum(['standard', 'enhanced']).default('standard').describe('普通或语义增强搜索'),
   })
   .strict();
 
@@ -188,13 +190,13 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
     MCP_TOOL_NAMES.searchAtomicEvents,
     {
       title: '搜索原子事件',
-      description: '按名称、别名或关键词搜索 Causality 数据库中的原子事件。',
+      description: '按名称、别名或关键词普通搜索，也可按语义增强搜索原子事件。',
       inputSchema: searchEventsInputSchema,
       outputSchema: eventListResponseSchema,
       annotations: readOnlyAnnotations,
     },
-    async ({ query, page }) => {
-      const result = await apiClient.searchEvents(query, page);
+    async ({ query, page, searchMode }) => {
+      const result = await apiClient.searchEvents(query, page, searchMode);
       return textResult(eventSearchText(result), { ...result });
     },
   );

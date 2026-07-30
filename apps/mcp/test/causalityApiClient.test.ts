@@ -390,7 +390,7 @@ describe('CausalityApiClient', () => {
     vi.restoreAllMocks();
   });
 
-  it('encodes ordinary event and case searches without forwarding the MCP token', async () => {
+  it('encodes ordinary and enhanced event searches without forwarding the MCP token', async () => {
     const requests: Array<{ url: URL; init?: RequestInit }> = [];
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
@@ -400,25 +400,43 @@ describe('CausalityApiClient', () => {
     const client = createClient(fetchImplementation);
 
     const events = await client.searchEvents('供应 链/港口', 3);
+    const enhancedEvents = await client.searchEvents('融资环境趋紧', 2, 'enhanced');
     const cases = await client.searchCases('停运 后', 4);
 
     expect(events.items[0]?.name).toBe('供应链中断');
+    expect(enhancedEvents.items[0]?.name).toBe('供应链中断');
     expect(cases.items[0]?.content).toBe('港口停运后工厂原料延迟到货');
-    expect(
-      requests.map(({ url }) => [
-        url.pathname,
-        url.searchParams.get('q'),
-        url.searchParams.get('page'),
-      ]),
-    ).toEqual([
-      ['/api/events', '供应 链/港口', '3'],
-      ['/api/cases', '停运 后', '4'],
-    ]);
+    expect(requests.map(({ url }) => [url.pathname, Object.fromEntries(url.searchParams)])).toEqual(
+      [
+        ['/api/events', { q: '供应 链/港口', page: '3' }],
+        ['/api/events', { q: '融资环境趋紧', page: '2', searchMode: 'enhanced' }],
+        ['/api/cases', { q: '停运 后', page: '4' }],
+      ],
+    );
     for (const request of requests) {
       const headers = new Headers(request.init?.headers);
       expect(headers.get('x-causality-mcp-token')).toBeNull();
       expect(headers.get('x-causality-trace-id')).toMatch(/^[0-9a-f-]{36}$/);
     }
+  });
+
+  it('preserves semantic lifecycle errors from enhanced event search', async () => {
+    const client = createClient(async () =>
+      jsonResponse(
+        {
+          code: 'SEMANTIC_MODEL_UNAVAILABLE',
+          message: '当前没有可用的语义模型',
+        },
+        409,
+      ),
+    );
+
+    await expect(client.searchEvents('融资环境趋紧', 1, 'enhanced')).rejects.toMatchObject({
+      kind: 'api',
+      code: 'SEMANTIC_MODEL_UNAVAILABLE',
+      status: 409,
+      message: '当前没有可用的语义模型',
+    } satisfies Partial<CausalityApiClientError>);
   });
 
   it('uses bounded relation pagination and complete graph query parameters', async () => {
