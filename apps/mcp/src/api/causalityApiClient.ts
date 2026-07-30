@@ -15,9 +15,12 @@ import {
   eventDetailSchema,
   eventListResponseSchema,
   eventRelationListResponseSchema,
+  healthResponseSchema,
+  readinessResponseSchema,
   relationCaseListResponseSchema,
   relationDetailSchema,
   relationListResponseSchema,
+  semanticLifecycleSnapshotSchema,
   type AiCaptureCandidateSet,
   type AiCaptureComparison,
   type AiCaptureQualityReport,
@@ -37,10 +40,13 @@ import {
   type EventDetail,
   type EventListResponse,
   type EventRelationListResponse,
+  type HealthResponse,
   type PrepareAiImportPlanInput,
+  type ReadinessResponse,
   type RelationCaseListResponse,
   type RelationDetail,
   type RelationListResponse,
+  type SemanticLifecycleSnapshot,
 } from '@causality/contracts';
 import type { z } from 'zod';
 
@@ -98,10 +104,13 @@ interface RequestOptions<T> {
   method?: 'GET' | 'POST';
   body?: unknown;
   protected?: boolean;
+  timeoutMs?: number;
+  acceptedStatuses?: readonly number[];
 }
 
 const DEFAULT_TIMEOUT_MS = 35_000;
 const DEFAULT_RELATION_PAGE_SIZE = 20;
+const STATUS_TIMEOUT_MS = 5_000;
 
 function apiFailure(status: number, payload: unknown, traceId: string): CausalityApiClientError {
   const workflow = aiWorkflowErrorSchema.safeParse(payload);
@@ -265,6 +274,28 @@ export class CausalityApiClient {
     });
   }
 
+  public getHealth(timeoutMs = STATUS_TIMEOUT_MS): Promise<HealthResponse> {
+    return this.request('/api/health', {
+      schema: healthResponseSchema,
+      timeoutMs,
+    });
+  }
+
+  public getReadiness(timeoutMs = STATUS_TIMEOUT_MS): Promise<ReadinessResponse> {
+    return this.request('/api/ready', {
+      schema: readinessResponseSchema,
+      timeoutMs,
+      acceptedStatuses: [503],
+    });
+  }
+
+  public getSemanticLifecycle(timeoutMs = STATUS_TIMEOUT_MS): Promise<SemanticLifecycleSnapshot> {
+    return this.request('/api/semantic/lifecycle', {
+      schema: semanticLifecycleSnapshotSchema,
+      timeoutMs,
+    });
+  }
+
   public compare(input: AiCaptureCandidateSet): Promise<AiCaptureComparison> {
     return this.request('/api/ai-captures/compare', {
       method: 'POST',
@@ -327,7 +358,7 @@ export class CausalityApiClient {
     if (options.body !== undefined) headers.set('content-type', 'application/json');
     if (options.protected) headers.set('x-causality-mcp-token', this.token!);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? this.timeoutMs);
 
     let response: Response;
     let payload: unknown;
@@ -359,7 +390,9 @@ export class CausalityApiClient {
       clearTimeout(timer);
     }
 
-    if (!response.ok) throw apiFailure(response.status, payload, traceId);
+    if (!response.ok && !options.acceptedStatuses?.includes(response.status)) {
+      throw apiFailure(response.status, payload, traceId);
+    }
 
     const parsed = options.schema.safeParse(payload);
     if (!parsed.success) {

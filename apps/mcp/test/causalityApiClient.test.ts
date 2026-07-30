@@ -13,10 +13,13 @@ import type {
   EventDetail,
   EventListResponse,
   EventRelationListResponse,
+  HealthResponse,
   PrepareAiImportPlanInput,
+  ReadinessResponse,
   RelationCaseListResponse,
   RelationDetail,
   RelationListResponse,
+  SemanticLifecycleSnapshot,
 } from '@causality/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -228,6 +231,50 @@ const evidenceBundle: CausalEvidenceBundleResponse = {
   hopCount: 1,
   minimumConfidence: 20,
   totalCaseCount: 1,
+};
+
+const health: HealthResponse = { status: 'ok', service: 'causality-api' };
+const readiness: ReadinessResponse = { status: 'not_ready', database: 'unavailable' };
+const lifecycle: SemanticLifecycleSnapshot = {
+  currentModelCode: 'bge-small-zh-v1.5',
+  models: [
+    {
+      modelCode: 'bge-small-zh-v1.5',
+      label: '中文轻量',
+      description: '测试模型',
+      languageLabel: '中文',
+      dimensions: 512,
+      expectedDownloadBytes: 25_000_000,
+      threshold: 74,
+      dedupeThreshold: 100,
+      downloadedAt: timestamp,
+      fileState: 'downloaded',
+      role: 'current',
+      stage: 'ready',
+      availableForEnhancedSearch: true,
+      allowedActions: ['reindex'],
+      failure: null,
+    },
+  ],
+  index: {
+    status: 'ready',
+    processedItems: 100,
+    totalItems: 100,
+    pendingItems: 0,
+    failedItems: 0,
+    availableForEnhancedSearch: true,
+    failure: null,
+    updatedAt: timestamp,
+  },
+  operation: null,
+  worker: {
+    status: 'online',
+    modelState: 'loaded',
+    loadedModelCode: 'bge-small-zh-v1.5',
+    checkedAt: timestamp,
+  },
+  pollAfterMs: null,
+  updatedAt: timestamp,
 };
 
 const candidates: AiCaptureCandidateSet = {
@@ -484,6 +531,58 @@ describe('CausalityApiClient', () => {
       relationIds: [relationId],
       caseLimitPerRelation: 5,
     });
+  });
+
+  it('reads health, accepted not-ready, and semantic lifecycle without forwarding a token', async () => {
+    const requests: Array<{ url: URL; init?: RequestInit }> = [];
+    const fetchImplementation: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      requests.push({ url, ...(init ? { init } : {}) });
+      if (url.pathname === '/api/health') return jsonResponse(health);
+      if (url.pathname === '/api/ready') return jsonResponse(readiness, 503);
+      return jsonResponse(lifecycle);
+    };
+    const client = createClient(fetchImplementation);
+
+    await expect(client.getHealth()).resolves.toEqual(health);
+    await expect(client.getReadiness()).resolves.toEqual(readiness);
+    await expect(client.getSemanticLifecycle()).resolves.toEqual(lifecycle);
+
+    expect(requests.map((request) => request.url.pathname)).toEqual([
+      '/api/health',
+      '/api/ready',
+      '/api/semantic/lifecycle',
+    ]);
+    for (const request of requests) {
+      expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBeNull();
+    }
+  });
+
+  it('uses a five-second status timeout and rejects an invalid lifecycle response', async () => {
+    vi.useFakeTimers();
+    const client = createClient(
+      async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
+    );
+    const timeout = client.getHealth();
+    const expectation = expect(timeout).rejects.toMatchObject({
+      kind: 'system',
+      code: 'API_REQUEST_ABORTED',
+    } satisfies Partial<CausalityApiClientError>);
+    await vi.advanceTimersByTimeAsync(4_999);
+    await vi.advanceTimersByTimeAsync(1);
+    await expectation;
+    vi.useRealTimers();
+
+    const invalid = createClient(async () => jsonResponse({ currentModelCode: null }));
+    await expect(invalid.getSemanticLifecycle()).rejects.toMatchObject({
+      kind: 'contract',
+      code: 'INVALID_API_RESPONSE',
+    } satisfies Partial<CausalityApiClientError>);
   });
 
   it('keeps API adapter pagination defaults for existing callers', async () => {
