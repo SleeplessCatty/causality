@@ -28,7 +28,7 @@ export const capabilityManifestSchema = z
       .length(15),
     prompts: z
       .array(z.object({ name: z.string().min(1), purpose: z.string().min(1) }).strict())
-      .length(4),
+      .length(5),
     resources: z
       .array(
         z
@@ -47,6 +47,12 @@ export const capabilityManifestSchema = z
         pathDisplayedLimit: z.literal(3),
         pathExpandedStateLimit: z.literal(10_000),
         chainSegmentLimit: z.literal(10),
+        outcomeInferenceDefaultDepth: z.literal(3),
+        outcomeInferenceDisplayedResults: z.literal(5),
+        outcomeInferenceNodeLimits: z.tuple([z.literal(20), z.literal(50), z.literal(100)]),
+        outcomeInferencePathQueryLimit: z.literal(10),
+        outcomeInferenceDisplayedPathsPerResult: z.literal(3),
+        outcomeInferenceCasesPerRelation: z.literal(3),
       })
       .strict(),
     compatibility: z.object({ toolsWorkWithoutPromptsOrResources: z.literal(true) }).strict(),

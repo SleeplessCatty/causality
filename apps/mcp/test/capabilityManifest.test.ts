@@ -20,6 +20,7 @@ describe('MCP capability manifest', () => {
       'causality_analyze_event',
       'causality_trace_path',
       'causality_review_chain',
+      'causality_infer_outcomes',
     ]);
     expect(resources).toEqual([
       'causality://rules/domain-model',
@@ -48,6 +49,12 @@ describe('MCP capability manifest', () => {
       pathDisplayedLimit: 3,
       pathExpandedStateLimit: 10_000,
       chainSegmentLimit: 10,
+      outcomeInferenceDefaultDepth: 3,
+      outcomeInferenceDisplayedResults: 5,
+      outcomeInferenceNodeLimits: [20, 50, 100],
+      outcomeInferencePathQueryLimit: 10,
+      outcomeInferenceDisplayedPathsPerResult: 3,
+      outcomeInferenceCasesPerRelation: 3,
     });
   });
 });

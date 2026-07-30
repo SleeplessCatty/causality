@@ -177,7 +177,7 @@ describe('canonical causal analysis prompts', () => {
     expect(prompt).toContain('不生成整条链的真假评分');
   });
 
-  it('registers all four canonical prompts without arguments', async () => {
+  it('registers all five canonical prompts without arguments', async () => {
     const server = new McpServer({ name: 'analysis-prompt-test', version: '1.0.0' });
     registerCapturePrompt(server);
     registerAnalysisPrompts(server);
@@ -196,6 +196,14 @@ describe('canonical causal analysis prompts', () => {
         {
           role: 'user',
           content: { type: 'text', text: buildAnalyzeEventPrompt() },
+        },
+      ]);
+
+      const inferred = await client.getPrompt({ name: MCP_PROMPT_NAMES.inferOutcomes });
+      expect(inferred.messages).toEqual([
+        {
+          role: 'user',
+          content: { type: 'text', text: buildInferOutcomesPrompt() },
         },
       ]);
     } finally {

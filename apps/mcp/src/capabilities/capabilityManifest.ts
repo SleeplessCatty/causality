@@ -24,6 +24,7 @@ export const MCP_PROMPT_NAMES = {
   analyzeEvent: 'causality_analyze_event',
   tracePath: 'causality_trace_path',
   reviewChain: 'causality_review_chain',
+  inferOutcomes: 'causality_infer_outcomes',
 } as const;
 
 export const MCP_RESOURCE_URIS = {
@@ -91,6 +92,7 @@ export const MCP_CAPABILITY_MANIFEST = {
     { name: MCP_PROMPT_NAMES.analyzeEvent, purpose: '分析事件的直接原因与结果' },
     { name: MCP_PROMPT_NAMES.tracePath, purpose: '追踪两个事件之间的有向因果路径' },
     { name: MCP_PROMPT_NAMES.reviewChain, purpose: '逐段审查用户提出的因果链' },
+    { name: MCP_PROMPT_NAMES.inferOutcomes, purpose: '推测单个事件可能产生的后续结果' },
   ],
   resources: [
     { uri: MCP_RESOURCE_URIS.domainModel, purpose: '读取领域建模与证据边界' },
@@ -108,6 +110,12 @@ export const MCP_CAPABILITY_MANIFEST = {
     pathDisplayedLimit: 3,
     pathExpandedStateLimit: 10_000,
     chainSegmentLimit: 10,
+    outcomeInferenceDefaultDepth: 3,
+    outcomeInferenceDisplayedResults: 5,
+    outcomeInferenceNodeLimits: [20, 50, 100] as const,
+    outcomeInferencePathQueryLimit: 10,
+    outcomeInferenceDisplayedPathsPerResult: 3,
+    outcomeInferenceCasesPerRelation: 3,
   },
   compatibility: {
     toolsWorkWithoutPromptsOrResources: true,

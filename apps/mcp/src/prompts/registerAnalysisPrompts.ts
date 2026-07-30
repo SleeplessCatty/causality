@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { MCP_PROMPT_NAMES } from '../capabilities/capabilityManifest.js';
 import { buildAnalyzeEventPrompt } from './analyzeEventPrompt.js';
+import { buildInferOutcomesPrompt } from './inferOutcomesPrompt.js';
 import { buildReviewChainPrompt } from './reviewChainPrompt.js';
 import { buildTracePathPrompt } from './tracePathPrompt.js';
 
@@ -43,6 +44,18 @@ export function registerAnalysisPrompts(server: McpServer): void {
     async () => ({
       description: 'Causality 因果链逐段审查流程',
       messages: promptMessage(buildReviewChainPrompt()),
+    }),
+  );
+
+  server.registerPrompt(
+    MCP_PROMPT_NAMES.inferOutcomes,
+    {
+      title: '推测事件可能产生的后续结果',
+      description: '从当前可见会话识别一个起始事件，并用受限下游路径和案例推测候选结果。',
+    },
+    async () => ({
+      description: 'Causality 基于知识库的结果推测流程',
+      messages: promptMessage(buildInferOutcomesPrompt()),
     }),
   );
 }

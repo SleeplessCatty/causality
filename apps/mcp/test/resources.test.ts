@@ -98,7 +98,8 @@ describe('static MCP resources', () => {
 
     expect(parsed).toEqual(MCP_CAPABILITY_MANIFEST);
     expect(parsed.tools).toHaveLength(15);
-    expect(parsed.prompts).toHaveLength(4);
+    expect(parsed.prompts).toHaveLength(5);
+    expect(parsed.prompts.at(-1)?.name).toBe('causality_infer_outcomes');
     expect(parsed.resources).toHaveLength(4);
   });
 
