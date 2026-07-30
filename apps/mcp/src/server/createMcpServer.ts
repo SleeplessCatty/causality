@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { registerCapturePrompt } from '../prompts/capturePrompt.js';
 import { registerAnalysisPrompts } from '../prompts/registerAnalysisPrompts.js';
+import { registerStaticResources } from '../resources/registerResources.js';
 import {
   registerCaptureTools,
   type CausalityCaptureApi,
@@ -33,5 +34,6 @@ export function createCausalityMcpServer(options: CreateCausalityMcpServerOption
   registerCaptureTools(server, options.apiClient, options.logger);
   registerCapturePrompt(server);
   registerAnalysisPrompts(server);
+  registerStaticResources(server);
   return server;
 }
