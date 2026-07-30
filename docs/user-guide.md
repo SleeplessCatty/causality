@@ -263,7 +263,7 @@ MCP 适合让外部 AI 客户端在对话中查询 Causality，并在受控流�
 ```
 
 这里的最外层结构只是示例；应以具体客户端文档为准。协议级检查应能看到 15 个工具、
-4 个 Prompt 和 4 个 Resource。客户端界面可能只展示其中的工具。
+5 个 Prompt 和 4 个 Resource。客户端界面可能只展示其中的工具。
 
 ### 6.3 Codex 专用入口
 
@@ -275,6 +275,7 @@ MCP 适合让外部 AI 客户端在对话中查询 Causality，并在受控流�
    - `$causality-analyze-event`：分析一个事件的直接原因或直接结果；
    - `$causality-trace-path`：追踪两个事件之间的有向因果路径；
    - `$causality-review-chain`：逐段审查一条候选因果链；
+   - `$causality-infer-outcomes`：推测单个事件可能产生的后续结果；
 3. Skill 会读取仓库 `prompts/` 中的同源 Markdown Prompt，再调用 `causality` MCP
    工具。不要尝试把 MCP Prompt 名称直接当作 Codex 斜杠命令。
 
@@ -317,10 +318,11 @@ pnpm mcp:inspect
 Inspector 启动后建议按以下顺序检查：
 
 1. 执行 `tools/list`，确认能看到 15 个工具；
-2. 执行 `prompts/list`，确认存在 4 个 `causality_*` Prompt；
+2. 执行 `prompts/list`，确认存在 5 个 `causality_*` Prompt；
 3. 执行 `resources/list`，确认存在 4 个 `causality://` Resource；
 4. 获取 `causality_capture`，确认返回“Causality 会话采集与入库”规范；
-5. 调用 `search_atomic_events`：
+5. 获取 `causality_infer_outcomes`，确认返回“Causality 基于知识库的结果推测”规范；
+6. 调用 `search_atomic_events`：
 
    ```json
    {
@@ -328,7 +330,16 @@ Inspector 启动后建议按以下顺序检查：
    }
    ```
 
-6. 从结果复制一个事件 ID，再调用 `get_atomic_event`：
+   普通搜索无法形成可靠匹配时，可以明确测试增强搜索：
+
+   ```json
+   {
+     "query": "能源供应趋紧",
+     "searchMode": "enhanced"
+   }
+   ```
+
+7. 从结果复制一个事件 ID，再调用 `get_atomic_event`：
 
    ```json
    {
@@ -337,7 +348,7 @@ Inspector 启动后建议按以下顺序检查：
    }
    ```
 
-7. 需要测试局部图时调用 `query_local_causal_graph`：
+8. 需要测试局部图时调用 `query_local_causal_graph`：
 
    ```json
    {
@@ -367,6 +378,33 @@ AI 应先使用搜索工具获取稳定 ID，再读取详情、关系案例或�
 
 应用自身不提供网页搜索。是否能联网，以及如何引用网页来源，取决于外部 AI
 客户端和用户授予的工具。
+
+### 7.1 基于知识库推测后续结果
+
+在 Codex 中显式使用 `$causality-infer-outcomes`，或在支持 MCP Prompt 的客户端中选择
+`causality_infer_outcomes`。也可以直接提出：
+
+> 使用 Causality 推测“政策利率下降”可能产生的后续结果。
+
+第一版遵守以下固定范围：
+
+- 每次只分析一个起始事件；
+- 先普通搜索，不能可靠匹配时再使用增强搜索；
+- 只查询下游，默认深度为三层；
+- 局部图从20个节点开始，必要时扩展到50和100个；
+- 首次最多展示五个候选结果；
+- 同一结果最多展示三条路径，每段关系最多展示三个案例；
+- 无案例关系仍可参与，但必须标明“无案例依据”；
+- 不计算综合证据等级、平均置信度、置信度乘积或结果发生概率。
+
+报告先给出结果摘要，再按候选结果展示路径中每段关系的置信度和案例数。路径最低
+置信度只表示路径中数值最低的一段关系，不是结果发生概率。达到节点或路径限制时，
+报告会说明结果可能不完整。
+
+用户继续追问某个结果时，该结果会成为新的单一起始事件，再进行一次受限查询。默认只
+使用 Causality 数据库；用户明确要求结合网络资料时，外部信息必须放在独立章节，不能
+伪装成库内事实。需要把分析发现保存到数据库时，应退出推测流程并重新启动
+`Causality Capture`，等待用户审核完整入库方案。
 
 ## 8. AI 会话采集与入库
 

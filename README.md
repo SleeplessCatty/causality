@@ -203,19 +203,23 @@ MCP 提供十个只读查询与证据工具：
 - `commit_knowledge_changes`：仅在用户明确确认最新方案后事务入库；
 - `get_import_result`：在响应不明确时查询已完成结果。
 
-应用还发布四个 MCP Prompt：`causality_capture`、`causality_analyze_event`、
-`causality_trace_path` 和 `causality_review_chain`；同时发布领域规则、采集规则、能力清单
+应用还发布五个 MCP Prompt：`causality_capture`、`causality_analyze_event`、
+`causality_trace_path`、`causality_review_chain` 和 `causality_infer_outcomes`；同时发布领域规则、采集规则、能力清单
 和系统状态四个只读 Resource。不同客户端对 Prompt 和 Resource 的展示支持并不一致，
-四份同源 Markdown Prompt 位于 [`prompts/`](prompts/)，对应 Codex Skill 位于
+五份同源 Markdown Prompt 位于 [`prompts/`](prompts/)，对应 Codex Skill 位于
 [`.agents/skills/`](.agents/skills/)。
 
 **Codex 专用入口**：在仓库根目录启动 Codex 后，先用 `/mcp` 确认 `causality`
 已连接；`/mcp` 只显示服务器和工具，不会列出 MCP Prompt 或 Resource。使用 `/skills`
 查看仓库工作流，或显式输入 `$causality-capture`、`$causality-analyze-event`、
-`$causality-trace-path`、`$causality-review-chain`。仓库通过
+`$causality-trace-path`、`$causality-review-chain`、`$causality-infer-outcomes`。仓库通过
 `.agents/skills` 暴露这些 Skill，Skill 会直接读取同源 Markdown Prompt，再调用
 `causality` 工具。MCP 初始化 `instructions` 还会自动向 Codex 提供事实边界、只读分析和
 受控入库的核心规则。首次添加后若 `/skills` 未显示，重启 Codex 或新建会话。
+
+`causality_infer_outcomes` 从当前会话识别一个起始事件，默认查询三层下游路径，并用
+库内关系和案例解释最多五个候选结果。它不计算综合证据等级或结果发生概率，也不会把
+推测自动写入数据库；需要保存新知识时必须重新进入 `Causality Capture`。
 
 标准采集流程为：
 
