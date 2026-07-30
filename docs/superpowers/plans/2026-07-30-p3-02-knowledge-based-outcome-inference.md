@@ -71,7 +71,7 @@
 - Produces: `CausalityKnowledgeApi.searchEvents(query: string, page?: number, searchMode?: SearchMode): Promise<EventListResponse>`.
 - Produces: `search_atomic_events` input `{ query, page = 1, searchMode = 'standard' }` without changing its Tool name or output Schema.
 
-- [ ] **Step 1: Write failing API-client tests for ordinary and enhanced event search**
+- [x] **Step 1: Write failing API-client tests for ordinary and enhanced event search**
 
 Update the ordinary-search test so the existing two-argument call remains valid, then add an enhanced call:
 
@@ -117,7 +117,7 @@ await expect(
 });
 ```
 
-- [ ] **Step 2: Run the API-client test and confirm RED**
+- [x] **Step 2: Run the API-client test and confirm RED**
 
 Run:
 
@@ -127,7 +127,7 @@ pnpm --filter @causality/mcp exec vitest run test/causalityApiClient.test.ts
 
 Expected: FAIL because `searchEvents` does not accept or encode `searchMode`.
 
-- [ ] **Step 3: Implement the compatible API-client signature**
+- [x] **Step 3: Implement the compatible API-client signature**
 
 Import `SearchMode` from `@causality/contracts` and replace the method with:
 
@@ -150,7 +150,7 @@ public searchEvents(
 
 Omitting the standard query parameter preserves the current URL and relies on the API Schema default.
 
-- [ ] **Step 4: Run the API-client test and confirm GREEN**
+- [x] **Step 4: Run the API-client test and confirm GREEN**
 
 Run:
 
@@ -160,7 +160,7 @@ pnpm --filter @causality/mcp exec vitest run test/causalityApiClient.test.ts
 
 Expected: PASS, including existing contract, timeout, token, and error mapping cases.
 
-- [ ] **Step 5: Write failing Tool forwarding and validation tests**
+- [x] **Step 5: Write failing Tool forwarding and validation tests**
 
 Change the fake input capture to:
 
@@ -211,7 +211,7 @@ const invalidMode = await mcpClient.callTool({
 expect(invalidMode.isError).toBe(true);
 ```
 
-- [ ] **Step 6: Run the Tool test and confirm RED**
+- [x] **Step 6: Run the Tool test and confirm RED**
 
 Run:
 
@@ -221,7 +221,7 @@ pnpm --filter @causality/mcp exec vitest run test/knowledgeTools.test.ts
 
 Expected: FAIL because the Tool Schema rejects `searchMode` and the fake interface lacks the new argument.
 
-- [ ] **Step 7: Implement the Tool Schema and forwarding**
+- [x] **Step 7: Implement the Tool Schema and forwarding**
 
 Import `type SearchMode` from contracts, update `CausalityKnowledgeApi`, and extend the Schema:
 
@@ -249,7 +249,7 @@ async ({ query, page, searchMode }) => {
 
 Update the Tool description to `按名称、别名或关键词普通搜索，也可按语义增强搜索原子事件。`.
 
-- [ ] **Step 8: Run focused tests, typecheck, and commit Task 1**
+- [x] **Step 8: Run focused tests, typecheck, and commit Task 1**
 
 Run:
 
@@ -282,7 +282,7 @@ git commit -m "feat: expose enhanced atomic event MCP search"
 - Produces: `buildSharedAnalysisPolicy(options?: { readToolNames?: readonly string[] }): string` while preserving existing output when called without options.
 - Produces: `OUTCOME_INFERENCE_READ_TOOL_NAMES` and `buildInferOutcomesPrompt(): string`.
 
-- [ ] **Step 1: Write failing shared-policy and inference-Prompt tests**
+- [x] **Step 1: Write failing shared-policy and inference-Prompt tests**
 
 Import the new names and include the Prompt in the common Prompt array:
 
@@ -349,7 +349,7 @@ const existingBefore = [
 expect(existingBefore.every((value) => value.length > 500)).toBe(true);
 ```
 
-- [ ] **Step 2: Run the Prompt test and confirm RED**
+- [x] **Step 2: Run the Prompt test and confirm RED**
 
 Run:
 
@@ -359,7 +359,7 @@ pnpm --filter @causality/mcp exec vitest run test/analysisPrompts.test.ts
 
 Expected: FAIL because `inferOutcomesPrompt.ts` and its exports do not exist.
 
-- [ ] **Step 3: Allow a Prompt-specific read Tool allowlist without changing existing builders**
+- [x] **Step 3: Allow a Prompt-specific read Tool allowlist without changing existing builders**
 
 Add:
 
@@ -409,7 +409,7 @@ ${list(ANALYSIS_DENIED_TOOL_NAMES)}
 
 Run the existing three Prompt assertions after this change; their generated Markdown must remain byte-identical.
 
-- [ ] **Step 4: Create the canonical inference Prompt**
+- [x] **Step 4: Create the canonical inference Prompt**
 
 Create `inferOutcomesPrompt.ts` with the exact narrow allowlist:
 
@@ -477,7 +477,7 @@ ${buildSharedAnalysisPolicy({ readToolNames: OUTCOME_INFERENCE_READ_TOOL_NAMES }
 }
 ```
 
-- [ ] **Step 5: Run Prompt tests and confirm GREEN**
+- [x] **Step 5: Run Prompt tests and confirm GREEN**
 
 Run:
 
@@ -488,7 +488,7 @@ pnpm --filter @causality/mcp typecheck
 
 Expected: PASS; existing three builders remain unchanged and the new Prompt satisfies every exact boundary.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```bash
 git add apps/mcp/src/prompts/analysisPolicy.ts apps/mcp/src/prompts/inferOutcomesPrompt.ts apps/mcp/test/analysisPrompts.test.ts
@@ -514,7 +514,7 @@ git commit -m "feat: define outcome inference prompt policy"
 - Produces: manifest totals of 15 Tools, 5 Prompts, and 4 Resources.
 - Produces stable inference limits for Prompt, Resource, tests, and documentation.
 
-- [ ] **Step 1: Write failing manifest and Resource tests**
+- [x] **Step 1: Write failing manifest and Resource tests**
 
 Change the exact Prompt list:
 
@@ -550,7 +550,7 @@ expect(parsed.resources).toHaveLength(4);
 expect(parsed.prompts.at(-1)?.name).toBe('causality_infer_outcomes');
 ```
 
-- [ ] **Step 2: Write a failing MCP registration test**
+- [x] **Step 2: Write a failing MCP registration test**
 
 After listing Prompts, read the new Prompt:
 
@@ -566,7 +566,7 @@ expect(result.messages).toEqual([
 
 Rename the test to `registers all five canonical prompts without arguments`.
 
-- [ ] **Step 3: Run focused tests and confirm RED**
+- [x] **Step 3: Run focused tests and confirm RED**
 
 Run:
 
@@ -576,7 +576,7 @@ pnpm --filter @causality/mcp exec vitest run test/capabilityManifest.test.ts tes
 
 Expected: FAIL because the name, registration, manifest entry, limits, and five-item Resource Schema are absent.
 
-- [ ] **Step 4: Extend the manifest and strict Resource Schema**
+- [x] **Step 4: Extend the manifest and strict Resource Schema**
 
 Add the Prompt name and manifest row:
 
@@ -616,7 +616,7 @@ outcomeInferenceDisplayedPathsPerResult: z.literal(3),
 outcomeInferenceCasesPerRelation: z.literal(3),
 ```
 
-- [ ] **Step 5: Register the new Prompt**
+- [x] **Step 5: Register the new Prompt**
 
 Import `buildInferOutcomesPrompt` and add:
 
@@ -636,7 +636,7 @@ server.registerPrompt(
 
 Do not modify `createCausalityMcpServer`; it already calls `registerAnalysisPrompts` for both transports.
 
-- [ ] **Step 6: Run focused tests, typecheck, and commit Task 3**
+- [x] **Step 6: Run focused tests, typecheck, and commit Task 3**
 
 Run:
 
@@ -668,7 +668,7 @@ git commit -m "feat: register outcome inference MCP prompt"
 - Consumes: `buildInferOutcomesPrompt()` and `MCP_PROMPT_NAMES.inferOutcomes`.
 - Produces: a byte-identical Markdown Prompt and a thin Codex launcher.
 
-- [ ] **Step 1: Write failing portable-Prompt and Skill tests**
+- [x] **Step 1: Write failing portable-Prompt and Skill tests**
 
 Add the Markdown file to the byte-identity table:
 
@@ -708,7 +708,7 @@ expect(parseYaml(metadataText!)).toEqual({
 });
 ```
 
-- [ ] **Step 2: Run the Prompt test and confirm RED**
+- [x] **Step 2: Run the Prompt test and confirm RED**
 
 Run:
 
@@ -718,7 +718,7 @@ pnpm --filter @causality/mcp exec vitest run test/analysisPrompts.test.ts
 
 Expected: FAIL because the Markdown Prompt, Skill, and metadata do not exist.
 
-- [ ] **Step 3: Extend portable Prompt generation**
+- [x] **Step 3: Extend portable Prompt generation**
 
 Import `buildInferOutcomesPrompt` and add:
 
@@ -732,7 +732,7 @@ Generate all portable Prompts:
 pnpm --filter @causality/mcp prompt:generate
 ```
 
-- [ ] **Step 4: Create the thin Skill**
+- [x] **Step 4: Create the thin Skill**
 
 Create `SKILL.md` exactly as:
 
@@ -762,7 +762,7 @@ policy:
   allow_implicit_invocation: true
 ```
 
-- [ ] **Step 5: Run Prompt generation and Skill tests**
+- [x] **Step 5: Run Prompt generation and Skill tests**
 
 Run:
 
@@ -775,7 +775,7 @@ git diff --check
 
 Expected: all commands exit 0; all five Markdown files match their builders.
 
-- [ ] **Step 6: Commit Task 4**
+- [x] **Step 6: Commit Task 4**
 
 ```bash
 git add apps/mcp/src/prompts/generatePortablePrompt.ts prompts/causality-infer-outcomes.md .agents/skills/causality-infer-outcomes apps/mcp/test/analysisPrompts.test.ts
@@ -796,7 +796,7 @@ git commit -m "feat: add portable outcome inference skill"
 - Consumes: the registered fifth Prompt and generated Skill from Tasks 3–4.
 - Produces: initialization guidance and protocol-level Prompt parity over stdio and Streamable HTTP.
 
-- [ ] **Step 1: Write failing Server-instruction tests**
+- [x] **Step 1: Write failing Server-instruction tests**
 
 Import the instruction constant and canonical inference builder in the relevant tests:
 
@@ -814,7 +814,7 @@ expect(CAUSALITY_MCP_INSTRUCTIONS).toContain('不得解释为结果发生概率'
 expect(CAUSALITY_MCP_INSTRUCTIONS).toContain('重新进入 causality-capture');
 ```
 
-- [ ] **Step 2: Write failing stdio and HTTP Prompt parity tests**
+- [x] **Step 2: Write failing stdio and HTTP Prompt parity tests**
 
 In the stdio test, fetch the fifth Prompt and assert canonical content:
 
@@ -858,7 +858,7 @@ expect(listedBody.result.prompts.map((prompt) => prompt.name)).toContain(
 expect(readBody.result.messages[0]?.content.text).toBe(buildInferOutcomesPrompt());
 ```
 
-- [ ] **Step 3: Run transport tests and confirm RED**
+- [x] **Step 3: Run transport tests and confirm RED**
 
 Run:
 
@@ -868,7 +868,7 @@ pnpm --filter @causality/mcp exec vitest run test/capturePrompt.test.ts test/std
 
 Expected: instruction assertions fail; protocol tests pass only after all Task 3 registrations are present.
 
-- [ ] **Step 4: Extend the initialization instructions**
+- [x] **Step 4: Extend the initialization instructions**
 
 Add the fifth Skill to the existing Skill sentence:
 
@@ -882,7 +882,7 @@ Add these boundaries without duplicating the full Prompt:
 结果推测只使用受限下游路径和案例证据；关系置信度、路径最低置信度均不得解释为结果发生概率。结果推测保持只读，用户要求保存新知识时必须重新进入 causality-capture。
 ```
 
-- [ ] **Step 5: Run transport regression and commit Task 5**
+- [x] **Step 5: Run transport regression and commit Task 5**
 
 Run:
 
@@ -913,7 +913,7 @@ git commit -m "docs: advertise outcome inference over MCP"
 - Consumes: final names, counts, limits, and behavior from Tasks 1–5.
 - Produces: repository onboarding and a reproducible manual acceptance path.
 
-- [ ] **Step 1: Update README capability counts and entry points**
+- [x] **Step 1: Update README capability counts and entry points**
 
 Replace the four-Prompt description with five Prompts and add:
 
@@ -923,7 +923,7 @@ causality_infer_outcomes：从当前会话识别一个起始事件，查询最�
 
 Add `$causality-infer-outcomes` to the Codex Skill list. Keep the statement that `/mcp` may show Tools without showing Prompts or Resources.
 
-- [ ] **Step 2: Add a focused user-guide section**
+- [x] **Step 2: Add a focused user-guide section**
 
 Document these exact invocation examples:
 
@@ -949,7 +949,7 @@ Document the fixed first-run behavior:
 
 Update MCP Inspector instructions to expect 15 Tools, 5 Prompts, and 4 Resources, then add a `prompts/get` check for `causality_infer_outcomes`.
 
-- [ ] **Step 3: Move stage status to implementation complete, pending automated gate**
+- [x] **Step 3: Move stage status to implementation complete, pending automated gate**
 
 Only after Tasks 1–5 pass focused tests, update:
 
@@ -959,7 +959,7 @@ P3-02 状态：开发完成，自动化测试中
 
 Do not mark the stage complete and do not claim manual acceptance.
 
-- [ ] **Step 4: Validate documentation and commit Task 6**
+- [x] **Step 4: Validate documentation and commit Task 6**
 
 Run:
 
@@ -989,7 +989,7 @@ git commit -m "docs: explain knowledge-based outcome inference"
 - Consumes: all Task 1–6 deliverables.
 - Produces: a verified P3-02 release candidate waiting for user manual review.
 
-- [ ] **Step 1: Regenerate portable Prompts and prove no drift**
+- [x] **Step 1: Regenerate portable Prompts and prove no drift**
 
 Run:
 
@@ -1000,7 +1000,7 @@ git diff --exit-code -- prompts
 
 Expected: no generated Prompt diff.
 
-- [ ] **Step 2: Run the complete MCP test suite**
+- [x] **Step 2: Run the complete MCP test suite**
 
 Run:
 
@@ -1012,7 +1012,7 @@ pnpm --filter @causality/mcp build
 
 Expected: all MCP tests pass and both TypeScript commands exit 0.
 
-- [ ] **Step 3: Run repository unit and integration gates**
+- [x] **Step 3: Run repository unit and integration gates**
 
 Run:
 
@@ -1023,7 +1023,7 @@ pnpm test:integration
 
 Expected: all workspace unit tests, API integration tests, and Semantic Worker integration tests pass against isolated Testcontainers databases.
 
-- [ ] **Step 4: Run static, build, and Compose gates**
+- [x] **Step 4: Run static, build, and Compose gates**
 
 Run:
 
@@ -1038,7 +1038,7 @@ git diff --check
 
 Expected: every command exits 0. Existing non-blocking graph bundle-size warnings may be reported but must not be described as new P3-02 failures.
 
-- [ ] **Step 5: Verify exact protocol capabilities**
+- [x] **Step 5: Verify exact protocol capabilities**
 
 Run the focused protocol suite:
 
@@ -1054,7 +1054,7 @@ Prompts: 5
 Resources: 4
 ```
 
-- [ ] **Step 6: Record actual verification evidence and prepare the manual gate**
+- [x] **Step 6: Record actual verification evidence and prepare the manual gate**
 
 Update the design and roadmap with:
 
@@ -1084,7 +1084,7 @@ Stop here and give the user the Task 8 checklist. Do not mark P3-02 complete and
 - Consumes: the P3-02 release candidate and a running Causality MCP connection.
 - Produces: explicit user acceptance and the final stage-completion record.
 
-- [ ] **Step 1: Present the manual acceptance checklist**
+- [x] **Step 1: Present the manual acceptance checklist**
 
 Ask the user to verify:
 
@@ -1103,11 +1103,11 @@ Ask the user to verify:
 13. external information appears in a separate section only when explicitly requested;
 14. a write request switches to `Causality Capture` and never commits from inference.
 
-- [ ] **Step 2: Keep the stage open until the user explicitly passes review**
+- [x] **Step 2: Keep the stage open until the user explicitly passes review**
 
 If any item fails, reproduce it with the corresponding focused test, implement the smallest in-scope fix through RED-GREEN, and rerun Task 7 gates proportionate to the change. Keep status `等待人工复核`.
 
-- [ ] **Step 3: Mark P3-02 complete only after explicit approval**
+- [x] **Step 3: Mark P3-02 complete only after explicit approval**
 
 After the user states that manual review passed, update both status records to:
 
@@ -1117,7 +1117,7 @@ P3-02 基于知识库的结果推测：已完成
 
 Record the manual approval date and final local commit IDs. Do not invent usage results or test counts.
 
-- [ ] **Step 4: Commit the completion record**
+- [x] **Step 4: Commit the completion record**
 
 ```bash
 git add docs/superpowers/specs/2026-07-30-p3-02-knowledge-based-outcome-inference-design.md docs/superpowers/plans/2026-07-20-causality-application-roadmap.md
