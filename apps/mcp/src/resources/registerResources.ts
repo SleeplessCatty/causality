@@ -1,11 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { MCP_RESOURCE_URIS } from '../capabilities/capabilityManifest.js';
+import { CAUSALITY_MCP_VERSION, MCP_RESOURCE_URIS } from '../capabilities/capabilityManifest.js';
 import {
   buildCapabilitiesResource,
   buildCaptureRulesResource,
   buildDomainModelResource,
 } from './staticResourceContent.js';
+import { buildSystemStatusResource, type CausalityStatusApi } from './systemStatusResource.js';
 
 export function registerStaticResources(server: McpServer): void {
   server.registerResource(
@@ -63,5 +64,33 @@ export function registerStaticResources(server: McpServer): void {
         },
       ],
     }),
+  );
+}
+
+export function registerResources(server: McpServer, api: CausalityStatusApi): void {
+  registerStaticResources(server);
+  server.registerResource(
+    'causality-system-status',
+    MCP_RESOURCE_URIS.systemStatus,
+    {
+      title: 'Causality 本地系统状态',
+      description: '实时读取 API、数据库、语义 Worker、模型和索引可用状态。',
+      mimeType: 'application/json',
+    },
+    async () => {
+      const status = await buildSystemStatusResource(api, {
+        now: () => new Date(),
+        serverVersion: CAUSALITY_MCP_VERSION,
+      });
+      return {
+        contents: [
+          {
+            uri: MCP_RESOURCE_URIS.systemStatus,
+            mimeType: 'application/json',
+            text: JSON.stringify(status, null, 2),
+          },
+        ],
+      };
+    },
   );
 }

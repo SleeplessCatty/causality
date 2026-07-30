@@ -1,8 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import { CAUSALITY_MCP_NAME, CAUSALITY_MCP_VERSION } from '../capabilities/capabilityManifest.js';
 import { registerCapturePrompt } from '../prompts/capturePrompt.js';
 import { registerAnalysisPrompts } from '../prompts/registerAnalysisPrompts.js';
-import { registerStaticResources } from '../resources/registerResources.js';
+import { registerResources } from '../resources/registerResources.js';
+import type { CausalityStatusApi } from '../resources/systemStatusResource.js';
 import {
   registerCaptureTools,
   type CausalityCaptureApi,
@@ -17,7 +19,10 @@ import {
   type CausalityKnowledgeApi,
 } from '../tools/registerKnowledgeTools.js';
 
-export type CausalityMcpApi = CausalityKnowledgeApi & CausalityEvidenceApi & CausalityCaptureApi;
+export type CausalityMcpApi = CausalityKnowledgeApi &
+  CausalityEvidenceApi &
+  CausalityCaptureApi &
+  CausalityStatusApi;
 
 export interface CreateCausalityMcpServerOptions {
   apiClient: CausalityMcpApi;
@@ -26,14 +31,14 @@ export interface CreateCausalityMcpServerOptions {
 
 export function createCausalityMcpServer(options: CreateCausalityMcpServerOptions): McpServer {
   const server = new McpServer({
-    name: 'causality',
-    version: '0.1.0',
+    name: CAUSALITY_MCP_NAME,
+    version: CAUSALITY_MCP_VERSION,
   });
   registerKnowledgeTools(server, options.apiClient);
   registerEvidenceTools(server, options.apiClient);
   registerCaptureTools(server, options.apiClient, options.logger);
   registerCapturePrompt(server);
   registerAnalysisPrompts(server);
-  registerStaticResources(server);
+  registerResources(server, options.apiClient);
   return server;
 }

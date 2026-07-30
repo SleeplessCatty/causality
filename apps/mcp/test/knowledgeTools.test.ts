@@ -225,6 +225,18 @@ class FakeKnowledgeApi implements CausalityMcpApi {
     throw new Error('not used');
   }
 
+  public async getHealth(): Promise<never> {
+    throw new Error('not used');
+  }
+
+  public async getReadiness(): Promise<never> {
+    throw new Error('not used');
+  }
+
+  public async getSemanticLifecycle(): Promise<never> {
+    throw new Error('not used');
+  }
+
   public async compare(): Promise<AiCaptureComparison> {
     throw new Error('not used');
   }
