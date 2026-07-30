@@ -16,6 +16,8 @@ import {
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
+
 export interface CausalityEvidenceApi {
   getCase(id: string): Promise<CaseDetail>;
   getCaseRelations(
@@ -225,7 +227,7 @@ function evidenceBundleText(result: CausalEvidenceBundleResponse): string {
 
 export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvidenceApi): void {
   server.registerTool(
-    'get_concrete_case',
+    MCP_TOOL_NAMES.getConcreteCase,
     {
       title: '查看具体案例',
       description: '读取一个具体案例及一页明确限量的关联因果关系。',
@@ -250,7 +252,7 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
   );
 
   server.registerTool(
-    'search_causal_relations',
+    MCP_TOOL_NAMES.searchCausalRelations,
     {
       title: '搜索因果关系',
       description: '按原因事件、结果事件或关系说明执行普通或显式语义增强搜索。',
@@ -265,7 +267,7 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
   );
 
   server.registerTool(
-    'find_causal_paths',
+    MCP_TOOL_NAMES.findCausalPaths,
     {
       title: '查询因果路径',
       description: '沿真实因果方向查询两个原子事件之间受深度、数量和质量限制的简单路径。',
@@ -280,7 +282,7 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
   );
 
   server.registerTool(
-    'get_causal_evidence_bundle',
+    MCP_TOOL_NAMES.getCausalEvidenceBundle,
     {
       title: '生成因果证据包',
       description: '按一条已选择路径中的有序关系 ID 读取关系详情和限量案例依据。',

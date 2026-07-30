@@ -1,6 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-export const CAUSALITY_CAPTURE_PROMPT_NAME = 'causality_capture';
+import { MCP_PROMPT_NAMES } from '../capabilities/capabilityManifest.js';
+
+export const CAUSALITY_CAPTURE_PROMPT_NAME = MCP_PROMPT_NAMES.capture;
 
 export function buildCausalityCapturePrompt(): string {
   return `# Causality 会话采集与入库

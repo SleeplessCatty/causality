@@ -18,6 +18,8 @@ import {
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
+
 export interface CausalityKnowledgeApi {
   searchEvents(query: string, page?: number): Promise<EventListResponse>;
   getEvent(id: string): Promise<EventDetail>;
@@ -183,7 +185,7 @@ function graphText(result: CausalGraphResponse): string {
 
 export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKnowledgeApi): void {
   server.registerTool(
-    'search_atomic_events',
+    MCP_TOOL_NAMES.searchAtomicEvents,
     {
       title: '搜索原子事件',
       description: '按名称、别名或关键词搜索 Causality 数据库中的原子事件。',
@@ -198,7 +200,7 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   );
 
   server.registerTool(
-    'get_atomic_event',
+    MCP_TOOL_NAMES.getAtomicEvent,
     {
       title: '查看原子事件',
       description: '读取一个原子事件及一页明确限量的关联因果关系。',
@@ -220,7 +222,7 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   );
 
   server.registerTool(
-    'search_concrete_cases',
+    MCP_TOOL_NAMES.searchConcreteCases,
     {
       title: '搜索具体案例',
       description: '按内容关键词搜索 Causality 数据库中的真实具体案例记录。',
@@ -235,7 +237,7 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   );
 
   server.registerTool(
-    'get_causal_relation',
+    MCP_TOOL_NAMES.getCausalRelation,
     {
       title: '查看因果关系',
       description: '读取一条因果关系的方向、置信度、案例数和关系说明。',
@@ -250,7 +252,7 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   );
 
   server.registerTool(
-    'get_relation_cases',
+    MCP_TOOL_NAMES.getRelationCases,
     {
       title: '查看关系案例',
       description: '读取一条因果关系当前返回页中的关联具体案例。',
@@ -269,7 +271,7 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   );
 
   server.registerTool(
-    'query_local_causal_graph',
+    MCP_TOOL_NAMES.queryLocalCausalGraph,
     {
       title: '查询局部因果图',
       description: '从一个已有原子事件出发，按方向和阈值查询受限的局部因果网络。',

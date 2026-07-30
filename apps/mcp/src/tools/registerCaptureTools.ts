@@ -12,6 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { CausalityApiClientError } from '../api/causalityApiClient.js';
+import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
 import {
   captureCandidateSetMcpSchema,
   captureComparisonMcpSchema,
@@ -325,7 +326,7 @@ export function registerCaptureTools(
   logger: McpCaptureLogger = silentLogger,
 ): void {
   server.registerTool(
-    'compare_knowledge_candidates',
+    MCP_TOOL_NAMES.compareKnowledgeCandidates,
     {
       title: '对比知识候选',
       description: '一次性对比完整的原子事件、具体案例、因果关系和案例关联候选集合。',
@@ -347,7 +348,7 @@ export function registerCaptureTools(
   );
 
   server.registerTool(
-    'prepare_knowledge_changes',
+    MCP_TOOL_NAMES.prepareKnowledgeChanges,
     {
       title: '生成入库方案',
       description: '根据完整候选、对比结果和 AI 决策生成不可变且限时有效的完整入库方案。',
@@ -368,7 +369,7 @@ export function registerCaptureTools(
   );
 
   server.registerTool(
-    'get_import_plan_status',
+    MCP_TOOL_NAMES.getImportPlanStatus,
     {
       title: '查询入库方案状态',
       description: '查询一个不可变入库方案当前是否仍然有效、可提交或已经进入终态。',
@@ -388,7 +389,7 @@ export function registerCaptureTools(
   );
 
   server.registerTool(
-    'commit_knowledge_changes',
+    MCP_TOOL_NAMES.commitKnowledgeChanges,
     {
       title: '确认执行入库方案',
       description: '仅在用户明确确认最新完整方案后，按不可变方案 ID 执行一次幂等事务入库。',
@@ -408,7 +409,7 @@ export function registerCaptureTools(
   );
 
   server.registerTool(
-    'get_import_result',
+    MCP_TOOL_NAMES.getImportResult,
     {
       title: '查询入库结果',
       description: '按成功历史 ID 查询已完成事务的幂等入库结果和采集标记。',
