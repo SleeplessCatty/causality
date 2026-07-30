@@ -39,7 +39,12 @@ export function buildDomainModelRules(): string {
 - **数据库事实**只来自工具实际返回的数据；模型解释和用户明确要求的**外部信息**必须与数据库事实分区，不得反向改写库内结论。`;
 }
 
-export function buildSharedAnalysisPolicy(): string {
+export interface SharedAnalysisPolicyOptions {
+  readToolNames?: readonly string[];
+}
+
+export function buildSharedAnalysisPolicy(options: SharedAnalysisPolicyOptions = {}): string {
+  const readToolNames = options.readToolNames ?? ANALYSIS_READ_TOOL_NAMES;
   return `${buildDomainModelRules()}
 
 ## 通用执行规则
@@ -57,7 +62,7 @@ export function buildSharedAnalysisPolicy(): string {
 
 ## 允许调用的只读工具
 
-${list(ANALYSIS_READ_TOOL_NAMES)}
+${list(readToolNames)}
 
 ## 禁止调用的采集工具
 

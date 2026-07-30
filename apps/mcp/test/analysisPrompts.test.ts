@@ -12,14 +12,24 @@ import {
   ANALYSIS_DENIED_TOOL_NAMES,
   ANALYSIS_READ_TOOL_NAMES,
   buildDomainModelRules,
+  buildSharedAnalysisPolicy,
 } from '../src/prompts/analysisPolicy.js';
 import { buildAnalyzeEventPrompt } from '../src/prompts/analyzeEventPrompt.js';
 import { registerCapturePrompt } from '../src/prompts/capturePrompt.js';
+import {
+  buildInferOutcomesPrompt,
+  OUTCOME_INFERENCE_READ_TOOL_NAMES,
+} from '../src/prompts/inferOutcomesPrompt.js';
 import { registerAnalysisPrompts } from '../src/prompts/registerAnalysisPrompts.js';
 import { buildReviewChainPrompt } from '../src/prompts/reviewChainPrompt.js';
 import { buildTracePathPrompt } from '../src/prompts/tracePathPrompt.js';
 
-const prompts = [buildAnalyzeEventPrompt(), buildTracePathPrompt(), buildReviewChainPrompt()];
+const existingAnalysisPrompts = [
+  buildAnalyzeEventPrompt(),
+  buildTracePathPrompt(),
+  buildReviewChainPrompt(),
+];
+const prompts = [...existingAnalysisPrompts, buildInferOutcomesPrompt()];
 const workspaceRoot = resolve(import.meta.dirname, '../../..');
 
 describe('canonical causal analysis prompts', () => {
@@ -73,10 +83,22 @@ describe('canonical causal analysis prompts', () => {
       'commit_knowledge_changes',
       'get_import_result',
     ]);
-    for (const prompt of prompts) {
+    for (const prompt of existingAnalysisPrompts) {
       for (const name of ANALYSIS_READ_TOOL_NAMES) expect(prompt).toContain(name);
       for (const name of ANALYSIS_DENIED_TOOL_NAMES) expect(prompt).toContain(name);
     }
+  });
+
+  it('narrows the shared read-tool list without weakening capture-tool denial', () => {
+    const policy = buildSharedAnalysisPolicy({
+      readToolNames: ['search_atomic_events', 'get_atomic_event'],
+    });
+
+    expect(policy).toContain('`search_atomic_events`');
+    expect(policy).toContain('`get_atomic_event`');
+    expect(policy).not.toContain('`search_concrete_cases`');
+    expect(policy).not.toContain('`search_causal_relations`');
+    for (const name of ANALYSIS_DENIED_TOOL_NAMES) expect(policy).toContain(`\`${name}\``);
   });
 
   it('defines bounded direct event analysis and progressive expansion', () => {
@@ -90,6 +112,43 @@ describe('canonical causal analysis prompts', () => {
     expect(prompt).toContain('不自动展示第二层');
     expect(prompt).toContain('用户追问后');
     expect(prompt).toContain('未展开数量');
+  });
+
+  it('defines bounded single-event downstream outcome inference', () => {
+    expect(OUTCOME_INFERENCE_READ_TOOL_NAMES).toEqual([
+      'search_atomic_events',
+      'get_atomic_event',
+      'query_local_causal_graph',
+      'get_causal_relation',
+      'get_relation_cases',
+      'get_concrete_case',
+      'find_causal_paths',
+      'get_causal_evidence_bundle',
+    ]);
+
+    const prompt = buildInferOutcomesPrompt();
+    expect(prompt).toContain('规则版本：V1');
+    expect(prompt).toContain('只支持一个起始事件');
+    expect(prompt).toContain('searchMode = standard');
+    expect(prompt).toContain('searchMode = enhanced');
+    expect(prompt).toContain('direction = downstream');
+    expect(prompt).toContain('默认只保留 3 层以内');
+    expect(prompt).toContain('20 → 50 → 100');
+    expect(prompt).toContain('最多展示 5 个候选结果');
+    expect(prompt).toContain('maxDepth = 3');
+    expect(prompt).toContain('pathLimit = 10');
+    expect(prompt).toContain('同一结果最多展示 3 条路径');
+    expect(prompt).toContain('每段关系最多展示 3 个案例');
+    expect(prompt).toContain('无案例依据');
+    expect(prompt).toContain('不计算综合证据等级');
+    expect(prompt).toContain('不计算平均置信度、关系置信度乘积或结果发生概率');
+    expect(prompt).toContain('结果摘要');
+    expect(prompt).toContain('候选结果详情');
+    expect(prompt).toContain('查询结果可能不完整');
+    expect(prompt).toContain('重新启动 `causality_capture`');
+    expect(prompt).not.toContain('`search_concrete_cases`');
+    expect(prompt).not.toContain('`search_causal_relations`');
+    for (const name of ANALYSIS_DENIED_TOOL_NAMES) expect(prompt).toContain(`\`${name}\``);
   });
 
   it('defines bounded path ranking, evidence expansion, and truncation language', () => {
