@@ -25,6 +25,7 @@ interface ApiState {
   token: string;
   authorizeCalls: string[];
   workflowTokens: string[];
+  statusTokens: Array<string | null>;
 }
 
 function apiFetch(state: ApiState): typeof fetch {
@@ -40,6 +41,38 @@ function apiFetch(state: ApiState): typeof fetch {
         concreteCases: [],
         causalRelations: [],
         relationCaseLinks: [],
+      });
+    }
+    if (['/api/health', '/api/ready', '/api/semantic/lifecycle'].includes(url.pathname)) {
+      state.statusTokens.push(headers.get('x-causality-mcp-token'));
+      if (url.pathname === '/api/health') {
+        return Response.json({ status: 'ok', service: 'causality-api' });
+      }
+      if (url.pathname === '/api/ready') {
+        return Response.json({ status: 'ready', database: 'available' });
+      }
+      return Response.json({
+        currentModelCode: null,
+        models: [],
+        index: {
+          status: 'empty',
+          processedItems: 0,
+          totalItems: 0,
+          pendingItems: 0,
+          failedItems: 0,
+          availableForEnhancedSearch: false,
+          failure: null,
+          updatedAt: null,
+        },
+        operation: null,
+        worker: {
+          status: 'online',
+          modelState: 'idle',
+          loadedModelCode: null,
+          checkedAt: '2026-07-30T12:00:00.000Z',
+        },
+        pollAfterMs: null,
+        updatedAt: '2026-07-30T12:00:00.000Z',
       });
     }
     if (url.pathname !== '/api/mcp/authorize') {
@@ -101,6 +134,7 @@ describe('Streamable HTTP transport security', () => {
       token: firstToken,
       authorizeCalls: [],
       workflowTokens: [],
+      statusTokens: [],
     };
     const server = await startCausalityMcpHttpServer({
       apiBaseUrl: 'http://causality-api.test',
@@ -190,7 +224,12 @@ describe('Streamable HTTP transport security', () => {
   });
 
   it('re-authorizes every request so rotation invalidates an existing session immediately', async () => {
-    const state: ApiState = { token: firstToken, authorizeCalls: [], workflowTokens: [] };
+    const state: ApiState = {
+      token: firstToken,
+      authorizeCalls: [],
+      workflowTokens: [],
+      statusTokens: [],
+    };
     const { server } = await start({ state });
     const initialized = await postMcp(server, { token: firstToken });
     const sessionId = initialized.headers.get('mcp-session-id')!;
@@ -238,6 +277,48 @@ describe('Streamable HTTP transport security', () => {
     expect(response.status).toBe(200);
     expect(payload.result?.structuredContent?.atomicEvents).toEqual([]);
     expect(state.workflowTokens).toEqual([firstToken]);
+  });
+
+  it('lists and reads live resources inside the current authorized request context', async () => {
+    const { server, state } = await start();
+    const initialized = await postMcp(server, { token: firstToken });
+    const sessionId = initialized.headers.get('mcp-session-id')!;
+    const listed = await postMcp(server, {
+      token: firstToken,
+      sessionId,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'resources/list' }),
+    });
+    const read = await postMcp(server, {
+      token: firstToken,
+      sessionId,
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 5,
+        method: 'resources/read',
+        params: { uri: 'causality://system/status' },
+      }),
+    });
+    const listedBody = (await listed.json()) as {
+      result: { resources: Array<{ uri: string }> };
+    };
+    const readBody = (await read.json()) as {
+      result: { contents: Array<{ text: string }> };
+    };
+    const status = JSON.parse(readBody.result.contents[0]!.text) as {
+      overallStatus: string;
+      database: { status: string };
+    };
+
+    expect(listed.status).toBe(200);
+    expect(read.status).toBe(200);
+    expect(listedBody.result.resources.map((resource) => resource.uri)).toEqual([
+      'causality://rules/domain-model',
+      'causality://rules/capture',
+      'causality://capabilities',
+      'causality://system/status',
+    ]);
+    expect(status).toMatchObject({ overallStatus: 'degraded', database: { status: 'ready' } });
+    expect(state.statusTokens).toEqual([null, null, null]);
   });
 
   it('exposes a minimal unauthenticated health response', async () => {

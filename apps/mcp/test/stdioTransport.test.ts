@@ -2,12 +2,14 @@ import type {
   AiCaptureCandidateSet,
   AiCaptureComparison,
   McpSettingsResponse,
+  SemanticLifecycleSnapshot,
 } from '@causality/contracts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MCP_PROMPT_NAMES } from '../src/capabilities/capabilityManifest.js';
+import { MCP_PROMPT_NAMES, MCP_RESOURCE_URIS } from '../src/capabilities/capabilityManifest.js';
+import { systemStatusResourceSchema } from '../src/resources/resourceSchemas.js';
 import { connectCausalityMcpStdioServer } from '../src/transports/stdioServer.js';
 
 const token = 'c'.repeat(64);
@@ -44,6 +46,30 @@ const comparison: AiCaptureComparison = {
     topicRelevance: [],
   },
 };
+const timestamp = '2026-07-30T12:00:00.000Z';
+const lifecycle: SemanticLifecycleSnapshot = {
+  currentModelCode: null,
+  models: [],
+  index: {
+    status: 'empty',
+    processedItems: 0,
+    totalItems: 0,
+    pendingItems: 0,
+    failedItems: 0,
+    availableForEnhancedSearch: false,
+    failure: null,
+    updatedAt: null,
+  },
+  operation: null,
+  worker: {
+    status: 'online',
+    modelState: 'idle',
+    loadedModelCode: null,
+    checkedAt: timestamp,
+  },
+  pollAfterMs: null,
+  updatedAt: timestamp,
+};
 
 function createApiFetch(calls: Array<{ path: string; token: string | null }>): typeof fetch {
   return vi.fn<typeof fetch>(async (input, init) => {
@@ -54,6 +80,13 @@ function createApiFetch(calls: Array<{ path: string; token: string | null }>): t
     calls.push({ path: url.pathname, token: requestToken });
     if (url.pathname === '/api/mcp/settings') return Response.json(settings);
     if (url.pathname === '/api/ai-captures/compare') return Response.json(comparison);
+    if (url.pathname === '/api/health') {
+      return Response.json({ status: 'ok', service: 'causality-api' });
+    }
+    if (url.pathname === '/api/ready') {
+      return Response.json({ status: 'ready', database: 'available' });
+    }
+    if (url.pathname === '/api/semantic/lifecycle') return Response.json(lifecycle);
     return Response.json({ code: 'NOT_FOUND', message: 'not found' }, { status: 404 });
   }) as typeof fetch;
 }
@@ -80,17 +113,36 @@ describe('stdio MCP transport', () => {
     clients.push(client);
     await client.connect(clientTransport);
 
-    const [tools, prompts, compared] = await Promise.all([
+    const [tools, prompts, resources] = await Promise.all([
       client.listTools(),
       client.listPrompts(),
-      client.callTool({ name: 'compare_knowledge_candidates', arguments: candidates }),
+      client.listResources(),
     ]);
+    const statusResource = await client.readResource({ uri: MCP_RESOURCE_URIS.systemStatus });
+    const statusContent = statusResource.contents[0];
+    if (!statusContent || !('text' in statusContent)) throw new Error('Missing status text');
+    const status = systemStatusResourceSchema.parse(JSON.parse(statusContent.text));
+    const compared = await client.callTool({
+      name: 'compare_knowledge_candidates',
+      arguments: candidates,
+    });
 
     expect(tools.tools).toHaveLength(15);
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(Object.values(MCP_PROMPT_NAMES));
+    expect(resources.resources.map((resource) => resource.uri)).toEqual(
+      Object.values(MCP_RESOURCE_URIS),
+    );
+    expect(status).toMatchObject({
+      overallStatus: 'degraded',
+      database: { status: 'ready' },
+      enhancedQuery: { available: false, reason: 'model_not_selected' },
+    });
     expect(compared.structuredContent).toEqual(comparison);
     expect(calls).toEqual([
       { path: '/api/mcp/settings', token: null },
+      { path: '/api/health', token: null },
+      { path: '/api/ready', token: null },
+      { path: '/api/semantic/lifecycle', token: null },
       { path: '/api/ai-captures/compare', token },
     ]);
   });
