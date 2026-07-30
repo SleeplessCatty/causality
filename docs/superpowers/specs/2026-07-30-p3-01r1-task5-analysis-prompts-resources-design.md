@@ -1,7 +1,7 @@
 # P3-01R1 Task 5 分析 Prompt 与只读 Resource 设计
 
 日期：2026-07-30
-状态：设计内容已确认，等待正式文档审核
+状态：设计审核通过，实施计划等待审核
 所属阶段：P3-01R1 MCP 查询完整性与采集质量优化
 前置能力：15 个 MCP 工具、`causality_capture` Prompt、Streamable HTTP 与 stdio 入口
 
