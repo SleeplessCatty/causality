@@ -1,7 +1,7 @@
 # P3-01R1 Task 5 分析 Prompt 与只读 Resource 设计
 
 日期：2026-07-30
-状态：设计审核通过，实施计划等待审核
+状态：实施完成，等待人工复核
 所属阶段：P3-01R1 MCP 查询完整性与采集质量优化
 前置能力：15 个 MCP 工具、`causality_capture` Prompt、Streamable HTTP 与 stdio 入口
 
@@ -392,3 +392,21 @@ Skill 只说明：
 Task 5 按“设计文档审核 → 实施计划审核 → 分步实现 → 自动化验证 → 人工复核”执行。设计文档经用户审核后才能编写实施计划；实施计划经用户审核后才能修改代码。
 
 只有用户确认 Task 5 人工复核通过后，Task 5 和 P3-01R1 才能标记完成。Task 5 不自动进入 P3-02。
+
+## 18. 实施与自动化验证记录
+
+2026-07-30，三个分析 Prompt、三份便携 Markdown、三个轻量 Skill、四个固定只读 Resource、统一能力 manifest 和实时系统状态聚合已经实现。最终 MCP 能力为 15 个工具、4 个 Prompt 和 4 个 Resource；Streamable HTTP、stdio 与 InMemory 测试入口保持一致。
+
+系统状态 Resource 每次实时并行检查 API、PostgreSQL 和语义生命周期，三个请求均使用 5 秒上限。局部失败只返回固定安全原因码，不返回错误正文、内部 URL、令牌或堆栈。状态读取不携带 MCP 访问令牌，受控采集调用仍保持请求级令牌绑定。
+
+自动化结果：
+
+- `pnpm lint`、`pnpm format:check` 和 `git diff --check`：通过；
+- `pnpm typecheck`：6 个工作区通过；
+- `pnpm test`：130 个测试文件、944 项测试通过；
+- `pnpm test:integration`：API 27 个文件/237 项、Semantic Worker 2 个文件/47 项通过；
+- `pnpm build`：6 个工作区构建通过，仅保留既有因果图大分块非阻断警告；
+- `pnpm test:compose`：8 项生产与开发 Compose 合约测试通过；
+- `pnpm --filter @causality/mcp prompt:generate` 后四份便携 Prompt 无差异。
+
+当前停在人工复核门禁。Task 5 和 P3-01R1 均未标记完成，也未自动进入 P3-02。
