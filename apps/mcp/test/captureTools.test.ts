@@ -455,7 +455,7 @@ describe('capture workflow tools', () => {
           entityType: 'relation',
           refs: ['relation-port-production'],
           paths: ['/causalRelations/2'],
-          message: '候选因果关系可能是传递路径的快捷边',
+          message: '候选因果关系可能跳过传递路径中的中间原子事件',
           suggestedAction: '确认是否存在独立的直接因果依据',
           aiCanRepair: true,
         },

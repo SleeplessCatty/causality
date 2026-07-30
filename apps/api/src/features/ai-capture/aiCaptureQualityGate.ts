@@ -12,11 +12,11 @@ import {
 import type { z } from 'zod';
 
 import {
-  aiImportPlanLinkKey,
   buildAiImportPlanLocationIndex,
   decisionPathsForPlanIssue,
   type AiImportPlanLocationIndex,
 } from './aiImportPlanLocationIndex.js';
+import { relationCaseKey } from './relationCaseKey.js';
 
 const severityRank = { error: 0, warning: 1 } as const;
 const SEMANTIC_DUPLICATE_THRESHOLD = 0.9;
@@ -344,9 +344,7 @@ function planDecisionIssues(
   );
   const activeLinkKeys = new Set(
     input.decisions.relationCaseLinks.flatMap((decision) =>
-      decision.action === 'skip'
-        ? []
-        : [aiImportPlanLinkKey(decision.relationRef, decision.caseRef)],
+      decision.action === 'skip' ? [] : [relationCaseKey(decision.relationRef, decision.caseRef)],
     ),
   );
   const connectedEventRefs = new Set(
@@ -356,14 +354,12 @@ function planDecisionIssues(
   );
   const linkedCaseRefs = new Set(
     input.candidates.relationCaseLinks.flatMap((link) =>
-      activeLinkKeys.has(aiImportPlanLinkKey(link.relationRef, link.caseRef)) ? [link.caseRef] : [],
+      activeLinkKeys.has(relationCaseKey(link.relationRef, link.caseRef)) ? [link.caseRef] : [],
     ),
   );
   const linkedRelationRefs = new Set(
     input.candidates.relationCaseLinks.flatMap((link) =>
-      activeLinkKeys.has(aiImportPlanLinkKey(link.relationRef, link.caseRef))
-        ? [link.relationRef]
-        : [],
+      activeLinkKeys.has(relationCaseKey(link.relationRef, link.caseRef)) ? [link.relationRef] : [],
     ),
   );
   const issues: AiCaptureQualityIssue[] = [];
@@ -439,7 +435,7 @@ function planDecisionIssues(
   });
 
   input.candidates.relationCaseLinks.forEach((link) => {
-    const key = aiImportPlanLinkKey(link.relationRef, link.caseRef);
+    const key = relationCaseKey(link.relationRef, link.caseRef);
     const linkEntry = linkDecisions.get(key)?.at(-1);
     if (!linkEntry || linkEntry.value.action === 'skip') return;
     const relationEntry = relationDecisions.get(link.relationRef)?.at(-1);
@@ -759,7 +755,7 @@ function transitiveShortcutIssues(index: CandidateQualityIndex): AiCaptureQualit
             entityType: 'relation',
             refs: [relation.ref],
             path: `/causalRelations/${relationIndex}`,
-            message: '候选因果关系可能是传递路径的快捷边',
+            message: '候选因果关系可能跳过传递路径中的中间原子事件',
           }),
         ]
       : [];

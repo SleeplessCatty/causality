@@ -17,11 +17,30 @@ import {
   uniqueExactMatchId,
 } from './aiCaptureQualityGate.js';
 import type { AiSemanticCandidateService, SemanticMatch } from './aiSemanticCandidateService.js';
+import { relationCaseKey } from './relationCaseKey.js';
 
 const MAX_MATCHES = 10;
+const MIN_RESOLVED_NON_EXACT_SIMILARITY = 0.9;
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function uniqueReliableNonExactMatchId(
+  matches: readonly { id: string; similarity: number | null }[],
+): string | null {
+  const ids = unique(matches.map((match) => match.id));
+  if (ids.length !== 1) return null;
+  const match = matches.find((candidate) => candidate.id === ids[0]);
+  return match?.similarity !== null &&
+    match?.similarity !== undefined &&
+    match.similarity >= MIN_RESOLVED_NON_EXACT_SIMILARITY
+    ? ids[0]!
+    : null;
+}
+
+function resolvedMatchId(matches: Parameters<typeof uniqueExactMatchId>[0]): string | null {
+  return uniqueExactMatchId(matches) ?? uniqueReliableNonExactMatchId(matches);
 }
 
 function matchRank(matchKind: EventMatchRow['matchKind'] | CaseMatchRow['matchKind']): number {
@@ -128,10 +147,8 @@ export class AiCandidateComparisonService {
 
     const relationProbes: ResolvedRelationProbe[] = [];
     for (const relation of input.causalRelations) {
-      const causeEventId = uniqueExactMatchId(eventMatchesByRef.get(relation.causeEventRef) ?? []);
-      const effectEventId = uniqueExactMatchId(
-        eventMatchesByRef.get(relation.effectEventRef) ?? [],
-      );
+      const causeEventId = resolvedMatchId(eventMatchesByRef.get(relation.causeEventRef) ?? []);
+      const effectEventId = resolvedMatchId(eventMatchesByRef.get(relation.effectEventRef) ?? []);
       if (causeEventId && effectEventId) {
         relationProbes.push({ ref: relation.ref, causeEventId, effectEventId });
       }
@@ -142,7 +159,7 @@ export class AiCandidateComparisonService {
     const linkProbes: ResolvedLinkProbe[] = [];
     for (const link of input.relationCaseLinks) {
       const relationMatch = relationMatchByRef.get(link.relationRef);
-      const caseId = uniqueExactMatchId(caseMatchesByRef.get(link.caseRef) ?? []);
+      const caseId = resolvedMatchId(caseMatchesByRef.get(link.caseRef) ?? []);
       if (relationMatch?.direction === 'existing' && caseId) {
         linkProbes.push({
           relationRef: link.relationRef,
@@ -153,8 +170,8 @@ export class AiCandidateComparisonService {
       }
     }
     const existingLinks = new Set(
-      (await this.repository.findLinkMatches(linkProbes)).map(
-        (link) => `${link.relationRef}\u0000${link.caseRef}`,
+      (await this.repository.findLinkMatches(linkProbes)).map((link) =>
+        relationCaseKey(link.relationRef, link.caseRef),
       ),
     );
 
@@ -175,7 +192,7 @@ export class AiCandidateComparisonService {
       }),
       relationCaseLinks: input.relationCaseLinks.map((link) => ({
         ...link,
-        exists: existingLinks.has(`${link.relationRef}\u0000${link.caseRef}`),
+        exists: existingLinks.has(relationCaseKey(link.relationRef, link.caseRef)),
       })),
       qualityReport: candidateReport,
     };

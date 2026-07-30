@@ -20,6 +20,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
+import { textResult } from './toolResult.js';
 
 export interface CausalityKnowledgeApi {
   searchEvents(query: string, page?: number, searchMode?: SearchMode): Promise<EventListResponse>;
@@ -85,7 +86,7 @@ const graphInputSchema = z
   .object({
     centerEventId: z.uuid().describe('中心原子事件 ID'),
     direction: z.enum(['upstream', 'downstream', 'both']).describe('查询方向'),
-    limit: z.union([z.literal(20), z.literal(50), z.literal(100)]).describe('节点上限'),
+    limit: z.union([z.literal(20), z.literal(50), z.literal(100)]).describe('原子事件上限'),
     minConfidence: z.number().min(0).max(100).describe('最低置信度百分比'),
     minCaseCount: z.number().int().min(0).max(10).describe('最少具体案例数'),
   })
@@ -97,13 +98,6 @@ const eventWithRelationsSchema = z
     relations: eventRelationListResponseSchema,
   })
   .strict();
-
-function textResult(text: string, structuredContent: Record<string, unknown>) {
-  return {
-    content: [{ type: 'text' as const, text }],
-    structuredContent,
-  };
-}
 
 function eventSearchText(result: EventListResponse): string {
   const lines = result.items.map(

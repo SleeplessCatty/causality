@@ -386,6 +386,83 @@ describe.sequential('AI import plan PostgreSQL lifecycle', () => {
     await expect(service.status(plan.id)).resolves.toBe('invalidated');
   });
 
+  it.each([
+    {
+      name: 'event',
+      refs: ['event-a'],
+      change(value: PrepareAiImportPlanInput) {
+        value.comparison.atomicEvents[0]!.matches = [];
+        value.decisions.atomicEvents[0] = { ref: 'event-a', action: 'create' };
+        value.comparison.causalRelations[0] = { ref: 'relation-a', status: 'missing' };
+        value.decisions.causalRelations[0] = { ref: 'relation-a', action: 'create' };
+        value.comparison.relationCaseLinks[0]!.exists = false;
+        value.decisions.relationCaseLinks[0] = {
+          relationRef: 'relation-a',
+          caseRef: 'case-linked',
+          action: 'create',
+        };
+      },
+    },
+    {
+      name: 'case',
+      refs: ['case-linked'],
+      change(value: PrepareAiImportPlanInput) {
+        value.comparison.concreteCases[0]!.matches = [];
+        value.decisions.concreteCases[0] = { ref: 'case-linked', action: 'create' };
+        value.comparison.relationCaseLinks[0]!.exists = false;
+        value.decisions.relationCaseLinks[0] = {
+          relationRef: 'relation-a',
+          caseRef: 'case-linked',
+          action: 'create',
+        };
+      },
+    },
+    {
+      name: 'relation',
+      refs: ['relation-a'],
+      change(value: PrepareAiImportPlanInput) {
+        value.comparison.causalRelations[0] = { ref: 'relation-a', status: 'missing' };
+        value.decisions.causalRelations[0] = { ref: 'relation-a', action: 'create' };
+        value.comparison.relationCaseLinks[0]!.exists = false;
+        value.decisions.relationCaseLinks[0] = {
+          relationRef: 'relation-a',
+          caseRef: 'case-linked',
+          action: 'create',
+        };
+      },
+    },
+    {
+      name: 'relation-case link',
+      refs: ['relation-a', 'case-linked'],
+      change(value: PrepareAiImportPlanInput) {
+        value.comparison.relationCaseLinks[0]!.exists = false;
+        value.decisions.relationCaseLinks[0] = {
+          relationRef: 'relation-a',
+          caseRef: 'case-linked',
+          action: 'create',
+        };
+      },
+    },
+  ])(
+    'blocks a create plan when a stale comparison omits a current exact $name',
+    async ({ refs, change }) => {
+      const value = await prepareInput();
+      change(value);
+
+      await expect(service.prepare(value)).rejects.toMatchObject({
+        code: 'AI_PLAN_QUALITY_BLOCKED',
+        qualityReport: {
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: 'AI_QUALITY_CREATE_EXACT_CONFLICT',
+              refs,
+            }),
+          ]),
+        },
+      });
+    },
+  );
+
   it('stores old and new event descriptions plus an automatic confidence preview', async () => {
     const plan = await service.prepare(
       await prepareInput({

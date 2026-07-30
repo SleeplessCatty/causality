@@ -566,8 +566,13 @@ describe('AiCandidateComparisonService', () => {
       updatedAt,
     };
     const dataRepository = repository({
-      findEventMatches: vi.fn().mockResolvedValue([[cause], [effect]]),
-      findCaseMatches: vi.fn().mockResolvedValue([[exactCase]]),
+      findEventMatches: vi.fn().mockResolvedValue([
+        [cause, eventMatch(eventIds[2]!, 'fuzzy', 0.99)],
+        [effect, eventMatch(eventIds[3]!, 'fuzzy', 0.99)],
+      ]),
+      findCaseMatches: vi
+        .fn()
+        .mockResolvedValue([[exactCase, caseMatch(caseIds[2]!, 'fuzzy', 0.99)]]),
       findRelationMatches: vi
         .fn()
         .mockResolvedValue([{ ref: 'relation-1', direction: 'existing', relation }]),
@@ -611,5 +616,80 @@ describe('AiCandidateComparisonService', () => {
         caseId: caseIds[0],
       },
     ]);
+  });
+
+  it('checks relations and links when each identity has one non-exact match', async () => {
+    const cause = eventMatch(eventIds[0]!, 'fuzzy', 0.92);
+    const effect = eventMatch(eventIds[1]!, 'semantic', 0.91);
+    const matchedCase = caseMatch(caseIds[0]!, 'semantic', 0.94);
+    const relation = {
+      id: relationId,
+      causeEventId: eventIds[0]!,
+      effectEventId: eventIds[1]!,
+      description: '供应减少导致成本上升',
+      confidence: 34.39,
+      caseCount: 3,
+      updatedAt,
+    };
+    const dataRepository = repository({
+      findEventMatches: vi.fn().mockResolvedValue([[cause], []]),
+      findCaseMatches: vi.fn().mockResolvedValue([[]]),
+      findEventsByIds: vi.fn().mockResolvedValue([effect]),
+      findCasesByIds: vi.fn().mockResolvedValue([matchedCase]),
+      findRelationMatches: vi
+        .fn()
+        .mockResolvedValue([{ ref: 'relation-1', direction: 'existing', relation }]),
+      findLinkMatches: vi
+        .fn()
+        .mockResolvedValue([{ relationRef: 'relation-1', caseRef: 'case-1' }]),
+    });
+    const service = new AiCandidateComparisonService(
+      dataRepository,
+      semantic(
+        [[], [{ id: eventIds[1]!, similarity: 0.91 }]],
+        [[{ id: caseIds[0]!, similarity: 0.94 }]],
+      ),
+    );
+
+    const result = await service.compare(candidateSet());
+
+    expect(dataRepository.findRelationMatches).toHaveBeenCalledWith([
+      {
+        ref: 'relation-1',
+        causeEventId: eventIds[0],
+        effectEventId: eventIds[1],
+      },
+    ]);
+    expect(dataRepository.findLinkMatches).toHaveBeenCalledWith([
+      {
+        relationRef: 'relation-1',
+        relationId,
+        caseRef: 'case-1',
+        caseId: caseIds[0],
+      },
+    ]);
+    expect(result.causalRelations).toEqual([{ ref: 'relation-1', status: 'existing', relation }]);
+    expect(result.relationCaseLinks).toEqual([
+      { relationRef: 'relation-1', caseRef: 'case-1', exists: true },
+    ]);
+  });
+
+  it('does not resolve a sole low-similarity match as an existing relation identity', async () => {
+    const cause = eventMatch(eventIds[0]!, 'fuzzy', 0.89);
+    const effect = eventMatch(eventIds[1]!, 'semantic', 0.91);
+    const dataRepository = repository({
+      findEventMatches: vi.fn().mockResolvedValue([[cause], []]),
+      findCaseMatches: vi.fn().mockResolvedValue([[]]),
+      findEventsByIds: vi.fn().mockResolvedValue([effect]),
+    });
+    const service = new AiCandidateComparisonService(
+      dataRepository,
+      semantic([[], [{ id: eventIds[1]!, similarity: 0.91 }]], [[]]),
+    );
+
+    const result = await service.compare(candidateSet());
+
+    expect(dataRepository.findRelationMatches).toHaveBeenCalledWith([]);
+    expect(result.causalRelations).toEqual([{ ref: 'relation-1', status: 'missing' }]);
   });
 });

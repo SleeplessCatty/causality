@@ -1,5 +1,7 @@
 import type { AiCaptureQualityEntityType, PrepareAiImportPlanInput } from '@causality/contracts';
 
+import { relationCaseKey } from './relationCaseKey.js';
+
 export interface IndexedPlanValue<T> {
   value: T;
   index: number;
@@ -46,10 +48,6 @@ export interface AiImportPlanLocationIndex {
   };
 }
 
-export function aiImportPlanLinkKey(relationRef: string, caseRef: string): string {
-  return `${relationRef}\u0000${caseRef}`;
-}
-
 function append<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   const values = map.get(key) ?? [];
   values.push(value);
@@ -75,7 +73,7 @@ function indexLinks<T extends { relationRef: string; caseRef: string }>(
   const byRef = new Map<string, IndexedPlanValue<T>[]>();
   values.forEach((value, index) => {
     const entry = { value, index, path: `${basePath}/${index}` };
-    append(byKey, aiImportPlanLinkKey(value.relationRef, value.caseRef), entry);
+    append(byKey, relationCaseKey(value.relationRef, value.caseRef), entry);
     append(byRef, value.relationRef, entry);
     if (value.caseRef !== value.relationRef) append(byRef, value.caseRef, entry);
   });

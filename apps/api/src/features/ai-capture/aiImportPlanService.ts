@@ -24,32 +24,33 @@ export class AiImportPlanService {
 
   public async prepare(input: unknown): Promise<AiImportPlan> {
     const parsed: PrepareAiImportPlanInput = parseAiImportPlanInput(input);
-    const state = await this.repository.loadPreparationState(parsed);
     const canonicalInput = canonicalizeAiImportPlanInput(parsed);
+    const planReport = this.qualityGate.inspectPlan(canonicalInput);
+    if (planReport.status === 'blocked') {
+      throw new AiCaptureQualityBlockedError('AI_PLAN_QUALITY_BLOCKED', planReport);
+    }
+    const state = await this.repository.loadPreparationState(canonicalInput);
+    let mutations: ReturnType<typeof prepareAiImportMutations>;
+    try {
+      mutations = prepareAiImportMutations(canonicalInput, state);
+    } catch (error) {
+      if (!(error instanceof AiCaptureDataError)) throw error;
+      const validationReport = qualityReportForPlanValidationError(error, canonicalInput);
+      throw new AiCaptureQualityBlockedError(
+        'AI_PLAN_QUALITY_BLOCKED',
+        buildQualityReport([...planReport.issues, ...validationReport.issues]),
+      );
+    }
     const topicRelevance = await this.semantic.topicRelevance(
       canonicalInput.candidates.topic,
       canonicalInput.candidates.atomicEvents,
     );
-    const planReport = this.qualityGate.inspectPlan(canonicalInput);
     const report = buildQualityReport(planReport.issues, topicRelevance);
-    if (report.status === 'blocked') {
-      throw new AiCaptureQualityBlockedError('AI_PLAN_QUALITY_BLOCKED', report);
-    }
     const trustedInput: PrepareAiImportPlanInput = {
       ...canonicalInput,
       comparison: { ...canonicalInput.comparison, qualityReport: report },
     };
-    try {
-      const mutations = prepareAiImportMutations(trustedInput, state);
-      return await this.repository.createPlan(trustedInput, mutations);
-    } catch (error) {
-      if (!(error instanceof AiCaptureDataError)) throw error;
-      const validationReport = qualityReportForPlanValidationError(error, trustedInput);
-      throw new AiCaptureQualityBlockedError(
-        'AI_PLAN_QUALITY_BLOCKED',
-        buildQualityReport([...report.issues, ...validationReport.issues], report.topicRelevance),
-      );
-    }
+    return this.repository.createPlan(trustedInput, mutations);
   }
 
   public status(planId: string): Promise<AiImportPlanStatus> {

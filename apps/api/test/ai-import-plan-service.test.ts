@@ -239,6 +239,10 @@ function state(): AiImportPlanPreparationState {
   };
 }
 
+function stateWithoutExistingRelation(): AiImportPlanPreparationState {
+  return { ...state(), relations: [], links: [] };
+}
+
 describe('AI import plan validation and normalization', () => {
   it('counts an existing relation-case link as reused', () => {
     const result = prepareAiImportMutations(input(), state());
@@ -346,6 +350,52 @@ describe('AI import plan validation and normalization', () => {
       );
     },
   );
+
+  it.each([
+    {
+      name: 'event after the comparison became stale',
+      change(value: PrepareAiImportPlanInput) {
+        value.comparison.atomicEvents[0]!.matches = [];
+        value.decisions.atomicEvents[0] = { ref: 'event-a', action: 'create' };
+      },
+    },
+    {
+      name: 'case after the comparison became stale',
+      change(value: PrepareAiImportPlanInput) {
+        value.comparison.concreteCases[0]!.matches = [];
+        value.decisions.concreteCases[0] = { ref: 'case-a', action: 'create' };
+      },
+    },
+    {
+      name: 'relation after the comparison became stale',
+      change(value: PrepareAiImportPlanInput) {
+        value.comparison.causalRelations[0] = { ref: 'relation-a', status: 'missing' };
+        value.decisions.causalRelations[0] = { ref: 'relation-a', action: 'create' };
+      },
+    },
+    {
+      name: 'relation-case link after the comparison became stale',
+      change(value: PrepareAiImportPlanInput) {
+        value.comparison.relationCaseLinks[0] = {
+          relationRef: 'relation-a',
+          caseRef: 'case-a',
+          exists: false,
+        };
+        value.decisions.relationCaseLinks[0] = {
+          relationRef: 'relation-a',
+          caseRef: 'case-a',
+          action: 'create',
+        };
+      },
+    },
+  ])('rejects a create decision for a current existing $name', ({ change }) => {
+    const value = input();
+    change(value);
+
+    expect(() => prepareAiImportMutations(value, state())).toThrowError(
+      expect.objectContaining({ code: 'AI_PLAN_CREATE_EXACT_CONFLICT' }),
+    );
+  });
 
   it.each([
     ['event rename', 'atomicEvents', { renameTo: '新名称' }],
@@ -496,11 +546,12 @@ describe('AI import plan validation and normalization', () => {
         value.decisions.relationCaseLinks = [];
       },
     },
-  ])('rejects final creates with duplicate $name', ({ change }) => {
+  ])('rejects final creates with duplicate $name', ({ name, change }) => {
     const value = input();
     change(value);
+    const currentState = name === 'relation direction' ? stateWithoutExistingRelation() : state();
 
-    expect(() => prepareAiImportMutations(value, state())).toThrowError(
+    expect(() => prepareAiImportMutations(value, currentState)).toThrowError(
       expect.objectContaining({ code: 'AI_PLAN_UNIQUE_CONFLICT' }),
     );
   });
@@ -580,6 +631,41 @@ describe('AI import plan validation and normalization', () => {
     });
   });
 
+  it('allows a new relation when a pre-decision match used a different existing event endpoint', () => {
+    const value = input();
+    value.candidates.atomicEvents[0] = {
+      ref: 'event-a',
+      name: '新的港口停止事件',
+      description: null,
+      aliases: [],
+      keywords: [],
+    };
+    value.comparison.atomicEvents[0]!.matches[0]!.matchKind = 'semantic';
+    value.comparison.atomicEvents[0]!.matches[0]!.similarity = 0.93;
+    value.decisions.atomicEvents[0] = { ref: 'event-a', action: 'create' };
+    value.decisions.causalRelations[0] = { ref: 'relation-a', action: 'create' };
+    value.comparison.relationCaseLinks[0]!.exists = false;
+    value.decisions.relationCaseLinks[0] = {
+      relationRef: 'relation-a',
+      caseRef: 'case-a',
+      action: 'create',
+    };
+    const currentState = state();
+    currentState.events = currentState.events.filter((event) => event.id !== eventAId);
+    currentState.relations = [];
+    currentState.links = [];
+
+    const result = prepareAiImportMutations(value, currentState);
+
+    expect(result.createRelations).toEqual([
+      expect.objectContaining({
+        ref: 'relation-a',
+        causeEvent: { kind: 'create', ref: 'event-a' },
+        effectEvent: { kind: 'existing', id: eventBId },
+      }),
+    ]);
+  });
+
   it('rejects a relation that becomes a self-loop after event reuse is resolved', () => {
     const value = input();
     value.comparison.atomicEvents[1]!.matches = [value.comparison.atomicEvents[0]!.matches[0]!];
@@ -596,7 +682,7 @@ describe('AI import plan validation and normalization', () => {
     value.comparison.relationCaseLinks = [];
     value.decisions.relationCaseLinks = [];
 
-    expect(() => prepareAiImportMutations(value, state())).toThrowError(
+    expect(() => prepareAiImportMutations(value, stateWithoutExistingRelation())).toThrowError(
       expect.objectContaining({
         code: 'AI_PLAN_RELATION_SELF_LOOP',
         affectedRefs: ['relation-a'],
@@ -634,7 +720,7 @@ describe('AI import plan validation and normalization', () => {
       { relationRef: 'relation-a', caseRef: 'case-b', action: 'create' },
     ];
 
-    expect(() => prepareAiImportMutations(value, state())).toThrowError(
+    expect(() => prepareAiImportMutations(value, stateWithoutExistingRelation())).toThrowError(
       expect.objectContaining({ code: 'AI_PLAN_UNIQUE_CONFLICT' }),
     );
   });
@@ -662,7 +748,7 @@ describe('AI import plan validation and normalization', () => {
       { relationRef: 'relation-a', caseRef: 'case-b', action: 'create' },
     ];
 
-    const result = prepareAiImportMutations(value, state());
+    const result = prepareAiImportMutations(value, stateWithoutExistingRelation());
 
     expect(result.confidenceChanges).toEqual([
       {
@@ -905,7 +991,7 @@ describe('AiImportPlanService quality gate', () => {
     );
   });
 
-  it('loads current state before semantic recomputation and plan inspection', async () => {
+  it('runs deterministic plan inspection before current state and semantic work', async () => {
     const { repository, semantic } = dependencies();
     const calls: string[] = [];
     repository.loadPreparationState.mockImplementation(async () => {
@@ -930,7 +1016,7 @@ describe('AiImportPlanService quality gate', () => {
 
     await service.prepare(input());
 
-    expect(calls).toEqual(['load-state', 'topic-relevance', 'inspect-plan', 'create-plan']);
+    expect(calls).toEqual(['inspect-plan', 'load-state', 'topic-relevance', 'create-plan']);
   });
 
   it('rejects malformed input before loading state or calling semantic services', async () => {
@@ -972,6 +1058,8 @@ describe('AiImportPlanService quality gate', () => {
         ]),
       },
     });
+    expect(repository.loadPreparationState).not.toHaveBeenCalled();
+    expect(semantic.topicRelevance).not.toHaveBeenCalled();
     expect(repository.createPlan).not.toHaveBeenCalled();
   });
 
@@ -996,6 +1084,7 @@ describe('AiImportPlanService quality gate', () => {
         ]),
       },
     });
+    expect(semantic.topicRelevance).not.toHaveBeenCalled();
     expect(repository.createPlan).not.toHaveBeenCalled();
   });
 });

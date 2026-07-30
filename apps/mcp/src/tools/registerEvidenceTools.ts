@@ -17,6 +17,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
+import { textResult } from './toolResult.js';
 
 export interface CausalityEvidenceApi {
   getCase(id: string): Promise<CaseDetail>;
@@ -86,13 +87,6 @@ const evidenceBundleInputSchema = z
       .describe('每条关系返回的案例数'),
   })
   .strict();
-
-function textResult(text: string, structuredContent: Record<string, unknown>) {
-  return {
-    content: [{ type: 'text' as const, text }],
-    structuredContent,
-  };
-}
 
 function caseDetailText(concreteCase: CaseDetail, relations: CaseRelationListResponse): string {
   const relationLines = relations.items.map(

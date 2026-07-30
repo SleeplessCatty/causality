@@ -14,6 +14,7 @@ import {
   type PreparedDependencyVersion,
   type PreparedMutationSet,
 } from './aiImportPlanValidator.js';
+import { relationCaseKey } from './relationCaseKey.js';
 
 interface PlanRow {
   id: string;
@@ -809,12 +810,12 @@ function planReuseLinks(
     mutations.createLinks.flatMap((link) => {
       const relationId = relationIds.get(link.relationRef);
       const caseId = caseIds.get(link.caseRef);
-      return relationId && caseId ? [`${relationId}\u0000${caseId}`] : [];
+      return relationId && caseId ? [relationCaseKey(relationId, caseId)] : [];
     }),
   );
   return mutations.dependencies.flatMap((dependency) => {
     if (dependency.type !== 'link' || !dependency.relatedId) return [];
-    if (createdTargets.has(`${dependency.id}\u0000${dependency.relatedId}`)) return [];
+    if (createdTargets.has(relationCaseKey(dependency.id, dependency.relatedId))) return [];
     const relationRef = relationRefs.get(dependency.id);
     const caseRef = caseRefs.get(dependency.relatedId);
     if (!relationRef || !caseRef) return [];

@@ -21,6 +21,7 @@ import {
   importPlanStatusMcpSchema,
   prepareImportPlanMcpSchema,
 } from './captureMcpSchemas.js';
+import { textResult } from './toolResult.js';
 
 export interface CausalityCaptureApi {
   compare(input: AiCaptureCandidateSet): Promise<AiCaptureComparison>;
@@ -73,12 +74,6 @@ const annotations = {
 
 const planIdInputSchema = z.object({ planId: z.uuid().describe('不可变入库方案 ID') }).strict();
 const historyIdInputSchema = z.object({ historyId: z.uuid().describe('AI 导入历史 ID') }).strict();
-function textResult(text: string, structuredContent: Record<string, unknown>) {
-  return {
-    content: [{ type: 'text' as const, text }],
-    structuredContent,
-  };
-}
 
 function candidateSetForApi(
   input: z.infer<typeof captureCandidateSetMcpSchema>,

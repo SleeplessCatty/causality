@@ -60,13 +60,20 @@ test('AI import history and read-only detail preserve navigation and category st
       event: { name: `${topic}中的能源供给减少事件` },
       case: { content: '2026年某地区能源现货供应量下降，价格随后持续上升。' },
       relation: {
-        causeEventId: '能源供给减少',
-        effectEventId: '能源价格上升',
-        description: '供给减少推动价格上升',
+        causeEventName: '能源供给减少',
+        effectEventName: '能源价格上升',
+        relationDescription: '供给减少推动价格上升',
       },
-      relation_case: { relationRef: 'relation-1', caseRef: 'case-1' },
+      relation_case: {
+        causeEventName: '能源供给减少',
+        effectEventName: '能源价格上升',
+        relationDescription: '供给减少推动价格上升',
+        caseContent: '2026年某地区能源现货供应量下降，价格随后持续上升。',
+      },
       confidence: {
-        relationRef: 'relation-1',
+        causeEventName: '能源供给减少',
+        effectEventName: '能源价格上升',
+        relationDescription: '供给减少推动价格上升',
         oldConfidence: 10,
         newConfidence: 19,
         oldCaseCount: 0,
@@ -116,7 +123,9 @@ test('AI import history and read-only detail preserve navigation and category st
     '置信度变化',
   ]);
   await page.getByRole('tab', { name: '置信度变化' }).click();
-  await expect(page.getByText('relation-1：10% → 19%（案例 0 → 1）')).toBeVisible();
+  await expect(
+    page.getByText('能源供给减少 → 能源价格上升；供给减少推动价格上升：10% → 19%（案例 0 → 1）'),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('ai-import-detail-1280x720.png'),
     fullPage: true,

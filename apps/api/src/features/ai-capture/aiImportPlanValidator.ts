@@ -12,13 +12,13 @@ import {
 import { AiCaptureDataError, type AiCaptureErrorCode } from './aiCaptureErrors.js';
 import { buildQualityReport } from './aiCaptureQualityGate.js';
 import {
-  aiImportPlanLinkKey,
   buildAiImportPlanLocationIndex,
   linkEntriesForPlanRefs,
   type IndexedPlanValue,
   type RefPlanLocationIndex,
 } from './aiImportPlanLocationIndex.js';
 import { calculateAutomaticConfidence } from '../relations/relationConfidencePolicy.js';
+import { relationCaseKey } from './relationCaseKey.js';
 
 interface PlanValidationMetadata {
   qualityCode: AiCaptureQualityIssueCode;
@@ -267,21 +267,21 @@ function exactLinkMap<T extends { relationRef: string; caseRef: string }>(
 ): Map<string, T> {
   const result = new Map<string, T>();
   for (const value of values) {
-    const key = aiImportPlanLinkKey(value.relationRef, value.caseRef);
+    const key = relationCaseKey(value.relationRef, value.caseRef);
     if (result.has(key)) {
       throw new AiCaptureDataError(code, [value.relationRef, value.caseRef]);
     }
     result.set(key, value);
   }
   const expectedKeys = new Set(
-    expected.map((value) => aiImportPlanLinkKey(value.relationRef, value.caseRef)),
+    expected.map((value) => relationCaseKey(value.relationRef, value.caseRef)),
   );
   const affected = [
     ...expected
-      .filter((value) => !result.has(aiImportPlanLinkKey(value.relationRef, value.caseRef)))
+      .filter((value) => !result.has(relationCaseKey(value.relationRef, value.caseRef)))
       .flatMap((value) => [value.relationRef, value.caseRef]),
     ...values
-      .filter((value) => !expectedKeys.has(aiImportPlanLinkKey(value.relationRef, value.caseRef)))
+      .filter((value) => !expectedKeys.has(relationCaseKey(value.relationRef, value.caseRef)))
       .flatMap((value) => [value.relationRef, value.caseRef]),
   ];
   if (affected.length > 0) {
@@ -452,7 +452,7 @@ export function prepareAiImportMutations(
   const casesById = new Map(state.cases.map((concreteCase) => [concreteCase.id, concreteCase]));
   const relationsById = new Map(state.relations.map((relation) => [relation.id, relation]));
   const linksByKey = new Map(
-    state.links.map((link) => [`${link.relationId}\u0000${link.caseId}`, link]),
+    state.links.map((link) => [relationCaseKey(link.relationId, link.caseId), link]),
   );
 
   const createEvents: PreparedEventCreate[] = [];
@@ -479,6 +479,9 @@ export function prepareAiImportMutations(
     if (decision.action === 'create') {
       const candidateTerms = new Set([candidate.name, ...candidate.aliases].map(normalize));
       if (
+        state.events.some((event) =>
+          [event.name, ...event.aliases].some((term) => candidateTerms.has(normalize(term))),
+        ) ||
         eventComparisons
           .get(candidate.ref)!
           .matches.some(
@@ -565,6 +568,7 @@ export function prepareAiImportMutations(
     const decision = caseDecisions.get(candidate.ref)!;
     if (decision.action === 'create') {
       if (
+        state.cases.some((concreteCase) => concreteCase.content === candidate.content) ||
         caseComparisons
           .get(candidate.ref)!
           .matches.some(
@@ -623,7 +627,20 @@ export function prepareAiImportMutations(
     }
     const comparison = relationComparisons.get(candidate.ref)!;
     if (decision.action === 'create') {
-      if (comparison.status === 'existing') {
+      const currentRelationExists =
+        causeEvent.kind === 'existing' &&
+        effectEvent.kind === 'existing' &&
+        state.relations.some(
+          (relation) =>
+            relation.causeEventId === causeEvent.id && relation.effectEventId === effectEvent.id,
+        );
+      const comparedRelationMatchesFinalEndpoints =
+        comparison.status === 'existing' &&
+        causeEvent.kind === 'existing' &&
+        effectEvent.kind === 'existing' &&
+        comparison.relation.causeEventId === causeEvent.id &&
+        comparison.relation.effectEventId === effectEvent.id;
+      if (comparedRelationMatchesFinalEndpoints || currentRelationExists) {
         throw new AiCaptureDataError('AI_PLAN_CREATE_EXACT_CONFLICT', [candidate.ref]);
       }
       if (eventEndpointKey(causeEvent) === eventEndpointKey(effectEvent)) {
@@ -680,7 +697,7 @@ export function prepareAiImportMutations(
   );
 
   for (const candidate of input.candidates.relationCaseLinks) {
-    const key = aiImportPlanLinkKey(candidate.relationRef, candidate.caseRef);
+    const key = relationCaseKey(candidate.relationRef, candidate.caseRef);
     const decision = linkDecisions.get(key)!;
     const relationDecision = relationDecisions.get(candidate.relationRef)!;
     const caseDecision = caseDecisions.get(candidate.caseRef)!;
@@ -718,9 +735,18 @@ export function prepareAiImportMutations(
     }
     const relationId = relationIdsByRef.get(candidate.relationRef);
     const concreteCaseId = caseIdsByRef.get(candidate.caseRef);
+    const currentLink =
+      relationId && concreteCaseId
+        ? linksByKey.get(relationCaseKey(relationId, concreteCaseId))
+        : undefined;
+    if (decision.action === 'create' && currentLink?.exists) {
+      throw new AiCaptureDataError('AI_PLAN_CREATE_EXACT_CONFLICT', [
+        candidate.relationRef,
+        candidate.caseRef,
+      ]);
+    }
     if (relationId && concreteCaseId) {
-      const link = linksByKey.get(`${relationId}\u0000${concreteCaseId}`);
-      if (!link || link.exists !== comparison.exists) {
+      if (!currentLink || currentLink.exists !== comparison.exists) {
         throw new AiCaptureDataError('AI_PLAN_COMPARISON_STALE', [
           candidate.relationRef,
           candidate.caseRef,
@@ -730,14 +756,20 @@ export function prepareAiImportMutations(
         type: 'link',
         id: relationId,
         relatedId: concreteCaseId,
-        fingerprint: fingerprintDependency(link),
+        fingerprint: fingerprintDependency(currentLink),
       });
     }
     if (decision.action === 'create') {
       const relationTarget = relationTargetsByRef.get(candidate.relationRef);
       const caseTarget = caseTargetsByRef.get(candidate.caseRef);
-      const targetKey = `${relationTarget}\u0000${caseTarget}`;
-      if (!relationTarget || !caseTarget || createdLinkTargets.has(targetKey)) {
+      if (!relationTarget || !caseTarget) {
+        throw new AiCaptureDataError('AI_PLAN_UNIQUE_CONFLICT', [
+          candidate.relationRef,
+          candidate.caseRef,
+        ]);
+      }
+      const targetKey = relationCaseKey(relationTarget, caseTarget);
+      if (createdLinkTargets.has(targetKey)) {
         throw new AiCaptureDataError('AI_PLAN_UNIQUE_CONFLICT', [
           candidate.relationRef,
           candidate.caseRef,
@@ -827,7 +859,7 @@ export function prepareAiImportMutations(
     reuseCases: sorted(reuseCases, (item) => item.ref),
     createRelations: sorted(createRelations, (item) => item.ref),
     reuseRelations: sorted(reuseRelations, (item) => item.ref),
-    createLinks: sorted(createLinks, (item) => aiImportPlanLinkKey(item.relationRef, item.caseRef)),
+    createLinks: sorted(createLinks, (item) => relationCaseKey(item.relationRef, item.caseRef)),
     confidenceChanges: sorted(confidenceChanges, (item) => item.relationRef),
     skipped: sorted(skipped, (item) => `${item.type}\u0000${item.ref}`),
     dependencies: sorted(

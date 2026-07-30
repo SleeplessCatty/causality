@@ -17,7 +17,7 @@ import type { Pool, PoolClient } from 'pg';
 
 import { AiCaptureDataError } from './aiCaptureErrors.js';
 import { canonicalizeAiImportPlanInput } from './aiImportPlanCanonicalizer.js';
-import { aiImportPlanLinkKey } from './aiImportPlanLocationIndex.js';
+import { relationCaseKey } from './relationCaseKey.js';
 import {
   fingerprintDependency,
   type AiImportPlanPreparationState,
@@ -90,6 +90,10 @@ interface LinkStateRow {
 interface LinkIdentity {
   relationId: string;
   caseId: string;
+}
+
+interface IdRow {
+  id: string;
 }
 
 type Database = Pool | PoolClient;
@@ -185,20 +189,18 @@ function dependencyKey(dependency: { type: string; id: string; relatedId: string
   return `${dependency.type}\u0000${dependency.id}\u0000${dependency.relatedId ?? ''}`;
 }
 
+function normalize(value: string): string {
+  return value.trim().toLocaleLowerCase('zh-CN');
+}
+
 export class PostgresAiImportPlanRepository implements AiImportPlanRepository {
   public constructor(private readonly pool: Pool) {}
 
   public async loadPreparationState(
     input: PrepareAiImportPlanInput,
   ): Promise<AiImportPlanPreparationState> {
-    const eventIds = input.decisions.atomicEvents.flatMap((decision) =>
-      decision.action === 'reuse' ? [decision.existingId] : [],
-    );
-    const caseIds = input.decisions.concreteCases.flatMap((decision) =>
-      decision.action === 'reuse' ? [decision.existingId] : [],
-    );
-    const relationIds = input.decisions.causalRelations.flatMap((decision) =>
-      decision.action === 'reuse' ? [decision.existingId] : [],
+    const eventDecisionMap = new Map(
+      input.decisions.atomicEvents.map((decision) => [decision.ref, decision]),
     );
     const caseDecisionMap = new Map(
       input.decisions.concreteCases.map((decision) => [decision.ref, decision]),
@@ -206,16 +208,52 @@ export class PostgresAiImportPlanRepository implements AiImportPlanRepository {
     const relationDecisionMap = new Map(
       input.decisions.causalRelations.map((decision) => [decision.ref, decision]),
     );
+    const createdEvents = input.candidates.atomicEvents.filter(
+      (candidate) => eventDecisionMap.get(candidate.ref)?.action === 'create',
+    );
+    const createdCases = input.candidates.concreteCases.filter(
+      (candidate) => caseDecisionMap.get(candidate.ref)?.action === 'create',
+    );
+    const [currentEventIds, currentCaseIds] = await Promise.all([
+      this.findExactEventConflictIds(createdEvents),
+      this.findExactCaseConflictIds(createdCases),
+    ]);
+    const eventIds = input.decisions.atomicEvents.flatMap((decision) =>
+      decision.action === 'reuse' ? [decision.existingId] : [],
+    );
+    eventIds.push(...currentEventIds);
+    const caseIds = input.decisions.concreteCases.flatMap((decision) =>
+      decision.action === 'reuse' ? [decision.existingId] : [],
+    );
+    caseIds.push(...currentCaseIds);
+    const relationIds = input.decisions.causalRelations.flatMap((decision) =>
+      decision.action === 'reuse' ? [decision.existingId] : [],
+    );
+    const relationProbes = input.candidates.causalRelations.flatMap((candidate) => {
+      if (relationDecisionMap.get(candidate.ref)?.action !== 'create') return [];
+      const causeDecision = eventDecisionMap.get(candidate.causeEventRef);
+      const effectDecision = eventDecisionMap.get(candidate.effectEventRef);
+      return causeDecision?.action === 'reuse' && effectDecision?.action === 'reuse'
+        ? [
+            {
+              ref: candidate.ref,
+              causeEventId: causeDecision.existingId,
+              effectEventId: effectDecision.existingId,
+            },
+          ]
+        : [];
+    });
+    relationIds.push(...(await this.findExactRelationConflictIds(relationProbes)));
     const linkDecisionMap = new Map(
       input.decisions.relationCaseLinks.map((decision) => [
-        aiImportPlanLinkKey(decision.relationRef, decision.caseRef),
+        relationCaseKey(decision.relationRef, decision.caseRef),
         decision,
       ]),
     );
     const links: LinkIdentity[] = [];
     for (const candidate of input.candidates.relationCaseLinks) {
       const linkDecision = linkDecisionMap.get(
-        aiImportPlanLinkKey(candidate.relationRef, candidate.caseRef),
+        relationCaseKey(candidate.relationRef, candidate.caseRef),
       );
       const relationDecision = relationDecisionMap.get(candidate.relationRef);
       const concreteCaseDecision = caseDecisionMap.get(candidate.caseRef);
@@ -238,6 +276,65 @@ export class PostgresAiImportPlanRepository implements AiImportPlanRepository {
       this.loadLinks(this.pool, links),
     ]);
     return { events, cases, relations, links: linkStates };
+  }
+
+  private async findExactEventConflictIds(
+    events: readonly PrepareAiImportPlanInput['candidates']['atomicEvents'][number][],
+  ): Promise<string[]> {
+    const terms = [
+      ...new Set(events.flatMap((event) => [event.name, ...event.aliases].map(normalize))),
+    ];
+    if (terms.length === 0) return [];
+    const result = await this.pool.query<IdRow>(
+      `with terms as (
+         select value from jsonb_array_elements_text($1::jsonb) source(value)
+       )
+       select event.id
+       from abstract_events event
+       where event.normalized_name in (select value from terms)
+          or exists (
+               select 1 from event_aliases alias
+               where alias.event_id = event.id
+                 and alias.normalized_alias in (select value from terms)
+             )
+       order by event.id`,
+      [JSON.stringify(terms)],
+    );
+    return result.rows.map((row) => row.id);
+  }
+
+  private async findExactCaseConflictIds(
+    cases: readonly PrepareAiImportPlanInput['candidates']['concreteCases'][number][],
+  ): Promise<string[]> {
+    const contents = [...new Set(cases.map((concreteCase) => concreteCase.content))];
+    if (contents.length === 0) return [];
+    const result = await this.pool.query<IdRow>(
+      `select id from concrete_cases where content = any($1::varchar[]) order by id`,
+      [contents],
+    );
+    return result.rows.map((row) => row.id);
+  }
+
+  private async findExactRelationConflictIds(
+    relations: readonly { causeEventId: string; effectEventId: string }[],
+  ): Promise<string[]> {
+    if (relations.length === 0) return [];
+    const result = await this.pool.query<IdRow>(
+      `with input as (
+         select "causeEventId"::uuid as cause_event_id,
+                "effectEventId"::uuid as effect_event_id
+         from jsonb_to_recordset($1::jsonb)
+           as source("causeEventId" text, "effectEventId" text)
+       )
+       select distinct relation.id
+       from input
+       join causal_relations relation
+         on relation.cause_event_id = input.cause_event_id
+        and relation.effect_event_id = input.effect_event_id
+       order by relation.id`,
+      [JSON.stringify(relations)],
+    );
+    return result.rows.map((row) => row.id);
   }
 
   public async createPlan(
