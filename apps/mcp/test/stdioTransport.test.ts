@@ -13,6 +13,7 @@ import {
   MCP_RESOURCE_URIS,
   MCP_TOOL_NAMES,
 } from '../src/capabilities/capabilityManifest.js';
+import { buildInferOutcomesPrompt } from '../src/prompts/inferOutcomesPrompt.js';
 import { systemStatusResourceSchema } from '../src/resources/resourceSchemas.js';
 import { connectCausalityMcpStdioServer } from '../src/transports/stdioServer.js';
 
@@ -123,6 +124,7 @@ describe('stdio MCP transport', () => {
       client.listResources(),
     ]);
     const instructions = client.getInstructions();
+    const inferred = await client.getPrompt({ name: MCP_PROMPT_NAMES.inferOutcomes });
     const statusResource = await client.readResource({ uri: MCP_RESOURCE_URIS.systemStatus });
     const statusContent = statusResource.contents[0];
     if (!statusContent || !('text' in statusContent)) throw new Error('Missing status text');
@@ -139,6 +141,11 @@ describe('stdio MCP transport', () => {
     );
     expect(instructions).toContain('Causality 是本地因果知识库');
     expect(instructions).toContain('只有用户明确确认入库方案后才能提交');
+    expect(prompts.prompts).toHaveLength(5);
+    expect(inferred.messages[0]?.content).toEqual({
+      type: 'text',
+      text: buildInferOutcomesPrompt(),
+    });
     expect(status).toMatchObject({
       overallStatus: 'degraded',
       database: { status: 'ready' },

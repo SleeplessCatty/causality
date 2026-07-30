@@ -7,6 +7,7 @@ import {
   type CausalityMcpHttpServer,
   type McpTransportLogger,
 } from '../src/transports/httpServer.js';
+import { buildInferOutcomesPrompt } from '../src/prompts/inferOutcomesPrompt.js';
 
 const firstToken = 'a'.repeat(64);
 const rotatedToken = 'b'.repeat(64);
@@ -319,6 +320,40 @@ describe('Streamable HTTP transport security', () => {
     ]);
     expect(status).toMatchObject({ overallStatus: 'degraded', database: { status: 'ready' } });
     expect(state.statusTokens).toEqual([null, null, null]);
+  });
+
+  it('lists and reads the outcome inference prompt inside an authorized session', async () => {
+    const { server } = await start();
+    const initialized = await postMcp(server, { token: firstToken });
+    const sessionId = initialized.headers.get('mcp-session-id')!;
+    const listed = await postMcp(server, {
+      token: firstToken,
+      sessionId,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'prompts/list' }),
+    });
+    const read = await postMcp(server, {
+      token: firstToken,
+      sessionId,
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 7,
+        method: 'prompts/get',
+        params: { name: 'causality_infer_outcomes' },
+      }),
+    });
+    const listedBody = (await listed.json()) as {
+      result: { prompts: Array<{ name: string }> };
+    };
+    const readBody = (await read.json()) as {
+      result: { messages: Array<{ content: { text: string } }> };
+    };
+
+    expect(listed.status).toBe(200);
+    expect(read.status).toBe(200);
+    expect(listedBody.result.prompts.map((prompt) => prompt.name)).toContain(
+      'causality_infer_outcomes',
+    );
+    expect(readBody.result.messages[0]?.content.text).toBe(buildInferOutcomesPrompt());
   });
 
   it('exposes a minimal unauthenticated health response', async () => {

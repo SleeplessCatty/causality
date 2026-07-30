@@ -12,6 +12,7 @@ import {
   CAUSALITY_CAPTURE_PROMPT_NAME,
   registerCapturePrompt,
 } from '../src/prompts/capturePrompt.js';
+import { CAUSALITY_MCP_INSTRUCTIONS } from '../src/server/serverInstructions.js';
 
 const workspaceRoot = resolve(import.meta.dirname, '../../..');
 
@@ -207,5 +208,13 @@ describe('causality capture prompt', () => {
       },
       policy: { allow_implicit_invocation: false },
     });
+  });
+
+  it('advertises read-only outcome inference without weakening capture confirmation', () => {
+    expect(CAUSALITY_MCP_INSTRUCTIONS).toContain('causality-infer-outcomes');
+    expect(CAUSALITY_MCP_INSTRUCTIONS).toContain('推测单个事件可能产生的后续结果');
+    expect(CAUSALITY_MCP_INSTRUCTIONS).toContain('不得解释为结果发生概率');
+    expect(CAUSALITY_MCP_INSTRUCTIONS).toContain('重新进入 causality-capture');
+    expect(CAUSALITY_MCP_INSTRUCTIONS).toContain('只有用户明确确认入库方案后才能提交');
   });
 });
