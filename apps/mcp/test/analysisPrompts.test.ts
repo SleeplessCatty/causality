@@ -217,6 +217,7 @@ describe('canonical causal analysis prompts', () => {
       ['prompts/causality-analyze-event.md', buildAnalyzeEventPrompt()],
       ['prompts/causality-trace-path.md', buildTracePathPrompt()],
       ['prompts/causality-review-chain.md', buildReviewChainPrompt()],
+      ['prompts/causality-infer-outcomes.md', buildInferOutcomesPrompt()],
     ] as const;
 
     for (const [path, content] of expected) {
@@ -240,6 +241,11 @@ describe('canonical causal analysis prompts', () => {
         '.agents/skills/causality-review-chain/SKILL.md',
         MCP_PROMPT_NAMES.reviewChain,
         'prompts/causality-review-chain.md',
+      ],
+      [
+        '.agents/skills/causality-infer-outcomes/SKILL.md',
+        MCP_PROMPT_NAMES.inferOutcomes,
+        'prompts/causality-infer-outcomes.md',
       ],
     ] as const;
 
@@ -302,6 +308,23 @@ describe('canonical causal analysis prompts', () => {
         display_name: 'Causality Trace Path',
         short_description: '查找两个事件之间的有向因果路径',
         default_prompt: '使用 $causality-trace-path 查找当前讨论中两个事件之间的因果路径。',
+      },
+      policy: { allow_implicit_invocation: true },
+    });
+  });
+
+  it('publishes concise Codex UI metadata for outcome inference', async () => {
+    const metadataText = await readFile(
+      resolve(workspaceRoot, '.agents/skills/causality-infer-outcomes/agents/openai.yaml'),
+      'utf8',
+    ).catch(() => null);
+
+    expect(metadataText).not.toBeNull();
+    expect(parseYaml(metadataText!)).toEqual({
+      interface: {
+        display_name: 'Causality Infer Outcomes',
+        short_description: '推测单个事件可能产生的后续结果',
+        default_prompt: '使用 $causality-infer-outcomes 推测当前关注事件可能产生的后续结果。',
       },
       policy: { allow_implicit_invocation: true },
     });

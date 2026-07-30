@@ -1,0 +1,7 @@
+interface:
+  display_name: 'Causality Infer Outcomes'
+  short_description: '推测单个事件可能产生的后续结果'
+  default_prompt: '使用 $causality-infer-outcomes 推测当前关注事件可能产生的后续结果。'
+
+policy:
+  allow_implicit_invocation: true

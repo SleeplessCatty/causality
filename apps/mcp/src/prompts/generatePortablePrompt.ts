@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { buildAnalyzeEventPrompt } from './analyzeEventPrompt.js';
 import { buildCausalityCapturePrompt } from './capturePrompt.js';
+import { buildInferOutcomesPrompt } from './inferOutcomesPrompt.js';
 import { buildReviewChainPrompt } from './reviewChainPrompt.js';
 import { buildTracePathPrompt } from './tracePathPrompt.js';
 
@@ -14,6 +15,7 @@ const outputs = [
   ['causality-analyze-event.md', buildAnalyzeEventPrompt()],
   ['causality-trace-path.md', buildTracePathPrompt()],
   ['causality-review-chain.md', buildReviewChainPrompt()],
+  ['causality-infer-outcomes.md', buildInferOutcomesPrompt()],
 ] as const;
 
 await mkdir(promptDirectory, { recursive: true });
