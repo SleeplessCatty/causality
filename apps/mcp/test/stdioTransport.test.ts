@@ -7,6 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { MCP_PROMPT_NAMES } from '../src/capabilities/capabilityManifest.js';
 import { connectCausalityMcpStdioServer } from '../src/transports/stdioServer.js';
 
 const token = 'c'.repeat(64);
@@ -86,7 +87,7 @@ describe('stdio MCP transport', () => {
     ]);
 
     expect(tools.tools).toHaveLength(15);
-    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(['causality_capture']);
+    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(Object.values(MCP_PROMPT_NAMES));
     expect(compared.structuredContent).toEqual(comparison);
     expect(calls).toEqual([
       { path: '/api/mcp/settings', token: null },

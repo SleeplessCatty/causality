@@ -1,15 +1,25 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it } from 'vitest';
 
+import { MCP_PROMPT_NAMES } from '../src/capabilities/capabilityManifest.js';
 import {
   ANALYSIS_DENIED_TOOL_NAMES,
   ANALYSIS_READ_TOOL_NAMES,
   buildDomainModelRules,
 } from '../src/prompts/analysisPolicy.js';
 import { buildAnalyzeEventPrompt } from '../src/prompts/analyzeEventPrompt.js';
+import { registerCapturePrompt } from '../src/prompts/capturePrompt.js';
+import { registerAnalysisPrompts } from '../src/prompts/registerAnalysisPrompts.js';
 import { buildReviewChainPrompt } from '../src/prompts/reviewChainPrompt.js';
 import { buildTracePathPrompt } from '../src/prompts/tracePathPrompt.js';
 
 const prompts = [buildAnalyzeEventPrompt(), buildTracePathPrompt(), buildReviewChainPrompt()];
+const workspaceRoot = resolve(import.meta.dirname, '../../..');
 
 describe('canonical causal analysis prompts', () => {
   it('defines the reusable domain evidence boundary', () => {
@@ -105,5 +115,61 @@ describe('canonical causal analysis prompts', () => {
     expect(prompt).toContain('库内未找到支持');
     expect(prompt).toContain('A → X → B');
     expect(prompt).toContain('不生成整条链的真假评分');
+  });
+
+  it('registers all four canonical prompts without arguments', async () => {
+    const server = new McpServer({ name: 'analysis-prompt-test', version: '1.0.0' });
+    registerCapturePrompt(server);
+    registerAnalysisPrompts(server);
+    const client = new Client({ name: 'analysis-prompt-client', version: '1.0.0' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    try {
+      const listed = await client.listPrompts();
+      expect(listed.prompts.map((prompt) => prompt.name)).toEqual(Object.values(MCP_PROMPT_NAMES));
+      for (const prompt of listed.prompts) expect(prompt.arguments ?? []).toEqual([]);
+
+      const result = await client.getPrompt({ name: MCP_PROMPT_NAMES.analyzeEvent });
+      expect(result.messages).toEqual([
+        {
+          role: 'user',
+          content: { type: 'text', text: buildAnalyzeEventPrompt() },
+        },
+      ]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it('keeps every portable Markdown prompt byte-identical to its canonical builder', async () => {
+    const expected = [
+      ['prompts/causality-analyze-event.md', buildAnalyzeEventPrompt()],
+      ['prompts/causality-trace-path.md', buildTracePathPrompt()],
+      ['prompts/causality-review-chain.md', buildReviewChainPrompt()],
+    ] as const;
+
+    for (const [path, content] of expected) {
+      await expect(readFile(resolve(workspaceRoot, path), 'utf8')).resolves.toBe(content);
+    }
+  });
+
+  it('keeps analysis Skills as thin launchers without copied workflow rules', async () => {
+    const skills = [
+      ['skills/causality-analyze-event/SKILL.md', MCP_PROMPT_NAMES.analyzeEvent],
+      ['skills/causality-trace-path/SKILL.md', MCP_PROMPT_NAMES.tracePath],
+      ['skills/causality-review-chain/SKILL.md', MCP_PROMPT_NAMES.reviewChain],
+    ] as const;
+
+    for (const [path, promptName] of skills) {
+      const skill = await readFile(resolve(workspaceRoot, path), 'utf8');
+      expect(skill).toContain(promptName);
+      expect(skill).toContain(path.replace('skills/', 'prompts/').replace('/SKILL.md', '.md'));
+      expect(skill).not.toContain('最多检查 100');
+      expect(skill).not.toContain('10,000');
+      expect(skill).not.toContain('库内有直接关系与案例依据');
+    }
   });
 });

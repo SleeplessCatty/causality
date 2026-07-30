@@ -21,6 +21,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { MCP_PROMPT_NAMES } from '../src/capabilities/capabilityManifest.js';
 import { createCausalityMcpServer } from '../src/server/createMcpServer.js';
 import type { CausalityMcpApi } from '../src/server/createMcpServer.js';
 
@@ -311,7 +312,7 @@ describe('read-only knowledge tools', () => {
     const [tools, prompts] = await Promise.all([mcpClient.listTools(), mcpClient.listPrompts()]);
 
     expect(tools.tools).toHaveLength(15);
-    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(['causality_capture']);
+    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(Object.values(MCP_PROMPT_NAMES));
   });
 
   it('returns readable text and structured database facts for every tool', async () => {
