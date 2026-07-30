@@ -11,7 +11,11 @@ Causality 是一个用于人工维护原子事件、因果关系和具体案例�
 - 使用名称、别名、关键词、关系说明或案例内容进行传统搜索；
 - 使用本地嵌入模型对三个主列表执行按需增强语义查询；
 - 在 PostgreSQL pgvector 中维护可重建的语义向量索引；
+- 手动检查重复、孤立、失效关联等数据质量问题，并按问题类型处理；
 - 使用统一 CSV 格式批量导入、全量导出或按局部因果范围筛选导出；
+- 通过本机 MCP Server 让外部 AI 客户端查询因果知识库；
+- 使用受控 Prompt 或 Skill 从当前会话提取候选、对比数据库、生成完整入库方案，并在人工确认后事务入库；
+- 追溯每次成功的 AI 入库批次及五类数据变化明细；
 - 通过详情页查看事件、关系和案例之间的关联依据。
 
 ## 快速开始
@@ -22,11 +26,15 @@ Causality 是一个用于人工维护原子事件、因果关系和具体案例�
 docker compose up -d --build --wait
 ```
 
-浏览器打开 <http://127.0.0.1:8080>。
+浏览器打开 <http://127.0.0.1:8080>。MCP Streamable HTTP 服务位于
+<http://127.0.0.1:8081/mcp>，访问令牌和可复制的客户端配置在“参数配置 → MCP
+服务”中查看。
 
-应用首次启动时会自动创建空数据库并执行迁移，不会自动写入示例业务数据。Web 是默认唯一暴露到本机的服务；API、语义 Worker 和 PostgreSQL 只在 Compose 内部网络访问。
+应用首次启动时会自动创建空数据库并执行迁移，不会自动写入示例业务数据。Web
+和 MCP 默认只绑定本机回环地址；API、语义 Worker 和 PostgreSQL 只在 Compose
+内部网络访问。
 
-每次升级后仍使用同一条命令启动。Compose 会先构建最新镜像，等待 PostgreSQL 就绪，执行全部待应用迁移，然后才启动 API、语义 Worker 和 Web。需要单独验证或执行迁移时，可以运行：
+每次升级后仍使用同一条命令启动。Compose 会先构建最新镜像，等待 PostgreSQL 就绪，执行全部待应用迁移，然后才启动 API、语义 Worker、MCP 和 Web。需要单独验证或执行迁移时，可以运行：
 
 ```bash
 docker compose build api
@@ -39,7 +47,7 @@ docker compose run --rm migrate
 
 PostgreSQL 数据和模型文件分别保存在两个 Compose 命名卷中：
 
-- `causality-postgres-data`：业务数据、配置、任务状态和可重建的向量索引；
+- `causality-postgres-data`：业务数据、配置、任务状态、MCP 令牌、AI 入库历史和可重建的向量索引；
 - `causality-semantic-models`：下载后的模型文件。
 
 停止应用不会删除业务数据、向量索引或模型：
@@ -70,13 +78,19 @@ docker compose down --volumes
 
 ## 使用说明
 
+本节介绍业务规则和关键限制。按页面完成日常操作、CSV 导入导出、MCP
+客户端接入及 AI 会话采集的完整步骤见
+[`docs/user-guide.md`](docs/user-guide.md)。
+
 **原子事件**
 
 在“原子事件”中浏览、搜索、创建和编辑事件。每个事件可包含标准名称、说明、多个别名和多个关键词。事件名称最长 50 字，单个别名最长 80 字，单个关键词最长 50 字。
 
 **因果关系**
 
-在“因果关系”中选择原因事件和结果事件，填写 0–100 的人工置信度，并关联已有或新建的具体案例。系统阻止自环和同方向重复关系；反向关系允许保存，并会给出提示。关系详情显示说明、案例数量和关联案例。
+在“因果关系”中选择原因事件和结果事件，填写 0–100 的置信度，并关联已有或新建的具体案例。系统阻止自环和同方向重复关系；反向关系允许保存，并会给出提示。关系详情显示说明、案例数量和关联案例。
+
+置信度默认基准为 `10%`。案例关联数量变化时，系统以当前基准和基准案例数自动计算新值，新增案例的边际提升逐次降低且不会达到 `100%`；取消关联会按同一规则降低。手动修改置信度时，当前值和当时案例数成为新的计算基准。同一次保存同时修改置信度和案例关联时，以手动输入值作为最终值和新基准。
 
 **具体案例**
 
@@ -153,6 +167,74 @@ CSV 只包含以下三种记录：
 
 该 CSV 是用于 Causality 之间迁移和回导的数据交换格式，不是电子表格安全格式。全字段双引号只能保证 CSV 解析正确，不能阻止 Excel、LibreOffice 等软件将以 `=`、`+`、`-` 或 `@` 开头的文本解释为公式。不要使用电子表格软件直接打开来源不可信的导出文件；需要人工查看时，应先确认所有内容可信，或使用不会执行公式的纯文本编辑器。
 
+**MCP 与外部 AI**
+
+生产 Compose 会自动启动 MCP Streamable HTTP 服务。打开“参数配置 → MCP
+服务”，确认状态为“运行中”，然后点击“复制客户端配置”。复制内容包含连接地址和
+Bearer Token，结构如下：
+
+```json
+{
+  "transport": "streamable-http",
+  "url": "http://127.0.0.1:8081/mcp",
+  "headers": {
+    "Authorization": "Bearer <64 位访问令牌>"
+  }
+}
+```
+
+把这三个字段放入 AI 客户端对应的 MCP Server 配置中。不同客户端最外层的
+`mcpServers`、服务器名称和工作区字段可能不同，但 URL、传输类型和
+`Authorization` 请求头保持一致。令牌只用于本机 MCP 连接；不要提交到 Git
+或发送给他人。重新生成令牌会立即使旧令牌和已有 MCP 会话失效。
+
+MCP 提供十个只读查询与证据工具：
+
+- `search_atomic_events`、`get_atomic_event`；
+- `search_concrete_cases`、`get_concrete_case`；
+- `search_causal_relations`、`get_causal_relation`、`get_relation_cases`；
+- `query_local_causal_graph`、`find_causal_paths`、`get_causal_evidence_bundle`。
+
+采集入库流程使用五个受控工具：
+
+- `compare_knowledge_candidates`：一次对比原子事件、具体案例、因果关系和案例关联；
+- `prepare_knowledge_changes`：生成不可变且限时有效的完整入库方案；
+- `get_import_plan_status`：提交前检查方案状态；
+- `commit_knowledge_changes`：仅在用户明确确认最新方案后事务入库；
+- `get_import_result`：在响应不明确时查询已完成结果。
+
+应用还发布四个 MCP Prompt：`causality_capture`、`causality_analyze_event`、
+`causality_trace_path` 和 `causality_review_chain`；同时发布领域规则、采集规则、能力清单
+和系统状态四个只读 Resource。不同客户端对 Prompt 和 Resource 的展示支持并不一致，
+四份同源 Markdown Prompt 位于 [`prompts/`](prompts/)，对应 Codex Skill 位于
+[`.agents/skills/`](.agents/skills/)。
+
+**Codex 专用入口**：在仓库根目录启动 Codex 后，先用 `/mcp` 确认 `causality`
+已连接；`/mcp` 只显示服务器和工具，不会列出 MCP Prompt 或 Resource。使用 `/skills`
+查看仓库工作流，或显式输入 `$causality-capture`、`$causality-analyze-event`、
+`$causality-trace-path`、`$causality-review-chain`。仓库通过
+`.agents/skills` 暴露这些 Skill，Skill 会直接读取同源 Markdown Prompt，再调用
+`causality` 工具。MCP 初始化 `instructions` 还会自动向 Codex 提供事实边界、只读分析和
+受控入库的核心规则。首次添加后若 `/skills` 未显示，重启 Codex 或新建会话。
+
+标准采集流程为：
+
+1. 用户明确要求采集当前会话并生成入库方案；
+2. AI 从上次成功标记之后开始采集；没有标记时从当前可见会话最早内容开始；
+3. AI 只提取与问题主线有关的原子事件、具体案例、因果关系和案例关联，一次最多处理 50 条原子事件；
+4. AI 自动对比库内数据并生成完整方案，使用普通语言向用户展示；
+5. 用户可以多轮提出修改，每次修改都会产生新的完整方案；
+6. 只有用户明确确认最新方案后，AI 才能提交；
+7. 成功后 AI 返回 `[Causality-Capture: <historyId>]`，作为下次采集范围的边界。
+
+AI 客户端和 MCP 工具之间使用 JSON；AI 向用户展示普通语言；CSV
+只用于人工导入导出，这三者不能混用。应用不保存完整会话、网页来源或 AI
+推理，只保存实际业务数据和成功 AI 入库历史。成功批次可在“导入导出 → AI
+导入历史”中查看；失败、取消和回滚方案不会进入历史。
+
+应用本身不内置在线大模型或联网搜索。网页检索、对话理解、候选提取和综合判断由用户选择的外部
+AI 客户端负责；本地嵌入模型只负责数据库候选的语义比较。
+
 **局部因果图**
 
 在“因果图”中搜索并选择中心事件。顶部工具栏可切换双向、下游或上游，选择 20、50 或 100 个关联节点上限，并按最低置信度和最少案例数筛选。查询参数修改后会自动重新生成并适应画布；搜索框更换中心事件会恢复默认查询参数，从详情检查器更换中心事件则保留当前参数。
@@ -164,12 +246,14 @@ CSV 只包含以下三种记录：
 生产 Compose 支持以下环境变量：
 
 - `CAUSALITY_WEB_PORT`：Web 绑定到本机回环地址的端口，默认 `8080`；
+- `CAUSALITY_MCP_PORT`：MCP Streamable HTTP 服务绑定到本机回环地址的端口，默认 `8081`；
 - `CAUSALITY_LOG_LEVEL`：API 日志级别，默认 `info`。
 
 示例：
 
 ```bash
-CAUSALITY_WEB_PORT=9080 CAUSALITY_LOG_LEVEL=debug docker compose up -d --build --wait
+CAUSALITY_WEB_PORT=9080 CAUSALITY_MCP_PORT=9081 CAUSALITY_LOG_LEVEL=debug \
+  docker compose up -d --build --wait
 ```
 
 Compose 始终使用当前活动的 Docker Context，兼容 Colima 和 Docker Desktop，不会主动切换 Docker 环境。可使用以下命令确认当前环境：
@@ -186,12 +270,28 @@ docker context ls
 pnpm install
 cp apps/api/.env.example apps/api/.env
 cp apps/semantic-worker/.env.example apps/semantic-worker/.env
+cp apps/mcp/.env.example apps/mcp/.env
 docker compose -f compose.yaml -f compose.dev.yaml up -d --wait postgres
 pnpm db:migrate
 pnpm dev
 ```
 
-开发页面位于 <http://127.0.0.1:5173>，API 位于 <http://127.0.0.1:3000>，语义 Worker 位于本机回环地址的 `3100` 端口。根命令会同时启动 Web、API 和 Worker。开发覆盖文件只把 PostgreSQL 映射到本机回环地址；生产容器启动不需要复制 `.env`。
+开发页面位于 <http://127.0.0.1:5173>，API 位于
+<http://127.0.0.1:3000>，语义 Worker 位于本机回环地址的 `3100`
+端口，MCP 位于 <http://127.0.0.1:8081/mcp>。根命令会同时启动 Web、API、语义
+Worker 和 MCP HTTP 服务。开发覆盖文件只把 PostgreSQL 映射到本机回环地址；生产容器启动不需要复制 `.env`。
+
+需要单独启动或检查 MCP 时：
+
+```bash
+pnpm mcp:dev
+pnpm mcp:stdio
+pnpm mcp:inspect
+```
+
+- `mcp:dev`：只启动开发用 Streamable HTTP MCP 服务；
+- `mcp:stdio`：为仅支持 stdio 的客户端启动兼容入口，需要本机 API 已运行；
+- `mcp:inspect`：通过 MCP Inspector 启动 stdio 入口，手工检查工具和 Prompt。
 
 `compose.yaml` 定义完整生产栈和两个持久卷；`compose.dev.yaml` 只是叠加在生产文件上的开发覆盖，仅把 PostgreSQL 暴露到 `127.0.0.1:5432`，不能单独代替生产文件使用。
 
@@ -217,13 +317,17 @@ Web 开发服务器和生产 Nginx 都通过同源 `/api` 提供接口：
 - `/api/cases`：具体案例列表、搜索、候选、详情、关联关系、创建和更新；
 - `/api/data-checks`：手动数据检查、最近成功快照和当前问题处理；
 - `/api/data-transfers`：CSV 导入、导入历史、导出范围确认和流式导出；
+- `/api/mcp`：MCP 连接信息、令牌轮换和令牌授权；
+- `/api/ai-captures`：MCP 受控对比、方案、确认入库、结果和成功历史；
 - `/api/semantic`：统一模型生命周期、阶段专用操作、Worker 状态、模型切换、重新索引和增强查询状态；
 - `/api/causal-graph`：以一个原子事件为中心查询局部因果图；
 - `/api/openapi.json`：OpenAPI 文档；
 - `/api/health`：API 进程存活状态，不检查数据库；
 - `/api/ready`：数据库连接就绪状态。
 
-API 没有认证机制，只应在受信任的本机环境中使用。
+普通 Web API 没有账号认证，只应在受信任的本机环境中使用。MCP
+工作流写操作需要当前 64 位访问令牌；生产 Compose 只把 Web 和 MCP
+绑定到本机回环地址，不直接暴露 API。
 
 ## 质量验证
 
@@ -265,8 +369,10 @@ pnpm build
 
 - 面向本机单用户使用，没有账号、权限或多人协作；
 - 业务记录仅支持不可恢复的永久删除，不提供软删除、恢复、修改历史或审计；
-- 置信度完全由用户人工填写，不会根据案例数量自动调整；
-- 语义模型只用于候选检索，不生成内容、不自动判断因果关系，也不执行因果推断；
+- 置信度支持人工基准，并在案例关联数量变化时自动调整；系统不会根据案例内容真实性判断置信度；
+- 本地语义模型只用于候选检索和库内比较，不生成内容、不自动判断因果关系，也不执行因果推断；
+- MCP 依赖外部 AI 客户端完成对话理解和可选的网页检索，应用不内置在线模型 API；
+- AI 导入历史只记录成功事务，不保存完整对话、网页来源、失败方案或 AI 推理过程；
 - 局部因果图最多查询 100 个关联节点，不计算完整可达网络；
 - 暂不针对移动端布局进行适配；
 - 不提供自动备份、跨机器恢复、监控或告警；
@@ -276,4 +382,5 @@ pnpm build
 
 - Cytoscape/ELK Web Worker、图页面资源体积和布局性能优化；
 - 多段因果路径和历史案例分析；
+- MCP 客户端兼容性验证、代表性容量基准和更完整的外部 AI 使用示例；
 - 备份恢复、监控、安全响应头和按需认证。

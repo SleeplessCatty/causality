@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
 import { MCP_PROMPT_NAMES } from '../src/capabilities/capabilityManifest.js';
 import {
@@ -158,18 +159,84 @@ describe('canonical causal analysis prompts', () => {
 
   it('keeps analysis Skills as thin launchers without copied workflow rules', async () => {
     const skills = [
-      ['skills/causality-analyze-event/SKILL.md', MCP_PROMPT_NAMES.analyzeEvent],
-      ['skills/causality-trace-path/SKILL.md', MCP_PROMPT_NAMES.tracePath],
-      ['skills/causality-review-chain/SKILL.md', MCP_PROMPT_NAMES.reviewChain],
+      [
+        '.agents/skills/causality-analyze-event/SKILL.md',
+        MCP_PROMPT_NAMES.analyzeEvent,
+        'prompts/causality-analyze-event.md',
+      ],
+      [
+        '.agents/skills/causality-trace-path/SKILL.md',
+        MCP_PROMPT_NAMES.tracePath,
+        'prompts/causality-trace-path.md',
+      ],
+      [
+        '.agents/skills/causality-review-chain/SKILL.md',
+        MCP_PROMPT_NAMES.reviewChain,
+        'prompts/causality-review-chain.md',
+      ],
     ] as const;
 
-    for (const [path, promptName] of skills) {
+    for (const [path, promptName, promptPath] of skills) {
       const skill = await readFile(resolve(workspaceRoot, path), 'utf8');
       expect(skill).toContain(promptName);
-      expect(skill).toContain(path.replace('skills/', 'prompts/').replace('/SKILL.md', '.md'));
+      expect(skill).toContain(promptPath);
+      expect(skill.indexOf(promptPath)).toBeLessThan(skill.indexOf(promptName));
+      expect(skill).toContain('Codex does not expose MCP Prompts as invocable commands');
+      expect(skill).toContain(`do not try to invoke \`${promptName}\` first`);
       expect(skill).not.toContain('最多检查 100');
       expect(skill).not.toContain('10,000');
       expect(skill).not.toContain('库内有直接关系与案例依据');
     }
+  });
+
+  it('publishes concise Codex UI metadata for event analysis', async () => {
+    const metadataText = await readFile(
+      resolve(workspaceRoot, '.agents/skills/causality-analyze-event/agents/openai.yaml'),
+      'utf8',
+    ).catch(() => null);
+
+    expect(metadataText).not.toBeNull();
+    expect(parseYaml(metadataText!)).toEqual({
+      interface: {
+        display_name: 'Causality Analyze Event',
+        short_description: '分析事件的直接原因和结果',
+        default_prompt: '使用 $causality-analyze-event 分析当前关注事件的直接原因和结果。',
+      },
+      policy: { allow_implicit_invocation: true },
+    });
+  });
+
+  it('publishes concise Codex UI metadata for causal chain review', async () => {
+    const metadataText = await readFile(
+      resolve(workspaceRoot, '.agents/skills/causality-review-chain/agents/openai.yaml'),
+      'utf8',
+    ).catch(() => null);
+
+    expect(metadataText).not.toBeNull();
+    expect(parseYaml(metadataText!)).toEqual({
+      interface: {
+        display_name: 'Causality Review Chain',
+        short_description: '核对一条因果链的关系和案例依据',
+        default_prompt: '使用 $causality-review-chain 核对当前讨论中的因果链。',
+      },
+      policy: { allow_implicit_invocation: true },
+    });
+  });
+
+  it('publishes concise Codex UI metadata for directed path tracing', async () => {
+    const metadataText = await readFile(
+      resolve(workspaceRoot, '.agents/skills/causality-trace-path/agents/openai.yaml'),
+      'utf8',
+    ).catch(() => null);
+
+    expect(metadataText).not.toBeNull();
+    expect(parseYaml(metadataText!)).toEqual({
+      interface: {
+        display_name: 'Causality Trace Path',
+        short_description: '查找两个事件之间的有向因果路径',
+        default_prompt: '使用 $causality-trace-path 查找当前讨论中两个事件之间的因果路径。',
+      },
+      policy: { allow_implicit_invocation: true },
+    });
   });
 });

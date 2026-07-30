@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
 import {
   buildCausalityCapturePrompt,
@@ -177,13 +178,34 @@ describe('causality capture prompt', () => {
 
   it('keeps the Skill as a thin launcher without copying workflow rules', async () => {
     const skill = await readFile(
-      resolve(workspaceRoot, 'skills/causality-capture/SKILL.md'),
+      resolve(workspaceRoot, '.agents/skills/causality-capture/SKILL.md'),
       'utf8',
     );
 
     expect(skill).toContain('causality_capture');
     expect(skill).toContain('prompts/causality-capture.md');
+    expect(skill.indexOf('prompts/causality-capture.md')).toBeLessThan(
+      skill.indexOf('causality_capture'),
+    );
+    expect(skill).toContain('Codex does not expose MCP Prompts as invocable commands');
+    expect(skill).toContain('do not try to invoke `causality_capture` first');
     expect(skill).not.toContain('最多 50 条原子事件');
     expect(skill).not.toContain('无法可靠判断时必须选择 skip');
+
+    const metadata = parseYaml(
+      await readFile(
+        resolve(workspaceRoot, '.agents/skills/causality-capture/agents/openai.yaml'),
+        'utf8',
+      ),
+    );
+    expect(metadata).toEqual({
+      interface: {
+        display_name: 'Causality Capture',
+        short_description: '将当前对话主线整理为 Causality 入库方案',
+        default_prompt:
+          '使用 $causality-capture 采集当前会话主线，生成入库方案，并仅在我明确确认后提交。',
+      },
+      policy: { allow_implicit_invocation: false },
+    });
   });
 });

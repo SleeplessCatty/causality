@@ -1,0 +1,7 @@
+interface:
+  display_name: 'Causality Trace Path'
+  short_description: '查找两个事件之间的有向因果路径'
+  default_prompt: '使用 $causality-trace-path 查找当前讨论中两个事件之间的因果路径。'
+
+policy:
+  allow_implicit_invocation: true

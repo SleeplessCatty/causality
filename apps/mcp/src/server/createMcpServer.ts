@@ -18,6 +18,7 @@ import {
   registerKnowledgeTools,
   type CausalityKnowledgeApi,
 } from '../tools/registerKnowledgeTools.js';
+import { CAUSALITY_MCP_INSTRUCTIONS } from './serverInstructions.js';
 
 export type CausalityMcpApi = CausalityKnowledgeApi &
   CausalityEvidenceApi &
@@ -30,10 +31,15 @@ export interface CreateCausalityMcpServerOptions {
 }
 
 export function createCausalityMcpServer(options: CreateCausalityMcpServerOptions): McpServer {
-  const server = new McpServer({
-    name: CAUSALITY_MCP_NAME,
-    version: CAUSALITY_MCP_VERSION,
-  });
+  const server = new McpServer(
+    {
+      name: CAUSALITY_MCP_NAME,
+      version: CAUSALITY_MCP_VERSION,
+    },
+    {
+      instructions: CAUSALITY_MCP_INSTRUCTIONS,
+    },
+  );
   registerKnowledgeTools(server, options.apiClient);
   registerEvidenceTools(server, options.apiClient);
   registerCaptureTools(server, options.apiClient, options.logger);

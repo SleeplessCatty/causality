@@ -1,0 +1,7 @@
+interface:
+  display_name: 'Causality Review Chain'
+  short_description: '核对一条因果链的关系和案例依据'
+  default_prompt: '使用 $causality-review-chain 核对当前讨论中的因果链。'
+
+policy:
+  allow_implicit_invocation: true

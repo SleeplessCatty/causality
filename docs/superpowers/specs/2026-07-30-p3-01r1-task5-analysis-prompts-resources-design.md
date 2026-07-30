@@ -282,16 +282,16 @@ AI 先从当前可见会话识别用户关心的主题、事件、原因或结�
 - `prompts/causality-analyze-event.md`
 - `prompts/causality-trace-path.md`
 - `prompts/causality-review-chain.md`
-- `skills/causality-analyze-event/SKILL.md`
-- `skills/causality-trace-path/SKILL.md`
-- `skills/causality-review-chain/SKILL.md`
+- `.agents/skills/causality-analyze-event/SKILL.md`
+- `.agents/skills/causality-trace-path/SKILL.md`
+- `.agents/skills/causality-review-chain/SKILL.md`
 
 每份 Markdown Prompt 必须与 MCP canonical builder 输出字节一致。生成过程复用现有便携 Prompt 脚本或把脚本扩展为统一生成器，不在构建时访问网络。
 
 Skill 只说明：
 
-1. 优先加载对应 MCP Prompt；
-2. 客户端不支持 MCP Prompt 时读取对应 Markdown；
+1. Codex 直接加载对应 Markdown，不尝试先调用未暴露的 MCP Prompt；
+2. 其他完整支持 MCP Prompt 的客户端仍可直接调用标准 MCP Prompt；
 3. 按 Prompt 自动调用只读工具；
 4. 不复制查询规则、输出模板或安全边界。
 

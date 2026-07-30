@@ -1,0 +1,7 @@
+interface:
+  display_name: 'Causality Analyze Event'
+  short_description: '分析事件的直接原因和结果'
+  default_prompt: '使用 $causality-analyze-event 分析当前关注事件的直接原因和结果。'
+
+policy:
+  allow_implicit_invocation: true

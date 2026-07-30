@@ -8,7 +8,11 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MCP_PROMPT_NAMES, MCP_RESOURCE_URIS } from '../src/capabilities/capabilityManifest.js';
+import {
+  MCP_PROMPT_NAMES,
+  MCP_RESOURCE_URIS,
+  MCP_TOOL_NAMES,
+} from '../src/capabilities/capabilityManifest.js';
 import { systemStatusResourceSchema } from '../src/resources/resourceSchemas.js';
 import { connectCausalityMcpStdioServer } from '../src/transports/stdioServer.js';
 
@@ -118,6 +122,7 @@ describe('stdio MCP transport', () => {
       client.listPrompts(),
       client.listResources(),
     ]);
+    const instructions = client.getInstructions();
     const statusResource = await client.readResource({ uri: MCP_RESOURCE_URIS.systemStatus });
     const statusContent = statusResource.contents[0];
     if (!statusContent || !('text' in statusContent)) throw new Error('Missing status text');
@@ -127,11 +132,13 @@ describe('stdio MCP transport', () => {
       arguments: candidates,
     });
 
-    expect(tools.tools).toHaveLength(15);
+    expect(tools.tools.map((tool) => tool.name)).toEqual(Object.values(MCP_TOOL_NAMES));
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(Object.values(MCP_PROMPT_NAMES));
     expect(resources.resources.map((resource) => resource.uri)).toEqual(
       Object.values(MCP_RESOURCE_URIS),
     );
+    expect(instructions).toContain('Causality 是本地因果知识库');
+    expect(instructions).toContain('只有用户明确确认入库方案后才能提交');
     expect(status).toMatchObject({
       overallStatus: 'degraded',
       database: { status: 'ready' },

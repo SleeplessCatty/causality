@@ -1,7 +1,7 @@
 # P3-01R1 Task 2 统一采集规范与 V2 Prompt 设计
 
-日期：2026-07-29  
-状态：设计审核通过；已实施，等待人工复核  
+日期：2026-07-29
+状态：已完成
 所属阶段：P3-01R1 MCP 查询完整性与采集质量优化
 
 ## 1. 目标
@@ -52,10 +52,10 @@ MCP Prompt 名称继续使用 `causality_capture`，避免破坏已有客户端�
 
 ### 3.4 示例 Skill
 
-`skills/causality-capture/SKILL.md` 继续作为轻量启动器：
+`.agents/skills/causality-capture/SKILL.md` 继续作为轻量启动器：
 
-1. 优先调用 MCP Prompt；
-2. 客户端不支持 MCP Prompt 时加载便携 Markdown Prompt；
+1. Codex 直接加载便携 Markdown Prompt，不尝试先调用未暴露的 MCP Prompt；
+2. 其他完整支持 MCP Prompt 的客户端仍可直接调用标准 MCP Prompt；
 3. 两者均不可用时停止并提示配置方式。
 
 Skill 不复制原子事件定义、候选字段、判断规则或入库流程，避免形成第四份规则源。本任务不创建或安装用户全局 Skill。
@@ -246,7 +246,7 @@ Prompt 不复制完整 JSON Schema，而是要求 AI 严格使用 MCP 工具实�
 - `apps/mcp/src/prompts/capturePrompt.ts`；
 - `prompts/causality-capture.md`（只通过生成命令更新）；
 - `apps/mcp/test/capturePrompt.test.ts`；
-- 必要时微调 `skills/causality-capture/SKILL.md` 的启动说明，但不得复制业务规则；
+- 必要时微调 `.agents/skills/causality-capture/SKILL.md` 的启动说明，但不得复制业务规则；
 - `CONTEXT.md` 中原子事件定义，在 Prompt、便携 Prompt 和 Skill 的一致性验证完成后同步更新。
 
 明确不修改：
