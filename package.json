@@ -35,7 +35,7 @@
     "typecheck": "pnpm --filter @causality/contracts typecheck && pnpm --filter @causality/semantic-core typecheck && pnpm --filter @causality/api typecheck && pnpm --filter @causality/semantic-worker typecheck && pnpm --filter @causality/mcp typecheck && pnpm --filter @causality/web typecheck",
     "test": "pnpm --filter @causality/contracts test && pnpm --filter @causality/semantic-core test && pnpm --filter @causality/api test && pnpm --filter @causality/semantic-worker test && pnpm --filter @causality/mcp test && pnpm --filter @causality/web test",
     "test:compose": "node --test tests/production/*.test.mjs",
-    "test:mcp-compat": "pnpm --filter @causality/mcp test:compat",
+    "test:mcp-compat": "pnpm --filter @causality/contracts build && pnpm --filter @causality/mcp build && pnpm --filter @causality/mcp test:compat",
     "test:integration": "DOCKER_HOST=\"${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}')}\" TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=\"${TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE:-/var/run/docker.sock}\" sh -c 'pnpm --filter @causality/api test:integration && pnpm --filter @causality/semantic-worker test:integration'",
     "test:production": "bash scripts/test-production-compose.sh",
     "test:e2e": "bash scripts/test-e2e.sh",

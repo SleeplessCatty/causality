@@ -1,4 +1,5 @@
 import type { AiCaptureQualityReport, AiWorkflowError } from '@causality/contracts';
+import { z } from 'zod';
 
 import { CausalityApiClientError } from '../api/causalityApiClient.js';
 
@@ -21,6 +22,67 @@ export interface McpToolError {
 
 export interface McpToolErrorStructuredContent {
   error: McpToolError;
+}
+
+export const mcpToolErrorSchema = z
+  .object({
+    code: z.string().min(1),
+    category: z.enum([
+      'validation',
+      'not_found',
+      'conflict',
+      'stale_state',
+      'unavailable',
+      'internal',
+    ]),
+    message: z.string().min(1),
+    retryable: z.boolean(),
+    suggestedAction: z.string().min(1),
+    details: z
+      .object({
+        traceId: z.string().optional(),
+        status: z.number().int().optional(),
+        affectedRefCount: z.number().int().nonnegative().optional(),
+        qualityIssueCount: z.number().int().nonnegative().optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+/**
+ * SDK clients validate structured errors against the advertised output Schema. Keep an
+ * object-shaped compatibility Schema so it remains visible in tools/list, while the server-side
+ * refinement still requires the complete success shape whenever `error` is absent.
+ */
+export function toolOutputSchema<T extends z.ZodObject>(successSchema: T) {
+  const successErrorSchema = successSchema.shape.error as z.ZodType | undefined;
+  return z
+    .object(successSchema.shape)
+    .partial()
+    .extend({
+      error:
+        successErrorSchema === undefined
+          ? mcpToolErrorSchema.optional()
+          : z.union([successErrorSchema, mcpToolErrorSchema]).optional(),
+      category: z.enum(['data', 'system', 'configuration']).optional(),
+      code: z.string().optional(),
+      message: z.string().optional(),
+      affectedRefs: z.array(z.string()).optional(),
+      aiCanRepair: z.boolean().optional(),
+      retryCurrentPlan: z.boolean().optional(),
+      suggestedAction: z.string().optional(),
+      qualityReport: z.unknown().optional(),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (value.error !== undefined) return;
+      if (!successSchema.safeParse(value).success) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Tool success output does not match its complete output Schema',
+        });
+      }
+    });
 }
 
 interface ToolErrorResultOptions {

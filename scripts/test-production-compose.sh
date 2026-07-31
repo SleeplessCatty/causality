@@ -10,6 +10,8 @@ if [[ ! "$smoke_project" =~ ^causality-smoke-[a-z0-9-]+$ ]]; then
   exit 1
 fi
 
+pnpm test:mcp-compat
+
 cleanup() {
   CAUSALITY_WEB_PORT="$smoke_port" \
   CAUSALITY_MCP_PORT="$smoke_mcp_port" \

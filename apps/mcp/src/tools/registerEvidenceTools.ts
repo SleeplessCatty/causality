@@ -18,6 +18,7 @@ import { z } from 'zod';
 
 import { MCP_TOOL_NAMES, toolRegistrationMetadata } from '../capabilities/capabilityManifest.js';
 import { executeTool, silentToolLogger, type ToolExecutionLogger } from './executeTool.js';
+import { toolOutputSchema } from './toolError.js';
 import { textResult } from './toolResult.js';
 
 export interface CausalityEvidenceApi {
@@ -223,7 +224,7 @@ export function registerEvidenceTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.getConcreteCase),
       inputSchema: getCaseInputSchema,
-      outputSchema: caseWithRelationsSchema,
+      outputSchema: toolOutputSchema(caseWithRelationsSchema),
     },
     ({ caseId, relationLimit, relationCursor }) =>
       executeTool(MCP_TOOL_NAMES.getConcreteCase, logger, async () => {
@@ -247,7 +248,7 @@ export function registerEvidenceTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.searchCausalRelations),
       inputSchema: searchRelationsInputSchema,
-      outputSchema: relationListResponseSchema,
+      outputSchema: toolOutputSchema(relationListResponseSchema),
     },
     ({ query, searchMode, page }) =>
       executeTool(MCP_TOOL_NAMES.searchCausalRelations, logger, async () => {
@@ -261,7 +262,7 @@ export function registerEvidenceTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.findCausalPaths),
       inputSchema: findPathsInputSchema,
-      outputSchema: causalPathResponseSchema,
+      outputSchema: toolOutputSchema(causalPathResponseSchema),
     },
     (input) =>
       executeTool(MCP_TOOL_NAMES.findCausalPaths, logger, async () => {
@@ -275,7 +276,7 @@ export function registerEvidenceTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.getCausalEvidenceBundle),
       inputSchema: evidenceBundleInputSchema,
-      outputSchema: causalEvidenceBundleResponseSchema,
+      outputSchema: toolOutputSchema(causalEvidenceBundleResponseSchema),
     },
     (input) =>
       executeTool(MCP_TOOL_NAMES.getCausalEvidenceBundle, logger, async () => {

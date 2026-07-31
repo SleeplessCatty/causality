@@ -21,6 +21,7 @@ import { z } from 'zod';
 
 import { MCP_TOOL_NAMES, toolRegistrationMetadata } from '../capabilities/capabilityManifest.js';
 import { executeTool, silentToolLogger, type ToolExecutionLogger } from './executeTool.js';
+import { toolOutputSchema } from './toolError.js';
 import { textResult } from './toolResult.js';
 
 export interface CausalityKnowledgeApi {
@@ -183,7 +184,7 @@ export function registerKnowledgeTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.searchAtomicEvents),
       inputSchema: searchEventsInputSchema,
-      outputSchema: eventListResponseSchema,
+      outputSchema: toolOutputSchema(eventListResponseSchema),
     },
     ({ query, page, searchMode }) =>
       executeTool(MCP_TOOL_NAMES.searchAtomicEvents, logger, async () => {
@@ -197,7 +198,7 @@ export function registerKnowledgeTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.getAtomicEvent),
       inputSchema: getEventInputSchema,
-      outputSchema: eventWithRelationsSchema,
+      outputSchema: toolOutputSchema(eventWithRelationsSchema),
     },
     ({ eventId, relationLimit, relationCursor }) =>
       executeTool(MCP_TOOL_NAMES.getAtomicEvent, logger, async () => {
@@ -218,7 +219,7 @@ export function registerKnowledgeTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.searchConcreteCases),
       inputSchema: searchCasesInputSchema,
-      outputSchema: caseListResponseSchema,
+      outputSchema: toolOutputSchema(caseListResponseSchema),
     },
     ({ query, page }) =>
       executeTool(MCP_TOOL_NAMES.searchConcreteCases, logger, async () => {
@@ -232,7 +233,7 @@ export function registerKnowledgeTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.getCausalRelation),
       inputSchema: relationInputSchema,
-      outputSchema: relationDetailSchema,
+      outputSchema: toolOutputSchema(relationDetailSchema),
     },
     ({ relationId }) =>
       executeTool(MCP_TOOL_NAMES.getCausalRelation, logger, async () => {
@@ -246,7 +247,7 @@ export function registerKnowledgeTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.getRelationCases),
       inputSchema: relationCasesInputSchema,
-      outputSchema: relationCaseListResponseSchema,
+      outputSchema: toolOutputSchema(relationCaseListResponseSchema),
     },
     ({ relationId, caseLimit, caseCursor }) =>
       executeTool(MCP_TOOL_NAMES.getRelationCases, logger, async () => {
@@ -264,7 +265,7 @@ export function registerKnowledgeTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.queryLocalCausalGraph),
       inputSchema: graphInputSchema,
-      outputSchema: causalGraphResponseSchema,
+      outputSchema: toolOutputSchema(causalGraphResponseSchema),
     },
     (input) =>
       executeTool(MCP_TOOL_NAMES.queryLocalCausalGraph, logger, async () => {

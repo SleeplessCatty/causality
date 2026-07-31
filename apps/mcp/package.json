@@ -11,7 +11,7 @@
     "prompt:generate": "tsx src/prompts/generatePortablePrompt.ts",
     "stdio": "tsx src/stdio.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --exclude=test/compatibility/**",
     "test:compat": "vitest run test/compatibility"
   },
   "dependencies": {

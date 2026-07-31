@@ -20,6 +20,7 @@ import {
   prepareImportPlanMcpSchema,
 } from './captureMcpSchemas.js';
 import { executeTool, silentToolLogger, type ToolExecutionLogger } from './executeTool.js';
+import { toolOutputSchema } from './toolError.js';
 import { textResult } from './toolResult.js';
 
 export interface CausalityCaptureApi {
@@ -195,7 +196,7 @@ export function registerCaptureTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.compareKnowledgeCandidates),
       inputSchema: captureCandidateSetMcpSchema,
-      outputSchema: captureComparisonMcpSchema,
+      outputSchema: toolOutputSchema(captureComparisonMcpSchema),
     },
     (input) =>
       executeTool(
@@ -216,7 +217,7 @@ export function registerCaptureTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.prepareKnowledgeChanges),
       inputSchema: prepareImportPlanMcpSchema,
-      outputSchema: importPlanMcpSchema,
+      outputSchema: toolOutputSchema(importPlanMcpSchema),
     },
     (input) =>
       executeTool(
@@ -236,7 +237,7 @@ export function registerCaptureTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.getImportPlanStatus),
       inputSchema: planIdInputSchema,
-      outputSchema: importPlanStatusMcpSchema,
+      outputSchema: toolOutputSchema(importPlanStatusMcpSchema),
     },
     ({ planId }) =>
       executeTool(
@@ -255,7 +256,7 @@ export function registerCaptureTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.commitKnowledgeChanges),
       inputSchema: planIdInputSchema,
-      outputSchema: importCommitResultMcpSchema,
+      outputSchema: toolOutputSchema(importCommitResultMcpSchema),
     },
     ({ planId }) =>
       executeTool(
@@ -274,7 +275,7 @@ export function registerCaptureTools(
     {
       ...toolRegistrationMetadata(MCP_TOOL_NAMES.getImportResult),
       inputSchema: historyIdInputSchema,
-      outputSchema: importCommitResultMcpSchema,
+      outputSchema: toolOutputSchema(importCommitResultMcpSchema),
     },
     ({ historyId }) =>
       executeTool(

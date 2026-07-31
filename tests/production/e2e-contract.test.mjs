@@ -62,6 +62,10 @@ test('root scripts include semantic packages and delivery checks', () => {
     packageJson.scripts['mcp:inspect'],
     'pnpm dlx @modelcontextprotocol/inspector@2.0.0 pnpm mcp:stdio',
   );
+  assert.equal(
+    packageJson.scripts['test:mcp-compat'],
+    'pnpm --filter @causality/contracts build && pnpm --filter @causality/mcp build && pnpm --filter @causality/mcp test:compat',
+  );
   for (const command of ['dev', 'typecheck', 'test', 'build']) {
     assert.match(packageJson.scripts[command], /@causality\/mcp/);
   }
@@ -73,6 +77,7 @@ test('root scripts include semantic packages and delivery checks', () => {
 });
 
 test('the production smoke script allocates and forwards a separate MCP port', () => {
+  assert.match(productionScript, /pnpm test:mcp-compat/);
   assert.match(productionScript, /smoke_mcp_port="\$\{CAUSALITY_SMOKE_MCP_PORT:-18081\}"/);
   assert.match(productionScript, /CAUSALITY_MCP_PORT="\$smoke_mcp_port"/);
   assert.match(productionScript, /CAUSALITY_SMOKE_MCP_PORT="\$smoke_mcp_port"/);
