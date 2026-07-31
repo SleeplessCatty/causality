@@ -230,7 +230,6 @@ export async function startCausalityMcpHttpServer(
     try {
       if (!session && !sessionId && request.method === 'POST' && isInitializeRequest(body)) {
         const server = createCausalityMcpServer({ apiClient: scopedApi, logger });
-        let initializedSession: Session;
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: randomUUID,
           enableJsonResponse: true,
@@ -238,7 +237,7 @@ export async function startCausalityMcpHttpServer(
             sessions.set(initializedSessionId, initializedSession);
           },
         });
-        initializedSession = { server, transport, ...initializingClient };
+        const initializedSession: Session = { server, transport, ...initializingClient };
         transport.onclose = () => {
           const initializedSessionId = transport.sessionId;
           if (initializedSessionId) sessions.delete(initializedSessionId);
@@ -277,7 +276,7 @@ export async function startCausalityMcpHttpServer(
           ),
         logger,
       );
-    } catch (error) {
+    } catch {
       sendJson(response, 500, { error: 'internal_error' });
     }
   });

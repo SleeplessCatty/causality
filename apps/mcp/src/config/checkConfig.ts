@@ -97,6 +97,7 @@ export async function loadMcpCheckOptions(
     } catch (error) {
       throw new Error(
         `无法解析 MCP 检查配置：${error instanceof Error ? error.message : 'JSON 无效'}`,
+        { cause: error },
       );
     }
   }

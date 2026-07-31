@@ -67,8 +67,8 @@ async function allPages(
   const ids: string[] = [];
   const items: Record<string, unknown>[] = [];
   let page = 1;
-  let totalPages = 1;
-  let expectedTotal = 0;
+  let totalPages: number;
+  let expectedTotal: number;
   do {
     const result = structured(
       await client.callTool({
