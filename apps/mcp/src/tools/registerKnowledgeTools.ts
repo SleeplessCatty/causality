@@ -19,7 +19,7 @@ import {
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
+import { MCP_TOOL_NAMES, toolRegistrationMetadata } from '../capabilities/capabilityManifest.js';
 import { textResult } from './toolResult.js';
 
 export interface CausalityKnowledgeApi {
@@ -37,13 +37,6 @@ export interface CausalityKnowledgeApi {
   ): Promise<RelationCaseListResponse>;
   queryGraph(input: CausalGraphQuery): Promise<CausalGraphResponse>;
 }
-
-const readOnlyAnnotations = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const;
 
 const searchEventsInputSchema = z
   .object({
@@ -183,11 +176,9 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   server.registerTool(
     MCP_TOOL_NAMES.searchAtomicEvents,
     {
-      title: '搜索原子事件',
-      description: '按名称、别名或关键词普通搜索，也可按语义增强搜索原子事件。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.searchAtomicEvents),
       inputSchema: searchEventsInputSchema,
       outputSchema: eventListResponseSchema,
-      annotations: readOnlyAnnotations,
     },
     async ({ query, page, searchMode }) => {
       const result = await apiClient.searchEvents(query, page, searchMode);
@@ -198,11 +189,9 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   server.registerTool(
     MCP_TOOL_NAMES.getAtomicEvent,
     {
-      title: '查看原子事件',
-      description: '读取一个原子事件及一页明确限量的关联因果关系。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.getAtomicEvent),
       inputSchema: getEventInputSchema,
       outputSchema: eventWithRelationsSchema,
-      annotations: readOnlyAnnotations,
     },
     async ({ eventId, relationLimit, relationCursor }) => {
       const relationInput = {
@@ -220,11 +209,9 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   server.registerTool(
     MCP_TOOL_NAMES.searchConcreteCases,
     {
-      title: '搜索具体案例',
-      description: '按内容关键词搜索 Causality 数据库中的真实具体案例记录。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.searchConcreteCases),
       inputSchema: searchCasesInputSchema,
       outputSchema: caseListResponseSchema,
-      annotations: readOnlyAnnotations,
     },
     async ({ query, page }) => {
       const result = await apiClient.searchCases(query, page);
@@ -235,11 +222,9 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   server.registerTool(
     MCP_TOOL_NAMES.getCausalRelation,
     {
-      title: '查看因果关系',
-      description: '读取一条因果关系的方向、置信度、案例数和关系说明。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.getCausalRelation),
       inputSchema: relationInputSchema,
       outputSchema: relationDetailSchema,
-      annotations: readOnlyAnnotations,
     },
     async ({ relationId }) => {
       const result = await apiClient.getRelation(relationId);
@@ -250,11 +235,9 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   server.registerTool(
     MCP_TOOL_NAMES.getRelationCases,
     {
-      title: '查看关系案例',
-      description: '读取一条因果关系当前返回页中的关联具体案例。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.getRelationCases),
       inputSchema: relationCasesInputSchema,
       outputSchema: relationCaseListResponseSchema,
-      annotations: readOnlyAnnotations,
     },
     async ({ relationId, caseLimit, caseCursor }) => {
       const caseInput = {
@@ -269,11 +252,9 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
   server.registerTool(
     MCP_TOOL_NAMES.queryLocalCausalGraph,
     {
-      title: '查询局部因果图',
-      description: '从一个已有原子事件出发，按方向和阈值查询受限的局部因果网络。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.queryLocalCausalGraph),
       inputSchema: graphInputSchema,
       outputSchema: causalGraphResponseSchema,
-      annotations: readOnlyAnnotations,
     },
     async (input) => {
       const result = await apiClient.queryGraph(input);

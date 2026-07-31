@@ -16,7 +16,7 @@ import {
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
+import { MCP_TOOL_NAMES, toolRegistrationMetadata } from '../capabilities/capabilityManifest.js';
 import { textResult } from './toolResult.js';
 
 export interface CausalityEvidenceApi {
@@ -33,13 +33,6 @@ export interface CausalityEvidenceApi {
   findCausalPaths(input: CausalPathQuery): Promise<CausalPathResponse>;
   getCausalEvidenceBundle(input: CausalEvidenceBundleInput): Promise<CausalEvidenceBundleResponse>;
 }
-
-const readOnlyAnnotations = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const;
 
 const getCaseInputSchema = z
   .object({
@@ -223,11 +216,9 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
   server.registerTool(
     MCP_TOOL_NAMES.getConcreteCase,
     {
-      title: '查看具体案例',
-      description: '读取一个具体案例及一页明确限量的关联因果关系。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.getConcreteCase),
       inputSchema: getCaseInputSchema,
       outputSchema: caseWithRelationsSchema,
-      annotations: readOnlyAnnotations,
     },
     async ({ caseId, relationLimit, relationCursor }) => {
       const relationInput = {
@@ -248,11 +239,9 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
   server.registerTool(
     MCP_TOOL_NAMES.searchCausalRelations,
     {
-      title: '搜索因果关系',
-      description: '按原因事件、结果事件或关系说明执行普通或显式语义增强搜索。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.searchCausalRelations),
       inputSchema: searchRelationsInputSchema,
       outputSchema: relationListResponseSchema,
-      annotations: readOnlyAnnotations,
     },
     async ({ query, searchMode, page }) => {
       const result = await apiClient.searchRelations(query, searchMode, page);
@@ -263,11 +252,9 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
   server.registerTool(
     MCP_TOOL_NAMES.findCausalPaths,
     {
-      title: '查询因果路径',
-      description: '沿真实因果方向查询两个原子事件之间受深度、数量和质量限制的简单路径。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.findCausalPaths),
       inputSchema: findPathsInputSchema,
       outputSchema: causalPathResponseSchema,
-      annotations: readOnlyAnnotations,
     },
     async (input) => {
       const result = await apiClient.findCausalPaths(input);
@@ -278,11 +265,9 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
   server.registerTool(
     MCP_TOOL_NAMES.getCausalEvidenceBundle,
     {
-      title: '生成因果证据包',
-      description: '按一条已选择路径中的有序关系 ID 读取关系详情和限量案例依据。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.getCausalEvidenceBundle),
       inputSchema: evidenceBundleInputSchema,
       outputSchema: causalEvidenceBundleResponseSchema,
-      annotations: readOnlyAnnotations,
     },
     async (input) => {
       const result = await apiClient.getCausalEvidenceBundle(input);

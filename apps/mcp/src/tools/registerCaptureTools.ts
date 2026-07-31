@@ -12,7 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { CausalityApiClientError } from '../api/causalityApiClient.js';
-import { MCP_TOOL_NAMES } from '../capabilities/capabilityManifest.js';
+import { MCP_TOOL_NAMES, toolRegistrationMetadata } from '../capabilities/capabilityManifest.js';
 import {
   captureCandidateSetMcpSchema,
   captureComparisonMcpSchema,
@@ -38,39 +38,6 @@ export interface McpCaptureLogger {
 const silentLogger: McpCaptureLogger = {
   error: () => undefined,
 };
-
-const annotations = {
-  compare_knowledge_candidates: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  prepare_knowledge_changes: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: false,
-  },
-  get_import_plan_status: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  commit_knowledge_changes: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-  get_import_result: {
-    readOnlyHint: true,
-    destructiveHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
-} as const;
 
 const planIdInputSchema = z.object({ planId: z.uuid().describe('不可变入库方案 ID') }).strict();
 const historyIdInputSchema = z.object({ historyId: z.uuid().describe('AI 导入历史 ID') }).strict();
@@ -323,11 +290,9 @@ export function registerCaptureTools(
   server.registerTool(
     MCP_TOOL_NAMES.compareKnowledgeCandidates,
     {
-      title: '对比知识候选',
-      description: '一次性对比完整的原子事件、具体案例、因果关系和案例关联候选集合。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.compareKnowledgeCandidates),
       inputSchema: captureCandidateSetMcpSchema,
       outputSchema: captureComparisonMcpSchema,
-      annotations: annotations.compare_knowledge_candidates,
     },
     async (input) => {
       try {
@@ -345,11 +310,9 @@ export function registerCaptureTools(
   server.registerTool(
     MCP_TOOL_NAMES.prepareKnowledgeChanges,
     {
-      title: '生成入库方案',
-      description: '根据完整候选、对比结果和 AI 决策生成不可变且限时有效的完整入库方案。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.prepareKnowledgeChanges),
       inputSchema: prepareImportPlanMcpSchema,
       outputSchema: importPlanMcpSchema,
-      annotations: annotations.prepare_knowledge_changes,
     },
     async (input) => {
       try {
@@ -366,11 +329,9 @@ export function registerCaptureTools(
   server.registerTool(
     MCP_TOOL_NAMES.getImportPlanStatus,
     {
-      title: '查询入库方案状态',
-      description: '查询一个不可变入库方案当前是否仍然有效、可提交或已经进入终态。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.getImportPlanStatus),
       inputSchema: planIdInputSchema,
       outputSchema: importPlanStatusMcpSchema,
-      annotations: annotations.get_import_plan_status,
     },
     async ({ planId }) => {
       try {
@@ -386,11 +347,9 @@ export function registerCaptureTools(
   server.registerTool(
     MCP_TOOL_NAMES.commitKnowledgeChanges,
     {
-      title: '确认执行入库方案',
-      description: '仅在用户明确确认最新完整方案后，按不可变方案 ID 执行一次幂等事务入库。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.commitKnowledgeChanges),
       inputSchema: planIdInputSchema,
       outputSchema: importCommitResultMcpSchema,
-      annotations: annotations.commit_knowledge_changes,
     },
     async ({ planId }) => {
       try {
@@ -406,11 +365,9 @@ export function registerCaptureTools(
   server.registerTool(
     MCP_TOOL_NAMES.getImportResult,
     {
-      title: '查询入库结果',
-      description: '按成功历史 ID 查询已完成事务的幂等入库结果和采集标记。',
+      ...toolRegistrationMetadata(MCP_TOOL_NAMES.getImportResult),
       inputSchema: historyIdInputSchema,
       outputSchema: importCommitResultMcpSchema,
-      annotations: annotations.get_import_result,
     },
     async ({ historyId }) => {
       try {
