@@ -5,6 +5,7 @@ import { buildApp } from '../../src/app.js';
 import { runMigrations } from '../../src/database/migrate.js';
 import { isDatabaseReady } from '../../src/database/readiness.js';
 import type { SemanticWorkerClient } from '../../src/features/semantic/semanticWorkerClient.js';
+import { createAuthenticatedTestSession } from './authTestSession.js';
 
 const allowedDatabaseNames = new Set([
   'causality_ai_candidate_comparison_test',
@@ -61,12 +62,16 @@ export function closePostgresTestPool(pool: Pool): Promise<void> {
 export type StartedPostgresTestContext = {
   pool: Pool;
   app: ReturnType<typeof buildApp>;
+  anonymousInject: ReturnType<typeof buildApp>['inject'];
   close(): Promise<void>;
 };
 
 export async function startPostgresTestContext(
   databaseName: string,
-  options: { semanticWorkerClient?: SemanticWorkerClient } = {},
+  options: {
+    semanticWorkerClient?: SemanticWorkerClient;
+    createAuthenticatedSession?: boolean;
+  } = {},
 ): Promise<StartedPostgresTestContext> {
   if (!allowedDatabaseNames.has(databaseName)) {
     throw new Error(`Unsupported integration test database: ${databaseName}`);
@@ -81,6 +86,7 @@ export async function startPostgresTestContext(
 
   const pool = createPostgresTestPool(databaseName);
   let app: ReturnType<typeof buildApp> | undefined;
+  let anonymousInject: ReturnType<typeof buildApp>['inject'] | undefined;
   try {
     await runMigrations(pool);
     app = buildApp({
@@ -92,6 +98,11 @@ export async function startPostgresTestContext(
         : {}),
     });
     await app.ready();
+    anonymousInject = app.inject.bind(app) as typeof app.inject;
+    if (options.createAuthenticatedSession !== false) {
+      const session = await createAuthenticatedTestSession(app, pool);
+      app.inject = session.inject as typeof app.inject;
+    }
   } catch (error) {
     try {
       await app?.close();
@@ -104,6 +115,7 @@ export async function startPostgresTestContext(
   return {
     pool,
     app,
+    anonymousInject: anonymousInject!,
     async close() {
       try {
         await app.close();

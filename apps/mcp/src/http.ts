@@ -9,6 +9,7 @@ try {
   const server = await startCausalityMcpHttpServer({
     apiBaseUrl: env.CAUSALITY_API_URL,
     apiTimeoutMs: env.CAUSALITY_API_TIMEOUT_MS,
+    internalSecret: env.CAUSALITY_INTERNAL_MCP_SECRET,
     host: env.HOST,
     port: env.PORT,
     allowedOrigins: env.CAUSALITY_MCP_ALLOWED_ORIGINS,

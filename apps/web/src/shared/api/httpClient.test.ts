@@ -4,18 +4,21 @@ import {
   ApiClientError,
   requestJson,
   requestMultipartJson,
+  setCsrfTokenProvider,
   startBrowserDownload,
 } from './httpClient';
 
 function response(body: unknown, status = 200) {
   return {
     ok: status >= 200 && status < 300,
+    status,
     json: async () => body,
   } as Response;
 }
 
 describe('requestJson', () => {
   afterEach(() => {
+    setCsrfTokenProvider(() => null);
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -127,6 +130,57 @@ describe('requestJson', () => {
     expect(requestHeaders.get('Content-Type')).toBe('application/json');
   });
 
+  it('always sends same-origin credentials', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => response({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await requestJson('/api/events', { credentials: 'omit' });
+
+    expect(fetchMock.mock.calls[0]?.[1]?.credentials).toBe('same-origin');
+  });
+
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'])(
+    'adds the current CSRF token to %s requests',
+    async (method) => {
+      const fetchMock = vi.fn<typeof fetch>(async () => response({ ok: true }));
+      vi.stubGlobal('fetch', fetchMock);
+      setCsrfTokenProvider(() => 'current-csrf-token');
+
+      await requestJson('/api/events', { method });
+
+      const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+      expect(headers.get('X-CSRF-Token')).toBe('current-csrf-token');
+    },
+  );
+
+  it('does not add a CSRF header to read requests', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => response({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    setCsrfTokenProvider(() => 'current-csrf-token');
+
+    await requestJson('/api/events', { method: 'GET' });
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.has('X-CSRF-Token')).toBe(false);
+  });
+
+  it('dispatches one unauthorized event for a 401 response without retrying', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      response({ code: 'AUTH_REQUIRED', message: '需要登录' }, 401),
+    );
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(requestJson('/api/events')).rejects.toMatchObject({
+      details: { code: 'AUTH_REQUIRED' },
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(
+      dispatch.mock.calls.filter(([event]) => event.type === 'causality:unauthorized'),
+    ).toHaveLength(1);
+  });
+
   it('does not add Content-Type when the request has no body', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => response({ id: 'event-1' }));
     vi.stubGlobal('fetch', fetchMock);
@@ -181,6 +235,7 @@ describe('requestJson', () => {
 
 describe('requestMultipartJson', () => {
   afterEach(() => {
+    setCsrfTokenProvider(() => null);
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -206,6 +261,23 @@ describe('requestMultipartJson', () => {
     expect(options?.body).toBe(form);
     expect(headers.get('Accept')).toBe('application/json');
     expect(headers.has('Content-Type')).toBe(false);
+  });
+
+  it('sends same-origin credentials and the current CSRF token', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => response({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    setCsrfTokenProvider(() => 'multipart-csrf-token');
+
+    await requestMultipartJson(
+      '/api/data-transfers/imports',
+      new FormData(),
+      new AbortController().signal,
+      300_000,
+    );
+
+    const options = fetchMock.mock.calls[0]?.[1];
+    expect(options?.credentials).toBe('same-origin');
+    expect(new Headers(options?.headers).get('X-CSRF-Token')).toBe('multipart-csrf-token');
   });
 
   it('uses the requested timeout and preserves caller cancellation', async () => {

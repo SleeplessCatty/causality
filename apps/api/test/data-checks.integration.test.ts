@@ -11,6 +11,7 @@ import { PostgresDataCheckRepository } from '../src/features/data-checks/dataChe
 import { createDataCheckRules } from '../src/features/data-checks/dataCheckRules.js';
 import type { DataCheckScanResult } from '../src/features/data-checks/dataCheckTypes.js';
 import { startPostgresTestContext } from './support/postgresTestContext.js';
+import { createAuthenticatedTestSession } from './support/authTestSession.js';
 
 const snapshotId = 'a1000000-0000-4000-8000-000000000001';
 
@@ -421,8 +422,9 @@ describe.sequential('data-check REST API and rules', () => {
       databasePool: pool!,
     });
     await restarted.ready();
+    const restartedSession = await createAuthenticatedTestSession(restarted, pool!);
     const latest = (
-      await restarted.inject({ method: 'GET', url: '/api/data-checks/latest' })
+      await restartedSession.inject({ method: 'GET', url: '/api/data-checks/latest' })
     ).json<DataCheckLatestResponse>();
     await restarted.close();
 

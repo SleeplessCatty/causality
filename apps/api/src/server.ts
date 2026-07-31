@@ -21,6 +21,7 @@ const app = buildApp({
   cookieSecure: env.CAUSALITY_COOKIE_SECURE,
   sessionHmacKey: env.CAUSALITY_SESSION_HMAC_KEY,
   authIpHashKey: env.CAUSALITY_AUTH_IP_HASH_KEY,
+  internalMcpSecret: env.CAUSALITY_INTERNAL_MCP_SECRET,
   logger:
     env.NODE_ENV === 'development'
       ? {

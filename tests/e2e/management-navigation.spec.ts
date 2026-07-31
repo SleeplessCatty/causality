@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixtures';
 
 const relationId = '00000000-0000-4000-8100-000000000001';
 const caseId = '00000000-0000-4000-8200-000000000001';

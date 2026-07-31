@@ -1,4 +1,6 @@
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
+
+import { expect, test } from './support/fixtures';
 
 import { E2E_WRITE_BATCH_SIZE, runInBatches } from './support/runInBatches';
 import { apiBase } from './support/urls';

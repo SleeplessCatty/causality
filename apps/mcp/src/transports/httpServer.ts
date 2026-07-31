@@ -32,6 +32,7 @@ export interface StartCausalityMcpHttpServerOptions {
   allowedOrigins?: string[];
   maxBodyBytes?: number;
   apiTimeoutMs?: number;
+  internalSecret: string;
   fetch?: typeof fetch;
   logger?: McpTransportLogger;
 }
@@ -112,12 +113,16 @@ function requestScopedApi(storage: AsyncLocalStorage<CausalityApiClient>): Causa
 async function authorize(
   apiBaseUrl: string,
   token: string,
+  internalSecret: string,
   fetchImplementation: typeof fetch,
 ): Promise<boolean> {
   try {
     const response = await fetchImplementation(new URL('/api/mcp/authorize', apiBaseUrl), {
       method: 'POST',
-      headers: { 'x-causality-mcp-token': token },
+      headers: {
+        'x-causality-mcp-token': token,
+        'x-causality-internal-mcp-secret': internalSecret,
+      },
     });
     if (!response.ok) return false;
     return mcpAuthorizationResponseSchema.safeParse(await response.json()).success;
@@ -200,7 +205,9 @@ export async function startCausalityMcpHttpServer(
       await rejectProtocol(413, 'request_too_large');
       return;
     }
-    if (!(await authorize(options.apiBaseUrl, token, fetchImplementation))) {
+    if (
+      !(await authorize(options.apiBaseUrl, token, options.internalSecret, fetchImplementation))
+    ) {
       await rejectProtocol(401, 'unauthorized');
       return;
     }
@@ -219,6 +226,7 @@ export async function startCausalityMcpHttpServer(
     const apiClient = new CausalityApiClient({
       baseUrl: options.apiBaseUrl,
       token,
+      internalSecret: options.internalSecret,
       fetch: fetchImplementation,
       ...(options.apiTimeoutMs === undefined ? {} : { timeoutMs: options.apiTimeoutMs }),
     });

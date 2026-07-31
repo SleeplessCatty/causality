@@ -6,6 +6,7 @@ export function registerHealthRoute(app: FastifyInstance): void {
   app.withTypeProvider<ZodTypeProvider>().get(
     '/api/health',
     {
+      config: { routeAccess: 'public' },
       schema: {
         tags: ['system'],
         response: { 200: healthResponseSchema },

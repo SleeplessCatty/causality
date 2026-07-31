@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixtures';
 
 test('MCP settings stay compact and token rotation requires confirmation', async ({
   page,

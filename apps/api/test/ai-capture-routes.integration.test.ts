@@ -22,6 +22,7 @@ const emptyCandidates: AiCaptureCandidateSet = {
   causalRelations: [],
   relationCaseLinks: [],
 };
+const internalMcpSecret = 'ef'.repeat(32);
 
 const malformedRepairCandidates: AiCaptureCandidateSet = {
   topic: '港口停运影响供应链',
@@ -143,7 +144,10 @@ describe.sequential('AI capture typed HTTP workflow', () => {
   });
 
   it('runs the authenticated workflow and exposes successful history without authentication', async () => {
-    const auth = { 'x-causality-mcp-token': token };
+    const auth = {
+      'x-causality-mcp-token': token,
+      'x-causality-internal-mcp-secret': internalMcpSecret,
+    };
     const compared = await context.app.inject({
       method: 'POST',
       url: '/api/ai-captures/compare',
@@ -224,13 +228,19 @@ describe.sequential('AI capture typed HTTP workflow', () => {
     const unauthorized = await context.app.inject({
       method: 'POST',
       url: '/api/ai-captures/compare',
-      headers: { 'x-causality-mcp-token': 'b'.repeat(64) },
+      headers: {
+        'x-causality-mcp-token': 'b'.repeat(64),
+        'x-causality-internal-mcp-secret': internalMcpSecret,
+      },
       payload: emptyCandidates,
     });
     const missing = await context.app.inject({
       method: 'GET',
       url: '/api/ai-captures/plans/90000000-0000-4000-8000-000000000001',
-      headers: { 'x-causality-mcp-token': token },
+      headers: {
+        'x-causality-mcp-token': token,
+        'x-causality-internal-mcp-secret': internalMcpSecret,
+      },
     });
 
     const comparison = {
@@ -248,7 +258,10 @@ describe.sequential('AI capture typed HTTP workflow', () => {
     const prepared = await context.app.inject({
       method: 'POST',
       url: '/api/ai-captures/plans',
-      headers: { 'x-causality-mcp-token': token },
+      headers: {
+        'x-causality-mcp-token': token,
+        'x-causality-internal-mcp-secret': internalMcpSecret,
+      },
       payload: {
         candidates: { ...emptyCandidates, topic: '过期方案' },
         comparison,
@@ -271,7 +284,10 @@ describe.sequential('AI capture typed HTTP workflow', () => {
     const expired = await context.app.inject({
       method: 'GET',
       url: `/api/ai-captures/plans/${expiredPlanId}`,
-      headers: { 'x-causality-mcp-token': token },
+      headers: {
+        'x-causality-mcp-token': token,
+        'x-causality-internal-mcp-secret': internalMcpSecret,
+      },
     });
 
     expect(unauthorized.statusCode).toBe(401);
@@ -287,7 +303,10 @@ describe.sequential('AI capture typed HTTP workflow', () => {
   });
 
   it('repairs a blocked full batch, skips its warning shortcut, and prepares without committing', async () => {
-    const auth = { 'x-causality-mcp-token': token };
+    const auth = {
+      'x-causality-mcp-token': token,
+      'x-causality-internal-mcp-secret': internalMcpSecret,
+    };
     const blocked = await context.app.inject({
       method: 'POST',
       url: '/api/ai-captures/compare',
@@ -396,7 +415,10 @@ describe.sequential('AI capture typed HTTP workflow', () => {
   });
 
   it('returns exact-create repair metadata without writing a plan row', async () => {
-    const auth = { 'x-causality-mcp-token': token };
+    const auth = {
+      'x-causality-mcp-token': token,
+      'x-causality-internal-mcp-secret': internalMcpSecret,
+    };
     await context.pool.query(
       `update semantic_model_settings
        set file_status = 'downloaded',

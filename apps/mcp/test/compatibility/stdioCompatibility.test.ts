@@ -16,6 +16,7 @@ import {
 } from '../../src/capabilities/capabilityManifest.js';
 
 const token = '3'.repeat(64);
+const internalSecret = '4'.repeat(64);
 const missingEventId = '00000000-0000-4000-8000-000000000000';
 const stdioEntry = fileURLToPath(new URL('../../dist/stdio.js', import.meta.url));
 
@@ -94,6 +95,8 @@ describe('stdio process wire compatibility', () => {
       env: {
         ...getDefaultEnvironment(),
         CAUSALITY_API_URL: `http://127.0.0.1:${address.port}`,
+        CAUSALITY_MCP_LEGACY_TOKEN: token,
+        CAUSALITY_INTERNAL_MCP_SECRET: internalSecret,
       },
       stderr: 'pipe',
     });

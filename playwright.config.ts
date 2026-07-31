@@ -26,6 +26,7 @@ if (
 
 export default defineConfig({
   testDir: './tests/e2e',
+  globalSetup: './tests/e2e/globalSetup.ts',
   outputDir: './test-results',
   fullyParallel: false,
   workers: 1,
@@ -35,6 +36,7 @@ export default defineConfig({
     baseURL: webOrigin,
     viewport: { width: 1280, height: 720 },
     trace: 'retain-on-failure',
+    storageState: 'tests/e2e/.auth/user.json',
   },
   webServer: [
     {
@@ -49,6 +51,8 @@ export default defineConfig({
         DATABASE_URL: databaseUrl,
         LOG_LEVEL: 'silent',
         CORS_ORIGIN: webOrigin,
+        CAUSALITY_PUBLIC_ORIGIN: webOrigin,
+        CAUSALITY_INTERNAL_MCP_SECRET: 'ef'.repeat(32),
       },
     },
     {
@@ -59,6 +63,7 @@ export default defineConfig({
       env: {
         WEB_PORT: webPort,
         API_PROXY_URL: apiOrigin,
+        E2E_WEB_ORIGIN: webOrigin,
       },
     },
   ],

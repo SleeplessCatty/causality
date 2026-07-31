@@ -1,7 +1,6 @@
 import type {
   AiCaptureCandidateSet,
   AiCaptureComparison,
-  McpSettingsResponse,
   SemanticLifecycleSnapshot,
 } from '@causality/contracts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -19,19 +18,7 @@ import { connectCausalityMcpStdioServer } from '../src/transports/stdioServer.js
 import type { McpLogger } from '../src/observability/mcpRequestLogging.js';
 
 const token = 'c'.repeat(64);
-const settings: McpSettingsResponse = {
-  serviceStatus: 'running',
-  endpoint: 'http://127.0.0.1:8081/mcp',
-  maskedToken: 'cccc…cccc',
-  accessToken: token,
-  tokenVersion: 1,
-  updatedAt: '2026-07-28T12:00:00.000Z',
-  clientConfig: {
-    transport: 'streamable-http',
-    url: 'http://127.0.0.1:8081/mcp',
-    headers: { Authorization: `Bearer ${token}` },
-  },
-};
+const internalSecret = 'e'.repeat(64);
 const candidates: AiCaptureCandidateSet = {
   topic: '空候选测试',
   clientName: 'stdio-test',
@@ -84,7 +71,6 @@ function createApiFetch(calls: Array<{ path: string; token: string | null }>): t
     );
     const requestToken = new Headers(init?.headers).get('x-causality-mcp-token');
     calls.push({ path: url.pathname, token: requestToken });
-    if (url.pathname === '/api/mcp/settings') return Response.json(settings);
     if (url.pathname === '/api/ai-captures/compare') return Response.json(comparison);
     if (url.pathname === '/api/health') {
       return Response.json({ status: 'ok', service: 'causality-api' });
@@ -106,7 +92,7 @@ describe('stdio MCP transport', () => {
     await Promise.all(servers.splice(0).map((server) => server.close()));
   });
 
-  it('loads the current local credential and exposes the same tools and prompt', async () => {
+  it('uses the supplied compatibility credentials and exposes the same tools and prompt', async () => {
     const calls: Array<{ path: string; token: string | null }> = [];
     const logEntries: unknown[] = [];
     const logger: McpLogger = {
@@ -116,6 +102,8 @@ describe('stdio MCP transport', () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = await connectCausalityMcpStdioServer({
       apiBaseUrl: 'http://127.0.0.1:3000',
+      token,
+      internalSecret,
       fetch: createApiFetch(calls),
       transport: serverTransport,
       logger,
@@ -160,10 +148,9 @@ describe('stdio MCP transport', () => {
     });
     expect(compared.structuredContent).toEqual(comparison);
     expect(calls).toEqual([
-      { path: '/api/mcp/settings', token: null },
-      { path: '/api/health', token: null },
-      { path: '/api/ready', token: null },
-      { path: '/api/semantic/lifecycle', token: null },
+      { path: '/api/health', token },
+      { path: '/api/ready', token },
+      { path: '/api/semantic/lifecycle', token },
       { path: '/api/ai-captures/compare', token },
     ]);
     expect(logEntries).toEqual(
@@ -185,22 +172,5 @@ describe('stdio MCP transport', () => {
     );
     expect(JSON.stringify(logEntries)).not.toContain(token);
     expect(JSON.stringify(logEntries)).not.toContain(candidates.topic);
-  });
-
-  it('rejects an invalid settings response before connecting the transport', async () => {
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const invalidFetch = vi.fn<typeof fetch>(async () =>
-      Response.json({ ...settings, accessToken: 'invalid' }),
-    ) as typeof fetch;
-
-    await expect(
-      connectCausalityMcpStdioServer({
-        apiBaseUrl: 'http://127.0.0.1:3000',
-        fetch: invalidFetch,
-        transport: serverTransport,
-      }),
-    ).rejects.toThrow('MCP settings response is invalid');
-    await clientTransport.close();
-    await serverTransport.close();
   });
 });

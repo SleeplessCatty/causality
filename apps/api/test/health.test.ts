@@ -37,7 +37,7 @@ describe('API foundation', () => {
     expect(response.statusCode).toBe(404);
   });
 
-  it('publishes the health and readiness routes as OpenAPI JSON', async () => {
+  it('does not expose the business OpenAPI document without the authentication database', async () => {
     const app = buildApp({ logger: false, checkDatabase: async () => true });
     apps.push(app);
 
@@ -45,20 +45,7 @@ describe('API foundation', () => {
       method: 'GET',
       url: '/api/openapi.json',
     });
-    const document = response.json<{
-      info: { title: string; version: string };
-      openapi: string;
-      paths: Record<string, unknown>;
-    }>();
-
-    expect(response.statusCode).toBe(200);
-    expect(document.openapi).toMatch(/^3\./);
-    expect(document.info).toEqual({
-      title: 'Causality API',
-      version: '0.1.0',
-    });
-    expect(document.paths).toHaveProperty('/api/health');
-    expect(document.paths).toHaveProperty('/api/ready');
+    expect(response.statusCode).toBe(404);
   });
 
   it('reports database check failures as unavailable without leaking details', async () => {
@@ -117,6 +104,7 @@ describe('environment configuration', () => {
       CAUSALITY_COOKIE_SECURE: false,
       CAUSALITY_SESSION_HMAC_KEY: 'ca'.repeat(32),
       CAUSALITY_AUTH_IP_HASH_KEY: 'db'.repeat(32),
+      CAUSALITY_INTERNAL_MCP_SECRET: 'ef'.repeat(32),
     });
   });
 
@@ -132,12 +120,14 @@ describe('environment configuration', () => {
       CAUSALITY_COOKIE_SECURE: 'true',
       CAUSALITY_SESSION_HMAC_KEY: '12'.repeat(32),
       CAUSALITY_AUTH_IP_HASH_KEY: '34'.repeat(32),
+      CAUSALITY_INTERNAL_MCP_SECRET: '56'.repeat(32),
     };
 
     expect(parseEnv(base)).toMatchObject({
       CAUSALITY_COOKIE_SECURE: true,
       CAUSALITY_SESSION_HMAC_KEY: '12'.repeat(32),
       CAUSALITY_AUTH_IP_HASH_KEY: '34'.repeat(32),
+      CAUSALITY_INTERNAL_MCP_SECRET: '56'.repeat(32),
     });
     expect(() => parseEnv({ ...base, CAUSALITY_SESSION_HMAC_KEY: undefined })).toThrow();
     expect(() =>

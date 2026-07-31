@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const developmentSessionKey = 'ca'.repeat(32);
 const developmentSourceKey = 'db'.repeat(32);
+const developmentInternalMcpSecret = 'ef'.repeat(32);
 
 const booleanEnvironmentValue = z
   .union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')])
@@ -28,6 +29,7 @@ const envSchema = z
     CAUSALITY_PUBLIC_ORIGIN: z.string().url().default('http://localhost:5173'),
     CAUSALITY_SESSION_HMAC_KEY: secretSchema.default(developmentSessionKey),
     CAUSALITY_AUTH_IP_HASH_KEY: secretSchema.default(developmentSourceKey),
+    CAUSALITY_INTERNAL_MCP_SECRET: secretSchema.default(developmentInternalMcpSecret),
     CAUSALITY_COOKIE_SECURE: booleanEnvironmentValue,
   })
   .superRefine((value, context) => {
@@ -59,11 +61,26 @@ const envSchema = z
       for (const [key, secret, developmentValue] of [
         ['CAUSALITY_SESSION_HMAC_KEY', value.CAUSALITY_SESSION_HMAC_KEY, developmentSessionKey],
         ['CAUSALITY_AUTH_IP_HASH_KEY', value.CAUSALITY_AUTH_IP_HASH_KEY, developmentSourceKey],
+        [
+          'CAUSALITY_INTERNAL_MCP_SECRET',
+          value.CAUSALITY_INTERNAL_MCP_SECRET,
+          developmentInternalMcpSecret,
+        ],
       ] as const) {
         if (secret === developmentValue || new Set(secret).size === 1) {
           context.addIssue({ code: 'custom', path: [key], message: 'Production secret required' });
         }
       }
+    }
+    if (
+      value.CAUSALITY_INTERNAL_MCP_SECRET === value.CAUSALITY_SESSION_HMAC_KEY ||
+      value.CAUSALITY_INTERNAL_MCP_SECRET === value.CAUSALITY_AUTH_IP_HASH_KEY
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['CAUSALITY_INTERNAL_MCP_SECRET'],
+        message: 'Secrets differ',
+      });
     }
   });
 

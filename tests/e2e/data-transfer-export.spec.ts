@@ -1,4 +1,6 @@
-import { expect, test, type APIRequestContext, type Download, type Page } from '@playwright/test';
+import type { APIRequestContext, Download, Page } from '@playwright/test';
+
+import { expect, test } from './support/fixtures';
 
 import { apiBase } from './support/urls';
 

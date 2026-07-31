@@ -11,6 +11,7 @@ import { registerMcpSettingsRoutes } from '../src/features/mcp-settings/mcpSetti
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 describe.sequential('MCP settings PostgreSQL and HTTP API', () => {
+  const internalMcpSecret = 'ef'.repeat(32);
   let context: Awaited<ReturnType<typeof startPostgresTestContext>>;
   let repository: PostgresMcpSettingsRepository;
 
@@ -80,12 +81,18 @@ describe.sequential('MCP settings PostgreSQL and HTTP API', () => {
       const invalid = await app.inject({
         method: 'POST',
         url: '/api/mcp/authorize',
-        headers: { 'x-causality-mcp-token': 'b'.repeat(64) },
+        headers: {
+          'x-causality-mcp-token': 'b'.repeat(64),
+          'x-causality-internal-mcp-secret': internalMcpSecret,
+        },
       });
       const authorized = await app.inject({
         method: 'POST',
         url: '/api/mcp/authorize',
-        headers: { 'x-causality-mcp-token': initialSettings.accessToken },
+        headers: {
+          'x-causality-mcp-token': initialSettings.accessToken,
+          'x-causality-internal-mcp-secret': internalMcpSecret,
+        },
       });
       const rotated = await app.inject({
         method: 'POST',
@@ -107,7 +114,10 @@ describe.sequential('MCP settings PostgreSQL and HTTP API', () => {
       const stale = await app.inject({
         method: 'POST',
         url: '/api/mcp/authorize',
-        headers: { 'x-causality-mcp-token': initialSettings.accessToken },
+        headers: {
+          'x-causality-mcp-token': initialSettings.accessToken,
+          'x-causality-internal-mcp-secret': internalMcpSecret,
+        },
       });
       expect(stale.statusCode).toBe(401);
     } finally {

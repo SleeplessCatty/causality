@@ -5,6 +5,7 @@ coverage/
 .cache/
 playwright-report/
 test-results/
+tests/e2e/.auth/
 .env
 .DS_Store
 .vscode/

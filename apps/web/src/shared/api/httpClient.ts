@@ -13,6 +13,12 @@ export class ApiClientError extends Error {
   }
 }
 
+let csrfTokenProvider: () => string | null = () => null;
+
+export function setCsrfTokenProvider(provider: () => string | null): void {
+  csrfTokenProvider = provider;
+}
+
 function withTimeout(signal: AbortSignal | undefined, timeoutMilliseconds: number): AbortSignal {
   const timeout = AbortSignal.timeout(timeoutMilliseconds);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
@@ -21,14 +27,29 @@ function withTimeout(signal: AbortSignal | undefined, timeoutMilliseconds: numbe
 async function parseJsonResponse(response: Response): Promise<unknown> {
   if (response.ok) return response.json();
 
+  if (response.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('causality:unauthorized'));
+  }
+
   let body: unknown;
   try {
     body = await response.json();
   } catch {
     throw new ApiClientError(unavailableError);
   }
-  const parsed = apiErrorSchema.safeParse(body);
-  throw new ApiClientError(parsed.success ? parsed.data : unavailableError);
+  const apiError = apiErrorSchema.safeParse(body);
+  if (apiError.success) throw new ApiClientError(apiError.data);
+  throw new ApiClientError(unavailableError);
+}
+
+function isMutationMethod(method: string | undefined): boolean {
+  return ['POST', 'PUT', 'PATCH', 'DELETE'].includes((method ?? 'GET').toUpperCase());
+}
+
+function addCsrfHeader(headers: Headers, method: string | undefined): void {
+  if (!isMutationMethod(method)) return;
+  const csrfToken = csrfTokenProvider();
+  if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
 }
 
 export async function requestJson(
@@ -42,9 +63,11 @@ export async function requestJson(
   if (options.body != null && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
+  addCsrfHeader(headers, options.method);
   const response = await fetch(url, {
     ...options,
     headers,
+    credentials: 'same-origin',
     signal: withTimeout(signal, timeoutMilliseconds),
   });
 
@@ -57,10 +80,13 @@ export async function requestMultipartJson(
   signal: AbortSignal,
   timeoutMilliseconds: number,
 ): Promise<unknown> {
+  const headers = new Headers({ Accept: 'application/json' });
+  addCsrfHeader(headers, 'POST');
   const response = await fetch(url, {
     method: 'POST',
-    headers: { Accept: 'application/json' },
+    headers,
     body: form,
+    credentials: 'same-origin',
     signal: withTimeout(signal, timeoutMilliseconds),
   });
   return parseJsonResponse(response);

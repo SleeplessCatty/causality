@@ -11,6 +11,7 @@ export function registerReadinessRoute(
   app.withTypeProvider<ZodTypeProvider>().get(
     '/api/ready',
     {
+      config: { routeAccess: 'public' },
       schema: {
         tags: ['system'],
         response: {

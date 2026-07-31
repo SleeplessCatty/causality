@@ -44,6 +44,8 @@ import { PostgresAuthRepository } from './features/auth/authRepository.js';
 import { registerAuthRoutes } from './features/auth/authRoutes.js';
 import { AuthService } from './features/auth/authService.js';
 import { argon2idPasswordHasher } from './features/auth/passwordHasher.js';
+import { createBusinessAuthHook } from './features/auth/businessAuthHook.js';
+import { installRouteAccessRegistry, markBusinessRoutes } from './routes/routeAccess.js';
 
 export interface BuildAppOptions {
   logger?: FastifyServerOptions['logger'];
@@ -63,10 +65,12 @@ export interface BuildAppOptions {
   cookieSecure?: boolean;
   sessionHmacKey?: string;
   authIpHashKey?: string;
+  internalMcpSecret?: string;
 }
 
 const developmentSessionKey = 'ca'.repeat(32);
 const developmentSourceKey = 'db'.repeat(32);
+const developmentInternalMcpSecret = 'ef'.repeat(32);
 
 function createHmacDigest(key: string): (value: string) => Buffer {
   const keyBuffer = Buffer.from(key, 'hex');
@@ -75,6 +79,7 @@ function createHmacDigest(key: string): (value: string) => Buffer {
 
 export function buildApp(options: BuildAppOptions = {}) {
   const app = Fastify({ logger: options.logger ?? false });
+  installRouteAccessRegistry(app);
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -108,9 +113,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     registerHealthRoute(app);
     registerReadinessRoute(app, options.checkDatabase ?? (async () => false));
     if (options.databasePool) {
+      const databasePool = options.databasePool;
       const publicOrigin = options.publicOrigin ?? options.corsOrigin ?? 'http://localhost:5173';
       const authService = new AuthService({
-        repository: new PostgresAuthRepository(options.databasePool),
+        repository: new PostgresAuthRepository(databasePool),
         auditWriter: new PostgresAuditWriter(),
         passwordHasher: argon2idPasswordHasher,
         clock: () => new Date(),
@@ -129,48 +135,60 @@ export function buildApp(options: BuildAppOptions = {}) {
           timeoutMs: options.semanticQueryTimeoutMs ?? 10_000,
         });
       const semanticQuery = new SemanticQueryService({
-        contextRepository: new PostgresSemanticQueryContextRepository(options.databasePool),
-        searchRepository: new PostgresSemanticSearchRepository(options.databasePool),
+        contextRepository: new PostgresSemanticQueryContextRepository(databasePool),
+        searchRepository: new PostgresSemanticSearchRepository(databasePool),
         workerClient: semanticWorkerClient,
       });
-      registerEventRoutes(app, options.databasePool, semanticQuery);
-      registerRelationRoutes(app, options.databasePool, semanticQuery);
-      registerCaseRoutes(app, options.databasePool, semanticQuery);
-      registerCausalGraphRoutes(app, options.databasePool);
-      registerCausalEvidenceRoutes(app, options.databasePool);
-      registerDataCheckRoutes(app, options.databasePool, semanticWorkerClient);
-      registerSemanticRoutes(app, options.databasePool, semanticWorkerClient);
-      registerDataTransferRoutes(app, options.databasePool, {
-        ...(options.importTimeoutMs === undefined
-          ? {}
-          : { importTimeoutMs: options.importTimeoutMs }),
-      });
-      registerAiCaptureRoutes(
-        app,
-        createAiCaptureRouteDependencies(
-          options.databasePool,
-          semanticWorkerClient,
-          options.aiCaptureSemanticCandidates,
-        ),
+      const mcpSettingsService = new McpSettingsService(
+        new PostgresMcpSettingsRepository(databasePool),
         {
-          ...(options.aiCaptureTimeoutMs === undefined
-            ? {}
-            : { requestTimeoutMs: options.aiCaptureTimeoutMs }),
-        },
-      );
-      registerMcpSettingsRoutes(
-        app,
-        new McpSettingsService(new PostgresMcpSettingsRepository(options.databasePool), {
           endpoint: options.mcpEndpoint ?? 'http://127.0.0.1:8081/mcp',
           healthUrl: options.mcpHealthUrl ?? 'http://127.0.0.1:8081/health',
           ...(options.mcpHealthTimeoutMs === undefined
             ? {}
             : { healthTimeoutMs: options.mcpHealthTimeoutMs }),
-        }),
+        },
       );
+      void app.register(async (business) => {
+        markBusinessRoutes(business);
+        business.addHook(
+          'preHandler',
+          createBusinessAuthHook({
+            authService,
+            mcpSettingsService,
+            publicOrigin,
+            internalMcpSecret: options.internalMcpSecret ?? developmentInternalMcpSecret,
+          }),
+        );
+        registerEventRoutes(business, databasePool, semanticQuery);
+        registerRelationRoutes(business, databasePool, semanticQuery);
+        registerCaseRoutes(business, databasePool, semanticQuery);
+        registerCausalGraphRoutes(business, databasePool);
+        registerCausalEvidenceRoutes(business, databasePool);
+        registerDataCheckRoutes(business, databasePool, semanticWorkerClient);
+        registerSemanticRoutes(business, databasePool, semanticWorkerClient);
+        registerDataTransferRoutes(business, databasePool, {
+          ...(options.importTimeoutMs === undefined
+            ? {}
+            : { importTimeoutMs: options.importTimeoutMs }),
+        });
+        registerAiCaptureRoutes(
+          business,
+          createAiCaptureRouteDependencies(
+            databasePool,
+            semanticWorkerClient,
+            options.aiCaptureSemanticCandidates,
+          ),
+          {
+            ...(options.aiCaptureTimeoutMs === undefined
+              ? {}
+              : { requestTimeoutMs: options.aiCaptureTimeoutMs }),
+          },
+        );
+        registerMcpSettingsRoutes(business, mcpSettingsService);
+        business.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());
+      });
     }
-
-    app.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());
   });
 
   app.setErrorHandler((error, request, reply) => {

@@ -11,6 +11,7 @@ import { buildInferOutcomesPrompt } from '../src/prompts/inferOutcomesPrompt.js'
 
 const firstToken = 'a'.repeat(64);
 const rotatedToken = 'b'.repeat(64);
+const internalSecret = 'e'.repeat(64);
 const requestBody = JSON.stringify({
   jsonrpc: '2.0',
   id: 1,
@@ -81,7 +82,10 @@ function apiFetch(state: ApiState): typeof fetch {
     }
     const token = headers.get('x-causality-mcp-token') ?? '';
     state.authorizeCalls.push(token);
-    if (token !== state.token) {
+    if (
+      token !== state.token ||
+      headers.get('x-causality-internal-mcp-secret') !== internalSecret
+    ) {
       return Response.json({ code: 'MCP_UNAUTHORIZED', message: 'invalid' }, { status: 401 });
     }
     return Response.json({ authorized: true, tokenVersion: 1 });
@@ -154,6 +158,7 @@ describe('Streamable HTTP transport security', () => {
     };
     const server = await startCausalityMcpHttpServer({
       apiBaseUrl: 'http://causality-api.test',
+      internalSecret,
       fetch: apiFetch(state),
       host: '127.0.0.1',
       port: 0,
@@ -418,7 +423,7 @@ describe('Streamable HTTP transport security', () => {
       'causality://system/status',
     ]);
     expect(status).toMatchObject({ overallStatus: 'degraded', database: { status: 'ready' } });
-    expect(state.statusTokens).toEqual([null, null, null]);
+    expect(state.statusTokens).toEqual([firstToken, firstToken, firstToken]);
   });
 
   it('lists and reads the outcome inference prompt inside an authorized session', async () => {

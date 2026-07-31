@@ -94,7 +94,8 @@ export class CausalityApiClientError extends Error {
 
 export interface CausalityApiClientOptions {
   baseUrl: string;
-  token?: string;
+  token: string;
+  internalSecret: string;
   timeoutMs?: number;
   fetch?: typeof fetch;
 }
@@ -104,7 +105,6 @@ interface RequestOptions<T> {
   query?: Record<string, string | number | undefined>;
   method?: 'GET' | 'POST';
   body?: unknown;
-  protected?: boolean;
   timeoutMs?: number;
   acceptedStatuses?: readonly number[];
 }
@@ -167,13 +167,15 @@ function requestAborted(error: unknown): boolean {
 
 export class CausalityApiClient {
   private readonly baseUrl: URL;
-  private readonly token: string | undefined;
+  private readonly token: string;
+  private readonly internalSecret: string;
   private readonly timeoutMs: number;
   private readonly fetchImplementation: typeof fetch;
 
   public constructor(options: CausalityApiClientOptions) {
     this.baseUrl = new URL(options.baseUrl);
     this.token = options.token;
+    this.internalSecret = options.internalSecret;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.fetchImplementation = options.fetch ?? fetch;
   }
@@ -309,7 +311,6 @@ export class CausalityApiClient {
     return this.request('/api/ai-captures/compare', {
       method: 'POST',
       body: input,
-      protected: true,
       schema: aiCaptureComparisonSchema,
     });
   }
@@ -318,14 +319,12 @@ export class CausalityApiClient {
     return this.request('/api/ai-captures/plans', {
       method: 'POST',
       body: input,
-      protected: true,
       schema: aiImportPlanSchema,
     });
   }
 
   public async planStatus(id: string): Promise<AiImportPlanStatus> {
     const plan = await this.request(`/api/ai-captures/plans/${encodeURIComponent(id)}`, {
-      protected: true,
       schema: aiImportPlanSchema,
     });
     return plan.status;
@@ -334,25 +333,23 @@ export class CausalityApiClient {
   public commit(id: string): Promise<AiImportCommitResult> {
     return this.request(`/api/ai-captures/plans/${encodeURIComponent(id)}/commit`, {
       method: 'POST',
-      protected: true,
       schema: aiImportCommitResultSchema,
     });
   }
 
   public result(historyId: string): Promise<AiImportCommitResult> {
     return this.request(`/api/ai-captures/results/${encodeURIComponent(historyId)}`, {
-      protected: true,
       schema: aiImportCommitResultSchema,
     });
   }
 
   private async request<T>(path: string, options: RequestOptions<T>): Promise<T> {
     const traceId = randomUUID();
-    if (options.protected && !this.token) {
+    if (!this.token || !this.internalSecret) {
       throw new CausalityApiClientError({
         kind: 'configuration',
-        code: 'MCP_TOKEN_MISSING',
-        message: 'MCP 访问令牌尚未配置',
+        code: 'MCP_BRIDGE_CREDENTIALS_MISSING',
+        message: 'MCP 内部访问凭据尚未配置',
         traceId,
       });
     }
@@ -364,8 +361,9 @@ export class CausalityApiClient {
 
     const headers = new Headers();
     headers.set('x-causality-trace-id', traceId);
+    headers.set('x-causality-mcp-token', this.token);
+    headers.set('x-causality-internal-mcp-secret', this.internalSecret);
     if (options.body !== undefined) headers.set('content-type', 'application/json');
-    if (options.protected) headers.set('x-causality-mcp-token', this.token!);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? this.timeoutMs);
 

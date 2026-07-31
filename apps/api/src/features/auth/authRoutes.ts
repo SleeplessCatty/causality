@@ -45,6 +45,7 @@ export function registerAuthRoutes(
   app.post<{ Body: LoginInput }>(
     '/api/auth/login',
     {
+      config: { routeAccess: 'public' },
       preHandler: hooks.verifyOrigin,
       schema: { body: loginInputSchema, response: { 200: authSessionResponseSchema } },
     },
@@ -62,6 +63,7 @@ export function registerAuthRoutes(
   app.get(
     '/api/auth/session',
     {
+      config: { routeAccess: 'business' },
       preHandler: hooks.authenticate,
       schema: { response: { 200: authSessionResponseSchema, 401: authErrorSchema } },
     },
@@ -81,6 +83,7 @@ export function registerAuthRoutes(
   app.post<{ Body: ChangePasswordInput }>(
     '/api/auth/change-password',
     {
+      config: { routeAccess: 'business' },
       preHandler: hooks.verifyAuthenticatedMutation,
       schema: {
         body: changePasswordInputSchema,
@@ -100,6 +103,7 @@ export function registerAuthRoutes(
   app.post(
     '/api/auth/logout',
     {
+      config: { routeAccess: 'business' },
       preHandler: hooks.verifyAuthenticatedMutation,
       schema: { response: { 200: logoutResultSchema } },
     },
@@ -113,6 +117,7 @@ export function registerAuthRoutes(
   app.post(
     '/api/auth/logout-all',
     {
+      config: { routeAccess: 'business' },
       preHandler: hooks.verifyAuthenticatedMutation,
       schema: { response: { 200: logoutResultSchema } },
     },

@@ -3,7 +3,9 @@ import type {
   SemanticModelCode,
   SemanticModelLifecycle,
 } from '@causality/contracts';
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+
+import { expect, test } from './support/fixtures';
 
 const taskId = '11111111-1111-4111-8111-111111111111';
 const timestamp = '2026-07-23T10:00:00.000Z';

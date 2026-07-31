@@ -17,6 +17,7 @@ import {
 
 const validToken = '1'.repeat(64);
 const rotatedToken = '2'.repeat(64);
+const internalSecret = 'e'.repeat(64);
 const missingEventId = '00000000-0000-4000-8000-000000000000';
 
 interface ApiState {
@@ -30,7 +31,8 @@ function fakeApi(state: ApiState): typeof fetch {
     );
     const headers = new Headers(init?.headers);
     if (url.pathname === '/api/mcp/authorize') {
-      return headers.get('x-causality-mcp-token') === state.token
+      return headers.get('x-causality-mcp-token') === state.token &&
+        headers.get('x-causality-internal-mcp-secret') === internalSecret
         ? Response.json({ authorized: true, tokenVersion: 1 })
         : Response.json({ code: 'MCP_UNAUTHORIZED', message: 'invalid' }, { status: 401 });
     }
@@ -90,6 +92,7 @@ describe('Streamable HTTP wire compatibility', () => {
     };
     const server = await startCausalityMcpHttpServer({
       apiBaseUrl: 'http://wire-api.test',
+      internalSecret,
       fetch: fakeApi(state),
       host: '127.0.0.1',
       port: 0,

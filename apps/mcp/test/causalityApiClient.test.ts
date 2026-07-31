@@ -34,6 +34,7 @@ const planId = '40000000-0000-4000-8000-000000000001';
 const historyId = '50000000-0000-4000-8000-000000000001';
 const timestamp = '2026-07-28T12:00:00.000Z';
 const token = 'a'.repeat(64);
+const internalSecret = 'b'.repeat(64);
 
 const eventDetail: EventDetail = {
   id: eventId,
@@ -380,6 +381,7 @@ function createClient(fetchImplementation: typeof fetch) {
   return new CausalityApiClient({
     baseUrl: 'http://api.test:3000/',
     token,
+    internalSecret,
     timeoutMs: 100,
     fetch: fetchImplementation,
   });
@@ -390,7 +392,7 @@ describe('CausalityApiClient', () => {
     vi.restoreAllMocks();
   });
 
-  it('encodes ordinary and enhanced event searches without forwarding the MCP token', async () => {
+  it('encodes searches and authenticates every direct API request through the temporary bridge', async () => {
     const requests: Array<{ url: URL; init?: RequestInit }> = [];
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
@@ -415,7 +417,8 @@ describe('CausalityApiClient', () => {
     );
     for (const request of requests) {
       const headers = new Headers(request.init?.headers);
-      expect(headers.get('x-causality-mcp-token')).toBeNull();
+      expect(headers.get('x-causality-mcp-token')).toBe(token);
+      expect(headers.get('x-causality-internal-mcp-secret')).toBe(internalSecret);
       expect(headers.get('x-causality-trace-id')).toMatch(/^[0-9a-f-]{36}$/);
     }
   });
@@ -507,7 +510,10 @@ describe('CausalityApiClient', () => {
       ],
     );
     for (const request of requests) {
-      expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBeNull();
+      expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBe(token);
+      expect(new Headers(request.init?.headers).get('x-causality-internal-mcp-secret')).toBe(
+        internalSecret,
+      );
     }
   });
 
@@ -551,7 +557,7 @@ describe('CausalityApiClient', () => {
     });
   });
 
-  it('reads health, accepted not-ready, and semantic lifecycle without forwarding a token', async () => {
+  it('reads health, accepted not-ready, and semantic lifecycle with bridge credentials', async () => {
     const requests: Array<{ url: URL; init?: RequestInit }> = [];
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
@@ -572,7 +578,10 @@ describe('CausalityApiClient', () => {
       '/api/semantic/lifecycle',
     ]);
     for (const request of requests) {
-      expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBeNull();
+      expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBe(token);
+      expect(new Headers(request.init?.headers).get('x-causality-internal-mcp-secret')).toBe(
+        internalSecret,
+      );
     }
   });
 
@@ -641,7 +650,7 @@ describe('CausalityApiClient', () => {
     });
   });
 
-  it('forwards the MCP token only for protected workflow operations', async () => {
+  it('forwards both bridge credentials for protected workflow operations', async () => {
     const requests: Array<{ url: URL; init?: RequestInit }> = [];
     const responses = new Map<string, unknown>([
       ['/api/ai-captures/compare', comparison],
@@ -667,6 +676,9 @@ describe('CausalityApiClient', () => {
     expect(requests).toHaveLength(5);
     for (const request of requests) {
       expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBe(token);
+      expect(new Headers(request.init?.headers).get('x-causality-internal-mcp-secret')).toBe(
+        internalSecret,
+      );
       expect(new Headers(request.init?.headers).get('x-causality-trace-id')).toMatch(
         /^[0-9a-f-]{36}$/,
       );

@@ -19,7 +19,9 @@ describe.sequential('server user administration CLI', () => {
   let io: UserAdminIo;
 
   beforeAll(async () => {
-    context = await startPostgresTestContext('causality_user_admin_test');
+    context = await startPostgresTestContext('causality_user_admin_test', {
+      createAuthenticatedSession: false,
+    });
   });
 
   afterAll(async () => {

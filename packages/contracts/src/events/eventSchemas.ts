@@ -139,6 +139,15 @@ export const eventRelationListResponseSchema = z
   .strict();
 
 export const apiErrorCodeSchema = z.enum([
+  'INVALID_CREDENTIALS',
+  'ACCOUNT_LOCKED',
+  'TOO_MANY_ATTEMPTS',
+  'AUTH_REQUIRED',
+  'INVALID_CURRENT_PASSWORD',
+  'PASSWORD_CHANGE_REQUIRED',
+  'PASSWORD_POLICY_VIOLATION',
+  'CSRF_INVALID',
+  'ORIGIN_INVALID',
   'VALIDATION_ERROR',
   'EVENT_NOT_FOUND',
   'EVENT_NAME_CONFLICT',

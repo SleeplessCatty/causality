@@ -42,6 +42,8 @@ export E2E_API_PORT="${E2E_API_PORT:-3200}"
 export E2E_WEB_PORT="${E2E_WEB_PORT:-5274}"
 corepack pnpm db:migrate
 corepack pnpm db:seed
+corepack pnpm --filter @causality/api exec tsx test/support/createE2eUser.ts
+export E2E_WEB_ORIGIN="http://127.0.0.1:$E2E_WEB_PORT"
 if [[ "${1:-}" == "--" ]]; then
   shift
 fi

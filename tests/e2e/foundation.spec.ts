@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './support/fixtures';
 
 test('application shell opens events and reports system readiness', async ({ page }, testInfo) => {
   const browserErrors: string[] = [];

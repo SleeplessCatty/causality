@@ -59,7 +59,9 @@ describe('PostgreSQL test context', () => {
     contextMocks.pools.push(adminPool, databasePool);
     contextMocks.buildApp.mockReturnValue(app);
 
-    const context = await startPostgresTestContext('causality_cases_test');
+    const context = await startPostgresTestContext('causality_cases_test', {
+      createAuthenticatedSession: false,
+    });
     closeOrder.length = 0;
     await context.close();
 
@@ -121,5 +123,6 @@ function createApp(
   return {
     close: vi.fn(overrides.close ?? (async () => undefined)),
     ready: vi.fn(overrides.ready ?? (async () => undefined)),
+    inject: vi.fn(),
   };
 }

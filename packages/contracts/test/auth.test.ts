@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  authSessionResponseSchema,
+  apiErrorSchema,
   authErrorSchema,
+  authSessionResponseSchema,
   changePasswordInputSchema,
   loginInputSchema,
 } from '../src/index.js';
@@ -77,5 +78,12 @@ describe('authentication contracts', () => {
         message: '当前密码错误',
       }),
     ).toEqual({ code: 'INVALID_CURRENT_PASSWORD', message: '当前密码错误' });
+  });
+
+  it('allows the common API client to parse authentication failures', () => {
+    expect(apiErrorSchema.parse({ code: 'AUTH_REQUIRED', message: '需要登录' })).toEqual({
+      code: 'AUTH_REQUIRED',
+      message: '需要登录',
+    });
   });
 });

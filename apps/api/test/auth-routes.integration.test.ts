@@ -7,6 +7,7 @@ import { startPostgresTestContext } from './support/postgresTestContext.js';
 const cloudOrigin = 'https://causality.example.com';
 const sessionKey = '11'.repeat(32);
 const sourceKey = '22'.repeat(32);
+const internalMcpSecret = '33'.repeat(32);
 
 function cookiesFrom(response: { headers: Record<string, unknown> }): string[] {
   const header = response.headers['set-cookie'];
@@ -38,8 +39,35 @@ describe.sequential('authentication routes', () => {
       cookieSecure: true,
       sessionHmacKey: sessionKey,
       authIpHashKey: sourceKey,
+      internalMcpSecret,
     });
     await cloudApp.ready();
+  });
+
+  it('protects business routes and keeps legacy MCP compatibility explicitly temporary', async () => {
+    const anonymous = await cloudApp.inject({ method: 'GET', url: '/api/events' });
+    expect(anonymous.statusCode).toBe(401);
+
+    const tokenResult = await context.pool.query<{ access_token: string }>(
+      'select access_token from mcp_settings where singleton_key = true',
+    );
+    const token = tokenResult.rows[0]!.access_token;
+    const tokenOnly = await cloudApp.inject({
+      method: 'GET',
+      url: '/api/events',
+      headers: { 'x-causality-mcp-token': token },
+    });
+    expect(tokenOnly.statusCode).toBe(401);
+
+    const compatible = await cloudApp.inject({
+      method: 'GET',
+      url: '/api/events',
+      headers: {
+        'x-causality-mcp-token': token,
+        'x-causality-internal-mcp-secret': internalMcpSecret,
+      },
+    });
+    expect(compatible.statusCode).toBe(200);
   });
 
   afterAll(async () => {
@@ -152,6 +180,44 @@ describe.sequential('authentication routes', () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ code: 'PASSWORD_POLICY_VIOLATION' });
+  });
+
+  it('allows an initial-password session to change its password but blocks business data until then', async () => {
+    const initialPassword = 'Initial!Pass123';
+    const passwordHash = await argon2idPasswordHasher.hash(initialPassword);
+    await context.pool.query(
+      `insert into users (username, password_hash, must_change_password)
+       values ('FirstUser', $1, true)`,
+      [passwordHash],
+    );
+    const login = await cloudApp.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      headers: { origin: cloudOrigin },
+      payload: { username: 'firstuser', password: initialPassword },
+    });
+    const cookie = cookieHeader(cookiesFrom(login));
+    const csrfToken = login.json<{ csrfToken: string }>().csrfToken;
+
+    const blocked = await cloudApp.inject({
+      method: 'GET',
+      url: '/api/events',
+      headers: { cookie },
+    });
+    expect(blocked.statusCode).toBe(403);
+    expect(blocked.json()).toMatchObject({ code: 'PASSWORD_CHANGE_REQUIRED' });
+
+    const changed = await cloudApp.inject({
+      method: 'POST',
+      url: '/api/auth/change-password',
+      headers: { cookie, origin: cloudOrigin, 'x-csrf-token': csrfToken },
+      payload: { currentPassword: initialPassword, newPassword: 'Changed!Pass123' },
+    });
+    expect(changed.statusCode).toBe(200);
+    expect(
+      (await cloudApp.inject({ method: 'GET', url: '/api/events', headers: { cookie } }))
+        .statusCode,
+    ).toBe(200);
   });
 
   it('returns generic authentication errors and exposes lock and source throttling statuses only when applicable', async () => {

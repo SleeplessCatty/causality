@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
 
+import { expect, test } from './support/fixtures';
 import { apiBase } from './support/urls';
 
 test.setTimeout(120_000);

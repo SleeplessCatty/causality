@@ -5,6 +5,7 @@ export interface AppSidebarProps {
   collapsed: boolean;
   forced: boolean;
   onToggle: () => void;
+  footer?: ReactNode;
 }
 
 interface NavigationItem {
@@ -109,7 +110,7 @@ const navigationItems: NavigationItem[] = [
   },
 ];
 
-export function AppSidebar({ collapsed, forced, onToggle }: AppSidebarProps) {
+export function AppSidebar({ collapsed, forced, onToggle, footer }: AppSidebarProps) {
   const toggleLabel = forced ? '当前窗口空间不足' : collapsed ? '展开导航栏' : '收起导航栏';
 
   return (
@@ -136,6 +137,8 @@ export function AppSidebar({ collapsed, forced, onToggle }: AppSidebarProps) {
           </NavLink>
         ))}
       </nav>
+
+      {footer ? <div className="app-sidebar__footer">{footer}</div> : null}
 
       <button
         className="app-sidebar__toggle"
