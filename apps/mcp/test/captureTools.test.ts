@@ -251,6 +251,7 @@ describe('capture workflow tools', () => {
     errorLogs = [];
     mcpServer = new McpServer({ name: 'capture-tools-test', version: '1.0.0' });
     registerCaptureTools(mcpServer, api, {
+      info: () => undefined,
       error: (entry: unknown) => errorLogs.push(entry),
     });
     mcpClient = new Client({ name: 'capture-tools-client', version: '1.0.0' });

@@ -116,6 +116,21 @@ async function postMcp(
   });
 }
 
+async function deleteMcp(
+  server: CausalityMcpHttpServer,
+  token: string,
+  sessionId: string,
+): Promise<Response> {
+  return fetch(`${baseUrl(server)}/mcp`, {
+    method: 'DELETE',
+    headers: {
+      accept: 'application/json, text/event-stream',
+      authorization: `Bearer ${token}`,
+      'mcp-session-id': sessionId,
+    },
+  });
+}
+
 describe('Streamable HTTP transport security', () => {
   const servers: CausalityMcpHttpServer[] = [];
 
@@ -224,6 +239,47 @@ describe('Streamable HTTP transport security', () => {
     expect(serialized).not.toContain('private-conversation-body');
   });
 
+  it('correlates payload-free start and completion logs for an initialized client', async () => {
+    const entries: unknown[] = [];
+    const logger: McpTransportLogger = {
+      info: (...values) => entries.push(...values),
+      error: (...values) => entries.push(...values),
+    };
+    const { server } = await start({ logger });
+    const initialized = await postMcp(server, { token: firstToken });
+    const sessionId = initialized.headers.get('mcp-session-id')!;
+    await postMcp(server, {
+      token: firstToken,
+      sessionId,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'tools/list' }),
+    });
+
+    const starts = entries.filter(
+      (entry): entry is Record<string, unknown> =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        'event' in entry &&
+        entry.event === 'mcp_request_started',
+    );
+    const completions = entries.filter(
+      (entry): entry is Record<string, unknown> =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        'event' in entry &&
+        entry.event === 'mcp_request_completed',
+    );
+    const listStart = starts.find((entry) => entry.method === 'tools/list');
+    const listCompletion = completions.find((entry) => entry.requestId === listStart?.requestId);
+
+    expect(listStart).toMatchObject({
+      transport: 'streamable-http',
+      clientName: 'http-test',
+      clientVersion: '1.0.0',
+    });
+    expect(listCompletion).toMatchObject({ outcome: 'success', durationMs: expect.any(Number) });
+    expect(JSON.stringify(entries)).not.toContain(firstToken);
+  });
+
   it('re-authorizes every request so rotation invalidates an existing session immediately', async () => {
     const state: ApiState = {
       token: firstToken,
@@ -239,10 +295,53 @@ describe('Streamable HTTP transport security', () => {
 
     const stale = await postMcp(server, { token: firstToken, sessionId, body: listBody });
     const current = await postMcp(server, { token: rotatedToken, sessionId, body: listBody });
+    const newSession = await postMcp(server, { token: rotatedToken });
 
     expect(stale.status).toBe(401);
     expect(current.status).toBe(200);
-    expect(state.authorizeCalls).toEqual([firstToken, firstToken, rotatedToken]);
+    expect(newSession.status).toBe(200);
+    expect(newSession.headers.get('mcp-session-id')).toBeTruthy();
+    expect(state.authorizeCalls).toEqual([firstToken, firstToken, rotatedToken, rotatedToken]);
+  });
+
+  it('isolates concurrent sessions, invalid sessions, and explicit session cleanup', async () => {
+    const { server } = await start();
+    const [first, second] = await Promise.all([
+      postMcp(server, { token: firstToken }),
+      postMcp(server, { token: firstToken }),
+    ]);
+    const firstSessionId = first.headers.get('mcp-session-id')!;
+    const secondSessionId = second.headers.get('mcp-session-id')!;
+    const listBody = JSON.stringify({ jsonrpc: '2.0', id: 20, method: 'tools/list' });
+
+    const [firstList, secondList, invalid] = await Promise.all([
+      postMcp(server, { token: firstToken, sessionId: firstSessionId, body: listBody }),
+      postMcp(server, { token: firstToken, sessionId: secondSessionId, body: listBody }),
+      postMcp(server, { token: firstToken, sessionId: 'invalid-session', body: listBody }),
+    ]);
+    expect([firstList.status, secondList.status, invalid.status]).toEqual([200, 200, 404]);
+
+    const secondStillWorks = await postMcp(server, {
+      token: firstToken,
+      sessionId: secondSessionId,
+      body: listBody,
+    });
+    expect(secondStillWorks.status).toBe(200);
+
+    const closed = await deleteMcp(server, firstToken, firstSessionId);
+    expect(closed.status).toBe(200);
+    const closedSession = await postMcp(server, {
+      token: firstToken,
+      sessionId: firstSessionId,
+      body: listBody,
+    });
+    const survivingSession = await postMcp(server, {
+      token: firstToken,
+      sessionId: secondSessionId,
+      body: listBody,
+    });
+    expect(closedSession.status).toBe(404);
+    expect(survivingSession.status).toBe(200);
   });
 
   it('binds protected tool calls to the token from the current authorized request', async () => {

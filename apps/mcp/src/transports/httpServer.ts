@@ -13,14 +13,17 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
 import { CausalityApiClient } from '../api/causalityApiClient.js';
+import {
+  describeMcpMessage,
+  markMcpRequestProtocolError,
+  observeMcpRequest,
+  type McpLogger,
+} from '../observability/mcpRequestLogging.js';
 import { createCausalityMcpServer, type CausalityMcpApi } from '../server/createMcpServer.js';
 
 const DEFAULT_MAX_BODY_BYTES = 8 * 1024 * 1024;
 
-export interface McpTransportLogger {
-  info(...values: unknown[]): void;
-  error(...values: unknown[]): void;
-}
+export type McpTransportLogger = McpLogger;
 
 export interface StartCausalityMcpHttpServerOptions {
   apiBaseUrl: string;
@@ -36,6 +39,8 @@ export interface StartCausalityMcpHttpServerOptions {
 interface Session {
   server: McpServer;
   transport: StreamableHTTPServerTransport;
+  clientName?: string;
+  clientVersion?: string;
 }
 
 export interface CausalityMcpHttpServer {
@@ -62,6 +67,15 @@ function contentLengthExceeds(request: IncomingMessage, limit: number): boolean 
   const value = Array.isArray(raw) ? raw[0] : raw;
   const length = Number(value);
   return Number.isFinite(length) && length > limit;
+}
+
+function initializeClientInfo(body: unknown): Pick<Session, 'clientName' | 'clientVersion'> {
+  if (!isInitializeRequest(body)) return {};
+  const clientInfo = body.params.clientInfo;
+  return {
+    ...(typeof clientInfo.name === 'string' ? { clientName: clientInfo.name } : {}),
+    ...(typeof clientInfo.version === 'string' ? { clientVersion: clientInfo.version } : {}),
+  };
 }
 
 async function readJsonBody(request: IncomingMessage, limit: number): Promise<unknown> {
@@ -159,24 +173,35 @@ export async function startCausalityMcpHttpServer(
       sendJson(response, 404, { error: 'not_found' });
       return;
     }
+    const requestId = randomUUID();
+    const rejectProtocol = async (status: number, errorCode: string) => {
+      await observeMcpRequest(
+        { requestId, transport: 'streamable-http', method: 'http/request' },
+        () => {
+          markMcpRequestProtocolError(errorCode);
+          sendJson(response, status, { error: errorCode });
+        },
+        logger,
+      );
+    };
 
     const origin = request.headers.origin;
     if (origin !== undefined && !allowedOrigins.has(origin)) {
-      sendJson(response, 403, { error: 'forbidden_origin' });
+      await rejectProtocol(403, 'forbidden_origin');
       return;
     }
 
     const token = bearerToken(request);
     if (!token) {
-      sendJson(response, 401, { error: 'unauthorized' });
+      await rejectProtocol(401, 'unauthorized');
       return;
     }
     if (contentLengthExceeds(request, maxBodyBytes)) {
-      sendJson(response, 413, { error: 'request_too_large' });
+      await rejectProtocol(413, 'request_too_large');
       return;
     }
     if (!(await authorize(options.apiBaseUrl, token, fetchImplementation))) {
-      sendJson(response, 401, { error: 'unauthorized' });
+      await rejectProtocol(401, 'unauthorized');
       return;
     }
 
@@ -185,16 +210,8 @@ export async function startCausalityMcpHttpServer(
       try {
         body = await readJsonBody(request, maxBodyBytes);
       } catch (error) {
-        sendJson(
-          response,
-          error instanceof Error && error.name === 'BodyTooLargeError' ? 413 : 400,
-          {
-            error:
-              error instanceof Error && error.name === 'BodyTooLargeError'
-                ? 'request_too_large'
-                : 'invalid_json',
-          },
-        );
+        const tooLarge = error instanceof Error && error.name === 'BodyTooLargeError';
+        await rejectProtocol(tooLarge ? 413 : 400, tooLarge ? 'request_too_large' : 'invalid_json');
         return;
       }
     }
@@ -208,37 +225,59 @@ export async function startCausalityMcpHttpServer(
     const rawSessionId = request.headers['mcp-session-id'];
     const sessionId = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
     let session = sessionId ? sessions.get(sessionId) : undefined;
+    const initializingClient = initializeClientInfo(body);
 
     try {
       if (!session && !sessionId && request.method === 'POST' && isInitializeRequest(body)) {
         const server = createCausalityMcpServer({ apiClient: scopedApi, logger });
+        let initializedSession: Session;
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: randomUUID,
           enableJsonResponse: true,
           onsessioninitialized: (initializedSessionId) => {
-            sessions.set(initializedSessionId, { server, transport });
+            sessions.set(initializedSessionId, initializedSession);
           },
         });
+        initializedSession = { server, transport, ...initializingClient };
         transport.onclose = () => {
           const initializedSessionId = transport.sessionId;
           if (initializedSessionId) sessions.delete(initializedSessionId);
         };
         await server.connect(transport as unknown as Parameters<McpServer['connect']>[0]);
-        session = { server, transport };
+        session = initializedSession;
       }
 
       if (!session) {
-        sendJson(response, sessionId ? 404 : 400, { error: 'invalid_mcp_session' });
+        await observeMcpRequest(
+          {
+            requestId,
+            transport: 'streamable-http',
+            ...describeMcpMessage(body),
+            ...initializingClient,
+          },
+          () => {
+            markMcpRequestProtocolError('invalid_mcp_session');
+            sendJson(response, sessionId ? 404 : 400, { error: 'invalid_mcp_session' });
+          },
+          logger,
+        );
         return;
       }
-      await requestStorage.run(apiClient, () =>
-        session!.transport.handleRequest(request, response, body),
+      await observeMcpRequest(
+        {
+          requestId,
+          transport: 'streamable-http',
+          ...describeMcpMessage(body),
+          ...(session.clientName === undefined ? {} : { clientName: session.clientName }),
+          ...(session.clientVersion === undefined ? {} : { clientVersion: session.clientVersion }),
+        },
+        () =>
+          requestStorage.run(apiClient, () =>
+            session!.transport.handleRequest(request, response, body),
+          ),
+        logger,
       );
     } catch (error) {
-      logger.error({
-        event: 'mcp_request_failed',
-        errorName: error instanceof Error ? error.name : 'UnknownError',
-      });
       sendJson(response, 500, { error: 'internal_error' });
     }
   });

@@ -3,14 +3,22 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 import { CausalityApiClient } from '../api/causalityApiClient.js';
+import type { McpLogger } from '../observability/mcpRequestLogging.js';
 import { createCausalityMcpServer } from '../server/createMcpServer.js';
+import { ObservedTransport } from './observedTransport.js';
 
 export interface ConnectCausalityMcpStdioServerOptions {
   apiBaseUrl: string;
   apiTimeoutMs?: number;
   fetch?: typeof fetch;
   transport?: Transport;
+  logger?: McpLogger;
 }
+
+const stderrLogger: McpLogger = {
+  info: (entry) => console.error(typeof entry === 'string' ? entry : JSON.stringify(entry)),
+  error: (entry) => console.error(typeof entry === 'string' ? entry : JSON.stringify(entry)),
+};
 
 export async function connectCausalityMcpStdioServer(
   options: ConnectCausalityMcpStdioServerOptions,
@@ -29,7 +37,9 @@ export async function connectCausalityMcpStdioServer(
     fetch: fetchImplementation,
     ...(options.apiTimeoutMs === undefined ? {} : { timeoutMs: options.apiTimeoutMs }),
   });
-  const server = createCausalityMcpServer({ apiClient, logger: console });
-  await server.connect(options.transport ?? new StdioServerTransport());
+  const logger = options.logger ?? stderrLogger;
+  const server = createCausalityMcpServer({ apiClient, logger });
+  const transport = new ObservedTransport(options.transport ?? new StdioServerTransport(), logger);
+  await server.connect(transport);
   return server;
 }

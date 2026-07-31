@@ -16,6 +16,7 @@ import {
 import { buildInferOutcomesPrompt } from '../src/prompts/inferOutcomesPrompt.js';
 import { systemStatusResourceSchema } from '../src/resources/resourceSchemas.js';
 import { connectCausalityMcpStdioServer } from '../src/transports/stdioServer.js';
+import type { McpLogger } from '../src/observability/mcpRequestLogging.js';
 
 const token = 'c'.repeat(64);
 const settings: McpSettingsResponse = {
@@ -107,11 +108,17 @@ describe('stdio MCP transport', () => {
 
   it('loads the current local credential and exposes the same tools and prompt', async () => {
     const calls: Array<{ path: string; token: string | null }> = [];
+    const logEntries: unknown[] = [];
+    const logger: McpLogger = {
+      info: (entry) => logEntries.push(entry),
+      error: (entry) => logEntries.push(entry),
+    };
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = await connectCausalityMcpStdioServer({
       apiBaseUrl: 'http://127.0.0.1:3000',
       fetch: createApiFetch(calls),
       transport: serverTransport,
+      logger,
     });
     servers.push(server);
     const client = new Client({ name: 'stdio-test', version: '1.0.0' });
@@ -159,6 +166,25 @@ describe('stdio MCP transport', () => {
       { path: '/api/semantic/lifecycle', token: null },
       { path: '/api/ai-captures/compare', token },
     ]);
+    expect(logEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'mcp_request_started',
+          transport: 'stdio',
+          method: 'initialize',
+        }),
+        expect.objectContaining({
+          event: 'mcp_request_started',
+          transport: 'stdio',
+          method: 'tools/call',
+          toolName: 'compare_knowledge_candidates',
+          clientName: 'stdio-test',
+          clientVersion: '1.0.0',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(logEntries)).not.toContain(token);
+    expect(JSON.stringify(logEntries)).not.toContain(candidates.topic);
   });
 
   it('rejects an invalid settings response before connecting the transport', async () => {
