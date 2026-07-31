@@ -20,8 +20,18 @@ export const capabilityManifestSchema = z
         z
           .object({
             name: z.string().min(1),
+            title: z.string().min(1),
+            description: z.string().min(1),
             purpose: z.string().min(1),
             access: z.enum(['read_only', 'controlled_write']),
+            annotations: z
+              .object({
+                readOnlyHint: z.boolean(),
+                destructiveHint: z.boolean(),
+                idempotentHint: z.boolean(),
+                openWorldHint: z.literal(false),
+              })
+              .strict(),
           })
           .strict(),
       )

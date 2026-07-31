@@ -22,6 +22,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { CausalityApiClientError } from '../src/api/causalityApiClient.js';
 import { MCP_PROMPT_NAMES } from '../src/capabilities/capabilityManifest.js';
 import { createCausalityMcpServer } from '../src/server/createMcpServer.js';
 import type { CausalityMcpApi } from '../src/server/createMcpServer.js';
@@ -485,5 +486,34 @@ describe('read-only knowledge tools', () => {
     expect(unsupportedLimit.isError).toBe(true);
     expect(invalidPage.isError).toBe(true);
     expect(invalidCaseLimit.isError).toBe(true);
+  });
+
+  it('returns a structured business error when a knowledge API call fails', async () => {
+    api.searchEvents = async () => {
+      throw new CausalityApiClientError({
+        kind: 'api',
+        code: 'EVENT_SEARCH_UNAVAILABLE',
+        message: '原子事件查询暂时不可用',
+        status: 503,
+        traceId: 'knowledge-trace',
+      });
+    };
+
+    const result = await mcpClient.callTool({
+      name: 'search_atomic_events',
+      arguments: { query: '供应链' },
+    });
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: 'EVENT_SEARCH_UNAVAILABLE',
+          category: 'unavailable',
+          retryable: true,
+          details: { traceId: 'knowledge-trace', status: 503 },
+        },
+      },
+    });
   });
 });

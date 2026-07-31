@@ -5,13 +5,11 @@ import {
   type AiImportCommitResult,
   type AiImportPlan,
   type AiImportPlanStatus,
-  type AiWorkflowError,
   type PrepareAiImportPlanInput,
 } from '@causality/contracts';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { CausalityApiClientError } from '../api/causalityApiClient.js';
 import { MCP_TOOL_NAMES, toolRegistrationMetadata } from '../capabilities/capabilityManifest.js';
 import {
   captureCandidateSetMcpSchema,
@@ -21,6 +19,7 @@ import {
   importPlanStatusMcpSchema,
   prepareImportPlanMcpSchema,
 } from './captureMcpSchemas.js';
+import { executeTool, silentToolLogger, type ToolExecutionLogger } from './executeTool.js';
 import { textResult } from './toolResult.js';
 
 export interface CausalityCaptureApi {
@@ -31,13 +30,7 @@ export interface CausalityCaptureApi {
   result(historyId: string): Promise<AiImportCommitResult>;
 }
 
-export interface McpCaptureLogger {
-  error(entry: Record<string, unknown>): void;
-}
-
-const silentLogger: McpCaptureLogger = {
-  error: () => undefined,
-};
+export type McpCaptureLogger = ToolExecutionLogger;
 
 const planIdInputSchema = z.object({ planId: z.uuid().describe('不可变入库方案 ID') }).strict();
 const historyIdInputSchema = z.object({ historyId: z.uuid().describe('AI 导入历史 ID') }).strict();
@@ -120,16 +113,6 @@ function qualityText(report: AiCaptureQualityReport): string[] {
   ];
 }
 
-function qualityFailureText(report: AiCaptureQualityReport): string[] {
-  return [
-    ...qualityText(report).slice(0, 3),
-    ...report.issues.map(
-      (issue) =>
-        `- [${issue.code}] ${issue.message}；路径：${issue.paths.join('、') || '批次'}；相关项：${issue.refs.join('、') || '批次'}；建议：${issue.suggestedAction}`,
-    ),
-  ];
-}
-
 function decisionLabel(
   decision:
     | AiImportPlan['decisions']['atomicEvents'][number]
@@ -202,90 +185,10 @@ function commitText(result: AiImportCommitResult): string {
   ].join('\n');
 }
 
-function workflowError(error: unknown): AiWorkflowError {
-  if (error instanceof CausalityApiClientError) {
-    const category =
-      error.category ??
-      (error.kind === 'configuration'
-        ? 'configuration'
-        : error.kind === 'api' && error.status === 401
-          ? 'configuration'
-          : 'system');
-    return {
-      category,
-      code: error.code,
-      message: error.message,
-      affectedRefs: error.affectedRefs,
-      aiCanRepair: error.aiCanRepair ?? false,
-      retryCurrentPlan: error.retryCurrentPlan ?? false,
-      suggestedAction:
-        error.suggestedAction ??
-        (category === 'configuration'
-          ? '检查 MCP 与 Causality API 配置后重新执行'
-          : '检查 Causality 服务状态后等待用户决定是否重试'),
-      ...(error.qualityReport === undefined ? {} : { qualityReport: error.qualityReport }),
-    };
-  }
-  return {
-    category: 'system',
-    code: 'MCP_TOOL_FAILURE',
-    message: 'MCP 工具执行失败',
-    affectedRefs: [],
-    aiCanRepair: false,
-    retryCurrentPlan: false,
-    suggestedAction: '检查 MCP 服务日志和 Causality 服务状态后由用户重新发起操作',
-  };
-}
-
-function errorResult(error: unknown) {
-  const structuredContent = workflowError(error);
-  return {
-    isError: true,
-    content: [
-      {
-        type: 'text' as const,
-        text: [
-          `操作失败：${structuredContent.message}`,
-          `错误代码：${structuredContent.code}`,
-          `建议动作：${structuredContent.suggestedAction}`,
-          ...(structuredContent.qualityReport === undefined
-            ? []
-            : qualityFailureText(structuredContent.qualityReport)),
-        ].join('\n'),
-      },
-    ],
-    structuredContent,
-  };
-}
-
-function logToolFailure(logger: McpCaptureLogger, tool: string, error: unknown): void {
-  if (error instanceof CausalityApiClientError) {
-    logger.error({
-      event: 'mcp_tool_failed',
-      tool,
-      errorKind: error.kind,
-      errorCode: error.code,
-      httpStatus: error.status ?? null,
-      traceId: error.traceId ?? null,
-      category: error.category ?? null,
-      aiCanRepair: error.aiCanRepair ?? null,
-      retryCurrentPlan: error.retryCurrentPlan ?? null,
-    });
-    return;
-  }
-  logger.error({
-    event: 'mcp_tool_failed',
-    tool,
-    errorKind: 'unexpected',
-    errorCode: 'MCP_TOOL_FAILURE',
-    errorName: error instanceof Error ? error.name : 'UnknownError',
-  });
-}
-
 export function registerCaptureTools(
   server: McpServer,
   apiClient: CausalityCaptureApi,
-  logger: McpCaptureLogger = silentLogger,
+  logger: McpCaptureLogger = silentToolLogger,
 ): void {
   server.registerTool(
     MCP_TOOL_NAMES.compareKnowledgeCandidates,
@@ -294,17 +197,18 @@ export function registerCaptureTools(
       inputSchema: captureCandidateSetMcpSchema,
       outputSchema: captureComparisonMcpSchema,
     },
-    async (input) => {
-      try {
-        // The transport schema owns the MCP wire shape. Cross-field validation belongs to the
-        // API so clients receive its canonical structured quality report for repairable batches.
-        const result = await apiClient.compare(candidateSetForApi(input));
-        return textResult(comparisonText(result), { ...result });
-      } catch (error) {
-        logToolFailure(logger, 'compare_knowledge_candidates', error);
-        return errorResult(error);
-      }
-    },
+    (input) =>
+      executeTool(
+        MCP_TOOL_NAMES.compareKnowledgeCandidates,
+        logger,
+        async () => {
+          // The transport schema owns the MCP wire shape. Cross-field validation belongs to the
+          // API so clients receive its canonical structured quality report for repairable batches.
+          const result = await apiClient.compare(candidateSetForApi(input));
+          return textResult(comparisonText(result), { ...result });
+        },
+        { preserveWorkflowFields: true },
+      ),
   );
 
   server.registerTool(
@@ -314,16 +218,17 @@ export function registerCaptureTools(
       inputSchema: prepareImportPlanMcpSchema,
       outputSchema: importPlanMcpSchema,
     },
-    async (input) => {
-      try {
-        // As with candidate comparison, the API owns canonical cross-field plan validation.
-        const result = await apiClient.prepare(preparePlanForApi(input));
-        return textResult(planText(result), { ...result });
-      } catch (error) {
-        logToolFailure(logger, 'prepare_knowledge_changes', error);
-        return errorResult(error);
-      }
-    },
+    (input) =>
+      executeTool(
+        MCP_TOOL_NAMES.prepareKnowledgeChanges,
+        logger,
+        async () => {
+          // As with candidate comparison, the API owns canonical cross-field plan validation.
+          const result = await apiClient.prepare(preparePlanForApi(input));
+          return textResult(planText(result), { ...result });
+        },
+        { preserveWorkflowFields: true },
+      ),
   );
 
   server.registerTool(
@@ -333,15 +238,16 @@ export function registerCaptureTools(
       inputSchema: planIdInputSchema,
       outputSchema: importPlanStatusMcpSchema,
     },
-    async ({ planId }) => {
-      try {
-        const status = await apiClient.planStatus(planId);
-        return textResult(`方案 ${planId} 当前状态：${status}`, { planId, status });
-      } catch (error) {
-        logToolFailure(logger, 'get_import_plan_status', error);
-        return errorResult(error);
-      }
-    },
+    ({ planId }) =>
+      executeTool(
+        MCP_TOOL_NAMES.getImportPlanStatus,
+        logger,
+        async () => {
+          const status = await apiClient.planStatus(planId);
+          return textResult(`方案 ${planId} 当前状态：${status}`, { planId, status });
+        },
+        { preserveWorkflowFields: true },
+      ),
   );
 
   server.registerTool(
@@ -351,15 +257,16 @@ export function registerCaptureTools(
       inputSchema: planIdInputSchema,
       outputSchema: importCommitResultMcpSchema,
     },
-    async ({ planId }) => {
-      try {
-        const result = await apiClient.commit(planId);
-        return textResult(commitText(result), { ...result });
-      } catch (error) {
-        logToolFailure(logger, 'commit_knowledge_changes', error);
-        return errorResult(error);
-      }
-    },
+    ({ planId }) =>
+      executeTool(
+        MCP_TOOL_NAMES.commitKnowledgeChanges,
+        logger,
+        async () => {
+          const result = await apiClient.commit(planId);
+          return textResult(commitText(result), { ...result });
+        },
+        { preserveWorkflowFields: true },
+      ),
   );
 
   server.registerTool(
@@ -369,14 +276,15 @@ export function registerCaptureTools(
       inputSchema: historyIdInputSchema,
       outputSchema: importCommitResultMcpSchema,
     },
-    async ({ historyId }) => {
-      try {
-        const result = await apiClient.result(historyId);
-        return textResult(commitText(result), { ...result });
-      } catch (error) {
-        logToolFailure(logger, 'get_import_result', error);
-        return errorResult(error);
-      }
-    },
+    ({ historyId }) =>
+      executeTool(
+        MCP_TOOL_NAMES.getImportResult,
+        logger,
+        async () => {
+          const result = await apiClient.result(historyId);
+          return textResult(commitText(result), { ...result });
+        },
+        { preserveWorkflowFields: true },
+      ),
   );
 }

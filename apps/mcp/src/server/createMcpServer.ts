@@ -40,8 +40,8 @@ export function createCausalityMcpServer(options: CreateCausalityMcpServerOption
       instructions: CAUSALITY_MCP_INSTRUCTIONS,
     },
   );
-  registerKnowledgeTools(server, options.apiClient);
-  registerEvidenceTools(server, options.apiClient);
+  registerKnowledgeTools(server, options.apiClient, options.logger);
+  registerEvidenceTools(server, options.apiClient, options.logger);
   registerCaptureTools(server, options.apiClient, options.logger);
   registerCapturePrompt(server);
   registerAnalysisPrompts(server);

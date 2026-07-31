@@ -20,6 +20,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { MCP_TOOL_NAMES, toolRegistrationMetadata } from '../capabilities/capabilityManifest.js';
+import { executeTool, silentToolLogger, type ToolExecutionLogger } from './executeTool.js';
 import { textResult } from './toolResult.js';
 
 export interface CausalityKnowledgeApi {
@@ -172,7 +173,11 @@ function graphText(result: CausalGraphResponse): string {
   ].join('\n');
 }
 
-export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKnowledgeApi): void {
+export function registerKnowledgeTools(
+  server: McpServer,
+  apiClient: CausalityKnowledgeApi,
+  logger: ToolExecutionLogger = silentToolLogger,
+): void {
   server.registerTool(
     MCP_TOOL_NAMES.searchAtomicEvents,
     {
@@ -180,10 +185,11 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
       inputSchema: searchEventsInputSchema,
       outputSchema: eventListResponseSchema,
     },
-    async ({ query, page, searchMode }) => {
-      const result = await apiClient.searchEvents(query, page, searchMode);
-      return textResult(eventSearchText(result), { ...result });
-    },
+    ({ query, page, searchMode }) =>
+      executeTool(MCP_TOOL_NAMES.searchAtomicEvents, logger, async () => {
+        const result = await apiClient.searchEvents(query, page, searchMode);
+        return textResult(eventSearchText(result), { ...result });
+      }),
   );
 
   server.registerTool(
@@ -193,17 +199,18 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
       inputSchema: getEventInputSchema,
       outputSchema: eventWithRelationsSchema,
     },
-    async ({ eventId, relationLimit, relationCursor }) => {
-      const relationInput = {
-        limit: relationLimit,
-        ...(relationCursor === undefined ? {} : { cursor: relationCursor }),
-      };
-      const [event, relations] = await Promise.all([
-        apiClient.getEvent(eventId),
-        apiClient.getEventRelations(eventId, relationInput),
-      ]);
-      return textResult(eventDetailText(event, relations), { event, relations });
-    },
+    ({ eventId, relationLimit, relationCursor }) =>
+      executeTool(MCP_TOOL_NAMES.getAtomicEvent, logger, async () => {
+        const relationInput = {
+          limit: relationLimit,
+          ...(relationCursor === undefined ? {} : { cursor: relationCursor }),
+        };
+        const [event, relations] = await Promise.all([
+          apiClient.getEvent(eventId),
+          apiClient.getEventRelations(eventId, relationInput),
+        ]);
+        return textResult(eventDetailText(event, relations), { event, relations });
+      }),
   );
 
   server.registerTool(
@@ -213,10 +220,11 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
       inputSchema: searchCasesInputSchema,
       outputSchema: caseListResponseSchema,
     },
-    async ({ query, page }) => {
-      const result = await apiClient.searchCases(query, page);
-      return textResult(caseSearchText(result), { ...result });
-    },
+    ({ query, page }) =>
+      executeTool(MCP_TOOL_NAMES.searchConcreteCases, logger, async () => {
+        const result = await apiClient.searchCases(query, page);
+        return textResult(caseSearchText(result), { ...result });
+      }),
   );
 
   server.registerTool(
@@ -226,10 +234,11 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
       inputSchema: relationInputSchema,
       outputSchema: relationDetailSchema,
     },
-    async ({ relationId }) => {
-      const result = await apiClient.getRelation(relationId);
-      return textResult(relationText(result), { ...result });
-    },
+    ({ relationId }) =>
+      executeTool(MCP_TOOL_NAMES.getCausalRelation, logger, async () => {
+        const result = await apiClient.getRelation(relationId);
+        return textResult(relationText(result), { ...result });
+      }),
   );
 
   server.registerTool(
@@ -239,14 +248,15 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
       inputSchema: relationCasesInputSchema,
       outputSchema: relationCaseListResponseSchema,
     },
-    async ({ relationId, caseLimit, caseCursor }) => {
-      const caseInput = {
-        limit: caseLimit,
-        ...(caseCursor === undefined ? {} : { cursor: caseCursor }),
-      };
-      const result = await apiClient.getRelationCases(relationId, caseInput);
-      return textResult(relationCasesText(result), { ...result });
-    },
+    ({ relationId, caseLimit, caseCursor }) =>
+      executeTool(MCP_TOOL_NAMES.getRelationCases, logger, async () => {
+        const caseInput = {
+          limit: caseLimit,
+          ...(caseCursor === undefined ? {} : { cursor: caseCursor }),
+        };
+        const result = await apiClient.getRelationCases(relationId, caseInput);
+        return textResult(relationCasesText(result), { ...result });
+      }),
   );
 
   server.registerTool(
@@ -256,9 +266,10 @@ export function registerKnowledgeTools(server: McpServer, apiClient: CausalityKn
       inputSchema: graphInputSchema,
       outputSchema: causalGraphResponseSchema,
     },
-    async (input) => {
-      const result = await apiClient.queryGraph(input);
-      return textResult(graphText(result), { ...result });
-    },
+    (input) =>
+      executeTool(MCP_TOOL_NAMES.queryLocalCausalGraph, logger, async () => {
+        const result = await apiClient.queryGraph(input);
+        return textResult(graphText(result), { ...result });
+      }),
   );
 }

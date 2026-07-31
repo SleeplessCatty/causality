@@ -17,6 +17,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { MCP_TOOL_NAMES, toolRegistrationMetadata } from '../capabilities/capabilityManifest.js';
+import { executeTool, silentToolLogger, type ToolExecutionLogger } from './executeTool.js';
 import { textResult } from './toolResult.js';
 
 export interface CausalityEvidenceApi {
@@ -212,7 +213,11 @@ function evidenceBundleText(result: CausalEvidenceBundleResponse): string {
   ].join('\n');
 }
 
-export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvidenceApi): void {
+export function registerEvidenceTools(
+  server: McpServer,
+  apiClient: CausalityEvidenceApi,
+  logger: ToolExecutionLogger = silentToolLogger,
+): void {
   server.registerTool(
     MCP_TOOL_NAMES.getConcreteCase,
     {
@@ -220,20 +225,21 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
       inputSchema: getCaseInputSchema,
       outputSchema: caseWithRelationsSchema,
     },
-    async ({ caseId, relationLimit, relationCursor }) => {
-      const relationInput = {
-        limit: relationLimit,
-        ...(relationCursor === undefined ? {} : { cursor: relationCursor }),
-      };
-      const [concreteCase, relations] = await Promise.all([
-        apiClient.getCase(caseId),
-        apiClient.getCaseRelations(caseId, relationInput),
-      ]);
-      return textResult(caseDetailText(concreteCase, relations), {
-        concreteCase,
-        relations,
-      });
-    },
+    ({ caseId, relationLimit, relationCursor }) =>
+      executeTool(MCP_TOOL_NAMES.getConcreteCase, logger, async () => {
+        const relationInput = {
+          limit: relationLimit,
+          ...(relationCursor === undefined ? {} : { cursor: relationCursor }),
+        };
+        const [concreteCase, relations] = await Promise.all([
+          apiClient.getCase(caseId),
+          apiClient.getCaseRelations(caseId, relationInput),
+        ]);
+        return textResult(caseDetailText(concreteCase, relations), {
+          concreteCase,
+          relations,
+        });
+      }),
   );
 
   server.registerTool(
@@ -243,10 +249,11 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
       inputSchema: searchRelationsInputSchema,
       outputSchema: relationListResponseSchema,
     },
-    async ({ query, searchMode, page }) => {
-      const result = await apiClient.searchRelations(query, searchMode, page);
-      return textResult(relationSearchText(result), { ...result });
-    },
+    ({ query, searchMode, page }) =>
+      executeTool(MCP_TOOL_NAMES.searchCausalRelations, logger, async () => {
+        const result = await apiClient.searchRelations(query, searchMode, page);
+        return textResult(relationSearchText(result), { ...result });
+      }),
   );
 
   server.registerTool(
@@ -256,10 +263,11 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
       inputSchema: findPathsInputSchema,
       outputSchema: causalPathResponseSchema,
     },
-    async (input) => {
-      const result = await apiClient.findCausalPaths(input);
-      return textResult(pathText(result), { ...result });
-    },
+    (input) =>
+      executeTool(MCP_TOOL_NAMES.findCausalPaths, logger, async () => {
+        const result = await apiClient.findCausalPaths(input);
+        return textResult(pathText(result), { ...result });
+      }),
   );
 
   server.registerTool(
@@ -269,9 +277,10 @@ export function registerEvidenceTools(server: McpServer, apiClient: CausalityEvi
       inputSchema: evidenceBundleInputSchema,
       outputSchema: causalEvidenceBundleResponseSchema,
     },
-    async (input) => {
-      const result = await apiClient.getCausalEvidenceBundle(input);
-      return textResult(evidenceBundleText(result), { ...result });
-    },
+    (input) =>
+      executeTool(MCP_TOOL_NAMES.getCausalEvidenceBundle, logger, async () => {
+        const result = await apiClient.getCausalEvidenceBundle(input);
+        return textResult(evidenceBundleText(result), { ...result });
+      }),
   );
 }

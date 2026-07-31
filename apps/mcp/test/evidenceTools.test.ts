@@ -13,6 +13,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { CausalityApiClientError } from '../src/api/causalityApiClient.js';
 import {
   type CausalityEvidenceApi,
   registerEvidenceTools,
@@ -361,5 +362,34 @@ describe('read-only evidence tools', () => {
     expect(unknownField.isError).toBe(true);
     expect(api.caseRelationInput).toBeNull();
     expect(api.relationSearchInput).toBeNull();
+  });
+
+  it('returns a structured not-found error when an evidence lookup fails', async () => {
+    api.getCase = async () => {
+      throw new CausalityApiClientError({
+        kind: 'api',
+        code: 'CASE_NOT_FOUND',
+        message: '具体案例不存在',
+        status: 404,
+        traceId: 'evidence-trace',
+      });
+    };
+
+    const result = await client.callTool({
+      name: 'get_concrete_case',
+      arguments: { caseId },
+    });
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: 'CASE_NOT_FOUND',
+          category: 'not_found',
+          retryable: false,
+          details: { traceId: 'evidence-trace', status: 404 },
+        },
+      },
+    });
   });
 });

@@ -780,6 +780,12 @@ describe('capture workflow tools', () => {
       aiCanRepair: true,
       retryCurrentPlan: false,
       qualityReport: blockedReport,
+      error: {
+        code: 'AI_PLAN_COMPARISON_STALE',
+        category: 'stale_state',
+        retryable: false,
+        suggestedAction: '重新查询并生成完整方案',
+      },
     });
     const text = textContent(result);
     expect(text).toContain('[AI_QUALITY_ORPHAN_EVENT]');
