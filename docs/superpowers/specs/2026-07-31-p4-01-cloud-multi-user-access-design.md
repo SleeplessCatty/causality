@@ -2,7 +2,7 @@
 
 日期：2026-07-31
 
-状态：设计已完成，等待用户审核
+状态：设计已审核，等待实施计划审核
 
 前置阶段：P3-03 MCP 兼容性与使用体验完善已完成
 
@@ -242,7 +242,7 @@ pnpm user:enable
 
 - 使用至少 256 位随机会话令牌；
 - 数据库只保存令牌哈希；
-- Cookie 必须为 `Secure`、`HttpOnly` 和 `SameSite=Lax`；
+- 云端 Cookie 必须为 `Secure`、`HttpOnly` 和 `SameSite=Lax`；
 - 空闲 12 小时失效；
 - 最长 7 天后强制重新登录；
 - 支持退出当前会话和退出所有设备；
@@ -250,6 +250,8 @@ pnpm user:enable
 - CLI 重置密码或停用账号时撤销全部会话；
 - 修改类请求要求 CSRF Token 并校验 `Origin`；
 - 不在 `localStorage`、URL 或日志中保存身份令牌。
+
+当前本地部署仍使用 `http://127.0.0.1`。只有公开地址主机严格等于 `127.0.0.1` 或 `localhost` 时，才允许通过本地 Compose 关闭 Cookie 的 `Secure` 属性；此模式仍必须绑定回环地址。任何非回环地址或云端配置关闭 `Secure` 都视为启动错误。
 
 ## 10. 个人 MCP Token
 
@@ -462,6 +464,8 @@ compose.cloud.yaml
 - `compose.yaml` 定义公共服务；
 - `compose.local.yaml` 只提供本机回环端口；
 - `compose.cloud.yaml` 增加 Caddy、云端域名、备份和安全配置。
+
+本地覆盖显式设置回环公开地址和非 Secure Cookie；云端覆盖显式设置 HTTPS 公开地址和 Secure Cookie。生产预检必须拒绝非回环 HTTP 地址或云端非 Secure Cookie。
 
 建议服务器目录：
 
