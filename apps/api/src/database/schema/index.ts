@@ -1,4 +1,6 @@
 export { abstractEvents } from './abstractEvents.js';
+export { auditLogs } from './auditLogs.js';
+export { authRateLimits } from './authRateLimits.js';
 export { aiImportBatches } from './aiImportBatches.js';
 export { aiImportPlans } from './aiImportPlans.js';
 export { aiImportRecords } from './aiImportRecords.js';
@@ -17,3 +19,5 @@ export { semanticEmbeddings, semanticVector } from './semanticEmbeddings.js';
 export { semanticIndexState } from './semanticIndexState.js';
 export { semanticJobs } from './semanticJobs.js';
 export { semanticModelSettings } from './semanticModelSettings.js';
+export { users } from './users.js';
+export { webSessions } from './webSessions.js';

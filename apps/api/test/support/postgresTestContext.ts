@@ -13,8 +13,10 @@ const allowedDatabaseNames = new Set([
   'causality_ai_import_commit_test',
   'causality_ai_import_history_test',
   'causality_ai_import_plan_test',
+  'causality_auth_routes_test',
   'causality_mcp_settings_test',
   'causality_cases_test',
+  'causality_cloud_auth_migration_test',
   'causality_core_model_test',
   'causality_data_checks_test',
   'causality_data_check_actions_test',
@@ -32,6 +34,7 @@ const allowedDatabaseNames = new Set([
   'causality_relations_test',
   'causality_semantic_test',
   'causality_semantic_duplicate_test',
+  'causality_user_admin_test',
 ]);
 
 const poolClosures = new WeakMap<Pool, Promise<void>>();

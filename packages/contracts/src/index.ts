@@ -76,6 +76,36 @@ export {
 } from './ai-capture/aiCaptureQualitySchemas.js';
 
 export {
+  authenticatedUserSchema,
+  authErrorCodeSchema,
+  authErrorSchema,
+  authSessionResponseSchema,
+  changePasswordInputSchema,
+  loginInputSchema,
+  logoutResultSchema,
+  passwordSchema,
+  usernameSchema,
+  type AuthenticatedUser,
+  type AuthError,
+  type AuthErrorCode,
+  type AuthSessionResponse,
+  type ChangePasswordInput,
+  type LoginInput,
+  type LogoutResult,
+  type Username,
+} from './auth/authSchemas.js';
+
+export {
+  auditActionSchema,
+  auditActions,
+  auditResultSchema,
+  auditTargetTypeSchema,
+  type AuditAction,
+  type AuditResult,
+  type AuditTargetType,
+} from './audit/auditSchemas.js';
+
+export {
   caseCandidateListResponseSchema,
   caseCandidateQuerySchema,
   caseContentSchema,

@@ -163,6 +163,8 @@ describe.sequential('core PostgreSQL model', () => {
         'ai_import_batches',
         'ai_import_plans',
         'ai_import_records',
+        'audit_logs',
+        'auth_rate_limits',
         'causal_relation_cases',
         'causal_relations',
         'concrete_cases',
@@ -178,6 +180,8 @@ describe.sequential('core PostgreSQL model', () => {
         'semantic_index_state',
         'semantic_jobs',
         'semantic_model_settings',
+        'users',
+        'web_sessions',
       ]);
 
       const state = await migrationPool.query(

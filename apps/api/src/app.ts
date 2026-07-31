@@ -1,3 +1,6 @@
+import { createHmac, randomBytes } from 'node:crypto';
+
+import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
@@ -36,6 +39,11 @@ import {
   HttpSemanticWorkerClient,
   type SemanticWorkerClient,
 } from './features/semantic/semanticWorkerClient.js';
+import { PostgresAuditWriter } from './features/audit/auditRepository.js';
+import { PostgresAuthRepository } from './features/auth/authRepository.js';
+import { registerAuthRoutes } from './features/auth/authRoutes.js';
+import { AuthService } from './features/auth/authService.js';
+import { argon2idPasswordHasher } from './features/auth/passwordHasher.js';
 
 export interface BuildAppOptions {
   logger?: FastifyServerOptions['logger'];
@@ -51,6 +59,18 @@ export interface BuildAppOptions {
   mcpEndpoint?: string;
   mcpHealthUrl?: string;
   mcpHealthTimeoutMs?: number;
+  publicOrigin?: string;
+  cookieSecure?: boolean;
+  sessionHmacKey?: string;
+  authIpHashKey?: string;
+}
+
+const developmentSessionKey = 'ca'.repeat(32);
+const developmentSourceKey = 'db'.repeat(32);
+
+function createHmacDigest(key: string): (value: string) => Buffer {
+  const keyBuffer = Buffer.from(key, 'hex');
+  return (value) => createHmac('sha256', keyBuffer).update(value).digest();
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -71,7 +91,10 @@ export function buildApp(options: BuildAppOptions = {}) {
 
   void app.register(cors, {
     origin: options.corsOrigin ?? 'http://localhost:5173',
+    credentials: true,
   });
+
+  void app.register(cookie);
 
   void app.register(multipart, {
     limits: {
@@ -85,6 +108,20 @@ export function buildApp(options: BuildAppOptions = {}) {
     registerHealthRoute(app);
     registerReadinessRoute(app, options.checkDatabase ?? (async () => false));
     if (options.databasePool) {
+      const publicOrigin = options.publicOrigin ?? options.corsOrigin ?? 'http://localhost:5173';
+      const authService = new AuthService({
+        repository: new PostgresAuthRepository(options.databasePool),
+        auditWriter: new PostgresAuditWriter(),
+        passwordHasher: argon2idPasswordHasher,
+        clock: () => new Date(),
+        tokenGenerator: () => randomBytes(32).toString('base64url'),
+        sessionDigest: createHmacDigest(options.sessionHmacKey ?? developmentSessionKey),
+        sourceDigest: createHmacDigest(options.authIpHashKey ?? developmentSourceKey),
+      });
+      registerAuthRoutes(app, authService, {
+        publicOrigin,
+        secure: options.cookieSecure ?? false,
+      });
       const semanticWorkerClient =
         options.semanticWorkerClient ??
         new HttpSemanticWorkerClient({

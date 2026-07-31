@@ -148,6 +148,13 @@
       "when": 1785325842848,
       "tag": "0020_ai_import_relation_case_reuse",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785487260713,
+      "tag": "0021_cloud_auth_foundation",
+      "breakpoints": true
     }
   ]
 }

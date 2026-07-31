@@ -113,10 +113,55 @@ describe('environment configuration', () => {
       CAUSALITY_MCP_ENDPOINT: 'http://127.0.0.1:8081/mcp',
       CAUSALITY_MCP_HEALTH_URL: 'http://127.0.0.1:8081/health',
       CAUSALITY_MCP_HEALTH_TIMEOUT_MS: 1_000,
+      CAUSALITY_PUBLIC_ORIGIN: 'http://localhost:5173',
+      CAUSALITY_COOKIE_SECURE: false,
+      CAUSALITY_SESSION_HMAC_KEY: 'ca'.repeat(32),
+      CAUSALITY_AUTH_IP_HASH_KEY: 'db'.repeat(32),
     });
   });
 
   it('fails when DATABASE_URL is missing', () => {
     expect(() => parseEnv({})).toThrow('Invalid environment configuration');
+  });
+
+  it('requires independent non-placeholder production authentication secrets', () => {
+    const base = {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://localhost/causality',
+      CAUSALITY_PUBLIC_ORIGIN: 'https://causality.example.com',
+      CAUSALITY_COOKIE_SECURE: 'true',
+      CAUSALITY_SESSION_HMAC_KEY: '12'.repeat(32),
+      CAUSALITY_AUTH_IP_HASH_KEY: '34'.repeat(32),
+    };
+
+    expect(parseEnv(base)).toMatchObject({
+      CAUSALITY_COOKIE_SECURE: true,
+      CAUSALITY_SESSION_HMAC_KEY: '12'.repeat(32),
+      CAUSALITY_AUTH_IP_HASH_KEY: '34'.repeat(32),
+    });
+    expect(() => parseEnv({ ...base, CAUSALITY_SESSION_HMAC_KEY: undefined })).toThrow();
+    expect(() =>
+      parseEnv({ ...base, CAUSALITY_AUTH_IP_HASH_KEY: base.CAUSALITY_SESSION_HMAC_KEY }),
+    ).toThrow();
+    expect(() => parseEnv({ ...base, CAUSALITY_SESSION_HMAC_KEY: '0'.repeat(64) })).toThrow();
+  });
+
+  it('permits insecure cookies only for exact loopback origins', () => {
+    const base = {
+      DATABASE_URL: 'postgresql://localhost/causality',
+      CAUSALITY_COOKIE_SECURE: 'false',
+      CAUSALITY_SESSION_HMAC_KEY: '12'.repeat(32),
+      CAUSALITY_AUTH_IP_HASH_KEY: '34'.repeat(32),
+    };
+
+    expect(parseEnv({ ...base, CAUSALITY_PUBLIC_ORIGIN: 'http://127.0.0.1:5173' })).toMatchObject({
+      CAUSALITY_COOKIE_SECURE: false,
+    });
+    expect(() =>
+      parseEnv({ ...base, CAUSALITY_PUBLIC_ORIGIN: 'http://192.168.1.20:5173' }),
+    ).toThrow();
+    expect(() =>
+      parseEnv({ ...base, CAUSALITY_PUBLIC_ORIGIN: 'http://localhost.example.com' }),
+    ).toThrow();
   });
 });

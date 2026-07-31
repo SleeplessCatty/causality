@@ -17,6 +17,10 @@ const app = buildApp({
   mcpEndpoint: env.CAUSALITY_MCP_ENDPOINT,
   mcpHealthUrl: env.CAUSALITY_MCP_HEALTH_URL,
   mcpHealthTimeoutMs: env.CAUSALITY_MCP_HEALTH_TIMEOUT_MS,
+  publicOrigin: env.CAUSALITY_PUBLIC_ORIGIN,
+  cookieSecure: env.CAUSALITY_COOKIE_SECURE,
+  sessionHmacKey: env.CAUSALITY_SESSION_HMAC_KEY,
+  authIpHashKey: env.CAUSALITY_AUTH_IP_HASH_KEY,
   logger:
     env.NODE_ENV === 'development'
       ? {
