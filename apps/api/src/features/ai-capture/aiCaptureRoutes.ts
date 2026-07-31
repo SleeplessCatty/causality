@@ -97,25 +97,33 @@ export interface AiCaptureRouteOptions {
   requestTimeoutMs?: number;
 }
 
+export type AiCaptureSemanticCandidates = Pick<
+  AiSemanticCandidateService,
+  'compare' | 'topicRelevance'
+>;
+
 export function createAiCaptureRouteDependencies(
   pool: Pool,
   semanticWorkerClient: SemanticWorkerClient,
+  semanticCandidates?: AiCaptureSemanticCandidates,
 ): AiCaptureRouteDependencies {
-  const semanticCandidates = new AiSemanticCandidateService({
-    contextRepository: new PostgresSemanticQueryContextRepository(pool),
-    workerClient: semanticWorkerClient,
-    pool,
-  });
+  const candidates =
+    semanticCandidates ??
+    new AiSemanticCandidateService({
+      contextRepository: new PostgresSemanticQueryContextRepository(pool),
+      workerClient: semanticWorkerClient,
+      pool,
+    });
   const qualityGate = new AiCaptureQualityGate();
   return {
     comparisonService: new AiCandidateComparisonService(
       new PostgresAiCandidateComparisonRepository(pool),
-      semanticCandidates,
+      candidates,
       qualityGate,
     ),
     planService: new AiImportPlanService(
       new PostgresAiImportPlanRepository(pool),
-      semanticCandidates,
+      candidates,
       qualityGate,
     ),
     commitService: new AiImportCommitService(new PostgresAiImportCommitRepository(pool)),

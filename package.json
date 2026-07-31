@@ -17,6 +17,7 @@
     "mcp:check": "pnpm --filter @causality/contracts build && pnpm --filter @causality/mcp check",
     "mcp:stdio": "pnpm --filter @causality/contracts build && pnpm --filter @causality/mcp stdio",
     "mcp:inspect": "pnpm dlx @modelcontextprotocol/inspector@2.0.0 pnpm mcp:stdio",
+    "mcp:benchmark": "bash scripts/run-mcp-benchmark.sh",
     "db:generate": "pnpm --filter @causality/api db:generate",
     "db:migrate": "pnpm --filter @causality/api db:migrate",
     "db:seed": "pnpm --filter @causality/api db:seed",

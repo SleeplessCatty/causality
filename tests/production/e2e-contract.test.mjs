@@ -12,6 +12,10 @@ const productionScriptUrl = new URL('../../scripts/test-production-compose.sh', 
 const productionScript = existsSync(productionScriptUrl)
   ? readFileSync(productionScriptUrl, 'utf8')
   : '';
+const mcpBenchmarkScriptUrl = new URL('../../scripts/run-mcp-benchmark.sh', import.meta.url);
+const mcpBenchmarkScript = existsSync(mcpBenchmarkScriptUrl)
+  ? readFileSync(mcpBenchmarkScriptUrl, 'utf8')
+  : '';
 const playwrightConfig = readFileSync(
   new URL('../../playwright.config.ts', import.meta.url),
   'utf8',
@@ -81,6 +85,24 @@ test('the production smoke script allocates and forwards a separate MCP port', (
   assert.match(productionScript, /smoke_mcp_port="\$\{CAUSALITY_SMOKE_MCP_PORT:-18081\}"/);
   assert.match(productionScript, /CAUSALITY_MCP_PORT="\$smoke_mcp_port"/);
   assert.match(productionScript, /CAUSALITY_SMOKE_MCP_PORT="\$smoke_mcp_port"/);
+});
+
+test('the MCP benchmark is isolated, fixed-size, and cleans up every owned process', () => {
+  assert.equal(packageJson.scripts['mcp:benchmark'], 'bash scripts/run-mcp-benchmark.sh');
+  assert.match(mcpBenchmarkScript, /mktemp -d/);
+  assert.match(mcpBenchmarkScript, /19080/);
+  assert.match(mcpBenchmarkScript, /19081/);
+  assert.match(mcpBenchmarkScript, /--events=10000/);
+  assert.match(mcpBenchmarkScript, /--relations=30000/);
+  assert.match(mcpBenchmarkScript, /--cases=100000/);
+  assert.match(mcpBenchmarkScript, /--seed=20260731/);
+  assert.match(mcpBenchmarkScript, /unset DATABASE_URL/);
+  assert.doesNotMatch(mcpBenchmarkScript, /@causality\/web/);
+  assert.doesNotMatch(mcpBenchmarkScript, /@causality\/semantic-worker/);
+  assert.match(mcpBenchmarkScript, /trap cleanup EXIT INT TERM/);
+  assert.match(mcpBenchmarkScript, /kill -TERM -- "-\$pid"/);
+  assert.match(mcpBenchmarkScript, /rm -rf "\$benchmark_temp_dir"/);
+  assert.match(mcpBenchmarkScript, /causality\.mcp-benchmark=true/);
 });
 
 test('the E2E script creates and always drops only its unique allowlisted test database', () => {

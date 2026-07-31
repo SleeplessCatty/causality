@@ -22,6 +22,7 @@ import { registerDataTransferRoutes } from './features/data-transfer/dataTransfe
 import {
   createAiCaptureRouteDependencies,
   registerAiCaptureRoutes,
+  type AiCaptureSemanticCandidates,
 } from './features/ai-capture/aiCaptureRoutes.js';
 import { PostgresMcpSettingsRepository } from './features/mcp-settings/mcpSettingsRepository.js';
 import { McpSettingsService } from './features/mcp-settings/mcpSettingsService.js';
@@ -36,7 +37,7 @@ import {
   type SemanticWorkerClient,
 } from './features/semantic/semanticWorkerClient.js';
 
-interface BuildAppOptions {
+export interface BuildAppOptions {
   logger?: FastifyServerOptions['logger'];
   corsOrigin?: string;
   checkDatabase?: DatabaseReadinessCheck;
@@ -46,6 +47,7 @@ interface BuildAppOptions {
   semanticWorkerClient?: SemanticWorkerClient;
   importTimeoutMs?: number;
   aiCaptureTimeoutMs?: number;
+  aiCaptureSemanticCandidates?: AiCaptureSemanticCandidates;
   mcpEndpoint?: string;
   mcpHealthUrl?: string;
   mcpHealthTimeoutMs?: number;
@@ -108,7 +110,11 @@ export function buildApp(options: BuildAppOptions = {}) {
       });
       registerAiCaptureRoutes(
         app,
-        createAiCaptureRouteDependencies(options.databasePool, semanticWorkerClient),
+        createAiCaptureRouteDependencies(
+          options.databasePool,
+          semanticWorkerClient,
+          options.aiCaptureSemanticCandidates,
+        ),
         {
           ...(options.aiCaptureTimeoutMs === undefined
             ? {}

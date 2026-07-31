@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "benchmark": "tsx src/benchmark/mcpBenchmarkClient.ts",
     "check": "tsx src/check.ts",
     "dev": "tsx watch src/http.ts",
     "http": "tsx src/http.ts",
