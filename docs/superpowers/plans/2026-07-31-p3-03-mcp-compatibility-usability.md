@@ -1,5 +1,7 @@
 # P3-03 MCP Compatibility and Usability Implementation Plan
 
+**Status:** Implementation complete; waiting for manual review. Tasks 1–7 and all automated release gates are complete. Do not mark P3-03 complete until the user approves the manual checklist.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the existing 15 Tool, 5 Prompt, and 4 Resource Causality MCP surface protocol-consistent, backward-compatible, diagnosable, benchmarked, and usable from Codex or any standards-compliant Tool-capable client.
@@ -1142,7 +1144,7 @@ Do not add `test-results/`.
 - Produces: one short README entry, one compatibility/troubleshooting guide, one five-workflow guide, and the reviewed P3-03 release-candidate record.
 - Consumes: all commands and stable behavior delivered by Tasks 1–6.
 
-- [ ] **Step 1: Write the client compatibility and diagnostic guide**
+- [x] **Step 1: Write the client compatibility and diagnostic guide**
 
 `docs/mcp-client-compatibility.md` must include these exact sections:
 
@@ -1162,7 +1164,7 @@ The troubleshooting table must include service stopped, wrong port, missing/rota
 
 Use `<TOKEN>`, `<MCP_URL>`, and `<PROJECT_PATH>` placeholders only in configuration examples; do not include a real Token, username, or absolute local path.
 
-- [ ] **Step 2: Write the five-workflow guide**
+- [x] **Step 2: Write the five-workflow guide**
 
 `docs/mcp-workflows.md` must have one self-contained recipe each for:
 
@@ -1185,7 +1187,7 @@ Each recipe includes:
 
 Use stable fixed-seed examples such as “供应链中断”, “交付周期延长”, and “生产成本上升”. Do not depend on internet access or claim cross-model consistency.
 
-- [ ] **Step 3: Reduce README to the fast path and link both guides**
+- [x] **Step 3: Reduce README to the fast path and link both guides**
 
 Keep the default production command, HTTP endpoint, configuration copy instructions, 15/5/4 overview, Codex `/mcp` and `/skills` notes, and security boundary. Move repeated long-form configuration, troubleshooting, and workflow explanations to the two guides.
 
@@ -1197,7 +1199,7 @@ Add:
 - [MCP 代表性容量基线](docs/mcp-capacity-baseline.md)
 ```
 
-- [ ] **Step 4: Run documentation consistency checks**
+- [x] **Step 4: Run documentation consistency checks**
 
 ```bash
 pnpm exec prettier --check \
@@ -1213,7 +1215,7 @@ rg -n "<TOKEN>|<MCP_URL>|<PROJECT_PATH>" docs/mcp-client-compatibility.md
 
 Expected: formatting passes; capability counts agree; placeholder Tokens exist only in examples; no real 64-character Token is present.
 
-- [ ] **Step 5: Run every focused P3-03 gate**
+- [x] **Step 5: Run every focused P3-03 gate**
 
 ```bash
 pnpm --filter @causality/mcp test
@@ -1226,7 +1228,7 @@ pnpm test:compose
 
 Expected: all pass. Record exact test and benchmark totals in the design acceptance section.
 
-- [ ] **Step 6: Run the full repository release candidate gates**
+- [x] **Step 6: Run the full repository release candidate gates**
 
 ```bash
 pnpm lint
@@ -1243,7 +1245,7 @@ git diff --check
 
 Expected: every command exits `0`. The existing lazy-loaded causal-graph bundle-size warning may be reported but is not a P3-03 failure because this stage does not modify the graph implementation.
 
-- [ ] **Step 7: Review the complete P3-03 diff**
+- [x] **Step 7: Review the complete P3-03 diff**
 
 Review against every section of the approved design and confirm:
 
@@ -1258,7 +1260,7 @@ Review against every section of the approved design and confirm:
 - no Web, database migration, online AI, client-specific server branch, or cross-model suite was added;
 - `research/` remains untouched and untracked.
 
-- [ ] **Step 8: Mark implementation complete but keep the manual gate open**
+- [x] **Step 8: Mark implementation complete but keep the manual gate open**
 
 Update the design and roadmap to:
 
@@ -1268,7 +1270,7 @@ P3-03 状态：实施完成，等待人工复核
 
 Record actual commands, test totals, benchmark dataset, observed measurements, known non-blocking warnings, and the exact commit range. Do not mark P3-03 complete yet.
 
-- [ ] **Step 9: Commit the release candidate documentation**
+- [x] **Step 9: Commit the release candidate documentation**
 
 ```bash
 git add \

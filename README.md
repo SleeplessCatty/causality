@@ -169,75 +169,23 @@ CSV 只包含以下三种记录：
 
 **MCP 与外部 AI**
 
-生产 Compose 会自动启动 MCP Streamable HTTP 服务。打开“参数配置 → MCP
-服务”，确认状态为“运行中”，然后点击“复制客户端配置”。复制内容包含连接地址和
-Bearer Token，结构如下：
+生产 Compose 默认在 `http://127.0.0.1:8081/mcp` 启动 Streamable HTTP 服务。打开“参数配置 → MCP 服务”，确认状态为“运行中”，然后复制客户端配置：
 
 ```json
 {
   "transport": "streamable-http",
   "url": "http://127.0.0.1:8081/mcp",
-  "headers": {
-    "Authorization": "Bearer <64 位访问令牌>"
-  }
+  "headers": { "Authorization": "Bearer <TOKEN>" }
 }
 ```
 
-把这三个字段放入 AI 客户端对应的 MCP Server 配置中。不同客户端最外层的
-`mcpServers`、服务器名称和工作区字段可能不同，但 URL、传输类型和
-`Authorization` 请求头保持一致。令牌只用于本机 MCP 连接；不要提交到 Git
-或发送给他人。重新生成令牌会立即使旧令牌和已有 MCP 会话失效。
+Causality 发布 15 个 Tool、5 个 Prompt、4 个 Resource。Tool 是跨客户端最低通用能力；Prompt、Resource、Skill 或斜杠命令不可见时仍可直接使用 Tool。在 Codex 中用 `/mcp` 检查服务器和 Tool，用 `/skills` 检查 5 个同源工作流。令牌只用于本机连接，不要提交到 Git、写入命令行或发送给他人；轮换后旧配置和旧会话立即失效。
 
-MCP 提供十个只读查询与证据工具：
+采集流程只在用户明确确认最新完整方案后执行事务入库；分析、路径、链条审查和结果推测均只读。应用不内置在线模型或联网搜索，也不保存完整会话、网页来源或 AI 推理。
 
-- `search_atomic_events`、`get_atomic_event`；
-- `search_concrete_cases`、`get_concrete_case`；
-- `search_causal_relations`、`get_causal_relation`、`get_relation_cases`；
-- `query_local_causal_graph`、`find_causal_paths`、`get_causal_evidence_bundle`。
-
-采集入库流程使用五个受控工具：
-
-- `compare_knowledge_candidates`：一次对比原子事件、具体案例、因果关系和案例关联；
-- `prepare_knowledge_changes`：生成不可变且限时有效的完整入库方案；
-- `get_import_plan_status`：提交前检查方案状态；
-- `commit_knowledge_changes`：仅在用户明确确认最新方案后事务入库；
-- `get_import_result`：在响应不明确时查询已完成结果。
-
-应用还发布五个 MCP Prompt：`causality_capture`、`causality_analyze_event`、
-`causality_trace_path`、`causality_review_chain` 和 `causality_infer_outcomes`；同时发布领域规则、采集规则、能力清单
-和系统状态四个只读 Resource。不同客户端对 Prompt 和 Resource 的展示支持并不一致，
-五份同源 Markdown Prompt 位于 [`prompts/`](prompts/)，对应 Codex Skill 位于
-[`.agents/skills/`](.agents/skills/)。
-
-**Codex 专用入口**：在仓库根目录启动 Codex 后，先用 `/mcp` 确认 `causality`
-已连接；`/mcp` 只显示服务器和工具，不会列出 MCP Prompt 或 Resource。使用 `/skills`
-查看仓库工作流，或显式输入 `$causality-capture`、`$causality-analyze-event`、
-`$causality-trace-path`、`$causality-review-chain`、`$causality-infer-outcomes`。仓库通过
-`.agents/skills` 暴露这些 Skill，Skill 会直接读取同源 Markdown Prompt，再调用
-`causality` 工具。MCP 初始化 `instructions` 还会自动向 Codex 提供事实边界、只读分析和
-受控入库的核心规则。首次添加后若 `/skills` 未显示，重启 Codex 或新建会话。
-
-`causality_infer_outcomes` 从当前会话识别一个起始事件，默认查询三层下游路径，并用
-库内关系和案例解释最多五个候选结果。它不计算综合证据等级或结果发生概率，也不会把
-推测自动写入数据库；需要保存新知识时必须重新进入 `Causality Capture`。
-
-标准采集流程为：
-
-1. 用户明确要求采集当前会话并生成入库方案；
-2. AI 从上次成功标记之后开始采集；没有标记时从当前可见会话最早内容开始；
-3. AI 只提取与问题主线有关的原子事件、具体案例、因果关系和案例关联，一次最多处理 50 条原子事件；
-4. AI 自动对比库内数据并生成完整方案，使用普通语言向用户展示；
-5. 用户可以多轮提出修改，每次修改都会产生新的完整方案；
-6. 只有用户明确确认最新方案后，AI 才能提交；
-7. 成功后 AI 返回 `[Causality-Capture: <historyId>]`，作为下次采集范围的边界。
-
-AI 客户端和 MCP 工具之间使用 JSON；AI 向用户展示普通语言；CSV
-只用于人工导入导出，这三者不能混用。应用不保存完整会话、网页来源或 AI
-推理，只保存实际业务数据和成功 AI 入库历史。成功批次可在“导入导出 → AI
-导入历史”中查看；失败、取消和回滚方案不会进入历史。
-
-应用本身不内置在线大模型或联网搜索。网页检索、对话理解、候选提取和综合判断由用户选择的外部
-AI 客户端负责；本地嵌入模型只负责数据库候选的语义比较。
+- [MCP 客户端兼容与诊断](docs/mcp-client-compatibility.md)
+- [MCP 五条业务工作流](docs/mcp-workflows.md)
+- [MCP 代表性容量基线](docs/mcp-capacity-baseline.md)
 
 **局部因果图**
 
