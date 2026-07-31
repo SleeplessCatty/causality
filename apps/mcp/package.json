@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "check": "tsx src/check.ts",
     "dev": "tsx watch src/http.ts",
     "http": "tsx src/http.ts",
     "prompt:generate": "tsx src/prompts/generatePortablePrompt.ts",
     "stdio": "tsx src/stdio.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:compat": "vitest run test/compatibility"
   },
   "dependencies": {
     "@causality/contracts": "workspace:*",

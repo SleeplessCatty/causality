@@ -12,3 +12,4 @@ test-results/
 *.tsbuildinfo
 .superpowers/
 .codex/config.toml
+.causality-mcp-check.json
