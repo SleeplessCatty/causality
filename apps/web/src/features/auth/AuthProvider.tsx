@@ -1,4 +1,9 @@
-import type { AuthenticatedUser, ChangePasswordInput, LoginInput } from '@causality/contracts';
+import type {
+  AuthenticatedUser,
+  ChangeInitialPasswordInput,
+  ChangePasswordInput,
+  LoginInput,
+} from '@causality/contracts';
 import {
   createContext,
   useCallback,
@@ -18,6 +23,7 @@ export interface AuthContextValue {
   user: AuthenticatedUser | null;
   csrfToken: string | null;
   login(input: LoginInput): Promise<void>;
+  changeInitialPassword(input: ChangeInitialPasswordInput): Promise<void>;
   changePassword(input: ChangePasswordInput): Promise<void>;
   logout(): Promise<void>;
   logoutAll(): Promise<void>;
@@ -89,6 +95,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setUser((current) => (current ? { ...current, mustChangePassword: false } : current));
   }, []);
 
+  const changeInitialPassword = useCallback(async (input: ChangeInitialPasswordInput) => {
+    await authApi.changeInitialPassword(input);
+    setUser((current) => (current ? { ...current, mustChangePassword: false } : current));
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -106,8 +117,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [setAnonymous]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, csrfToken, login, changePassword, logout, logoutAll }),
-    [changePassword, csrfToken, login, logout, logoutAll, status, user],
+    () => ({
+      status,
+      user,
+      csrfToken,
+      login,
+      changeInitialPassword,
+      changePassword,
+      logout,
+      logoutAll,
+    }),
+    [changeInitialPassword, changePassword, csrfToken, login, logout, logoutAll, status, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

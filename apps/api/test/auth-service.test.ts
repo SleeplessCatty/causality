@@ -436,6 +436,28 @@ describe('AuthService', () => {
     ).toHaveLength(1);
   });
 
+  it('changes a required initial password without verifying it again and rejects regular users', async () => {
+    const harness = createHarness();
+    const user = makeUser({ mustChangePassword: true });
+    harness.repository.users.set(user.id, user);
+    const first = await harness.service.login(
+      { username: 'jason', password: 'GoodPass!123' },
+      '203.0.113.52',
+    );
+    const actor = await harness.service.authenticateSession(first.sessionToken, start);
+
+    await harness.service.changeInitialPassword(actor!, { newPassword: 'Replacement!123' });
+
+    expect(harness.repository.users.get(user.id)).toMatchObject({
+      passwordHash: 'encoded:Replacement!123',
+      mustChangePassword: false,
+    });
+    await expectAuthError(
+      harness.service.changeInitialPassword(actor!, { newPassword: 'Another!Pass123' }),
+      'INITIAL_PASSWORD_CHANGE_NOT_ALLOWED',
+    );
+  });
+
   it('logout revokes one session while logout-all revokes every session', async () => {
     const harness = createHarness();
     const user = makeUser({ mustChangePassword: false });

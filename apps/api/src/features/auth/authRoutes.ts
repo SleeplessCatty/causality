@@ -1,10 +1,12 @@
 import {
   authSessionResponseSchema,
   authErrorSchema,
+  changeInitialPasswordInputSchema,
   changePasswordInputSchema,
   loginInputSchema,
   logoutResultSchema,
   type ChangePasswordInput,
+  type ChangeInitialPasswordInput,
   type LoginInput,
 } from '@causality/contracts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -27,11 +29,13 @@ function sendAuthError(reply: FastifyReply, error: unknown): void {
   const status =
     error.code === 'INVALID_CREDENTIALS' || error.code === 'INVALID_CURRENT_PASSWORD'
       ? 401
-      : error.code === 'ACCOUNT_LOCKED'
-        ? 423
-        : error.code === 'TOO_MANY_ATTEMPTS'
-          ? 429
-          : 401;
+      : error.code === 'INITIAL_PASSWORD_CHANGE_NOT_ALLOWED'
+        ? 409
+        : error.code === 'ACCOUNT_LOCKED'
+          ? 423
+          : error.code === 'TOO_MANY_ATTEMPTS'
+            ? 429
+            : 401;
   void reply.status(status).send({ code: error.code, message: error.message });
 }
 
@@ -77,6 +81,31 @@ export function registerAuthRoutes(
         return;
       }
       return { user, csrfToken };
+    },
+  );
+
+  app.post<{ Body: ChangeInitialPasswordInput }>(
+    '/api/auth/change-initial-password',
+    {
+      config: { routeAccess: 'business' },
+      preHandler: hooks.verifyAuthenticatedMutation,
+      schema: {
+        body: changeInitialPasswordInputSchema,
+        response: {
+          200: logoutResultSchema,
+          400: authErrorSchema,
+          401: authErrorSchema,
+          409: authErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        await authService.changeInitialPassword(request.actor!, request.body);
+        return { success: true as const };
+      } catch (error) {
+        sendAuthError(reply, error);
+      }
     },
   );
 

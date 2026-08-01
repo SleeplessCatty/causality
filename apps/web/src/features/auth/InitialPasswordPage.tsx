@@ -1,4 +1,4 @@
-import { changePasswordInputSchema } from '@causality/contracts';
+import { changeInitialPasswordInputSchema, changePasswordInputSchema } from '@causality/contracts';
 import { useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 
@@ -37,15 +37,21 @@ export function InitialPasswordPage() {
       setErrorRevision((value) => value + 1);
       return;
     }
-    const parsed = changePasswordInputSchema.safeParse({ currentPassword, newPassword });
-    if (!parsed.success) {
+    const initialInput = isInitial
+      ? changeInitialPasswordInputSchema.safeParse({ newPassword })
+      : null;
+    const regularInput = isInitial
+      ? null
+      : changePasswordInputSchema.safeParse({ currentPassword, newPassword });
+    if (initialInput?.success === false || regularInput?.success === false) {
       setError('密码长度必须为 12 至 128 个字符');
       setErrorRevision((value) => value + 1);
       return;
     }
     setSubmitting(true);
     try {
-      await auth.changePassword(parsed.data);
+      if (initialInput?.success) await auth.changeInitialPassword(initialInput.data);
+      else if (regularInput?.success) await auth.changePassword(regularInput.data);
       navigate(returnTo, { replace: true });
     } catch (cause) {
       setError(
@@ -75,17 +81,21 @@ export function InitialPasswordPage() {
           </div>
         ) : null}
         <form className="auth-form" onSubmit={(event) => void submit(event)} noValidate>
-          <label htmlFor="auth-current-password">{isInitial ? '初始密码' : '当前密码'}</label>
-          <input
-            id="auth-current-password"
-            type="password"
-            value={currentPassword}
-            autoComplete="current-password"
-            minLength={12}
-            maxLength={128}
-            autoFocus
-            onChange={(event) => setCurrentPassword(event.target.value)}
-          />
+          {!isInitial ? (
+            <>
+              <label htmlFor="auth-current-password">当前密码</label>
+              <input
+                id="auth-current-password"
+                type="password"
+                value={currentPassword}
+                autoComplete="current-password"
+                minLength={12}
+                maxLength={128}
+                autoFocus
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+            </>
+          ) : null}
           <label htmlFor="auth-new-password">新密码</label>
           <input
             id="auth-new-password"
@@ -94,6 +104,7 @@ export function InitialPasswordPage() {
             autoComplete="new-password"
             minLength={12}
             maxLength={128}
+            autoFocus={isInitial}
             onChange={(event) => setNewPassword(event.target.value)}
           />
           <label htmlFor="auth-confirm-password">确认新密码</label>

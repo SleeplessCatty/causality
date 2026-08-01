@@ -2,6 +2,7 @@ import {
   authSessionResponseSchema,
   logoutResultSchema,
   type AuthSessionResponse,
+  type ChangeInitialPasswordInput,
   type ChangePasswordInput,
   type LoginInput,
 } from '@causality/contracts';
@@ -24,6 +25,15 @@ export async function login(input: LoginInput): Promise<AuthSessionResponse> {
 export async function changePassword(input: ChangePasswordInput): Promise<void> {
   logoutResultSchema.parse(
     await requestJson('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function changeInitialPassword(input: ChangeInitialPasswordInput): Promise<void> {
+  logoutResultSchema.parse(
+    await requestJson('/api/auth/change-initial-password', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

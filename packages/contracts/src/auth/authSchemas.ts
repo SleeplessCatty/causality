@@ -23,6 +23,12 @@ export const changePasswordInputSchema = z
   })
   .strict();
 
+export const changeInitialPasswordInputSchema = z
+  .object({
+    newPassword: passwordSchema,
+  })
+  .strict();
+
 export const authenticatedUserSchema = z
   .object({
     id: z.uuid(),
@@ -44,6 +50,7 @@ export const authErrorCodeSchema = z.enum([
   'TOO_MANY_ATTEMPTS',
   'AUTH_REQUIRED',
   'INVALID_CURRENT_PASSWORD',
+  'INITIAL_PASSWORD_CHANGE_NOT_ALLOWED',
   'PASSWORD_CHANGE_REQUIRED',
   'PASSWORD_POLICY_VIOLATION',
   'CSRF_INVALID',
@@ -62,6 +69,7 @@ export const logoutResultSchema = z.object({ success: z.literal(true) }).strict(
 export type Username = z.infer<typeof usernameSchema>;
 export type LoginInput = z.infer<typeof loginInputSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordInputSchema>;
+export type ChangeInitialPasswordInput = z.infer<typeof changeInitialPasswordInputSchema>;
 export type AuthenticatedUser = z.infer<typeof authenticatedUserSchema>;
 export type AuthSessionResponse = z.infer<typeof authSessionResponseSchema>;
 export type AuthErrorCode = z.infer<typeof authErrorCodeSchema>;

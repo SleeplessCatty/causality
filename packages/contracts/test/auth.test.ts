@@ -4,6 +4,7 @@ import {
   apiErrorSchema,
   authErrorSchema,
   authSessionResponseSchema,
+  changeInitialPasswordInputSchema,
   changePasswordInputSchema,
   loginInputSchema,
 } from '../src/index.js';
@@ -67,6 +68,18 @@ describe('authentication contracts', () => {
       changePasswordInputSchema.safeParse({
         currentPassword: 'current-passphrase',
         newPassword: 'short',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts only the replacement password for a required initial-password change', () => {
+    expect(
+      changeInitialPasswordInputSchema.parse({ newPassword: 'replacement-passphrase' }),
+    ).toEqual({ newPassword: 'replacement-passphrase' });
+    expect(
+      changeInitialPasswordInputSchema.safeParse({
+        currentPassword: 'temporary-passphrase',
+        newPassword: 'replacement-passphrase',
       }).success,
     ).toBe(false);
   });

@@ -209,9 +209,9 @@ describe.sequential('authentication routes', () => {
 
     const changed = await cloudApp.inject({
       method: 'POST',
-      url: '/api/auth/change-password',
+      url: '/api/auth/change-initial-password',
       headers: { cookie, origin: cloudOrigin, 'x-csrf-token': csrfToken },
-      payload: { currentPassword: initialPassword, newPassword: 'Changed!Pass123' },
+      payload: { newPassword: 'Changed!Pass123' },
     });
     expect(changed.statusCode).toBe(200);
     expect(

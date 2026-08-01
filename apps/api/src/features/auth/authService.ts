@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import type { AuthenticatedUser, ChangePasswordInput, LoginInput } from '@causality/contracts';
+import type {
+  AuthenticatedUser,
+  ChangeInitialPasswordInput,
+  ChangePasswordInput,
+  LoginInput,
+} from '@causality/contracts';
 
 import type { AuditWriter, AuditWriteInput } from '../audit/auditRepository.js';
 import type { RequestActor } from './requestActor.js';
@@ -25,7 +30,8 @@ export type AuthServiceErrorCode =
   | 'ACCOUNT_LOCKED'
   | 'TOO_MANY_ATTEMPTS'
   | 'AUTH_REQUIRED'
-  | 'INVALID_CURRENT_PASSWORD';
+  | 'INVALID_CURRENT_PASSWORD'
+  | 'INITIAL_PASSWORD_CHANGE_NOT_ALLOWED';
 
 export class AuthServiceError extends Error {
   constructor(
@@ -263,6 +269,39 @@ export class AuthService {
     if (!outcome) throw this.errorFor('INVALID_CURRENT_PASSWORD');
   }
 
+  async changeInitialPassword(
+    actor: RequestActor,
+    input: ChangeInitialPasswordInput,
+  ): Promise<void> {
+    if (actor.actorType !== 'user' || actor.channel !== 'web' || !actor.sessionId) {
+      throw this.errorFor('AUTH_REQUIRED');
+    }
+    const now = this.dependencies.clock();
+    const outcome = await this.dependencies.repository.withTransaction(async (client) => {
+      const user = await this.dependencies.repository.findUserById(client, actor.userId);
+      if (!user?.enabled || !user.mustChangePassword) return false;
+      validatePassword(input.newPassword, user.username);
+      const passwordHash = await this.dependencies.passwordHasher.hash(input.newPassword);
+      await this.dependencies.repository.updatePassword(client, user.id, passwordHash, now);
+      await this.dependencies.repository.revokeOtherSessions(
+        client,
+        user.id,
+        actor.sessionId!,
+        now,
+      );
+      await this.dependencies.auditWriter.append(client, {
+        actor,
+        action: 'auth.password_changed',
+        targetType: 'user',
+        targetId: user.id,
+        result: 'success',
+        occurredAt: now,
+      });
+      return true;
+    });
+    if (!outcome) throw this.errorFor('INITIAL_PASSWORD_CHANGE_NOT_ALLOWED');
+  }
+
   async logout(actor: RequestActor): Promise<void> {
     if (actor.actorType !== 'user' || !actor.sessionId) throw this.errorFor('AUTH_REQUIRED');
     const now = this.dependencies.clock();
@@ -373,7 +412,9 @@ export class AuthService {
             ? '登录尝试过于频繁'
             : code === 'INVALID_CURRENT_PASSWORD'
               ? '当前密码错误'
-              : '需要登录';
+              : code === 'INITIAL_PASSWORD_CHANGE_NOT_ALLOWED'
+                ? '当前账号不需要修改初始密码'
+                : '需要登录';
     return new AuthServiceError(code, message);
   }
 }
