@@ -1,3 +1,7 @@
+import { spawn } from 'node:child_process';
+import type { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
+
 import {
   createMcpTokenResponseSchema,
   mcpTokenSummarySchema,
@@ -27,6 +31,98 @@ async function sendMcpRequest(
     },
     body: JSON.stringify(body),
   });
+}
+
+async function queryStdioCatalogs(apiBaseUrl: string, token: string) {
+  const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const child = spawn('pnpm', ['--filter', '@causality/mcp', 'exec', 'tsx', 'src/stdio.ts'], {
+    cwd: workspaceRoot,
+    env: {
+      ...process.env,
+      CAUSALITY_API_URL: apiBaseUrl,
+      CAUSALITY_MCP_TOKEN: token,
+      CAUSALITY_INTERNAL_MCP_SECRET: 'ef'.repeat(32),
+    },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let nextId = 1;
+  let stdoutBuffer = '';
+  const stderr: string[] = [];
+  const pending = new Map<
+    number,
+    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+  >();
+  child.stderr.on('data', (chunk) => stderr.push(String(chunk)));
+  child.stdout.on('data', (chunk) => {
+    stdoutBuffer += String(chunk);
+    while (stdoutBuffer.includes('\n')) {
+      const newline = stdoutBuffer.indexOf('\n');
+      const line = stdoutBuffer.slice(0, newline).trim();
+      stdoutBuffer = stdoutBuffer.slice(newline + 1);
+      if (!line) continue;
+      const message = JSON.parse(line) as { id?: number; result?: unknown; error?: unknown };
+      if (typeof message.id !== 'number') continue;
+      const pendingRequest = pending.get(message.id);
+      if (!pendingRequest) continue;
+      pending.delete(message.id);
+      if (message.error) pendingRequest.reject(new Error(JSON.stringify(message.error)));
+      else pendingRequest.resolve(message.result);
+    }
+  });
+  child.once('exit', (code) => {
+    for (const pendingRequest of pending.values()) {
+      pendingRequest.reject(new Error(`stdio MCP exited before responding (${String(code)})`));
+    }
+    pending.clear();
+  });
+
+  const request = (method: string, params: object = {}) => {
+    const id = nextId++;
+    return new Promise<unknown>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`stdio MCP request timed out: ${method}`));
+      }, 15_000);
+      pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+    });
+  };
+
+  try {
+    await request('initialize', {
+      protocolVersion: '2025-11-25',
+      capabilities: {},
+      clientInfo: { name: 'postgres-stdio-test', version: '1.0.0' },
+    });
+    child.stdin.write(
+      `${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} })}\n`,
+    );
+    const [tools, prompts, resources] = (await Promise.all([
+      request('tools/list'),
+      request('prompts/list'),
+      request('resources/list'),
+    ])) as [{ tools: unknown[] }, { prompts: unknown[] }, { resources: unknown[] }];
+    return {
+      counts: {
+        tools: tools.tools.length,
+        prompts: prompts.prompts.length,
+        resources: resources.resources.length,
+      },
+      stderr,
+    };
+  } finally {
+    child.stdin.end();
+    if (child.exitCode === null) child.kill('SIGTERM');
+  }
 }
 
 describe.sequential('MCP personal access token HTTP API', () => {
@@ -329,5 +425,33 @@ describe.sequential('MCP personal access token HTTP API', () => {
       await mcpServer.close();
     }
   });
+
+  it('negotiates stdio catalogs with a personal token created in PostgreSQL', async () => {
+    const user = await context.pool.query<{ id: string }>(
+      `insert into users (username, password_hash, must_change_password)
+       values ('mcp-stdio-user', 'stdio-test-password', false)
+       returning id`,
+    );
+    const service = new McpAccessService(
+      new PostgresMcpAccessRepository(context.pool),
+      new PostgresAuditWriter(),
+    );
+    const created = await service.create(
+      {
+        actorType: 'user',
+        userId: user.rows[0]!.id,
+        username: 'mcp-stdio-user',
+        channel: 'web',
+        requestId: 'stdio-create',
+      },
+      'Stdio compatibility',
+    );
+    if (!context.app.server.listening) {
+      await context.app.listen({ host: '127.0.0.1', port: 0 });
+    }
+    const apiAddress = context.app.server.address() as AddressInfo;
+    const result = await queryStdioCatalogs(`http://127.0.0.1:${apiAddress.port}`, created.token);
+    expect(result.counts).toEqual({ tools: 15, prompts: 5, resources: 4 });
+    expect(result.stderr.join('')).not.toContain(created.token);
+  });
 });
-import type { AddressInfo } from 'node:net';
