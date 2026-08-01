@@ -16,6 +16,7 @@ const allowedDatabaseNames = new Set([
   'causality_ai_import_plan_test',
   'causality_auth_routes_test',
   'causality_mcp_settings_test',
+  'causality_mcp_access_test',
   'causality_cases_test',
   'causality_cloud_auth_migration_test',
   'causality_core_model_test',

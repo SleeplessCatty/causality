@@ -17,7 +17,7 @@ import { systemStatusResourceSchema } from '../src/resources/resourceSchemas.js'
 import { connectCausalityMcpStdioServer } from '../src/transports/stdioServer.js';
 import type { McpLogger } from '../src/observability/mcpRequestLogging.js';
 
-const token = 'c'.repeat(64);
+const token = `cau_pat_${'c'.repeat(43)}`;
 const internalSecret = 'e'.repeat(64);
 const candidates: AiCaptureCandidateSet = {
   topic: '空候选测试',
@@ -71,14 +71,14 @@ function createApiFetch(calls: Array<{ path: string; token: string | null }>): t
     );
     const requestToken = new Headers(init?.headers).get('x-causality-mcp-token');
     calls.push({ path: url.pathname, token: requestToken });
-    if (url.pathname === '/api/ai-captures/compare') return Response.json(comparison);
-    if (url.pathname === '/api/health') {
+    if (url.pathname === '/internal/mcp/ai-captures/compare') return Response.json(comparison);
+    if (url.pathname === '/internal/mcp/health') {
       return Response.json({ status: 'ok', service: 'causality-api' });
     }
-    if (url.pathname === '/api/ready') {
+    if (url.pathname === '/internal/mcp/ready') {
       return Response.json({ status: 'ready', database: 'available' });
     }
-    if (url.pathname === '/api/semantic/lifecycle') return Response.json(lifecycle);
+    if (url.pathname === '/internal/mcp/semantic/lifecycle') return Response.json(lifecycle);
     return Response.json({ code: 'NOT_FOUND', message: 'not found' }, { status: 404 });
   }) as typeof fetch;
 }
@@ -148,10 +148,10 @@ describe('stdio MCP transport', () => {
     });
     expect(compared.structuredContent).toEqual(comparison);
     expect(calls).toEqual([
-      { path: '/api/health', token },
-      { path: '/api/ready', token },
-      { path: '/api/semantic/lifecycle', token },
-      { path: '/api/ai-captures/compare', token },
+      { path: '/internal/mcp/health', token },
+      { path: '/internal/mcp/ready', token },
+      { path: '/internal/mcp/semantic/lifecycle', token },
+      { path: '/internal/mcp/ai-captures/compare', token },
     ]);
     expect(logEntries).toEqual(
       expect.arrayContaining([

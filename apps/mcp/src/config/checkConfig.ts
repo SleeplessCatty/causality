@@ -4,7 +4,7 @@ import type { McpCheckTransport } from '../diagnostics/mcpCheckTypes.js';
 
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:8081/mcp';
 const DEFAULT_API_URL = 'http://127.0.0.1:3000';
-const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+const TOKEN_PATTERN = /^cau_pat_[A-Za-z0-9_-]{43}$/;
 
 export interface McpCheckOptions {
   transport: McpCheckTransport;
@@ -104,7 +104,7 @@ export async function loadMcpCheckOptions(
 
   const token = env.CAUSALITY_MCP_CHECK_TOKEN ?? file.token ?? null;
   if (token !== null && !TOKEN_PATTERN.test(token)) {
-    throw new Error('MCP 检查 Token 必须是 64 位小写十六进制字符串');
+    throw new Error('MCP 检查 Token 必须是个人访问令牌');
   }
   const apiUrl = validHttpUrl(env.CAUSALITY_API_URL ?? DEFAULT_API_URL, 'Causality API');
   return {

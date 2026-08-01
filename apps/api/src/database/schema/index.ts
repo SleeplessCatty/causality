@@ -15,6 +15,7 @@ export { exportRequests } from './exportRequests.js';
 export { importBatches } from './importBatches.js';
 export { importRecords } from './importRecords.js';
 export { mcpSettings } from './mcpSettings.js';
+export { mcpAccessTokens } from './mcpAccessTokens.js';
 export { semanticEmbeddings, semanticVector } from './semanticEmbeddings.js';
 export { semanticIndexState } from './semanticIndexState.js';
 export { semanticJobs } from './semanticJobs.js';

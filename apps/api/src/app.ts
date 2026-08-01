@@ -1,10 +1,10 @@
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import swagger from '@fastify/swagger';
-import Fastify, { type FastifyServerOptions } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type { Pool } from 'pg';
 import {
   jsonSchemaTransform,
@@ -30,6 +30,12 @@ import {
 import { PostgresMcpSettingsRepository } from './features/mcp-settings/mcpSettingsRepository.js';
 import { McpSettingsService } from './features/mcp-settings/mcpSettingsService.js';
 import { registerMcpSettingsRoutes } from './features/mcp-settings/mcpSettingsRoutes.js';
+import { PostgresMcpAccessRepository } from './features/mcp-access/mcpAccessRepository.js';
+import { McpAccessService } from './features/mcp-access/mcpAccessService.js';
+import {
+  registerInternalMcpAuthorizationRoute,
+  registerMcpAccessRoutes,
+} from './features/mcp-access/mcpAccessRoutes.js';
 import {
   PostgresSemanticQueryContextRepository,
   SemanticQueryService,
@@ -75,6 +81,55 @@ const developmentInternalMcpSecret = 'ef'.repeat(32);
 function createHmacDigest(key: string): (value: string) => Buffer {
   const keyBuffer = Buffer.from(key, 'hex');
   return (value) => createHmac('sha256', keyBuffer).update(value).digest();
+}
+
+function firstHeader(request: { headers: Record<string, string | string[] | undefined> }, name: string) {
+  const value = request.headers[name];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function constantTimeSecretMatches(candidate: string | undefined, expected: string): boolean {
+  if (!candidate) return false;
+  const candidateBuffer = Buffer.from(candidate);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    candidateBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(candidateBuffer, expectedBuffer)
+  );
+}
+
+function privateMcpRouteAdapter(app: FastifyInstance): FastifyInstance {
+  let proxy: FastifyInstance;
+  const adapt = (value: unknown): unknown => {
+    if (typeof value !== 'function') return value;
+    return (...arguments_: unknown[]) => {
+      const [path, options, ...rest] = arguments_;
+      if (typeof path !== 'string' || !path.startsWith('/api/')) {
+        return Reflect.apply(value as (...args: unknown[]) => unknown, app, arguments_);
+      }
+      const schema =
+        options && typeof options === 'object' && 'schema' in options
+          ? { ...((options as { schema?: object }).schema ?? {}), hide: true }
+          : { hide: true };
+      const nextOptions =
+        options && typeof options === 'object'
+          ? { ...(options as object), schema }
+          : { schema };
+      return Reflect.apply(value as (...args: unknown[]) => unknown, app, [
+        path.slice('/api'.length),
+        nextOptions,
+        ...rest,
+      ]);
+    };
+  };
+  proxy = new Proxy(app, {
+    get(target, property, receiver) {
+      if (property === 'withTypeProvider') return () => proxy;
+      const value = Reflect.get(target, property, receiver);
+      return adapt(value);
+    },
+  }) as FastifyInstance;
+  return proxy;
 }
 
 export function buildApp(options: BuildAppOptions = {}) {
@@ -149,15 +204,17 @@ export function buildApp(options: BuildAppOptions = {}) {
             : { healthTimeoutMs: options.mcpHealthTimeoutMs }),
         },
       );
+      const mcpAccessService = new McpAccessService(
+        new PostgresMcpAccessRepository(databasePool),
+        new PostgresAuditWriter(),
+      );
       void app.register(async (business) => {
         markBusinessRoutes(business);
         business.addHook(
           'preHandler',
           createBusinessAuthHook({
             authService,
-            mcpSettingsService,
             publicOrigin,
-            internalMcpSecret: options.internalMcpSecret ?? developmentInternalMcpSecret,
           }),
         );
         registerEventRoutes(business, databasePool, semanticQuery);
@@ -186,8 +243,58 @@ export function buildApp(options: BuildAppOptions = {}) {
           },
         );
         registerMcpSettingsRoutes(business, mcpSettingsService);
+        registerMcpAccessRoutes(business, mcpAccessService);
         business.get('/api/openapi.json', { schema: { hide: true } }, async () => app.swagger());
       });
+      void app.register(
+        async (internalMcp) => {
+          internalMcp.addHook('preHandler', async (request, reply) => {
+            const internalSecret = firstHeader(request, 'x-causality-internal-mcp-secret');
+            const rawToken = firstHeader(request, 'x-causality-mcp-token');
+            const clientName = firstHeader(request, 'x-causality-mcp-client-name');
+            if (
+              !constantTimeSecretMatches(
+                internalSecret,
+                options.internalMcpSecret ?? developmentInternalMcpSecret,
+              ) ||
+              !rawToken
+            ) {
+              void reply.status(401).send({ code: 'MCP_UNAUTHORIZED', message: 'MCP 访问令牌无效' });
+              return;
+            }
+            const actor = await mcpAccessService.authorize(rawToken, clientName ?? null);
+            if (!actor) {
+              void reply.status(401).send({ code: 'MCP_UNAUTHORIZED', message: 'MCP 访问令牌无效' });
+              return;
+            }
+            request.actor = { ...actor, requestId: request.id };
+          });
+          registerInternalMcpAuthorizationRoute(internalMcp);
+          const privateRoutes = privateMcpRouteAdapter(internalMcp);
+          registerHealthRoute(privateRoutes);
+          registerReadinessRoute(privateRoutes, options.checkDatabase ?? (async () => false));
+          registerEventRoutes(privateRoutes, databasePool, semanticQuery);
+          registerRelationRoutes(privateRoutes, databasePool, semanticQuery);
+          registerCaseRoutes(privateRoutes, databasePool, semanticQuery);
+          registerCausalGraphRoutes(privateRoutes, databasePool);
+          registerCausalEvidenceRoutes(privateRoutes, databasePool);
+          registerSemanticRoutes(privateRoutes, databasePool, semanticWorkerClient);
+          registerAiCaptureRoutes(
+            privateRoutes,
+            createAiCaptureRouteDependencies(
+              databasePool,
+              semanticWorkerClient,
+              options.aiCaptureSemanticCandidates,
+            ),
+            {
+              ...(options.aiCaptureTimeoutMs === undefined
+                ? {}
+                : { requestTimeoutMs: options.aiCaptureTimeoutMs }),
+            },
+          );
+        },
+        { prefix: '/internal/mcp' },
+      );
     }
   });
 

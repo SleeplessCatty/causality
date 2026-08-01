@@ -13,6 +13,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
 import { CausalityApiClient } from '../api/causalityApiClient.js';
+import type { McpPrincipal } from '../auth/mcpPrincipal.js';
 import {
   describeMcpMessage,
   markMcpRequestProtocolError,
@@ -58,7 +59,7 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
 function bearerToken(request: IncomingMessage): string | null {
   const authorization = request.headers.authorization;
   if (!authorization) return null;
-  const match = /^Bearer ([0-9a-f]{64})$/.exec(authorization);
+  const match = /^Bearer (cau_pat_[A-Za-z0-9_-]{43})$/.exec(authorization);
   return match?.[1] ?? null;
 }
 
@@ -96,15 +97,20 @@ async function readJsonBody(request: IncomingMessage, limit: number): Promise<un
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
 }
 
-function requestScopedApi(storage: AsyncLocalStorage<CausalityApiClient>): CausalityMcpApi {
+interface McpRequestContext {
+  apiClient: CausalityApiClient;
+  principal: McpPrincipal;
+}
+
+function requestScopedApi(storage: AsyncLocalStorage<McpRequestContext>): CausalityMcpApi {
   return new Proxy({} as CausalityMcpApi, {
     get(_target, property) {
       return (...args: unknown[]) => {
-        const apiClient = storage.getStore();
-        if (!apiClient) throw new Error('MCP request context is unavailable');
-        const method = Reflect.get(apiClient, property);
+        const context = storage.getStore();
+        if (!context) throw new Error('MCP request context is unavailable');
+        const method = Reflect.get(context.apiClient, property);
         if (typeof method !== 'function') throw new Error('Unsupported Causality API operation');
-        return Reflect.apply(method, apiClient, args);
+        return Reflect.apply(method, context.apiClient, args);
       };
     },
   });
@@ -115,19 +121,41 @@ async function authorize(
   token: string,
   internalSecret: string,
   fetchImplementation: typeof fetch,
-): Promise<boolean> {
+  clientName: string | null,
+): Promise<McpPrincipal | null> {
   try {
-    const response = await fetchImplementation(new URL('/api/mcp/authorize', apiBaseUrl), {
+    const base = new URL(apiBaseUrl);
+    const response = await fetchImplementation(new URL('/internal/mcp/authorize', base), {
       method: 'POST',
       headers: {
         'x-causality-mcp-token': token,
         'x-causality-internal-mcp-secret': internalSecret,
+        ...(clientName ? { 'x-causality-mcp-client-name': clientName } : {}),
       },
     });
-    if (!response.ok) return false;
-    return mcpAuthorizationResponseSchema.safeParse(await response.json()).success;
+    if (!response.ok) return null;
+    const parsed = mcpAuthorizationResponseSchema.safeParse(await response.json());
+    return parsed.success
+      ? { userId: parsed.data.userId, username: parsed.data.username, tokenId: parsed.data.tokenId }
+      : null;
   } catch {
-    return false;
+    return null;
+  }
+}
+
+class SlidingWindowRateLimiter {
+  private readonly requests = new Map<string, number[]>();
+
+  public allow(key: string, limit: number, now = Date.now()): boolean {
+    const cutoff = now - 60_000;
+    const recent = (this.requests.get(key) ?? []).filter((time) => time > cutoff);
+    if (recent.length >= limit) {
+      this.requests.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.requests.set(key, recent);
+    return true;
   }
 }
 
@@ -165,8 +193,9 @@ export async function startCausalityMcpHttpServer(
   const fetchImplementation = options.fetch ?? fetch;
   const logger = options.logger ?? console;
   const sessions = new Map<string, Session>();
-  const requestStorage = new AsyncLocalStorage<CausalityApiClient>();
+  const requestStorage = new AsyncLocalStorage<McpRequestContext>();
   const scopedApi = requestScopedApi(requestStorage);
+  const rateLimiter = new SlidingWindowRateLimiter();
 
   const httpServer = createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', `http://${host}`).pathname;
@@ -205,13 +234,6 @@ export async function startCausalityMcpHttpServer(
       await rejectProtocol(413, 'request_too_large');
       return;
     }
-    if (
-      !(await authorize(options.apiBaseUrl, token, options.internalSecret, fetchImplementation))
-    ) {
-      await rejectProtocol(401, 'unauthorized');
-      return;
-    }
-
     let body: unknown;
     if (request.method === 'POST') {
       try {
@@ -222,18 +244,35 @@ export async function startCausalityMcpHttpServer(
         return;
       }
     }
+    const initializingClient = initializeClientInfo(body);
+    const principal = await authorize(
+      options.apiBaseUrl,
+      token,
+      options.internalSecret,
+      fetchImplementation,
+      initializingClient.clientName ?? null,
+    );
+    if (!principal) {
+      await rejectProtocol(401, 'unauthorized');
+      return;
+    }
+    const source = request.socket.remoteAddress ?? 'unknown';
+    if (!rateLimiter.allow(`token:${principal.tokenId}`, 60) || !rateLimiter.allow(`source:${source}`, 120)) {
+      await rejectProtocol(429, 'rate_limited');
+      return;
+    }
 
     const apiClient = new CausalityApiClient({
       baseUrl: options.apiBaseUrl,
       token,
       internalSecret: options.internalSecret,
+      pathPrefix: '/internal/mcp',
       fetch: fetchImplementation,
       ...(options.apiTimeoutMs === undefined ? {} : { timeoutMs: options.apiTimeoutMs }),
     });
     const rawSessionId = request.headers['mcp-session-id'];
     const sessionId = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
     let session = sessionId ? sessions.get(sessionId) : undefined;
-    const initializingClient = initializeClientInfo(body);
 
     try {
       if (!session && !sessionId && request.method === 'POST' && isInitializeRequest(body)) {
@@ -279,7 +318,7 @@ export async function startCausalityMcpHttpServer(
           ...(session.clientVersion === undefined ? {} : { clientVersion: session.clientVersion }),
         },
         () =>
-          requestStorage.run(apiClient, () =>
+          requestStorage.run({ apiClient, principal }, () =>
             session!.transport.handleRequest(request, response, body),
           ),
         logger,

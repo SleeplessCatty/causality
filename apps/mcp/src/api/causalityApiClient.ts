@@ -96,6 +96,7 @@ export interface CausalityApiClientOptions {
   baseUrl: string;
   token: string;
   internalSecret: string;
+  pathPrefix: '/internal/mcp';
   timeoutMs?: number;
   fetch?: typeof fetch;
 }
@@ -169,6 +170,7 @@ export class CausalityApiClient {
   private readonly baseUrl: URL;
   private readonly token: string;
   private readonly internalSecret: string;
+  private readonly pathPrefix: '/internal/mcp';
   private readonly timeoutMs: number;
   private readonly fetchImplementation: typeof fetch;
 
@@ -176,6 +178,7 @@ export class CausalityApiClient {
     this.baseUrl = new URL(options.baseUrl);
     this.token = options.token;
     this.internalSecret = options.internalSecret;
+    this.pathPrefix = options.pathPrefix;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.fetchImplementation = options.fetch ?? fetch;
   }
@@ -185,7 +188,7 @@ export class CausalityApiClient {
     page = 1,
     searchMode: SearchMode = 'standard',
   ): Promise<EventListResponse> {
-    return this.request('/api/events', {
+    return this.request('/events', {
       query: {
         q: query,
         page,
@@ -196,7 +199,7 @@ export class CausalityApiClient {
   }
 
   public getEvent(id: string): Promise<EventDetail> {
-    return this.request(`/api/events/${encodeURIComponent(id)}`, {
+    return this.request(`/events/${encodeURIComponent(id)}`, {
       schema: eventDetailSchema,
     });
   }
@@ -205,21 +208,21 @@ export class CausalityApiClient {
     id: string,
     input: { limit: number; cursor?: string },
   ): Promise<EventRelationListResponse> {
-    return this.request(`/api/events/${encodeURIComponent(id)}/relations`, {
+    return this.request(`/events/${encodeURIComponent(id)}/relations`, {
       query: { limit: input.limit, cursor: input.cursor },
       schema: eventRelationListResponseSchema,
     });
   }
 
   public searchCases(query: string, page = 1): Promise<CaseListResponse> {
-    return this.request('/api/cases', {
+    return this.request('/cases', {
       query: { q: query, page },
       schema: caseListResponseSchema,
     });
   }
 
   public getCase(id: string): Promise<CaseDetail> {
-    return this.request(`/api/cases/${encodeURIComponent(id)}`, {
+    return this.request(`/cases/${encodeURIComponent(id)}`, {
       schema: caseDetailSchema,
     });
   }
@@ -228,7 +231,7 @@ export class CausalityApiClient {
     id: string,
     input: { limit: number; cursor?: string },
   ): Promise<CaseRelationListResponse> {
-    return this.request(`/api/cases/${encodeURIComponent(id)}/relations`, {
+    return this.request(`/cases/${encodeURIComponent(id)}/relations`, {
       query: { limit: input.limit, cursor: input.cursor },
       schema: caseRelationListResponseSchema,
     });
@@ -239,14 +242,14 @@ export class CausalityApiClient {
     searchMode: 'standard' | 'enhanced',
     page = 1,
   ): Promise<RelationListResponse> {
-    return this.request('/api/relations', {
+    return this.request('/relations', {
       query: { q: query, searchMode, page },
       schema: relationListResponseSchema,
     });
   }
 
   public getRelation(id: string): Promise<RelationDetail> {
-    return this.request(`/api/relations/${encodeURIComponent(id)}`, {
+    return this.request(`/relations/${encodeURIComponent(id)}`, {
       schema: relationDetailSchema,
     });
   }
@@ -255,21 +258,21 @@ export class CausalityApiClient {
     id: string,
     input: { limit: number; cursor?: string } = { limit: DEFAULT_RELATION_PAGE_SIZE },
   ): Promise<RelationCaseListResponse> {
-    return this.request(`/api/relations/${encodeURIComponent(id)}/cases`, {
+    return this.request(`/relations/${encodeURIComponent(id)}/cases`, {
       query: { limit: input.limit, cursor: input.cursor },
       schema: relationCaseListResponseSchema,
     });
   }
 
   public queryGraph(input: CausalGraphQuery): Promise<CausalGraphResponse> {
-    return this.request('/api/causal-graph', {
+    return this.request('/causal-graph', {
       query: input,
       schema: causalGraphResponseSchema,
     });
   }
 
   public findCausalPaths(input: CausalPathQuery): Promise<CausalPathResponse> {
-    return this.request('/api/causal-paths', {
+    return this.request('/causal-paths', {
       query: input,
       schema: causalPathResponseSchema,
     });
@@ -278,7 +281,7 @@ export class CausalityApiClient {
   public getCausalEvidenceBundle(
     input: CausalEvidenceBundleInput,
   ): Promise<CausalEvidenceBundleResponse> {
-    return this.request('/api/causal-evidence-bundles', {
+    return this.request('/causal-evidence-bundles', {
       method: 'POST',
       body: input,
       schema: causalEvidenceBundleResponseSchema,
@@ -286,14 +289,14 @@ export class CausalityApiClient {
   }
 
   public getHealth(timeoutMs = STATUS_TIMEOUT_MS): Promise<HealthResponse> {
-    return this.request('/api/health', {
+    return this.request('/health', {
       schema: healthResponseSchema,
       timeoutMs,
     });
   }
 
   public getReadiness(timeoutMs = STATUS_TIMEOUT_MS): Promise<ReadinessResponse> {
-    return this.request('/api/ready', {
+    return this.request('/ready', {
       schema: readinessResponseSchema,
       timeoutMs,
       acceptedStatuses: [503],
@@ -301,14 +304,14 @@ export class CausalityApiClient {
   }
 
   public getSemanticLifecycle(timeoutMs = STATUS_TIMEOUT_MS): Promise<SemanticLifecycleSnapshot> {
-    return this.request('/api/semantic/lifecycle', {
+    return this.request('/semantic/lifecycle', {
       schema: semanticLifecycleSnapshotSchema,
       timeoutMs,
     });
   }
 
   public compare(input: AiCaptureCandidateSet): Promise<AiCaptureComparison> {
-    return this.request('/api/ai-captures/compare', {
+    return this.request('/ai-captures/compare', {
       method: 'POST',
       body: input,
       schema: aiCaptureComparisonSchema,
@@ -316,7 +319,7 @@ export class CausalityApiClient {
   }
 
   public prepare(input: PrepareAiImportPlanInput): Promise<AiImportPlan> {
-    return this.request('/api/ai-captures/plans', {
+    return this.request('/ai-captures/plans', {
       method: 'POST',
       body: input,
       schema: aiImportPlanSchema,
@@ -324,21 +327,21 @@ export class CausalityApiClient {
   }
 
   public async planStatus(id: string): Promise<AiImportPlanStatus> {
-    const plan = await this.request(`/api/ai-captures/plans/${encodeURIComponent(id)}`, {
+    const plan = await this.request(`/ai-captures/plans/${encodeURIComponent(id)}`, {
       schema: aiImportPlanSchema,
     });
     return plan.status;
   }
 
   public commit(id: string): Promise<AiImportCommitResult> {
-    return this.request(`/api/ai-captures/plans/${encodeURIComponent(id)}/commit`, {
+    return this.request(`/ai-captures/plans/${encodeURIComponent(id)}/commit`, {
       method: 'POST',
       schema: aiImportCommitResultSchema,
     });
   }
 
   public result(historyId: string): Promise<AiImportCommitResult> {
-    return this.request(`/api/ai-captures/results/${encodeURIComponent(historyId)}`, {
+    return this.request(`/ai-captures/results/${encodeURIComponent(historyId)}`, {
       schema: aiImportCommitResultSchema,
     });
   }
@@ -354,7 +357,7 @@ export class CausalityApiClient {
       });
     }
 
-    const url = new URL(path, this.baseUrl);
+    const url = new URL(`${this.pathPrefix}${path}`, this.baseUrl);
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined) url.searchParams.set(key, String(value));
     }

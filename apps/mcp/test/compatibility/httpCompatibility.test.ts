@@ -15,8 +15,8 @@ import {
   type McpTransportLogger,
 } from '../../src/transports/httpServer.js';
 
-const validToken = '1'.repeat(64);
-const rotatedToken = '2'.repeat(64);
+const validToken = `cau_pat_${'1'.repeat(43)}`;
+const rotatedToken = `cau_pat_${'2'.repeat(43)}`;
 const internalSecret = 'e'.repeat(64);
 const missingEventId = '00000000-0000-4000-8000-000000000000';
 
@@ -30,13 +30,18 @@ function fakeApi(state: ApiState): typeof fetch {
       typeof input === 'string' || input instanceof URL ? input.toString() : input.url,
     );
     const headers = new Headers(init?.headers);
-    if (url.pathname === '/api/mcp/authorize') {
+    if (url.pathname === '/internal/mcp/authorize') {
       return headers.get('x-causality-mcp-token') === state.token &&
         headers.get('x-causality-internal-mcp-secret') === internalSecret
-        ? Response.json({ authorized: true, tokenVersion: 1 })
+        ? Response.json({
+            authorized: true,
+            userId: '10000000-0000-4000-8000-000000000001',
+            username: 'wire-user',
+            tokenId: '10000000-0000-4000-8000-000000000002',
+          })
         : Response.json({ code: 'MCP_UNAUTHORIZED', message: 'invalid' }, { status: 401 });
     }
-    if (url.pathname === '/api/events') {
+    if (url.pathname === '/internal/mcp/events') {
       return Response.json({
         items: [],
         page: 1,
@@ -46,7 +51,7 @@ function fakeApi(state: ApiState): typeof fetch {
         semanticIndexNotice: null,
       });
     }
-    if (url.pathname.startsWith(`/api/events/${missingEventId}`)) {
+    if (url.pathname.startsWith(`/internal/mcp/events/${missingEventId}`)) {
       return Response.json({ code: 'EVENT_NOT_FOUND', message: '原子事件不存在' }, { status: 404 });
     }
     return Response.json({ code: 'NOT_FOUND', message: 'not found' }, { status: 404 });

@@ -9,8 +9,8 @@ import {
 } from '../src/transports/httpServer.js';
 import { buildInferOutcomesPrompt } from '../src/prompts/inferOutcomesPrompt.js';
 
-const firstToken = 'a'.repeat(64);
-const rotatedToken = 'b'.repeat(64);
+const firstToken = `cau_pat_${'a'.repeat(43)}`;
+const rotatedToken = `cau_pat_${'b'.repeat(43)}`;
 const internalSecret = 'e'.repeat(64);
 const requestBody = JSON.stringify({
   jsonrpc: '2.0',
@@ -36,7 +36,7 @@ function apiFetch(state: ApiState): typeof fetch {
       typeof input === 'string' || input instanceof URL ? input.toString() : input.url,
     );
     const headers = new Headers(init?.headers);
-    if (url.pathname === '/api/ai-captures/compare') {
+    if (url.pathname === '/internal/mcp/ai-captures/compare') {
       state.workflowTokens.push(headers.get('x-causality-mcp-token') ?? '');
       return Response.json({
         atomicEvents: [],
@@ -45,12 +45,12 @@ function apiFetch(state: ApiState): typeof fetch {
         relationCaseLinks: [],
       });
     }
-    if (['/api/health', '/api/ready', '/api/semantic/lifecycle'].includes(url.pathname)) {
+    if (['/internal/mcp/health', '/internal/mcp/ready', '/internal/mcp/semantic/lifecycle'].includes(url.pathname)) {
       state.statusTokens.push(headers.get('x-causality-mcp-token'));
-      if (url.pathname === '/api/health') {
+      if (url.pathname === '/internal/mcp/health') {
         return Response.json({ status: 'ok', service: 'causality-api' });
       }
-      if (url.pathname === '/api/ready') {
+      if (url.pathname === '/internal/mcp/ready') {
         return Response.json({ status: 'ready', database: 'available' });
       }
       return Response.json({
@@ -77,7 +77,7 @@ function apiFetch(state: ApiState): typeof fetch {
         updatedAt: '2026-07-30T12:00:00.000Z',
       });
     }
-    if (url.pathname !== '/api/mcp/authorize') {
+    if (url.pathname !== '/internal/mcp/authorize') {
       return Response.json({ code: 'NOT_FOUND', message: 'not found' }, { status: 404 });
     }
     const token = headers.get('x-causality-mcp-token') ?? '';
@@ -88,7 +88,12 @@ function apiFetch(state: ApiState): typeof fetch {
     ) {
       return Response.json({ code: 'MCP_UNAUTHORIZED', message: 'invalid' }, { status: 401 });
     }
-    return Response.json({ authorized: true, tokenVersion: 1 });
+    return Response.json({
+      authorized: true,
+      userId: '10000000-0000-4000-8000-000000000001',
+      username: 'mcp-user',
+      tokenId: '10000000-0000-4000-8000-000000000002',
+    });
   }) as typeof fetch;
 }
 

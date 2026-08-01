@@ -29,6 +29,7 @@ export async function connectCausalityMcpStdioServer(
     baseUrl: options.apiBaseUrl,
     token: options.token,
     internalSecret: options.internalSecret,
+    pathPrefix: '/internal/mcp',
     fetch: fetchImplementation,
     ...(options.apiTimeoutMs === undefined ? {} : { timeoutMs: options.apiTimeoutMs }),
   });

@@ -15,7 +15,7 @@ import {
   MCP_TOOL_NAMES,
 } from '../../src/capabilities/capabilityManifest.js';
 
-const token = '3'.repeat(64);
+const token = `cau_pat_${'3'.repeat(43)}`;
 const internalSecret = '4'.repeat(64);
 const missingEventId = '00000000-0000-4000-8000-000000000000';
 const stdioEntry = fileURLToPath(new URL('../../dist/stdio.js', import.meta.url));
@@ -46,7 +46,7 @@ describe('stdio process wire compatibility', () => {
     const api = createServer((request, response) => {
       const url = new URL(request.url ?? '/', 'http://127.0.0.1');
       response.setHeader('content-type', 'application/json');
-      if (url.pathname === '/api/mcp/settings') {
+      if (url.pathname === '/internal/mcp/mcp/settings') {
         response.end(
           JSON.stringify({
             serviceStatus: 'running',
@@ -64,7 +64,7 @@ describe('stdio process wire compatibility', () => {
         );
         return;
       }
-      if (url.pathname === '/api/events') {
+      if (url.pathname === '/internal/mcp/events') {
         response.end(
           JSON.stringify({
             items: [],
@@ -77,7 +77,7 @@ describe('stdio process wire compatibility', () => {
         );
         return;
       }
-      if (url.pathname.startsWith(`/api/events/${missingEventId}`)) {
+      if (url.pathname.startsWith(`/internal/mcp/events/${missingEventId}`)) {
         response.statusCode = 404;
         response.end(JSON.stringify({ code: 'EVENT_NOT_FOUND', message: '原子事件不存在' }));
         return;
@@ -95,7 +95,7 @@ describe('stdio process wire compatibility', () => {
       env: {
         ...getDefaultEnvironment(),
         CAUSALITY_API_URL: `http://127.0.0.1:${address.port}`,
-        CAUSALITY_MCP_LEGACY_TOKEN: token,
+        CAUSALITY_MCP_TOKEN: token,
         CAUSALITY_INTERNAL_MCP_SECRET: internalSecret,
       },
       stderr: 'pipe',

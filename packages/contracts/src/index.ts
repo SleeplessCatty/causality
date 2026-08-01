@@ -285,16 +285,23 @@ export {
 } from './maintenance/deletionSchemas.js';
 
 export {
+  createMcpTokenInputSchema,
+  createMcpTokenResponseSchema,
   mcpAuthorizationResponseSchema,
   mcpClientConfigSchema,
+  mcpPersonalAccessTokenSchema,
   mcpServiceStatusSchema,
   mcpSettingsResponseSchema,
-  mcpTokenRotationResponseSchema,
+  mcpTokenSummarySchema,
+  revokeMcpTokenResponseSchema,
+  type CreateMcpTokenInput,
+  type CreateMcpTokenResponse,
   type McpAuthorizationResponse,
   type McpClientConfig,
   type McpServiceStatus,
   type McpSettingsResponse,
-  type McpTokenRotationResponse,
+  type McpTokenSummary,
+  type RevokeMcpTokenResponse,
 } from './mcp/mcpSettingsSchemas.js';
 
 export {

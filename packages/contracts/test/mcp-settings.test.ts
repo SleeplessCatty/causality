@@ -1,19 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
-import { mcpSettingsResponseSchema, mcpTokenRotationResponseSchema } from '../src/index.js';
+import {
+  createMcpTokenInputSchema,
+  createMcpTokenResponseSchema,
+  mcpAuthorizationResponseSchema,
+  mcpPersonalAccessTokenSchema,
+  mcpSettingsResponseSchema,
+  mcpTokenSummarySchema,
+  revokeMcpTokenResponseSchema,
+} from '../src/index.js';
 
-const token = 'a'.repeat(64);
+const token = `cau_pat_${'a'.repeat(43)}`;
+const tokenId = '10000000-0000-4000-8000-000000000001';
 const settings = {
   serviceStatus: 'running',
   endpoint: 'http://127.0.0.1:8081/mcp',
-  maskedToken: `${'•'.repeat(12)}aaaa`,
-  accessToken: token,
-  tokenVersion: 1,
   updatedAt: '2026-07-28T10:00:00.000Z',
   clientConfig: {
     transport: 'streamable-http',
     url: 'http://127.0.0.1:8081/mcp',
-    headers: { Authorization: `Bearer ${token}` },
   },
 };
 
@@ -28,15 +33,22 @@ describe('MCP settings contracts', () => {
     ).toMatchObject({
       serviceStatus: 'stopped',
       endpoint: settings.endpoint,
-      tokenVersion: 1,
     });
   });
 
-  it('requires a 64-character lowercase hexadecimal token and positive version', () => {
-    expect(
-      mcpSettingsResponseSchema.safeParse({ ...settings, accessToken: 'not-a-token' }).success,
-    ).toBe(false);
-    expect(mcpSettingsResponseSchema.safeParse({ ...settings, tokenVersion: 0 }).success).toBe(
+  it('does not expose a reusable access token from MCP settings', () => {
+    const personalSettings = {
+      serviceStatus: 'running',
+      endpoint: 'http://127.0.0.1:8081/mcp',
+      updatedAt: '2026-07-28T10:00:00.000Z',
+      clientConfig: { transport: 'streamable-http', url: 'http://127.0.0.1:8081/mcp' },
+    };
+
+    expect(mcpSettingsResponseSchema.safeParse(personalSettings).success).toBe(true);
+  });
+
+  it('rejects a settings response that leaks an access token', () => {
+    expect(mcpSettingsResponseSchema.safeParse({ ...settings, accessToken: token }).success).toBe(
       false,
     );
   });
@@ -48,20 +60,41 @@ describe('MCP settings contracts', () => {
         clientConfig: { ...settings.clientConfig, url: 'http://127.0.0.1:9999/mcp' },
       }).success,
     ).toBe(false);
-    expect(
-      mcpSettingsResponseSchema.safeParse({
-        ...settings,
-        clientConfig: {
-          ...settings.clientConfig,
-          headers: { Authorization: `Bearer ${'b'.repeat(64)}` },
-        },
-      }).success,
-    ).toBe(false);
   });
 
-  it('wraps the newly rotated settings and rejects unknown properties', () => {
-    expect(mcpTokenRotationResponseSchema.parse({ settings })).toEqual({ settings });
-    expect(mcpTokenRotationResponseSchema.safeParse({ settings, oldToken: token }).success).toBe(
+  it('accepts one-time personal token creation and safe summaries', () => {
+    const summary = {
+      id: tokenId,
+      deviceName: 'Jason desktop',
+      createdAt: '2026-07-28T10:00:00.000Z',
+      lastUsedAt: null,
+      lastClientName: null,
+      revokedAt: null,
+    };
+    expect(mcpPersonalAccessTokenSchema.parse(token)).toBe(token);
+    expect(mcpTokenSummarySchema.parse(summary)).toEqual(summary);
+    expect(createMcpTokenInputSchema.parse({ deviceName: '  Jason desktop  ' })).toEqual({
+      deviceName: 'Jason desktop',
+    });
+    expect(createMcpTokenResponseSchema.parse({ token, summary })).toEqual({ token, summary });
+    expect(revokeMcpTokenResponseSchema.parse({ revoked: true })).toEqual({ revoked: true });
+  });
+
+  it('enforces device-name and personal-token boundaries', () => {
+    expect(createMcpTokenInputSchema.safeParse({ deviceName: '   ' }).success).toBe(false);
+    expect(createMcpTokenInputSchema.safeParse({ deviceName: 'a'.repeat(81) }).success).toBe(false);
+    expect(mcpPersonalAccessTokenSchema.safeParse(`cau_pat_${'a'.repeat(42)}`).success).toBe(false);
+  });
+
+  it('returns MCP authorization identity without a global token version', () => {
+    const authorization = {
+      authorized: true,
+      userId: '10000000-0000-4000-8000-000000000002',
+      username: 'jason',
+      tokenId,
+    };
+    expect(mcpAuthorizationResponseSchema.parse(authorization)).toEqual(authorization);
+    expect(mcpAuthorizationResponseSchema.safeParse({ ...authorization, tokenVersion: 1 }).success).toBe(
       false,
     );
   });

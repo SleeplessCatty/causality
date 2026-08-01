@@ -1,10 +1,13 @@
 import {
+  createMcpTokenResponseSchema,
   mcpSettingsResponseSchema,
-  mcpTokenRotationResponseSchema,
+  mcpTokenSummarySchema,
+  revokeMcpTokenResponseSchema,
+  type CreateMcpTokenResponse,
   semanticActionAcceptedSchema,
   semanticLifecycleSnapshotSchema,
   type McpSettingsResponse,
-  type McpTokenRotationResponse,
+  type McpTokenSummary,
   type SemanticActionAccepted,
   type SemanticLifecycleSnapshot,
   type SemanticModelCode,
@@ -18,11 +21,24 @@ export async function getMcpSettings(signal?: AbortSignal): Promise<McpSettingsR
   return mcpSettingsResponseSchema.parse(await requestJson('/api/mcp/settings', {}, signal));
 }
 
-export async function rotateMcpToken(): Promise<McpTokenRotationResponse> {
-  return mcpTokenRotationResponseSchema.parse(
+export async function listMcpTokens(signal?: AbortSignal): Promise<McpTokenSummary[]> {
+  return mcpTokenSummarySchema.array().parse(await requestJson('/api/mcp/tokens', {}, signal));
+}
+
+export async function createMcpToken(deviceName: string): Promise<CreateMcpTokenResponse> {
+  return createMcpTokenResponseSchema.parse(
+    await requestJson('/api/mcp/tokens', {
+      method: 'POST',
+      body: JSON.stringify({ deviceName }),
+    }),
+  );
+}
+
+export async function revokeMcpToken(tokenId: string): Promise<void> {
+  revokeMcpTokenResponseSchema.parse(
     await requestJson(
-      '/api/mcp/settings/rotate-token',
-      { method: 'POST' },
+      `/api/mcp/tokens/${encodeURIComponent(tokenId)}`,
+      { method: 'DELETE' },
       undefined,
       actionTimeoutMilliseconds,
     ),

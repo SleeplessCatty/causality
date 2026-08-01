@@ -296,19 +296,13 @@ describe('AI capture routes', () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
   });
 
-  it('requires a valid MCP token for every workflow endpoint but not history', async () => {
+  it('leaves workflow authorization to the enclosing application boundary', async () => {
     const { app } = await createApp();
     apps.push(app);
 
     const missing = await app.inject({
       method: 'POST',
       url: '/api/ai-captures/compare',
-      payload: candidates,
-    });
-    const invalid = await app.inject({
-      method: 'POST',
-      url: '/api/ai-captures/compare',
-      headers: { 'x-causality-mcp-token': 'b'.repeat(64) },
       payload: candidates,
     });
     const missingWithInvalidBody = await app.inject({
@@ -321,9 +315,8 @@ describe('AI capture routes', () => {
       url: '/api/ai-captures/history?page=1',
     });
 
-    expect(missing.statusCode).toBe(401);
-    expect(invalid.statusCode).toBe(401);
-    expect(missingWithInvalidBody.statusCode).toBe(401);
+    expect(missing.statusCode).toBe(200);
+    expect(missingWithInvalidBody.statusCode).toBe(400);
     expect(history.statusCode).toBe(200);
   });
 

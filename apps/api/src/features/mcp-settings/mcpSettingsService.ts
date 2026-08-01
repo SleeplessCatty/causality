@@ -1,8 +1,4 @@
-import type {
-  McpAuthorizationResponse,
-  McpSettingsResponse,
-  McpTokenRotationResponse,
-} from '@causality/contracts';
+import type { McpSettingsResponse } from '@causality/contracts';
 
 import type { McpSettingsRecord, McpSettingsRepository } from './mcpSettingsRepository.js';
 
@@ -22,10 +18,6 @@ async function defaultProbe(url: string, timeoutMs: number): Promise<boolean> {
   return response.ok;
 }
 
-function maskToken(token: string): string {
-  return `${token.slice(0, 4)}${'•'.repeat(8)}${token.slice(-4)}`;
-}
-
 export class McpSettingsService {
   private readonly healthTimeoutMs: number;
   private readonly probe: McpHealthProbe;
@@ -43,17 +35,6 @@ export class McpSettingsService {
     return this.response(settings, running);
   }
 
-  public async rotate(): Promise<McpTokenRotationResponse> {
-    const settings = await this.repository.rotate();
-    const running = await this.isRunning();
-    return { settings: this.response(settings, running) };
-  }
-
-  public async authorize(token: string): Promise<McpAuthorizationResponse | null> {
-    const tokenVersion = await this.repository.authorizeVersion(token);
-    return tokenVersion === null ? null : { authorized: true, tokenVersion };
-  }
-
   private async isRunning(): Promise<boolean> {
     try {
       return await this.probe(this.options.healthUrl, this.healthTimeoutMs);
@@ -66,14 +47,10 @@ export class McpSettingsService {
     return {
       serviceStatus: running ? 'running' : 'stopped',
       endpoint: this.options.endpoint,
-      maskedToken: maskToken(settings.accessToken),
-      accessToken: settings.accessToken,
-      tokenVersion: settings.tokenVersion,
       updatedAt: settings.updatedAt,
       clientConfig: {
         transport: 'streamable-http',
         url: this.options.endpoint,
-        headers: { Authorization: `Bearer ${settings.accessToken}` },
       },
     };
   }

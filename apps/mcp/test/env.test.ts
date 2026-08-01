@@ -10,11 +10,11 @@ describe('MCP environment', () => {
     expect(
       loadMcpEnv({
         CAUSALITY_INTERNAL_MCP_SECRET: '12'.repeat(32),
-        CAUSALITY_MCP_LEGACY_TOKEN: '34'.repeat(32),
+        CAUSALITY_MCP_TOKEN: `cau_pat_${'4'.repeat(43)}`,
       }),
     ).toMatchObject({
       CAUSALITY_INTERNAL_MCP_SECRET: '12'.repeat(32),
-      CAUSALITY_MCP_LEGACY_TOKEN: '34'.repeat(32),
+      CAUSALITY_MCP_TOKEN: `cau_pat_${'4'.repeat(43)}`,
     });
     expect(() => loadMcpEnv({ CAUSALITY_INTERNAL_MCP_SECRET: 'short' })).toThrow();
   });

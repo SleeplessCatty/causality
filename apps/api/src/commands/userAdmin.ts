@@ -180,6 +180,10 @@ async function mutateAccount(
         `update web_sessions set revoked_at = $2 where user_id = $1 and revoked_at is null`,
         [user.id, now],
       );
+      await client.query(
+        `update mcp_access_tokens set revoked_at = $2 where user_id = $1 and revoked_at is null`,
+        [user.id, now],
+      );
       await appendAccountAudit(client, actor, 'account.disabled', user.id, now);
     } else if (action === 'enable') {
       await client.query(`update users set enabled = true, updated_at = $2 where id = $1`, [

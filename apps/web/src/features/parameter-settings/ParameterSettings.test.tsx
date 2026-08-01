@@ -20,18 +20,13 @@ const acceptedAction = {
   taskId: '11111111-1111-4111-8111-111111111111',
   activeModelCode: 'bge-small-zh-v1.5' as const,
 };
-const mcpToken = 'c'.repeat(64);
 const mcpSettings: McpSettingsResponse = {
   serviceStatus: 'running',
   endpoint: 'http://127.0.0.1:8081/mcp',
-  maskedToken: `cccc${'•'.repeat(8)}cccc`,
-  accessToken: mcpToken,
-  tokenVersion: 1,
   updatedAt: timestamp,
   clientConfig: {
     transport: 'streamable-http',
     url: 'http://127.0.0.1:8081/mcp',
-    headers: { Authorization: `Bearer ${mcpToken}` },
   },
 };
 
@@ -172,9 +167,11 @@ function jsonResponse(body: unknown, status = 200): Promise<Response> {
 function withMcpSettings(
   handler: (input: string | URL | Request, options?: RequestInit) => Promise<Response>,
 ) {
-  return vi.fn((input: string | URL | Request, options?: RequestInit) =>
-    String(input) === '/api/mcp/settings' ? jsonResponse(mcpSettings) : handler(input, options),
-  );
+  return vi.fn((input: string | URL | Request, options?: RequestInit) => {
+    if (String(input) === '/api/mcp/settings') return jsonResponse(mcpSettings);
+    if (String(input) === '/api/mcp/tokens') return jsonResponse([]);
+    return handler(input, options);
+  });
 }
 
 function semanticRequestCount(

@@ -7,7 +7,7 @@ import {
   type McpCheckConnection,
 } from '../src/diagnostics/mcpCheck.js';
 
-const token = 'd'.repeat(64);
+const token = `cau_pat_${'d'.repeat(43)}`;
 
 describe('MCP compatibility diagnostic', () => {
   it('loads the default HTTP endpoint and explicit environment credentials', async () => {
@@ -36,7 +36,7 @@ describe('MCP compatibility diagnostic', () => {
 
   it('loads a selected config while environment values retain priority', async () => {
     const readFile = vi.fn(async () =>
-      JSON.stringify({ url: 'http://127.0.0.1:7000/mcp', token: 'e'.repeat(64) }),
+      JSON.stringify({ url: 'http://127.0.0.1:7000/mcp', token: `cau_pat_${'e'.repeat(43)}` }),
     );
     const options = await loadMcpCheckOptions(
       ['--config=/tmp/mcp-check.json'],
@@ -46,7 +46,7 @@ describe('MCP compatibility diagnostic', () => {
 
     expect(readFile).toHaveBeenCalledWith('/tmp/mcp-check.json', 'utf8');
     expect(options.endpoint).toBe('http://127.0.0.1:7100/mcp');
-    expect(options.token).toBe('e'.repeat(64));
+    expect(options.token).toBe(`cau_pat_${'e'.repeat(43)}`);
   });
 
   it('accepts stdio and rejects unsafe or malformed CLI configuration', async () => {

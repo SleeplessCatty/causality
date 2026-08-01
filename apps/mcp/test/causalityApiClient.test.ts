@@ -33,7 +33,7 @@ const caseId = '30000000-0000-4000-8000-000000000001';
 const planId = '40000000-0000-4000-8000-000000000001';
 const historyId = '50000000-0000-4000-8000-000000000001';
 const timestamp = '2026-07-28T12:00:00.000Z';
-const token = 'a'.repeat(64);
+const token = `cau_pat_${'a'.repeat(43)}`;
 const internalSecret = 'b'.repeat(64);
 
 const eventDetail: EventDetail = {
@@ -382,6 +382,7 @@ function createClient(fetchImplementation: typeof fetch) {
     baseUrl: 'http://api.test:3000/',
     token,
     internalSecret,
+    pathPrefix: '/internal/mcp',
     timeoutMs: 100,
     fetch: fetchImplementation,
   });
@@ -397,7 +398,7 @@ describe('CausalityApiClient', () => {
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
       requests.push({ url, ...(init ? { init } : {}) });
-      return jsonResponse(url.pathname === '/api/events' ? eventList : caseList);
+      return jsonResponse(url.pathname === '/internal/mcp/events' ? eventList : caseList);
     };
     const client = createClient(fetchImplementation);
 
@@ -410,9 +411,9 @@ describe('CausalityApiClient', () => {
     expect(cases.items[0]?.content).toBe('港口停运后工厂原料延迟到货');
     expect(requests.map(({ url }) => [url.pathname, Object.fromEntries(url.searchParams)])).toEqual(
       [
-        ['/api/events', { q: '供应 链/港口', page: '3' }],
-        ['/api/events', { q: '融资环境趋紧', page: '2', searchMode: 'enhanced' }],
-        ['/api/cases', { q: '停运 后', page: '4' }],
+        ['/internal/mcp/events', { q: '供应 链/港口', page: '3' }],
+        ['/internal/mcp/events', { q: '融资环境趋紧', page: '2', searchMode: 'enhanced' }],
+        ['/internal/mcp/cases', { q: '停运 后', page: '4' }],
       ],
     );
     for (const request of requests) {
@@ -463,12 +464,12 @@ describe('CausalityApiClient', () => {
       minCaseCount: 1,
     });
 
-    expect(urls[0]?.pathname).toBe(`/api/events/${eventId}/relations`);
+    expect(urls[0]?.pathname).toBe(`/internal/mcp/events/${eventId}/relations`);
     expect(Object.fromEntries(urls[0]!.searchParams)).toEqual({
       limit: '20',
       cursor: 'cursor value',
     });
-    expect(urls[1]?.pathname).toBe(`/api/relations/${relationId}/cases`);
+    expect(urls[1]?.pathname).toBe(`/internal/mcp/relations/${relationId}/cases`);
     expect(Object.fromEntries(urls[1]!.searchParams)).toEqual({
       limit: '50',
       cursor: 'case cursor',
@@ -487,8 +488,8 @@ describe('CausalityApiClient', () => {
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
       requests.push({ url, ...(init ? { init } : {}) });
-      if (url.pathname === `/api/cases/${caseId}`) return jsonResponse(caseDetail);
-      if (url.pathname === `/api/cases/${caseId}/relations`) {
+      if (url.pathname === `/internal/mcp/cases/${caseId}`) return jsonResponse(caseDetail);
+      if (url.pathname === `/internal/mcp/cases/${caseId}/relations`) {
         return jsonResponse(caseRelations);
       }
       return jsonResponse(relationList);
@@ -504,9 +505,9 @@ describe('CausalityApiClient', () => {
 
     expect(requests.map(({ url }) => [url.pathname, Object.fromEntries(url.searchParams)])).toEqual(
       [
-        [`/api/cases/${caseId}`, {}],
-        [`/api/cases/${caseId}/relations`, { limit: '20', cursor: 'next-case-relations' }],
-        ['/api/relations', { q: '融资成本', searchMode: 'standard', page: '2' }],
+        [`/internal/mcp/cases/${caseId}`, {}],
+        [`/internal/mcp/cases/${caseId}/relations`, { limit: '20', cursor: 'next-case-relations' }],
+        ['/internal/mcp/relations', { q: '融资成本', searchMode: 'standard', page: '2' }],
       ],
     );
     for (const request of requests) {
@@ -522,7 +523,7 @@ describe('CausalityApiClient', () => {
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
       requests.push({ url, ...(init ? { init } : {}) });
-      return jsonResponse(url.pathname === '/api/causal-paths' ? pathResponse : evidenceBundle);
+      return jsonResponse(url.pathname === '/internal/mcp/causal-paths' ? pathResponse : evidenceBundle);
     };
     const client = createClient(fetchImplementation);
 
@@ -539,7 +540,7 @@ describe('CausalityApiClient', () => {
       caseLimitPerRelation: 5,
     });
 
-    expect(requests[0]?.url.pathname).toBe('/api/causal-paths');
+    expect(requests[0]?.url.pathname).toBe('/internal/mcp/causal-paths');
     expect(Object.fromEntries(requests[0]!.url.searchParams)).toEqual({
       sourceEventId: eventId,
       targetEventId: effectEventId,
@@ -549,7 +550,7 @@ describe('CausalityApiClient', () => {
       minCaseCount: '1',
     });
     expect(requests[0]?.init?.method).toBe('GET');
-    expect(requests[1]?.url.pathname).toBe('/api/causal-evidence-bundles');
+    expect(requests[1]?.url.pathname).toBe('/internal/mcp/causal-evidence-bundles');
     expect(requests[1]?.init?.method).toBe('POST');
     expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({
       relationIds: [relationId],
@@ -562,8 +563,8 @@ describe('CausalityApiClient', () => {
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
       requests.push({ url, ...(init ? { init } : {}) });
-      if (url.pathname === '/api/health') return jsonResponse(health);
-      if (url.pathname === '/api/ready') return jsonResponse(readiness, 503);
+      if (url.pathname === '/internal/mcp/health') return jsonResponse(health);
+      if (url.pathname === '/internal/mcp/ready') return jsonResponse(readiness, 503);
       return jsonResponse(lifecycle);
     };
     const client = createClient(fetchImplementation);
@@ -573,9 +574,9 @@ describe('CausalityApiClient', () => {
     await expect(client.getSemanticLifecycle()).resolves.toEqual(lifecycle);
 
     expect(requests.map((request) => request.url.pathname)).toEqual([
-      '/api/health',
-      '/api/ready',
-      '/api/semantic/lifecycle',
+      '/internal/mcp/health',
+      '/internal/mcp/ready',
+      '/internal/mcp/semantic/lifecycle',
     ]);
     for (const request of requests) {
       expect(new Headers(request.init?.headers).get('x-causality-mcp-token')).toBe(token);
@@ -617,8 +618,8 @@ describe('CausalityApiClient', () => {
     const fetchImplementation: typeof fetch = async (input) => {
       const url = new URL(String(input));
       urls.push(url);
-      if (url.pathname === '/api/events') return jsonResponse(eventList);
-      if (url.pathname === '/api/cases') return jsonResponse(caseList);
+      if (url.pathname === '/internal/mcp/events') return jsonResponse(eventList);
+      if (url.pathname === '/internal/mcp/cases') return jsonResponse(caseList);
       return jsonResponse(relationCases);
     };
     const client = createClient(fetchImplementation);
@@ -635,7 +636,7 @@ describe('CausalityApiClient', () => {
   it('parses event and relation detail contracts', async () => {
     const fetchImplementation: typeof fetch = async (input) => {
       const path = new URL(String(input)).pathname;
-      return jsonResponse(path.startsWith('/api/events/') ? eventDetail : relationDetail);
+      return jsonResponse(path.startsWith('/internal/mcp/events/') ? eventDetail : relationDetail);
     };
     const client = createClient(fetchImplementation);
 
@@ -653,11 +654,11 @@ describe('CausalityApiClient', () => {
   it('forwards both bridge credentials for protected workflow operations', async () => {
     const requests: Array<{ url: URL; init?: RequestInit }> = [];
     const responses = new Map<string, unknown>([
-      ['/api/ai-captures/compare', comparison],
-      ['/api/ai-captures/plans', plan],
-      [`/api/ai-captures/plans/${planId}`, plan],
-      [`/api/ai-captures/plans/${planId}/commit`, commitResult],
-      [`/api/ai-captures/results/${historyId}`, commitResult],
+      ['/internal/mcp/ai-captures/compare', comparison],
+      ['/internal/mcp/ai-captures/plans', plan],
+      [`/internal/mcp/ai-captures/plans/${planId}`, plan],
+      [`/internal/mcp/ai-captures/plans/${planId}/commit`, commitResult],
+      [`/internal/mcp/ai-captures/results/${historyId}`, commitResult],
     ]);
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const developmentInternalMcpSecret = 'ef'.repeat(32);
 const secretSchema = z.string().regex(/^[0-9a-f]{64}$/);
+const personalTokenSchema = z.string().regex(/^cau_pat_[A-Za-z0-9_-]{43}$/);
 
 const mcpEnvSchema = z
   .object({
@@ -9,7 +10,7 @@ const mcpEnvSchema = z
     CAUSALITY_API_URL: z.url().default('http://127.0.0.1:3000'),
     CAUSALITY_API_TIMEOUT_MS: z.coerce.number().int().min(100).max(120_000).default(35_000),
     CAUSALITY_INTERNAL_MCP_SECRET: secretSchema.default(developmentInternalMcpSecret),
-    CAUSALITY_MCP_LEGACY_TOKEN: secretSchema.optional(),
+    CAUSALITY_MCP_TOKEN: personalTokenSchema.optional(),
     HOST: z.string().min(1).default('127.0.0.1'),
     PORT: z.coerce.number().int().min(0).max(65_535).default(8081),
     CAUSALITY_MCP_ALLOWED_ORIGINS: z

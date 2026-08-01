@@ -51,7 +51,6 @@ import {
   SemanticQueryError,
 } from '../semantic/semanticQueryService.js';
 import type { SemanticWorkerClient } from '../semantic/semanticWorkerClient.js';
-import { PostgresMcpSettingsRepository } from '../mcp-settings/mcpSettingsRepository.js';
 
 const AI_CAPTURE_BODY_LIMIT = 8 * 1024 * 1024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -81,16 +80,11 @@ interface ImportHistoryRepository {
   ): Promise<AiImportRecordListResponse>;
 }
 
-interface McpTokenAuthorizer {
-  authorize(token: string): Promise<boolean>;
-}
-
 export interface AiCaptureRouteDependencies {
   comparisonService: CandidateComparisonService;
   planService: ImportPlanService;
   commitService: ImportCommitService;
   historyRepository: ImportHistoryRepository;
-  authorizer: McpTokenAuthorizer;
 }
 
 export interface AiCaptureRouteOptions {
@@ -128,7 +122,6 @@ export function createAiCaptureRouteDependencies(
     ),
     commitService: new AiImportCommitService(new PostgresAiImportCommitRepository(pool)),
     historyRepository: new PostgresAiImportHistoryRepository(pool),
-    authorizer: new PostgresMcpSettingsRepository(pool),
   };
 }
 
@@ -229,20 +222,6 @@ function assertPlanReadable(plan: AiImportPlan): void {
       'AI 入库方案依赖的数据已经变化',
     );
   }
-}
-
-async function authorizeWorkflow(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  authorizer: McpTokenAuthorizer,
-): Promise<boolean> {
-  const raw = request.headers['x-causality-mcp-token'];
-  const token = Array.isArray(raw) ? raw[0] : raw;
-  if (!token || !(await authorizer.authorize(token))) {
-    sendError(reply, 401, 'MCP_UNAUTHORIZED', 'MCP 访问令牌无效');
-    return false;
-  }
-  return true;
 }
 
 async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
@@ -471,16 +450,11 @@ export function registerAiCaptureRoutes(
     request: FastifyRequest,
     reply: FastifyReply,
   ) => routeParserError(error, reply, 'plan', request.body);
-  const workflowAuth = async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!(await authorizeWorkflow(request, reply, dependencies.authorizer))) return reply;
-  };
-
   routes.post(
     '/api/ai-captures/compare',
     {
       bodyLimit: AI_CAPTURE_BODY_LIMIT,
       errorHandler: candidateParserErrorHandler,
-      preValidation: workflowAuth,
       schema: {
         tags: ['ai-captures'],
         body: aiCaptureCandidateSetInputSchema,
@@ -507,7 +481,6 @@ export function registerAiCaptureRoutes(
     {
       bodyLimit: AI_CAPTURE_BODY_LIMIT,
       errorHandler: planParserErrorHandler,
-      preValidation: workflowAuth,
       schema: {
         tags: ['ai-captures'],
         body: prepareAiImportPlanInputSchema,
@@ -534,7 +507,6 @@ export function registerAiCaptureRoutes(
   routes.get(
     '/api/ai-captures/plans/:planId',
     {
-      preValidation: workflowAuth,
       schema: {
         tags: ['ai-captures'],
         params: planParamsSchema,
@@ -563,7 +535,6 @@ export function registerAiCaptureRoutes(
   routes.post(
     '/api/ai-captures/plans/:planId/commit',
     {
-      preValidation: workflowAuth,
       schema: {
         tags: ['ai-captures'],
         params: planParamsSchema,
@@ -590,7 +561,6 @@ export function registerAiCaptureRoutes(
   routes.get(
     '/api/ai-captures/results/:historyId',
     {
-      preValidation: workflowAuth,
       schema: {
         tags: ['ai-captures'],
         params: historyParamsSchema,
