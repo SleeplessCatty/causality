@@ -31,7 +31,7 @@
   - voluntary password change: `/tmp/causality-voluntary-password.png` (1280×720 desktop viewport);
   - forced initial password change: `/tmp/causality-forced-password.png` (1280×720 desktop viewport).
 - The temporary browser-QA users and database were removed after validation.
-- `pnpm test` — passed: contracts 109, semantic-core 9, API 411, semantic-worker 61, MCP 125, web 344 tests.
+- `pnpm test` — passed after final review fixes: contracts 109, semantic-core 9, API 411, semantic-worker 61, MCP 125, web 345 tests.
 - `pnpm typecheck` — passed.
 - `pnpm lint` — passed.
 - `pnpm format:check` — passed.
