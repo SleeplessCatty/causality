@@ -15,10 +15,12 @@ fi
 pnpm test:mcp-compat
 
 cleanup() {
+  rm -f "$smoke_token_file"
+  smoke_token=""
+  smoke_digest=""
   CAUSALITY_WEB_PORT="$smoke_port" \
   CAUSALITY_MCP_PORT="$smoke_mcp_port" \
-  docker compose -p "$smoke_project" down --volumes --remove-orphans
-  rm -f "$smoke_token_file"
+  docker compose -p "$smoke_project" down --volumes --remove-orphans || true
 }
 trap cleanup EXIT INT TERM
 
@@ -29,9 +31,8 @@ CAUSALITY_WEB_PORT="$smoke_port" \
 CAUSALITY_MCP_PORT="$smoke_mcp_port" \
 docker compose -p "$smoke_project" up -d --build --wait
 
-smoke_token="$(node -e "const { randomBytes } = require('node:crypto'); process.stdout.write('cau_pat_' + randomBytes(32).toString('base64url'))")"
-smoke_digest="$(node -e "const { createHash } = require('node:crypto'); process.stdout.write(createHash('sha256').update(process.argv[1]).digest('hex'))" "$smoke_token")"
-printf '%s' "$smoke_token" >"$smoke_token_file"
+node -e "const { randomBytes } = require('node:crypto'); process.stdout.write('cau_pat_' + randomBytes(32).toString('base64url'))" >"$smoke_token_file"
+smoke_digest="$(node -e "const { createHash } = require('node:crypto'); const { readFileSync } = require('node:fs'); process.stdout.write(createHash('sha256').update(readFileSync(process.argv[1], 'utf8')).digest('hex'))" "$smoke_token_file")"
 CAUSALITY_WEB_PORT="$smoke_port" \
 CAUSALITY_MCP_PORT="$smoke_mcp_port" \
 docker compose -p "$smoke_project" exec -T postgres psql -U causality -d causality -v ON_ERROR_STOP=1 -c "
@@ -45,5 +46,5 @@ PRODUCTION_BASE_URL="http://127.0.0.1:${smoke_port}" \
 CAUSALITY_SMOKE_PROJECT="$smoke_project" \
 CAUSALITY_SMOKE_PORT="$smoke_port" \
 CAUSALITY_SMOKE_MCP_PORT="$smoke_mcp_port" \
-CAUSALITY_PRODUCTION_MCP_TOKEN="$(cat "$smoke_token_file")" \
+CAUSALITY_PRODUCTION_MCP_TOKEN="$(< "$smoke_token_file")" \
 pnpm exec playwright test --config=playwright.production.config.ts

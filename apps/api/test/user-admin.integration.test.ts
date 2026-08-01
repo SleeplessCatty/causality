@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -151,5 +151,48 @@ describe.sequential('server user administration CLI', () => {
         'account.unlocked',
       ]),
     );
+  });
+
+  it('revokes every personal token on disable and never restores it on re-enable', async () => {
+    const user = await context.pool.query<{ id: string }>(
+      `select id from users where normalized_username = 'friend'`,
+    );
+    const rawTokens = Array.from(
+      { length: 2 },
+      () => `cau_pat_${randomBytes(32).toString('base64url')}`,
+    );
+    for (const [index, token] of rawTokens.entries()) {
+      await context.pool.query(
+        `insert into mcp_access_tokens (user_id, token_digest, device_name)
+         values ($1, $2, $3)`,
+        [user.rows[0]!.id, createHash('sha256').update(token).digest(), `Admin test ${index}`],
+      );
+    }
+    resetHarness(['friend'], []);
+    await run('disable');
+    const revoked = await context.pool.query<{ revoked_at: Date | null }>(
+      `select revoked_at from mcp_access_tokens where user_id = $1 order by created_at desc limit 2`,
+      [user.rows[0]!.id],
+    );
+    expect(revoked.rows).toHaveLength(2);
+    expect(revoked.rows.every((token) => token.revoked_at instanceof Date)).toBe(true);
+    for (const token of rawTokens) {
+      const denied = await context.app.inject({
+        method: 'POST', url: '/internal/mcp/authorize', headers: {
+          'x-causality-mcp-token': token, 'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+        },
+      });
+      expect(denied.statusCode).toBe(401);
+    }
+    resetHarness(['friend'], []);
+    await run('enable');
+    for (const token of rawTokens) {
+      const denied = await context.app.inject({
+        method: 'POST', url: '/internal/mcp/authorize', headers: {
+          'x-causality-mcp-token': token, 'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+        },
+      });
+      expect(denied.statusCode).toBe(401);
+    }
   });
 });

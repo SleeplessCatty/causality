@@ -148,7 +148,14 @@ export class PostgresMcpAccessRepository implements McpAccessRepository {
     tokenDigest: Buffer,
   ): Promise<McpAccessTokenRecord | null> {
     const result = await client.query<TokenRow>(
-      `${selectColumns} where t.token_digest = $1 and t.revoked_at is null for update`,
+      `select t.id, t.user_id,
+              (select username from users where id = t.user_id) as username,
+              (select enabled from users where id = t.user_id) as enabled,
+              t.token_digest, t.device_name, t.created_at, t.last_used_at,
+              t.last_client_name, t.revoked_at
+       from mcp_access_tokens t
+       where t.token_digest = $1 and t.revoked_at is null
+       for update of t`,
       [tokenDigest],
     );
     return result.rows[0] ? mapRecord(result.rows[0]) : null;

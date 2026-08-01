@@ -6,6 +6,9 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startPostgresTestContext } from './support/postgresTestContext.js';
+import { PostgresAuditWriter } from '../src/features/audit/auditRepository.js';
+import { PostgresMcpAccessRepository } from '../src/features/mcp-access/mcpAccessRepository.js';
+import { McpAccessService } from '../src/features/mcp-access/mcpAccessService.js';
 
 describe.sequential('MCP personal access token HTTP API', () => {
   let context: Awaited<ReturnType<typeof startPostgresTestContext>>;
@@ -90,5 +93,54 @@ describe.sequential('MCP personal access token HTTP API', () => {
          values ((select id from users where username = 'integration-user'), decode(repeat('ab', 32), 'hex'), '  not trimmed  ')`,
       ),
     ).rejects.toThrow();
+  });
+
+  it('keeps token lists and revocation isolated between users', async () => {
+    const passwordHash = 'isolation-test-password';
+    const userB = await context.pool.query<{ id: string }>(
+      `insert into users (username, password_hash, must_change_password)
+       values ('mcp-isolated-user', $1, false) returning id`, [passwordHash],
+    );
+    const service = new McpAccessService(
+      new PostgresMcpAccessRepository(context.pool), new PostgresAuditWriter(),
+    );
+    const actorA = { actorType: 'user' as const, userId: (await context.pool.query<{ id: string }>(`select id from users where username = 'integration-user'`)).rows[0]!.id, username: 'integration-user', channel: 'web' as const, requestId: 'a' };
+    const actorB = { actorType: 'user' as const, userId: userB.rows[0]!.id, username: 'mcp-isolated-user', channel: 'web' as const, requestId: 'b' };
+    const bToken = await service.create(actorB, 'Isolated B');
+    expect((await service.list(actorA)).some((token) => token.id === bToken.summary.id)).toBe(false);
+    await expect(service.revoke(actorA, bToken.summary.id)).rejects.toMatchObject({ code: 'TOKEN_NOT_FOUND' });
+    expect(await service.authorize(bToken.token)).toMatchObject({ userId: actorB.userId });
+    const firstUse = await context.anonymousInject({
+      method: 'POST', url: '/internal/mcp/authorize', headers: {
+        'x-causality-mcp-token': bToken.token,
+        'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+        'x-causality-mcp-client-name': 'Desktop A',
+      },
+    });
+    expect(firstUse.statusCode).toBe(200);
+    await context.pool.query(
+      `update mcp_access_tokens set last_used_at = clock_timestamp() - interval '1 minute'
+       where id = $1`, [bToken.summary.id],
+    );
+    await context.anonymousInject({ method: 'POST', url: '/internal/mcp/authorize', headers: {
+      'x-causality-mcp-token': bToken.token, 'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+      'x-causality-mcp-client-name': 'Desktop B',
+    } });
+    const throttled = await context.pool.query<{ last_client_name: string | null }>(
+      `select last_client_name from mcp_access_tokens where id = $1`, [bToken.summary.id],
+    );
+    expect(throttled.rows[0]?.last_client_name).toBe('Desktop A');
+    await context.pool.query(
+      `update mcp_access_tokens set last_used_at = clock_timestamp() - interval '6 minutes'
+       where id = $1`, [bToken.summary.id],
+    );
+    await context.anonymousInject({ method: 'POST', url: '/internal/mcp/authorize', headers: {
+      'x-causality-mcp-token': bToken.token, 'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+      'x-causality-mcp-client-name': 'Desktop B',
+    } });
+    const refreshed = await context.pool.query<{ last_client_name: string | null }>(
+      `select last_client_name from mcp_access_tokens where id = $1`, [bToken.summary.id],
+    );
+    expect(refreshed.rows[0]?.last_client_name).toBe('Desktop B');
   });
 });

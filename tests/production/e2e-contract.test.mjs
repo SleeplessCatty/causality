@@ -87,6 +87,16 @@ test('the production smoke script allocates and forwards a separate MCP port', (
   assert.match(productionScript, /CAUSALITY_SMOKE_MCP_PORT="\$smoke_mcp_port"/);
 });
 
+test('production smoke never passes its personal token in argv and deletes the secret before teardown', () => {
+  const cleanupStart = productionScript.indexOf('cleanup() {');
+  const cleanupEnd = productionScript.indexOf('\n}', cleanupStart);
+  const cleanupBody = productionScript.slice(cleanupStart, cleanupEnd);
+  assert.match(productionScript, /readFileSync\(process\.argv\[1\]/);
+  assert.doesNotMatch(productionScript, /process\.argv\[1\].*smoke_token\)/);
+  assert.ok(cleanupBody.indexOf('rm -f "$smoke_token_file"') < cleanupBody.indexOf('docker compose'));
+  assert.match(cleanupBody, /smoke_token=""/);
+});
+
 test('the MCP benchmark is isolated, fixed-size, and cleans up every owned process', () => {
   assert.equal(packageJson.scripts['mcp:benchmark'], 'bash scripts/run-mcp-benchmark.sh');
   assert.match(mcpBenchmarkScript, /mktemp -d/);
