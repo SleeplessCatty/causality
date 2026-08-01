@@ -39,6 +39,14 @@ describe.sequential('MCP personal access token HTTP API', () => {
     );
     expect(stored.rows[0]?.token_digest).toHaveLength(32);
     expect(JSON.stringify(stored.rows[0])).not.toContain(body.token);
+    const authorized = await context.anonymousInject({
+      method: 'POST', url: '/internal/mcp/authorize', headers: {
+        'x-causality-mcp-token': body.token,
+        'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+      },
+    });
+    expect(authorized.statusCode).toBe(200);
+    expect(authorized.json()).toMatchObject({ authorized: true, tokenId: body.summary.id, username: 'integration-user' });
 
     const listed = await context.app.inject({ method: 'GET', url: '/api/mcp/tokens' });
     expect(listed.statusCode).toBe(200);
@@ -66,11 +74,16 @@ describe.sequential('MCP personal access token HTTP API', () => {
 
   it('enforces the active-token limit under concurrent creates and rejects untrimmed writes', async () => {
     const created = await Promise.all(
-      Array.from({ length: 10 }, (_, index) =>
+      Array.from({ length: 11 }, (_, index) =>
         context.app.inject({ method: 'POST', url: '/api/mcp/tokens', payload: { deviceName: `Client ${index}` } }),
       ),
     );
-    expect(created.map((response) => response.statusCode)).toEqual(Array(10).fill(201));
+    expect(created.filter((response) => response.statusCode === 201)).toHaveLength(10);
+    expect(created.filter((response) => response.statusCode === 409)).toHaveLength(1);
+    const active = await context.pool.query<{ count: string }>(
+      `select count(*) from mcp_access_tokens where user_id = (select id from users where username = 'integration-user') and revoked_at is null`,
+    );
+    expect(active.rows[0]?.count).toBe('10');
     await expect(
       context.pool.query(
         `insert into mcp_access_tokens (user_id, token_digest, device_name)

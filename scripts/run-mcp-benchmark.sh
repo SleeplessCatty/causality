@@ -74,10 +74,10 @@ done
 ready_values="$(node -e '
   const fs = require("node:fs");
   const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  if (value.inserted.events !== 10000 || value.inserted.relations !== 30000 || value.inserted.cases !== 100000) process.exit(2);
-  process.stdout.write([value.apiUrl, value.batchId].join("\t"));
+  if (value.inserted.events !== 10000 || value.inserted.relations !== 30000 || value.inserted.cases !== 100000 || !/^cau_pat_[A-Za-z0-9_-]{43}$/.test(value.token)) process.exit(2);
+  process.stdout.write([value.apiUrl, value.batchId, value.token].join("\t"));
 ' "$benchmark_ready_file")"
-IFS=$'\t' read -r benchmark_api_url benchmark_batch_id <<<"$ready_values"
+IFS=$'\t' read -r benchmark_api_url benchmark_batch_id benchmark_token <<<"$ready_values"
 
 (
   unset DATABASE_URL
@@ -105,6 +105,7 @@ CAUSALITY_MCP_BENCHMARK_API_URL="$benchmark_api_url" \
 CAUSALITY_MCP_BENCHMARK_ENDPOINT="http://127.0.0.1:${benchmark_mcp_port}/mcp" \
 CAUSALITY_MCP_BENCHMARK_BATCH_ID="$benchmark_batch_id" \
 CAUSALITY_MCP_BENCHMARK_OUTPUT="$benchmark_output" \
+CAUSALITY_MCP_BENCHMARK_TOKEN="$benchmark_token" \
 apps/mcp/node_modules/.bin/tsx apps/mcp/src/benchmark/mcpBenchmarkClient.ts
 
 echo "MCP benchmark summary: $benchmark_output"

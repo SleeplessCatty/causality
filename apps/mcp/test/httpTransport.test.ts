@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   startCausalityMcpHttpServer,
+  SlidingWindowRateLimiter,
   type CausalityMcpHttpServer,
   type McpTransportLogger,
 } from '../src/transports/httpServer.js';
@@ -213,6 +214,24 @@ describe('Streamable HTTP transport security', () => {
 
     expect(responses.filter((response) => response.status === 429)).toHaveLength(1);
     expect(state.authorizeCalls).toHaveLength(120);
+  });
+
+  it('bounds pre-auth source buckets and reclaims expired keys', () => {
+    const limiter = new SlidingWindowRateLimiter(2, 60_000);
+    expect(limiter.allow('source:a', 120, 0)).toBe(true);
+    expect(limiter.allow('source:b', 120, 0)).toBe(true);
+    expect(limiter.allow('source:c', 120, 0)).toBe(false);
+    expect(limiter.allow('source:c', 120, 60_001)).toBe(true);
+    expect(limiter.size).toBe(1);
+  });
+
+  it('limits a successfully authorized personal token on its 61st request', async () => {
+    const { server, state } = await start();
+    const responses = await Promise.all(
+      Array.from({ length: 61 }, () => postMcp(server, { token: firstToken })),
+    );
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(1);
+    expect(state.authorizeCalls).toHaveLength(61);
   });
 
   it('rejects an untrusted browser Origin with 403 before authorization', async () => {

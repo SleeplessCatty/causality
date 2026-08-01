@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   createServer,
   type IncomingMessage,
@@ -77,10 +77,6 @@ function requestSource(request: IncomingMessage, trustedProxyAddresses: Set<stri
   const candidate = Array.isArray(forwarded) ? forwarded[0] : forwarded;
   if (trustedProxyAddresses.has(remote) && candidate) return normalizeIp(candidate) ?? remote;
   return remote;
-}
-
-function tokenRateKey(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
 }
 
 function contentLengthExceeds(request: IncomingMessage, limit: number): boolean {
@@ -163,20 +159,34 @@ async function authorize(
   }
 }
 
-class SlidingWindowRateLimiter {
+export class SlidingWindowRateLimiter {
   private readonly requests = new Map<string, number[]>();
+  public constructor(
+    private readonly capacity = 4_096,
+    private readonly windowMilliseconds = 60_000,
+  ) {}
 
   public allow(key: string, limit: number, now = Date.now()): boolean {
-    const cutoff = now - 60_000;
+    const cutoff = now - this.windowMilliseconds;
+    for (const [existingKey, times] of this.requests) {
+      const active = times.filter((time) => time > cutoff);
+      if (active.length === 0) this.requests.delete(existingKey);
+      else if (active.length !== times.length) this.requests.set(existingKey, active);
+    }
     const recent = (this.requests.get(key) ?? []).filter((time) => time > cutoff);
     if (recent.length >= limit) {
       this.requests.set(key, recent);
+      return false;
+    }
+    if (recent.length === 0 && !this.requests.has(key) && this.requests.size >= this.capacity) {
       return false;
     }
     recent.push(now);
     this.requests.set(key, recent);
     return true;
   }
+
+  public get size(): number { return this.requests.size; }
 }
 
 function listen(server: HttpServer, host: string, port: number): Promise<void> {
@@ -220,7 +230,8 @@ export async function startCausalityMcpHttpServer(
   const sessions = new Map<string, Session>();
   const requestStorage = new AsyncLocalStorage<McpRequestContext>();
   const scopedApi = requestScopedApi(requestStorage);
-  const rateLimiter = new SlidingWindowRateLimiter();
+  const sourceRateLimiter = new SlidingWindowRateLimiter();
+  const tokenRateLimiter = new SlidingWindowRateLimiter();
 
   const httpServer = createServer(async (request, response) => {
     const path = new URL(request.url ?? '/', `http://${host}`).pathname;
@@ -251,9 +262,7 @@ export async function startCausalityMcpHttpServer(
     }
 
     const token = bearerToken(request);
-    const sourceAllowed = rateLimiter.allow(`source:${requestSource(request, trustedProxyAddresses)}`, 120);
-    const tokenAllowed = token ? rateLimiter.allow(`token:${tokenRateKey(token)}`, 60) : true;
-    if (!sourceAllowed || !tokenAllowed) {
+    if (!sourceRateLimiter.allow(`source:${requestSource(request, trustedProxyAddresses)}`, 120)) {
       await rejectProtocol(429, 'rate_limited');
       return;
     }
@@ -288,6 +297,10 @@ export async function startCausalityMcpHttpServer(
     );
     if (!principal) {
       await rejectProtocol(401, 'unauthorized');
+      return;
+    }
+    if (!tokenRateLimiter.allow(`token:${principal.tokenId}`, 60)) {
+      await rejectProtocol(429, 'rate_limited');
       return;
     }
 

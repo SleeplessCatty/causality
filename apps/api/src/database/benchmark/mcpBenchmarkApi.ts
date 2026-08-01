@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 
 import { Pool } from 'pg';
@@ -93,6 +94,16 @@ async function main(): Promise<void> {
     });
     await runMigrations(pool);
     const simulation = await runSimulation(pool, dataset, 'mcp-capacity-20260731');
+    const benchmarkToken = `cau_pat_${randomBytes(32).toString('base64url')}`;
+    const benchmarkUser = await pool.query<{ id: string }>(
+      `insert into users (username, password_hash, must_change_password)
+       values ('mcp-benchmark', 'benchmark-only-password-hash', false) returning id`,
+    );
+    await pool.query(
+      `insert into mcp_access_tokens (user_id, token_digest, device_name)
+       values ($1, $2, 'mcp-benchmark-runner')`,
+      [benchmarkUser.rows[0]!.id, createHash('sha256').update(benchmarkToken).digest()],
+    );
     app = buildApp({
       databasePool: pool,
       checkDatabase: async () => true,
@@ -108,6 +119,7 @@ async function main(): Promise<void> {
       JSON.stringify({
         apiUrl: `http://${host}:${port}`,
         batchId: simulation.batchId,
+        token: benchmarkToken,
         inserted: simulation.inserted,
       }),
       { encoding: 'utf8', mode: 0o600 },

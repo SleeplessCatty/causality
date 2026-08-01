@@ -234,13 +234,9 @@ describe.sequential('AI capture typed HTTP workflow', () => {
       },
       payload: emptyCandidates,
     });
-    const missing = await context.anonymousInject({
+    const missing = await context.app.inject({
       method: 'GET',
       url: '/api/ai-captures/plans/90000000-0000-4000-8000-000000000001',
-      headers: {
-        'x-causality-mcp-token': token,
-        'x-causality-internal-mcp-secret': internalMcpSecret,
-      },
     });
 
     const comparison = {
