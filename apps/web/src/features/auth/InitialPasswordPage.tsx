@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { ApiClientError } from '../../shared/api/httpClient';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
 import { useAuth } from './AuthProvider';
+import { PasswordField } from './PasswordField';
 
 function resolveReturnTo(state: unknown): string {
   if (typeof state !== 'object' || state === null || !('returnTo' in state)) return '/events';
@@ -63,11 +64,6 @@ export function InitialPasswordPage() {
     }
   }
 
-  async function exit() {
-    await auth.logout();
-    navigate('/login', { replace: true });
-  }
-
   return (
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="password-change-title">
@@ -82,24 +78,20 @@ export function InitialPasswordPage() {
         ) : null}
         <form className="auth-form" onSubmit={(event) => void submit(event)} noValidate>
           {!isInitial ? (
-            <>
-              <label htmlFor="auth-current-password">当前密码</label>
-              <input
-                id="auth-current-password"
-                type="password"
-                value={currentPassword}
-                autoComplete="current-password"
-                minLength={12}
-                maxLength={128}
-                autoFocus
-                onChange={(event) => setCurrentPassword(event.target.value)}
-              />
-            </>
+            <PasswordField
+              id="auth-current-password"
+              label="当前密码"
+              value={currentPassword}
+              autoComplete="current-password"
+              minLength={12}
+              maxLength={128}
+              autoFocus
+              onChange={(event) => setCurrentPassword(event.target.value)}
+            />
           ) : null}
-          <label htmlFor="auth-new-password">新密码</label>
-          <input
+          <PasswordField
             id="auth-new-password"
-            type="password"
+            label="新密码"
             value={newPassword}
             autoComplete="new-password"
             minLength={12}
@@ -107,10 +99,9 @@ export function InitialPasswordPage() {
             autoFocus={isInitial}
             onChange={(event) => setNewPassword(event.target.value)}
           />
-          <label htmlFor="auth-confirm-password">确认新密码</label>
-          <input
+          <PasswordField
             id="auth-confirm-password"
-            type="password"
+            label="确认新密码"
             value={confirmation}
             autoComplete="new-password"
             minLength={12}
@@ -118,9 +109,15 @@ export function InitialPasswordPage() {
             onChange={(event) => setConfirmation(event.target.value)}
           />
           <div className="auth-form__actions">
-            <button className="button button--secondary" type="button" onClick={() => void exit()}>
-              退出登录
-            </button>
+            {!isInitial ? (
+              <button
+                className="button button--secondary"
+                type="button"
+                onClick={() => navigate(returnTo, { replace: true })}
+              >
+                取消
+              </button>
+            ) : null}
             <button className="button button--primary" type="submit" disabled={submitting}>
               {submitting ? '保存中…' : '保存新密码'}
             </button>

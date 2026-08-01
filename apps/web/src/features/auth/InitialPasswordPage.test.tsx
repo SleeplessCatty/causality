@@ -111,4 +111,118 @@ describe('InitialPasswordPage', () => {
       newPassword: 'Changed!Pass123',
     });
   });
+
+  it('lets each password field be shown independently', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      response({
+        user: {
+          id: '123e4567-e89b-42d3-a456-426614174000',
+          username: 'Jason',
+          mustChangePassword: false,
+        },
+        csrfToken: 'csrf-token',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const router = createMemoryRouter(
+      [{ path: '/change-initial-password', element: <InitialPasswordPage /> }],
+      { initialEntries: ['/change-initial-password'] },
+    );
+    render(
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>,
+    );
+
+    const currentPassword = await screen.findByLabelText('当前密码');
+    const newPassword = screen.getByLabelText('新密码', { exact: true });
+    const confirmation = screen.getByLabelText('确认新密码');
+    expect(currentPassword.getAttribute('type')).toBe('password');
+    expect(newPassword.getAttribute('type')).toBe('password');
+    expect(confirmation.getAttribute('type')).toBe('password');
+
+    fireEvent.click(screen.getByRole('button', { name: '显示当前密码' }));
+    expect(currentPassword.getAttribute('type')).toBe('text');
+    expect(newPassword.getAttribute('type')).toBe('password');
+    expect(confirmation.getAttribute('type')).toBe('password');
+
+    fireEvent.click(screen.getByRole('button', { name: '显示新密码' }));
+    expect(currentPassword.getAttribute('type')).toBe('text');
+    expect(newPassword.getAttribute('type')).toBe('text');
+    expect(confirmation.getAttribute('type')).toBe('password');
+
+    fireEvent.click(screen.getByRole('button', { name: '显示确认新密码' }));
+    expect(currentPassword.getAttribute('type')).toBe('text');
+    expect(newPassword.getAttribute('type')).toBe('text');
+    expect(confirmation.getAttribute('type')).toBe('text');
+
+    fireEvent.click(screen.getByRole('button', { name: '隐藏新密码' }));
+    expect(currentPassword.getAttribute('type')).toBe('text');
+    expect(newPassword.getAttribute('type')).toBe('password');
+    expect(confirmation.getAttribute('type')).toBe('text');
+  });
+
+  it('returns to the prior page when a user cancels a password change without logging out', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      response({
+        user: {
+          id: '123e4567-e89b-42d3-a456-426614174000',
+          username: 'Jason',
+          mustChangePassword: false,
+        },
+        csrfToken: 'csrf-token',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const router = createMemoryRouter(
+      [
+        { path: '/change-initial-password', element: <InitialPasswordPage /> },
+        { path: '/relations', element: <div>关系页面</div> },
+      ],
+      {
+        initialEntries: [
+          { pathname: '/change-initial-password', state: { returnTo: '/relations?tab=all' } },
+        ],
+      },
+    );
+    render(
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>,
+    );
+
+    await screen.findByRole('heading', { name: '修改密码' });
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+
+    expect(await screen.findByText('关系页面')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/relations');
+    expect(router.state.location.search).toBe('?tab=all');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not offer cancellation while an initial password must be changed', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      response({
+        user: {
+          id: '123e4567-e89b-42d3-a456-426614174000',
+          username: 'Jason',
+          mustChangePassword: true,
+        },
+        csrfToken: 'csrf-token',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const router = createMemoryRouter(
+      [{ path: '/change-initial-password', element: <InitialPasswordPage /> }],
+      { initialEntries: ['/change-initial-password'] },
+    );
+    render(
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>,
+    );
+
+    await screen.findByRole('heading', { name: '设置新密码' });
+    expect(screen.queryByRole('button', { name: '取消' })).toBeNull();
+  });
 });
