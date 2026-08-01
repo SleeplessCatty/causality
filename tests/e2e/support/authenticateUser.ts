@@ -18,7 +18,7 @@ export async function authenticateUser(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/change-initial-password$/);
   await expect(page.getByLabel('初始密码')).toHaveCount(0);
   await page.getByLabel('新密码', { exact: true }).fill(e2ePassword);
-  await page.getByLabel('确认新密码').fill(e2ePassword);
+  await page.getByLabel('确认新密码', { exact: true }).fill(e2ePassword);
   await page.getByRole('button', { name: '保存新密码' }).click();
   await expect(page).toHaveURL(/\/events$/);
 
