@@ -28,15 +28,24 @@ function renderPanel() {
 describe('McpSettingsPanel', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('shows service help without exposing a token', async () => {
+  it('groups the service overview, token management, and client configuration help', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() => jsonResponse(settings)),
     );
     renderPanel();
     const panel = await screen.findByRole('region', { name: 'MCP 服务' });
-    expect(await within(panel).findByText('运行中')).toBeTruthy();
-    expect(within(panel).getByText(settings.endpoint)).toBeTruthy();
+    const overview = await within(panel).findByRole('region', { name: '服务概览' });
+    expect(await within(overview).findByText('运行中')).toBeTruthy();
+    expect(within(overview).getByText(settings.endpoint)).toBeTruthy();
+    expect(within(overview).getByText('15')).toBeTruthy();
+    expect(within(overview).getByText('Tool')).toBeTruthy();
+    expect(within(overview).getByText('5')).toBeTruthy();
+    expect(within(overview).getByText('Prompt')).toBeTruthy();
+    expect(within(overview).getByText('4')).toBeTruthy();
+    expect(within(overview).getByText('Resource')).toBeTruthy();
+    expect(within(panel).getByRole('region', { name: '个人令牌管理' })).toBeTruthy();
+    expect(within(panel).getByRole('region', { name: '客户端配置说明' })).toBeTruthy();
     expect(within(panel).queryByText(token)).toBeNull();
   });
 
@@ -67,12 +76,18 @@ describe('McpSettingsPanel', () => {
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: '创建个人令牌' }));
     const dialog = screen.getByRole('dialog', { name: '创建 MCP 个人令牌' });
-    fireEvent.change(within(dialog).getByLabelText('设备名称'), { target: { value: 'Desktop' } });
+    expect(within(dialog).getByText('设置一个便于识别的令牌名称。')).toBeTruthy();
+    expect(within(dialog).queryByText(/设备名称|为此客户端/)).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText('令牌名称'), { target: { value: 'Desktop' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '创建令牌' }));
     expect(await within(dialog).findByText(token)).toBeTruthy();
     expect(
       within(dialog).getByText('此令牌仅显示一次。关闭窗口后无法再次查看，请立即保存。'),
     ).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/mcp/tokens',
+      expect.objectContaining({ body: JSON.stringify({ deviceName: 'Desktop' }) }),
+    );
     fireEvent.click(within(dialog).getByRole('button', { name: '复制完整 JSON 配置' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining(token)));
   });
@@ -97,10 +112,14 @@ describe('McpSettingsPanel', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
     const panel = await screen.findByRole('region', { name: 'MCP 服务' });
-    expect(await within(panel).findByText(/15 个 Tool、5 个 Prompt 和 4 个 Resource/)).toBeTruthy();
-    expect(within(panel).getByText(/不支持 OAuth discovery/)).toBeTruthy();
+    const help = await within(panel).findByRole('region', { name: '客户端配置说明' });
+    expect(within(help).getByText(/不支持 OAuth discovery/)).toBeTruthy();
     fireEvent.click(within(panel).getByRole('button', { name: '撤销' }));
     const dialog = screen.getByRole('dialog', { name: '撤销 MCP 个人令牌' });
+    expect(
+      within(dialog).getByText('撤销令牌“Desktop”后，使用该令牌的连接将在下一次请求时被拒绝。'),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/客户端|设备/)).toBeNull();
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(tokenId))).toBe(false);
     fireEvent.click(within(dialog).getByRole('button', { name: '确认撤销' }));
     await waitFor(() =>

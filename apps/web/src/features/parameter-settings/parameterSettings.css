@@ -18,26 +18,62 @@
   box-shadow: 0 10px 28px rgb(35 50 41 / 6%);
 }
 
-.mcp-settings-details {
-  display: grid;
-  grid-template-columns: 110px minmax(220px, 1fr) minmax(320px, 1.4fr);
-  margin: 0;
+.mcp-settings-block {
   padding: 13px 0;
   border-bottom: 1px solid #e2e8e3;
 }
 
+.mcp-settings-block:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.mcp-settings-block__heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.mcp-settings-block__heading h3 {
+  margin: 0;
+  color: #28493c;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.mcp-settings-block__heading p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.mcp-settings-block__heading--actions .button,
+.mcp-settings-token-table .button {
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.mcp-settings-details {
+  display: grid;
+  grid-template-columns: 120px minmax(240px, 1fr) minmax(270px, 0.8fr);
+  margin: 9px 0 0;
+  padding: 0;
+  border: 1px solid #dfe6e1;
+  border-radius: 6px;
+  background: #fbfcfb;
+}
+
 .mcp-settings-details > div {
   min-width: 0;
-  padding: 0 14px;
+  padding: 10px 12px;
   border-right: 1px solid #e2e8e3;
 }
 
-.mcp-settings-details > div:first-child {
-  padding-left: 0;
-}
-
 .mcp-settings-details > div:last-child {
-  padding-right: 0;
   border-right: 0;
 }
 
@@ -62,6 +98,32 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mcp-settings-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 13px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mcp-settings-capabilities li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.mcp-settings-capabilities strong {
+  color: #183d30;
+  font-size: 13px;
+}
+
+.mcp-settings-capabilities span {
+  color: #66746c;
+  font-size: 10px;
 }
 
 .mcp-settings-status {
@@ -100,15 +162,68 @@
 }
 
 .mcp-settings-alert {
-  min-width: 240px;
-  margin-right: auto;
+  margin-top: 10px;
 }
 
 .mcp-settings-copy-status {
-  margin-right: auto;
+  display: block;
+  margin-top: 8px;
   color: var(--accent);
   font-size: 11px;
   font-weight: 680;
+}
+
+.mcp-settings-table-state {
+  padding: 14px 0 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mcp-settings-token-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.mcp-settings-token-table th,
+.mcp-settings-token-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5eae6;
+  color: #385247;
+  font-size: 11px;
+  text-align: left;
+}
+
+.mcp-settings-token-table th {
+  background: #f6f9f7;
+  color: #6b786f;
+  font-size: 10px;
+  font-weight: 680;
+}
+
+.mcp-settings-token-table th:first-child,
+.mcp-settings-token-table td:first-child {
+  width: 42%;
+  padding-left: 12px;
+}
+
+.mcp-settings-token-table th:last-child,
+.mcp-settings-token-table td:last-child {
+  width: 82px;
+  padding-right: 0;
+  text-align: right;
+}
+
+.mcp-settings-token-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mcp-settings-help {
+  margin: 7px 0 0;
+  color: #586a61;
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .mcp-settings-state {

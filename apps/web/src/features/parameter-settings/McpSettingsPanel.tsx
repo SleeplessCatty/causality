@@ -103,7 +103,7 @@ export function McpSettingsPanel() {
         <div className="semantic-settings-section__heading">
           <div>
             <h2 id="mcp-settings-title">MCP 服务</h2>
-            <p>个人令牌只会在创建时显示一次。</p>
+            <p>查看服务状态，管理个人令牌并获取客户端配置说明。</p>
           </div>
         </div>
         {settings.isPending ? (
@@ -123,93 +123,129 @@ export function McpSettingsPanel() {
           </div>
         ) : (
           <>
-            <dl className="mcp-settings-details">
-              <div>
-                <dt>状态</dt>
-                <dd>
-                  <span
-                    className={[
-                      'mcp-settings-status',
-                      current.serviceStatus === 'running'
-                        ? 'mcp-settings-status--running'
-                        : 'mcp-settings-status--stopped',
-                    ].join(' ')}
-                  >
-                    {current.serviceStatus === 'running' ? '运行中' : '未运行'}
-                  </span>
-                </dd>
+            <section className="mcp-settings-block" aria-labelledby="mcp-overview-title">
+              <div className="mcp-settings-block__heading">
+                <h3 id="mcp-overview-title">服务概览</h3>
               </div>
-              <div>
-                <dt>连接地址</dt>
-                <dd>
-                  <code title={current.endpoint}>{current.endpoint}</code>
-                </dd>
+              <dl className="mcp-settings-details">
+                <div>
+                  <dt>运行状态</dt>
+                  <dd>
+                    <span
+                      className={[
+                        'mcp-settings-status',
+                        current.serviceStatus === 'running'
+                          ? 'mcp-settings-status--running'
+                          : 'mcp-settings-status--stopped',
+                      ].join(' ')}
+                    >
+                      {current.serviceStatus === 'running' ? '运行中' : '未运行'}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>连接地址</dt>
+                  <dd>
+                    <code title={current.endpoint}>{current.endpoint}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>服务能力</dt>
+                  <dd>
+                    <ul className="mcp-settings-capabilities" aria-label="服务能力">
+                      <li>
+                        <strong>15</strong>
+                        <span>Tool</span>
+                      </li>
+                      <li>
+                        <strong>5</strong>
+                        <span>Prompt</span>
+                      </li>
+                      <li>
+                        <strong>4</strong>
+                        <span>Resource</span>
+                      </li>
+                    </ul>
+                  </dd>
+                </div>
+              </dl>
+            </section>
+            <section className="mcp-settings-block" aria-labelledby="mcp-tokens-title">
+              <div className="mcp-settings-block__heading mcp-settings-block__heading--actions">
+                <div>
+                  <h3 id="mcp-tokens-title">个人令牌管理</h3>
+                  <p>个人令牌只会在创建时显示一次。</p>
+                </div>
+                <button
+                  className="button button--primary"
+                  type="button"
+                  onClick={() => {
+                    setCreatedToken(undefined);
+                    setCreateOpen(true);
+                  }}
+                >
+                  创建个人令牌
+                </button>
               </div>
-            </dl>
-            <p>
-              MCP 提供 15 个 Tool、5 个 Prompt 和 4 个 Resource。请在支持手工 Bearer Token
-              配置的客户端中使用下面创建的个人令牌；不支持 OAuth discovery 或仅 OAuth 的客户端。
-            </p>
-            {actionError ? (
-              <div className="form-alert mcp-settings-alert" role="alert">
-                {actionError}
-              </div>
-            ) : null}
-            {copied ? (
-              <span className="mcp-settings-copy-status" role="status">
-                已复制
-              </span>
-            ) : null}
-            <div className="mcp-settings-actions">
-              <button
-                className="button button--primary"
-                type="button"
-                onClick={() => {
-                  setCreatedToken(undefined);
-                  setCreateOpen(true);
-                }}
-              >
-                创建个人令牌
-              </button>
-            </div>
-            <h3>个人令牌</h3>
-            {tokens.isPending ? (
-              <div role="status">正在读取令牌…</div>
-            ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>设备</th>
-                    <th>最近使用</th>
-                    <th>状态</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tokens.data?.map((token) => (
-                    <tr key={token.id}>
-                      <td>{token.deviceName}</td>
-                      <td>{token.lastUsedAt ?? '从未'}</td>
-                      <td>{token.revokedAt ? '已撤销' : '有效'}</td>
-                      <td>
-                        {token.revokedAt ? null : (
-                          <button
-                            className="button button--secondary"
-                            type="button"
-                            disabled={revoke.isPending}
-                            onClick={() =>
-                              setRevokeToken({ id: token.id, deviceName: token.deviceName })
-                            }
-                          >
-                            撤销
-                          </button>
-                        )}
-                      </td>
+              {actionError ? (
+                <div className="form-alert mcp-settings-alert" role="alert">
+                  {actionError}
+                </div>
+              ) : null}
+              {copied ? (
+                <span className="mcp-settings-copy-status" role="status">
+                  已复制
+                </span>
+              ) : null}
+              {tokens.isPending ? (
+                <div className="mcp-settings-table-state" role="status">
+                  正在读取令牌…
+                </div>
+              ) : (
+                <table className="mcp-settings-token-table">
+                  <thead>
+                    <tr>
+                      <th>令牌名称</th>
+                      <th>最近使用</th>
+                      <th>状态</th>
+                      <th>操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                  </thead>
+                  <tbody>
+                    {tokens.data?.map((token) => (
+                      <tr key={token.id}>
+                        <td>{token.deviceName}</td>
+                        <td>{token.lastUsedAt ?? '从未'}</td>
+                        <td>{token.revokedAt ? '已撤销' : '有效'}</td>
+                        <td>
+                          {token.revokedAt ? null : (
+                            <button
+                              className="button button--secondary"
+                              type="button"
+                              disabled={revoke.isPending}
+                              onClick={() =>
+                                setRevokeToken({ id: token.id, deviceName: token.deviceName })
+                              }
+                            >
+                              撤销
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+            <section className="mcp-settings-block" aria-labelledby="mcp-client-help-title">
+              <div className="mcp-settings-block__heading">
+                <h3 id="mcp-client-help-title">客户端配置说明</h3>
+              </div>
+              <p className="mcp-settings-help">
+                请在支持手工 Bearer Token 配置的客户端中使用个人令牌；不支持 OAuth discovery 或仅
+                OAuth 的客户端。
+              </p>
+            </section>
           </>
         )}
       </section>
@@ -280,9 +316,9 @@ export function McpSettingsPanel() {
           </>
         ) : (
           <>
-            <p id="mcp-token-create-description">为此客户端设置一个容易识别的设备名称。</p>
+            <p id="mcp-token-create-description">设置一个便于识别的令牌名称。</p>
             <label>
-              设备名称
+              令牌名称
               <input
                 value={deviceName}
                 maxLength={80}
@@ -329,7 +365,7 @@ export function McpSettingsPanel() {
         }
       >
         <p id="mcp-token-revoke-description">
-          撤销“{revokeToken?.deviceName}”后，该客户端和当前会话的下一次请求将立即被拒绝。
+          撤销令牌“{revokeToken?.deviceName}”后，使用该令牌的连接将在下一次请求时被拒绝。
         </p>
       </AppDialog>
     </>
