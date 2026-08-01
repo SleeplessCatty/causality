@@ -38,7 +38,6 @@ export function PasswordField({
           className="auth-password-field__toggle"
           type="button"
           aria-label={visibilityAction}
-          aria-pressed={isVisible}
           onClick={() => setIsVisible((visible) => !visible)}
         >
           {isVisible ? '隐藏' : '显示'}

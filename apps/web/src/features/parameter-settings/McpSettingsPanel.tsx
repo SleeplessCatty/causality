@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiClientError } from '../../shared/api/httpClient';
 import { AppDialog } from '../../shared/dialog/AppDialog';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
+import { OverflowText } from '../../shared/tooltip/OverflowText';
 import {
   createMcpToken,
   getMcpSettings,
@@ -218,7 +219,11 @@ export function McpSettingsPanel() {
                   <tbody>
                     {tokens.data?.map((token) => (
                       <tr key={token.id}>
-                        <td>{token.deviceName}</td>
+                        <td>
+                          <OverflowText content={token.deviceName} mode="always">
+                            <span className="mcp-settings-token-name">{token.deviceName}</span>
+                          </OverflowText>
+                        </td>
                         <td>{token.lastUsedAt ?? '从未'}</td>
                         <td>{token.revokedAt ? '已撤销' : '有效'}</td>
                         <td>

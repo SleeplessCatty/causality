@@ -141,8 +141,13 @@ describe('InitialPasswordPage', () => {
     expect(newPassword.getAttribute('type')).toBe('password');
     expect(confirmation.getAttribute('type')).toBe('password');
 
-    fireEvent.click(screen.getByRole('button', { name: '显示当前密码' }));
+    const currentVisibilityButton = screen.getByRole('button', { name: '显示当前密码' });
+    expect(currentVisibilityButton.getAttribute('aria-pressed')).toBeNull();
+    fireEvent.click(currentVisibilityButton);
     expect(currentPassword.getAttribute('type')).toBe('text');
+    expect(
+      screen.getByRole('button', { name: '隐藏当前密码' }).getAttribute('aria-pressed'),
+    ).toBeNull();
     expect(newPassword.getAttribute('type')).toBe('password');
     expect(confirmation.getAttribute('type')).toBe('password');
 

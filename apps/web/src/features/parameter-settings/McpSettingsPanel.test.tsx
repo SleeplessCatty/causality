@@ -72,6 +72,24 @@ describe('McpSettingsPanel', () => {
     expect(within(panel).queryByText(/设备名称|为此客户端/)).toBeNull();
   });
 
+  it('keeps an 80-character token name contained and exposes its complete value', async () => {
+    const longTokenName = 'A'.repeat(80);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string | URL | Request) =>
+        String(input).endsWith('/api/mcp/settings')
+          ? jsonResponse(settings)
+          : jsonResponse([{ ...activeToken, deviceName: longTokenName }]),
+      ),
+    );
+    renderPanel();
+
+    const tokenName = await screen.findByText(longTokenName);
+    expect(tokenName.classList.contains('overflow-text--single-line')).toBe(true);
+    fireEvent.focus(tokenName);
+    expect((await screen.findByRole('tooltip')).textContent).toBe(longTokenName);
+  });
+
   it('shows a newly-created token once, copies exact values, and forgets it after closing', async () => {
     const writeText = vi.fn((value: string) => {
       void value;

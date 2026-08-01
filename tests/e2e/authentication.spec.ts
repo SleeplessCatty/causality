@@ -21,3 +21,24 @@ test('desktop session redirects anonymous users and supports login and current-s
     await context.close();
   }
 });
+
+test('voluntary password change cancel returns to the originating page without logging out', async ({
+  page,
+}) => {
+  await page.goto('/settings');
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole('heading', { name: '参数配置' })).toBeVisible();
+
+  await page.getByRole('button', { name: '打开当前用户菜单' }).click();
+  await page.getByRole('menuitem', { name: '修改密码' }).click();
+  await expect(page).toHaveURL(/\/change-initial-password$/);
+  await expect(page.getByRole('heading', { name: '修改密码' })).toBeVisible();
+
+  await page.getByRole('button', { name: '取消' }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole('heading', { name: '参数配置' })).toBeVisible();
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page.getByRole('heading', { name: '参数配置' })).toBeVisible();
+});

@@ -219,6 +219,11 @@
   border-bottom: 0;
 }
 
+.mcp-settings-token-name {
+  display: block;
+  min-width: 0;
+}
+
 .mcp-settings-help {
   margin: 7px 0 0;
   color: #586a61;
