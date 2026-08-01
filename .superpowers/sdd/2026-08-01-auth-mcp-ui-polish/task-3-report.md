@@ -27,3 +27,16 @@
 ## Concerns
 
 No known concerns. The focused Playwright spec was updated but not executed because this task's verification scope called for the focused component suite, Web typecheck, ESLint, and Prettier; no backend, shared contract, or research files were changed.
+
+## Review Fix Round
+
+- Scoped creation, table, “令牌名称” header, and revocation assertions to the “个人令牌管理” region; the full MCP panel also rejects the former “设备名称” and “为此客户端” copy.
+- Added exact clipboard assertions for the raw token and parsed JSON configuration, plus a regression proving that a saved one-time token is forgotten when the creation dialog is reopened.
+- Added a stateful revocation test proving query invalidation refreshes the row to “已撤销” and removes its revoke action.
+- Added creation, clipboard, and revocation failure tests. Alerts now remain visible inside the active dialog, and a failed revocation leaves the token effective and retryable.
+- Expanded the MCP Playwright flow through create, one-time save/close, reopen without the old token, confirmed revocation, and the final revoked state.
+- Current-implementation RED: the three new error tests failed because alerts were outside the open dialogs.
+- Mutation RED: removing `setCreatedToken(undefined)` exposed the saved token after reopening and failed the one-time-token regression.
+- Mutation RED: removing MCP token query invalidation kept the row effective and failed the confirmed-revocation regression.
+- Restored both mutations and confirmed GREEN with all 6 focused component tests passing.
+- Re-ran Web typecheck, related ESLint, and related Prettier checks successfully. The expanded Playwright spec is left for the root agent's configured E2E run.

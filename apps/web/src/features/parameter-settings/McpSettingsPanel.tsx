@@ -65,7 +65,10 @@ export function McpSettingsPanel() {
   });
   const revoke = useMutation({
     mutationFn: revokeMcpToken,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: mcpTokensQueryKey }),
+    onSuccess: () => {
+      setActionError(undefined);
+      void queryClient.invalidateQueries({ queryKey: mcpTokensQueryKey });
+    },
     onError: reportError,
   });
 
@@ -181,13 +184,14 @@ export function McpSettingsPanel() {
                   type="button"
                   onClick={() => {
                     setCreatedToken(undefined);
+                    setActionError(undefined);
                     setCreateOpen(true);
                   }}
                 >
                   创建个人令牌
                 </button>
               </div>
-              {actionError ? (
+              {actionError && !createOpen && !revokeToken ? (
                 <div className="form-alert mcp-settings-alert" role="alert">
                   {actionError}
                 </div>
@@ -223,9 +227,10 @@ export function McpSettingsPanel() {
                               className="button button--secondary"
                               type="button"
                               disabled={revoke.isPending}
-                              onClick={() =>
-                                setRevokeToken({ id: token.id, deviceName: token.deviceName })
-                              }
+                              onClick={() => {
+                                setActionError(undefined);
+                                setRevokeToken({ id: token.id, deviceName: token.deviceName });
+                              }}
                             >
                               撤销
                             </button>
@@ -291,6 +296,11 @@ export function McpSettingsPanel() {
           </>
         }
       >
+        {actionError ? (
+          <div className="form-alert mcp-settings-alert" role="alert">
+            {actionError}
+          </div>
+        ) : null}
         {createdToken ? (
           <>
             <p id="mcp-token-create-description">
@@ -367,6 +377,11 @@ export function McpSettingsPanel() {
         <p id="mcp-token-revoke-description">
           撤销令牌“{revokeToken?.deviceName}”后，使用该令牌的连接将在下一次请求时被拒绝。
         </p>
+        {actionError ? (
+          <div className="form-alert mcp-settings-alert" role="alert">
+            {actionError}
+          </div>
+        ) : null}
       </AppDialog>
     </>
   );
