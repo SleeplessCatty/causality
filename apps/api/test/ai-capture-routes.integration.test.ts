@@ -225,7 +225,7 @@ describe.sequential('AI capture typed HTTP workflow', () => {
   });
 
   it('returns stable authorization, not-found, and expired responses', async () => {
-    const unauthorized = await context.app.inject({
+    const unauthorized = await context.anonymousInject({
       method: 'POST',
       url: '/api/ai-captures/compare',
       headers: {
@@ -234,7 +234,7 @@ describe.sequential('AI capture typed HTTP workflow', () => {
       },
       payload: emptyCandidates,
     });
-    const missing = await context.app.inject({
+    const missing = await context.anonymousInject({
       method: 'GET',
       url: '/api/ai-captures/plans/90000000-0000-4000-8000-000000000001',
       headers: {

@@ -46,24 +46,6 @@ describe('stdio process wire compatibility', () => {
     const api = createServer((request, response) => {
       const url = new URL(request.url ?? '/', 'http://127.0.0.1');
       response.setHeader('content-type', 'application/json');
-      if (url.pathname === '/internal/mcp/mcp/settings') {
-        response.end(
-          JSON.stringify({
-            serviceStatus: 'running',
-            endpoint: 'http://127.0.0.1:8081/mcp',
-            maskedToken: '3333…3333',
-            accessToken: token,
-            tokenVersion: 1,
-            updatedAt: '2026-07-31T00:00:00.000Z',
-            clientConfig: {
-              transport: 'streamable-http',
-              url: 'http://127.0.0.1:8081/mcp',
-              headers: { Authorization: `Bearer ${token}` },
-            },
-          }),
-        );
-        return;
-      }
       if (url.pathname === '/internal/mcp/events') {
         response.end(
           JSON.stringify({

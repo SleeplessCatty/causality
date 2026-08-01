@@ -33,6 +33,12 @@ describe.sequential('MCP personal access token HTTP API', () => {
     expect(body.token).toMatch(/^cau_pat_[A-Za-z0-9_-]{43}$/);
     expect(body.summary.deviceName).toBe('Jason desktop');
     expect(body.summary.revokedAt).toBeNull();
+    const stored = await context.pool.query<{ token_digest: Buffer; device_name: string }>(
+      `select token_digest, device_name from mcp_access_tokens where id = $1`,
+      [body.summary.id],
+    );
+    expect(stored.rows[0]?.token_digest).toHaveLength(32);
+    expect(JSON.stringify(stored.rows[0])).not.toContain(body.token);
 
     const listed = await context.app.inject({ method: 'GET', url: '/api/mcp/tokens' });
     expect(listed.statusCode).toBe(200);
@@ -49,5 +55,27 @@ describe.sequential('MCP personal access token HTTP API', () => {
     const afterRevoke = await context.app.inject({ method: 'GET', url: '/api/mcp/tokens' });
     expect(afterRevoke.json()).toHaveLength(1);
     expect(mcpTokenSummarySchema.parse(afterRevoke.json()[0]).revokedAt).not.toBeNull();
+    const internal = await context.anonymousInject({
+      method: 'POST', url: '/internal/mcp/authorize', headers: {
+        'x-causality-mcp-token': body.token,
+        'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+      },
+    });
+    expect(internal.statusCode).toBe(401);
+  });
+
+  it('enforces the active-token limit under concurrent creates and rejects untrimmed writes', async () => {
+    const created = await Promise.all(
+      Array.from({ length: 10 }, (_, index) =>
+        context.app.inject({ method: 'POST', url: '/api/mcp/tokens', payload: { deviceName: `Client ${index}` } }),
+      ),
+    );
+    expect(created.map((response) => response.statusCode)).toEqual(Array(10).fill(201));
+    await expect(
+      context.pool.query(
+        `insert into mcp_access_tokens (user_id, token_digest, device_name)
+         values ((select id from users where username = 'integration-user'), decode(repeat('ab', 32), 'hex'), '  not trimmed  ')`,
+      ),
+    ).rejects.toThrow();
   });
 });

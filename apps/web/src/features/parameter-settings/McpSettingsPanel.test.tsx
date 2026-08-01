@@ -54,4 +54,23 @@ describe('McpSettingsPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '复制完整 JSON 配置' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining(token)));
   });
+
+  it('keeps a token active until revocation is confirmed and documents OAuth limits', async () => {
+    const tokenId = '10000000-0000-4000-8000-000000000001';
+    const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
+      if (String(input).endsWith('/api/mcp/settings')) return jsonResponse(settings);
+      if (String(input).endsWith(tokenId) && options?.method === 'DELETE') return jsonResponse({ revoked: true });
+      return jsonResponse([{ id: tokenId, deviceName: 'Desktop', createdAt: settings.updatedAt, lastUsedAt: null, lastClientName: null, revokedAt: null }]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPanel();
+    const panel = await screen.findByRole('region', { name: 'MCP 服务' });
+    expect(await within(panel).findByText(/15 个 Tool、5 个 Prompt 和 4 个 Resource/)).toBeTruthy();
+    expect(within(panel).getByText(/不支持 OAuth discovery/)).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: '撤销' }));
+    const dialog = screen.getByRole('dialog', { name: '撤销 MCP 个人令牌' });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(tokenId))).toBe(false);
+    fireEvent.click(within(dialog).getByRole('button', { name: '确认撤销' }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input, options]) => String(input).endsWith(tokenId) && options?.method === 'DELETE')).toBe(true));
+  });
 });

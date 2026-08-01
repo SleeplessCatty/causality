@@ -15,12 +15,6 @@ export type RequestActor =
       actorLabel: 'server-cli';
       channel: 'cli';
       requestId: string;
-    }
-  | {
-      actorType: 'system';
-      actorLabel: 'legacy-mcp';
-      channel: 'mcp';
-      requestId: string;
     };
 
 declare module 'fastify' {

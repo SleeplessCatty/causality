@@ -104,6 +104,7 @@ async function main(): Promise<void> {
   const endpoint = process.env.CAUSALITY_MCP_BENCHMARK_ENDPOINT;
   const batchId = process.env.CAUSALITY_MCP_BENCHMARK_BATCH_ID;
   const output = process.env.CAUSALITY_MCP_BENCHMARK_OUTPUT;
+  const token = process.env.CAUSALITY_MCP_BENCHMARK_TOKEN;
   const selectedScenarios = process.env.CAUSALITY_MCP_BENCHMARK_ONLY
     ? process.env.CAUSALITY_MCP_BENCHMARK_ONLY.split(',').filter(Boolean)
     : [];
@@ -112,12 +113,8 @@ async function main(): Promise<void> {
       throw new Error(`Unknown MCP benchmark scenario: ${selected}`);
     }
   }
-  if (!apiUrl || !endpoint || !batchId || !output)
+  if (!apiUrl || !endpoint || !batchId || !output || !token)
     throw new Error('MCP benchmark environment is incomplete');
-  const settingsResponse = await fetch(new URL('/api/mcp/settings', apiUrl));
-  if (!settingsResponse.ok) throw new Error('Unable to load benchmark MCP settings');
-  const settings = record(await settingsResponse.json());
-  const token = String(settings.accessToken);
   const primary = await connect(endpoint, token, 'mcp-capacity-primary');
   const query = `SIM-${batchId}`;
   const metrics: McpBenchmarkScenarioMetric[] = [];

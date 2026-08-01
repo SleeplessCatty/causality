@@ -175,6 +175,7 @@ describe.sequential('core PostgreSQL model', () => {
         'export_requests',
         'import_batches',
         'import_records',
+        'mcp_access_tokens',
         'mcp_settings',
         'semantic_embeddings',
         'semantic_index_state',

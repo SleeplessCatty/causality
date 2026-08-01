@@ -22,6 +22,7 @@ export interface CreateMcpAccessTokenInput {
 
 export interface McpAccessRepository {
   withTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T>;
+  lockEnabledUser(client: PoolClient, userId: string): Promise<boolean>;
   countActiveForUser(client: PoolClient, userId: string): Promise<number>;
   create(client: PoolClient, input: CreateMcpAccessTokenInput): Promise<McpAccessTokenRecord>;
   listForUser(client: PoolClient, userId: string): Promise<McpAccessTokenRecord[]>;
@@ -87,12 +88,19 @@ export class PostgresMcpAccessRepository implements McpAccessRepository {
   }
 
   public async countActiveForUser(client: PoolClient, userId: string): Promise<number> {
-    await client.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [userId]);
     const result = await client.query<{ count: string }>(
       `select count(*) from mcp_access_tokens where user_id = $1 and revoked_at is null`,
       [userId],
     );
     return Number(result.rows[0]?.count ?? 0);
+  }
+
+  public async lockEnabledUser(client: PoolClient, userId: string): Promise<boolean> {
+    const result = await client.query<{ enabled: boolean }>(
+      `select enabled from users where id = $1 for update`,
+      [userId],
+    );
+    return result.rows[0]?.enabled === true;
   }
 
   public async create(client: PoolClient, input: CreateMcpAccessTokenInput): Promise<McpAccessTokenRecord> {
@@ -154,7 +162,7 @@ export class PostgresMcpAccessRepository implements McpAccessRepository {
   ): Promise<void> {
     await client.query(
       `update mcp_access_tokens
-       set last_used_at = $2, last_client_name = $3
+       set last_used_at = $2, last_client_name = coalesce($3, last_client_name)
        where id = $1 and revoked_at is null
          and (last_used_at is null or last_used_at <= $2 - interval '5 minutes')`,
       [tokenId, now, clientName],

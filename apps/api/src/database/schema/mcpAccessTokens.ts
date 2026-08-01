@@ -24,7 +24,7 @@ export const mcpAccessTokens = pgTable(
     check('mcp_access_tokens_digest_length_check', sql`octet_length(${table.tokenDigest}) = 32`),
     check(
       'mcp_access_tokens_device_name_length_check',
-      sql`char_length(btrim(${table.deviceName})) between 1 and 80`,
+      sql`${table.deviceName} = btrim(${table.deviceName}) and char_length(${table.deviceName}) between 1 and 80`,
     ),
   ],
 );

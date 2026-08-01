@@ -115,7 +115,11 @@ const defaultDependencies: McpCheckDependencies = {
       command: 'pnpm',
       args: ['stdio'],
       cwd: process.cwd(),
-      env: { ...getDefaultEnvironment(), CAUSALITY_API_URL: options.apiUrl },
+      env: {
+        ...getDefaultEnvironment(),
+        CAUSALITY_API_URL: options.apiUrl,
+        CAUSALITY_MCP_TOKEN: options.token!,
+      },
       stderr: 'inherit',
     });
     await client.connect(transport);
@@ -196,7 +200,7 @@ export async function runMcpCheck(
     for (const id of requiredItems.slice(from)) add(id, 'skipped', 0, message);
   };
 
-  if (options.transport === 'streamable-http' && options.token === null) {
+  if (options.token === null) {
     add(
       'endpoint_reachable',
       'failed',

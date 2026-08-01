@@ -2465,7 +2465,7 @@
         },
         "mcp_access_tokens_device_name_length_check": {
           "name": "mcp_access_tokens_device_name_length_check",
-          "value": "char_length(btrim(\"mcp_access_tokens\".\"device_name\")) between 1 and 80"
+          "value": "\"mcp_access_tokens\".\"device_name\" = btrim(\"mcp_access_tokens\".\"device_name\") and char_length(\"mcp_access_tokens\".\"device_name\") between 1 and 80"
         }
       },
       "isRLSEnabled": false

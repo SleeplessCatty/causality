@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   createServer,
   type IncomingMessage,
@@ -36,6 +36,7 @@ export interface StartCausalityMcpHttpServerOptions {
   internalSecret: string;
   fetch?: typeof fetch;
   logger?: McpTransportLogger;
+  trustedProxyAddresses?: string[];
 }
 
 interface Session {
@@ -61,6 +62,25 @@ function bearerToken(request: IncomingMessage): string | null {
   if (!authorization) return null;
   const match = /^Bearer (cau_pat_[A-Za-z0-9_-]{43})$/.exec(authorization);
   return match?.[1] ?? null;
+}
+
+function normalizeIp(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.includes(',') || /[\s\r\n]/.test(trimmed)) return null;
+  const normalized = trimmed.startsWith('::ffff:') ? trimmed.slice('::ffff:'.length) : trimmed;
+  return /^[0-9a-fA-F:.]+$/.test(normalized) ? normalized.toLowerCase() : null;
+}
+
+function requestSource(request: IncomingMessage, trustedProxyAddresses: Set<string>): string {
+  const remote = normalizeIp(request.socket.remoteAddress ?? '') ?? 'unknown';
+  const forwarded = request.headers['x-causality-client-ip'];
+  const candidate = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  if (trustedProxyAddresses.has(remote) && candidate) return normalizeIp(candidate) ?? remote;
+  return remote;
+}
+
+function tokenRateKey(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 function contentLengthExceeds(request: IncomingMessage, limit: number): boolean {
@@ -190,6 +210,11 @@ export async function startCausalityMcpHttpServer(
   const allowedOrigins = new Set(
     options.allowedOrigins ?? ['http://127.0.0.1:5173', 'http://localhost:5173'],
   );
+  const trustedProxyAddresses = new Set<string>(
+    (options.trustedProxyAddresses ?? ['127.0.0.1', '::1'])
+      .map((address) => normalizeIp(address))
+      .filter((address): address is string => address !== null),
+  );
   const fetchImplementation = options.fetch ?? fetch;
   const logger = options.logger ?? console;
   const sessions = new Map<string, Session>();
@@ -226,6 +251,12 @@ export async function startCausalityMcpHttpServer(
     }
 
     const token = bearerToken(request);
+    const sourceAllowed = rateLimiter.allow(`source:${requestSource(request, trustedProxyAddresses)}`, 120);
+    const tokenAllowed = token ? rateLimiter.allow(`token:${tokenRateKey(token)}`, 60) : true;
+    if (!sourceAllowed || !tokenAllowed) {
+      await rejectProtocol(429, 'rate_limited');
+      return;
+    }
     if (!token) {
       await rejectProtocol(401, 'unauthorized');
       return;
@@ -244,21 +275,19 @@ export async function startCausalityMcpHttpServer(
         return;
       }
     }
+    const rawSessionId = request.headers['mcp-session-id'];
+    const sessionId = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
+    let session = sessionId ? sessions.get(sessionId) : undefined;
     const initializingClient = initializeClientInfo(body);
     const principal = await authorize(
       options.apiBaseUrl,
       token,
       options.internalSecret,
       fetchImplementation,
-      initializingClient.clientName ?? null,
+      session?.clientName ?? initializingClient.clientName ?? null,
     );
     if (!principal) {
       await rejectProtocol(401, 'unauthorized');
-      return;
-    }
-    const source = request.socket.remoteAddress ?? 'unknown';
-    if (!rateLimiter.allow(`token:${principal.tokenId}`, 60) || !rateLimiter.allow(`source:${source}`, 120)) {
-      await rejectProtocol(429, 'rate_limited');
       return;
     }
 
@@ -270,10 +299,6 @@ export async function startCausalityMcpHttpServer(
       fetch: fetchImplementation,
       ...(options.apiTimeoutMs === undefined ? {} : { timeoutMs: options.apiTimeoutMs }),
     });
-    const rawSessionId = request.headers['mcp-session-id'];
-    const sessionId = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
-    let session = sessionId ? sessions.get(sessionId) : undefined;
-
     try {
       if (!session && !sessionId && request.method === 'POST' && isInitializeRequest(body)) {
         const server = createCausalityMcpServer({ apiClient: scopedApi, logger });

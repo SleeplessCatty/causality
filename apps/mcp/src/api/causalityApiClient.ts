@@ -97,6 +97,7 @@ export interface CausalityApiClientOptions {
   token: string;
   internalSecret: string;
   pathPrefix: '/internal/mcp';
+  clientName?: string;
   timeoutMs?: number;
   fetch?: typeof fetch;
 }
@@ -171,6 +172,7 @@ export class CausalityApiClient {
   private readonly token: string;
   private readonly internalSecret: string;
   private readonly pathPrefix: '/internal/mcp';
+  private readonly clientName: string | undefined;
   private readonly timeoutMs: number;
   private readonly fetchImplementation: typeof fetch;
 
@@ -179,6 +181,7 @@ export class CausalityApiClient {
     this.token = options.token;
     this.internalSecret = options.internalSecret;
     this.pathPrefix = options.pathPrefix;
+    this.clientName = options.clientName;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.fetchImplementation = options.fetch ?? fetch;
   }
@@ -366,6 +369,7 @@ export class CausalityApiClient {
     headers.set('x-causality-trace-id', traceId);
     headers.set('x-causality-mcp-token', this.token);
     headers.set('x-causality-internal-mcp-secret', this.internalSecret);
+    if (this.clientName) headers.set('x-causality-mcp-client-name', this.clientName);
     if (options.body !== undefined) headers.set('content-type', 'application/json');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? this.timeoutMs);

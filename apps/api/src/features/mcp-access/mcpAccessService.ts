@@ -68,6 +68,9 @@ export class McpAccessService {
     const now = this.clock();
     const token = `cau_pat_${randomBytes(32).toString('base64url')}`;
     return this.repository.withTransaction(async (client) => {
+      if (!(await this.repository.lockEnabledUser(client, user.userId))) {
+        throw new McpAccessServiceError('AUTH_REQUIRED', '需要登录');
+      }
       if ((await this.repository.countActiveForUser(client, user.userId)) >= MAX_ACTIVE_TOKENS) {
         throw new McpAccessServiceError('TOKEN_LIMIT_REACHED', '最多保留 10 个有效 MCP 令牌');
       }

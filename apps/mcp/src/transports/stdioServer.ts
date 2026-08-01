@@ -14,6 +14,7 @@ export interface ConnectCausalityMcpStdioServerOptions {
   fetch?: typeof fetch;
   transport?: Transport;
   logger?: McpLogger;
+  clientName?: string;
 }
 
 const stderrLogger: McpLogger = {
@@ -30,6 +31,7 @@ export async function connectCausalityMcpStdioServer(
     token: options.token,
     internalSecret: options.internalSecret,
     pathPrefix: '/internal/mcp',
+    clientName: options.clientName ?? 'stdio',
     fetch: fetchImplementation,
     ...(options.apiTimeoutMs === undefined ? {} : { timeoutMs: options.apiTimeoutMs }),
   });

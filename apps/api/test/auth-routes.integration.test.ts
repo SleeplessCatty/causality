@@ -44,14 +44,11 @@ describe.sequential('authentication routes', () => {
     await cloudApp.ready();
   });
 
-  it('protects business routes and keeps legacy MCP compatibility explicitly temporary', async () => {
+  it('protects public business routes from legacy MCP credentials', async () => {
     const anonymous = await cloudApp.inject({ method: 'GET', url: '/api/events' });
     expect(anonymous.statusCode).toBe(401);
 
-    const tokenResult = await context.pool.query<{ access_token: string }>(
-      'select access_token from mcp_settings where singleton_key = true',
-    );
-    const token = tokenResult.rows[0]!.access_token;
+    const token = `cau_pat_${'a'.repeat(43)}`;
     const tokenOnly = await cloudApp.inject({
       method: 'GET',
       url: '/api/events',
@@ -59,7 +56,7 @@ describe.sequential('authentication routes', () => {
     });
     expect(tokenOnly.statusCode).toBe(401);
 
-    const compatible = await cloudApp.inject({
+    const legacyBridge = await cloudApp.inject({
       method: 'GET',
       url: '/api/events',
       headers: {
@@ -67,7 +64,7 @@ describe.sequential('authentication routes', () => {
         'x-causality-internal-mcp-secret': internalMcpSecret,
       },
     });
-    expect(compatible.statusCode).toBe(200);
+    expect(legacyBridge.statusCode).toBe(401);
   });
 
   afterAll(async () => {

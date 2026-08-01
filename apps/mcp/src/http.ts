@@ -14,6 +14,7 @@ try {
     port: env.PORT,
     allowedOrigins: env.CAUSALITY_MCP_ALLOWED_ORIGINS,
     maxBodyBytes: env.CAUSALITY_MCP_MAX_BODY_BYTES,
+    trustedProxyAddresses: env.CAUSALITY_MCP_TRUSTED_PROXY_ADDRESSES,
   });
 
   const shutdown = async () => {

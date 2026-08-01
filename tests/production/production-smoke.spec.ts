@@ -93,10 +93,9 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
     data: {},
   });
   expect(unauthenticatedMcp.status()).toBe(401);
-  const mcpSettingsResponse = await request.get('/api/mcp/settings');
-  expect(mcpSettingsResponse.status()).toBe(200);
-  const mcpSettings = (await mcpSettingsResponse.json()) as { accessToken: string };
-  await verifyMcp(mcpSettings.accessToken);
+  const mcpToken = process.env.CAUSALITY_PRODUCTION_MCP_TOKEN;
+  if (!mcpToken) throw new Error('CAUSALITY_PRODUCTION_MCP_TOKEN is required for production smoke');
+  await verifyMcp(mcpToken);
   expect(verifyWorkerNativeRuntime()).toContain('onnxruntime_native=ok');
   expect(verifyDatabase()).toMatchObject({
     migrationApplied: true,
@@ -123,7 +122,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   compose(['down']);
   compose(['up', '-d', '--wait']);
   await expect.poll(async () => (await request.get('/api/ready')).status()).toBe(200);
-  await verifyMcp(mcpSettings.accessToken);
+  await verifyMcp(mcpToken);
   expect((await request.get(`/api/events/${created.id}`)).status()).toBe(200);
   expect(
     (await (await request.get('/api/data-checks/latest')).json()) as {

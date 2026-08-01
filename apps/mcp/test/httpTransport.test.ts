@@ -107,6 +107,7 @@ async function postMcp(
   options: {
     token?: string;
     origin?: string;
+    clientIp?: string;
     body?: string;
     sessionId?: string;
   } = {},
@@ -117,6 +118,7 @@ async function postMcp(
   });
   if (options.token) headers.set('authorization', `Bearer ${options.token}`);
   if (options.origin) headers.set('origin', options.origin);
+  if (options.clientIp) headers.set('x-causality-client-ip', options.clientIp);
   if (options.sessionId) headers.set('mcp-session-id', options.sessionId);
   return fetch(`${baseUrl(server)}/mcp`, {
     method: 'POST',
@@ -153,6 +155,7 @@ describe('Streamable HTTP transport security', () => {
       allowedOrigins?: string[];
       maxBodyBytes?: number;
       logger?: McpTransportLogger;
+      trustedProxyAddresses?: string[];
     } = {},
   ) {
     const state = options.state ?? {
@@ -170,6 +173,9 @@ describe('Streamable HTTP transport security', () => {
       allowedOrigins: options.allowedOrigins ?? ['http://127.0.0.1:5173'],
       ...(options.maxBodyBytes === undefined ? {} : { maxBodyBytes: options.maxBodyBytes }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
+      ...(options.trustedProxyAddresses === undefined
+        ? {}
+        : { trustedProxyAddresses: options.trustedProxyAddresses }),
     });
     servers.push(server);
     return { server, state };
@@ -194,6 +200,21 @@ describe('Streamable HTTP transport security', () => {
     expect(state.authorizeCalls).toEqual([rotatedToken]);
   });
 
+  it('trusts a controlled proxy client IP and limits a source before authorization', async () => {
+    const { server, state } = await start({ trustedProxyAddresses: ['127.0.0.1', '::1'] });
+    const responses = await Promise.all(
+      Array.from({ length: 121 }, (_, index) =>
+        postMcp(server, {
+          token: `cau_pat_${String(index).padStart(43, 'z')}`,
+          clientIp: '203.0.113.44',
+        }),
+      ),
+    );
+
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(1);
+    expect(state.authorizeCalls).toHaveLength(120);
+  });
+
   it('rejects an untrusted browser Origin with 403 before authorization', async () => {
     const { server, state } = await start();
 
@@ -204,6 +225,12 @@ describe('Streamable HTTP transport security', () => {
 
     expect(response.status).toBe(403);
     expect(state.authorizeCalls).toEqual([]);
+  });
+
+  it('does not implement OAuth discovery', async () => {
+    const { server } = await start();
+    const response = await fetch(`${baseUrl(server)}/.well-known/oauth-authorization-server`);
+    expect(response.status).toBe(404);
   });
 
   it('allows a configured local Origin or an absent non-browser Origin to initialize', async () => {

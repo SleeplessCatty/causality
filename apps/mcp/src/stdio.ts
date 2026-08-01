@@ -14,6 +14,7 @@ try {
     apiTimeoutMs: env.CAUSALITY_API_TIMEOUT_MS,
     token: env.CAUSALITY_MCP_TOKEN,
     internalSecret: env.CAUSALITY_INTERNAL_MCP_SECRET,
+    clientName: process.env.CAUSALITY_MCP_CLIENT_NAME ?? 'stdio',
   });
 } catch (error) {
   console.error(error instanceof Error ? error.message : 'Causality MCP stdio startup failed');
