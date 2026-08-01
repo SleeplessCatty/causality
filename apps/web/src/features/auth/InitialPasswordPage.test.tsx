@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -162,7 +162,7 @@ describe('InitialPasswordPage', () => {
     expect(confirmation.getAttribute('type')).toBe('text');
   });
 
-  it('returns to the prior page when a user cancels a password change without logging out', async () => {
+  it('replaces the password page in history when a user cancels without logging out', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       response({
         user: {
@@ -176,13 +176,16 @@ describe('InitialPasswordPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     const router = createMemoryRouter(
       [
+        { path: '/events', element: <div>原子事件页面</div> },
         { path: '/change-initial-password', element: <InitialPasswordPage /> },
         { path: '/relations', element: <div>关系页面</div> },
       ],
       {
         initialEntries: [
+          '/events',
           { pathname: '/change-initial-password', state: { returnTo: '/relations?tab=all' } },
         ],
+        initialIndex: 1,
       },
     );
     render(
@@ -198,6 +201,13 @@ describe('InitialPasswordPage', () => {
     expect(router.state.location.pathname).toBe('/relations');
     expect(router.state.location.search).toBe('?tab=all');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await router.navigate(-1);
+    });
+
+    expect(await screen.findByText('原子事件页面')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '修改密码' })).toBeNull();
   });
 
   it('does not offer cancellation while an initial password must be changed', async () => {
