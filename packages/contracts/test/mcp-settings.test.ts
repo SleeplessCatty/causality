@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  apiErrorSchema,
   createMcpTokenInputSchema,
   createMcpTokenResponseSchema,
   mcpAuthorizationResponseSchema,
@@ -94,8 +95,17 @@ describe('MCP settings contracts', () => {
       tokenId,
     };
     expect(mcpAuthorizationResponseSchema.parse(authorization)).toEqual(authorization);
-    expect(mcpAuthorizationResponseSchema.safeParse({ ...authorization, tokenVersion: 1 }).success).toBe(
-      false,
-    );
+    expect(
+      mcpAuthorizationResponseSchema.safeParse({ ...authorization, tokenVersion: 1 }).success,
+    ).toBe(false);
+  });
+
+  it('accepts personal-token API error codes', () => {
+    for (const code of ['TOKEN_LIMIT_REACHED', 'TOKEN_NOT_FOUND'] as const) {
+      expect(apiErrorSchema.parse({ code, message: 'MCP 令牌操作失败' })).toEqual({
+        code,
+        message: 'MCP 令牌操作失败',
+      });
+    }
   });
 });
