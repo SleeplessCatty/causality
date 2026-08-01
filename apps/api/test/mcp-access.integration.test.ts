@@ -34,9 +34,11 @@ async function sendMcpRequest(
 }
 
 async function queryStdioCatalogs(apiBaseUrl: string, token: string) {
-  const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url));
-  const child = spawn('pnpm', ['--filter', '@causality/mcp', 'exec', 'tsx', 'src/stdio.ts'], {
-    cwd: workspaceRoot,
+  const mcpRoot = fileURLToPath(new URL('../../mcp/', import.meta.url));
+  const tsxCli = fileURLToPath(new URL('../../mcp/node_modules/tsx/dist/cli.mjs', import.meta.url));
+  const stdioEntry = fileURLToPath(new URL('../../mcp/src/stdio.ts', import.meta.url));
+  const child = spawn(process.execPath, [tsxCli, stdioEntry], {
+    cwd: mcpRoot,
     env: {
       ...process.env,
       CAUSALITY_API_URL: apiBaseUrl,
@@ -52,6 +54,12 @@ async function queryStdioCatalogs(apiBaseUrl: string, token: string) {
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', (code, signal) => resolve({ code, signal }));
+    },
+  );
   child.stderr.on('data', (chunk) => stderr.push(String(chunk)));
   child.stdout.on('data', (chunk) => {
     stdoutBuffer += String(chunk);
@@ -97,6 +105,14 @@ async function queryStdioCatalogs(apiBaseUrl: string, token: string) {
     });
   };
 
+  let result:
+    | {
+        counts: { tools: number; prompts: number; resources: number };
+        toolResult: unknown;
+        stderr: string[];
+      }
+    | undefined;
+  let exitFailure: Error | undefined;
   try {
     await request('initialize', {
       protocolVersion: '2025-11-25',
@@ -111,18 +127,42 @@ async function queryStdioCatalogs(apiBaseUrl: string, token: string) {
       request('prompts/list'),
       request('resources/list'),
     ])) as [{ tools: unknown[] }, { prompts: unknown[] }, { resources: unknown[] }];
-    return {
+    const toolResult = await request('tools/call', {
+      name: 'search_atomic_events',
+      arguments: { query: 'stdio-real-pat-probe', page: 1, searchMode: 'standard' },
+    });
+    result = {
       counts: {
         tools: tools.tools.length,
         prompts: prompts.prompts.length,
         resources: resources.resources.length,
       },
+      toolResult,
       stderr,
     };
   } finally {
     child.stdin.end();
-    if (child.exitCode === null) child.kill('SIGTERM');
+    let ended = await Promise.race([
+      exited.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000)),
+    ]);
+    if (!ended) {
+      child.kill('SIGTERM');
+      ended = await Promise.race([
+        exited.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_000)),
+      ]);
+    }
+    if (!ended) {
+      child.kill('SIGKILL');
+    }
+    const exit = await exited;
+    if (exit.code !== 0 && exit.signal === null) {
+      exitFailure = new Error(`stdio MCP exited with code ${String(exit.code)}`);
+    }
   }
+  if (exitFailure) throw exitFailure;
+  return result!;
 }
 
 describe.sequential('MCP personal access token HTTP API', () => {
@@ -436,22 +476,27 @@ describe.sequential('MCP personal access token HTTP API', () => {
       new PostgresMcpAccessRepository(context.pool),
       new PostgresAuditWriter(),
     );
-    const created = await service.create(
-      {
-        actorType: 'user',
-        userId: user.rows[0]!.id,
-        username: 'mcp-stdio-user',
-        channel: 'web',
-        requestId: 'stdio-create',
-      },
-      'Stdio compatibility',
-    );
+    const actor = {
+      actorType: 'user' as const,
+      userId: user.rows[0]!.id,
+      username: 'mcp-stdio-user',
+      channel: 'web' as const,
+      requestId: 'stdio-create',
+    };
+    const created = await service.create(actor, 'Stdio compatibility');
     if (!context.app.server.listening) {
       await context.app.listen({ host: '127.0.0.1', port: 0 });
     }
     const apiAddress = context.app.server.address() as AddressInfo;
     const result = await queryStdioCatalogs(`http://127.0.0.1:${apiAddress.port}`, created.token);
     expect(result.counts).toEqual({ tools: 15, prompts: 5, resources: 4 });
+    expect(result.toolResult).not.toMatchObject({ isError: true });
     expect(result.stderr.join('')).not.toContain(created.token);
+
+    await service.revoke(actor, created.summary.id);
+    const revoked = await queryStdioCatalogs(`http://127.0.0.1:${apiAddress.port}`, created.token);
+    expect(revoked.toolResult).toMatchObject({ isError: true });
+    expect(JSON.stringify(revoked.toolResult)).toContain('MCP_UNAUTHORIZED');
+    expect(revoked.stderr.join('')).not.toContain(created.token);
   });
 });
