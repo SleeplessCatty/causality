@@ -169,9 +169,9 @@ export class PostgresMcpAccessRepository implements McpAccessRepository {
   ): Promise<void> {
     await client.query(
       `update mcp_access_tokens
-       set last_used_at = $2, last_client_name = coalesce($3, last_client_name)
+       set last_used_at = $2::timestamptz, last_client_name = coalesce($3, last_client_name)
        where id = $1 and revoked_at is null
-         and (last_used_at is null or last_used_at <= $2 - interval '5 minutes')`,
+         and (last_used_at is null or last_used_at <= $2::timestamptz - interval '5 minutes')`,
       [tokenId, now, clientName],
     );
   }
