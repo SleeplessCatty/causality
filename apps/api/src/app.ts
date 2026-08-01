@@ -83,7 +83,10 @@ function createHmacDigest(key: string): (value: string) => Buffer {
   return (value) => createHmac('sha256', keyBuffer).update(value).digest();
 }
 
-function firstHeader(request: { headers: Record<string, string | string[] | undefined> }, name: string) {
+function firstHeader(
+  request: { headers: Record<string, string | string[] | undefined> },
+  name: string,
+) {
   const value = request.headers[name];
   return Array.isArray(value) ? value[0] : value;
 }
@@ -99,7 +102,6 @@ function constantTimeSecretMatches(candidate: string | undefined, expected: stri
 }
 
 function privateMcpRouteAdapter(app: FastifyInstance): FastifyInstance {
-  let proxy: FastifyInstance;
   const adapt = (value: unknown): unknown => {
     if (typeof value !== 'function') return value;
     return (...arguments_: unknown[]) => {
@@ -112,9 +114,7 @@ function privateMcpRouteAdapter(app: FastifyInstance): FastifyInstance {
           ? { ...((options as { schema?: object }).schema ?? {}), hide: true }
           : { hide: true };
       const nextOptions =
-        options && typeof options === 'object'
-          ? { ...(options as object), schema }
-          : { schema };
+        options && typeof options === 'object' ? { ...(options as object), schema } : { schema };
       return Reflect.apply(value as (...args: unknown[]) => unknown, app, [
         path.slice('/api'.length),
         nextOptions,
@@ -122,7 +122,7 @@ function privateMcpRouteAdapter(app: FastifyInstance): FastifyInstance {
       ]);
     };
   };
-  proxy = new Proxy(app, {
+  const proxy = new Proxy(app, {
     get(target, property, receiver) {
       if (property === 'withTypeProvider') return () => proxy;
       const value = Reflect.get(target, property, receiver);
@@ -259,12 +259,16 @@ export function buildApp(options: BuildAppOptions = {}) {
               ) ||
               !rawToken
             ) {
-              void reply.status(401).send({ code: 'MCP_UNAUTHORIZED', message: 'MCP 访问令牌无效' });
+              void reply
+                .status(401)
+                .send({ code: 'MCP_UNAUTHORIZED', message: 'MCP 访问令牌无效' });
               return;
             }
             const actor = await mcpAccessService.authorize(rawToken, clientName ?? null);
             if (!actor) {
-              void reply.status(401).send({ code: 'MCP_UNAUTHORIZED', message: 'MCP 访问令牌无效' });
+              void reply
+                .status(401)
+                .send({ code: 'MCP_UNAUTHORIZED', message: 'MCP 访问令牌无效' });
               return;
             }
             request.actor = { ...actor, requestId: request.id };

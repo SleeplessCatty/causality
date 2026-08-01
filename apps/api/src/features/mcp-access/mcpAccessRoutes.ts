@@ -15,11 +15,15 @@ import {
 import { z } from 'zod';
 
 import { getRequestActor } from '../auth/requestActor.js';
-import { McpAccessService, McpAccessServiceError } from './mcpAccessService.js';
+import { McpAccessServiceError } from './mcpAccessService.js';
+import type { McpAccessService } from './mcpAccessService.js';
 
 const tokenParamsSchema = z.object({ tokenId: z.uuid() }).strict();
 
-function errorResponse(error: unknown): { status: 401 | 404 | 409; body: { code: string; message: string } } {
+function errorResponse(error: unknown): {
+  status: 401 | 404 | 409;
+  body: { code: string; message: string };
+} {
   if (error instanceof McpAccessServiceError) {
     if (error.code === 'TOKEN_LIMIT_REACHED') {
       return { status: 409, body: { code: error.code, message: error.message } };
@@ -39,7 +43,12 @@ export function registerMcpAccessRoutes(app: FastifyInstance, service: McpAccess
 
   routes.get(
     '/api/mcp/tokens',
-    { schema: { tags: ['mcp'], response: { 200: z.array(mcpTokenSummarySchema), 401: apiErrorSchema } } },
+    {
+      schema: {
+        tags: ['mcp'],
+        response: { 200: z.array(mcpTokenSummarySchema), 401: apiErrorSchema },
+      },
+    },
     async (request, reply) => {
       try {
         return await service.list(getRequestActor(request)!);
@@ -91,9 +100,7 @@ export function registerMcpAccessRoutes(app: FastifyInstance, service: McpAccess
   );
 }
 
-export function registerInternalMcpAuthorizationRoute(
-  app: FastifyInstance,
-): void {
+export function registerInternalMcpAuthorizationRoute(app: FastifyInstance): void {
   const routes = app.withTypeProvider<ZodTypeProvider>();
   routes.setValidatorCompiler(validatorCompiler);
   routes.setSerializerCompiler(serializerCompiler);

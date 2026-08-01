@@ -31,7 +31,12 @@ const mcpEnvSchema = z
     CAUSALITY_MCP_TRUSTED_PROXY_ADDRESSES: z
       .string()
       .default('127.0.0.1,::1')
-      .transform((value) => value.split(',').map((address) => address.trim()).filter(Boolean)),
+      .transform((value) =>
+        value
+          .split(',')
+          .map((address) => address.trim())
+          .filter(Boolean),
+      ),
   })
   .superRefine((value, context) => {
     if (

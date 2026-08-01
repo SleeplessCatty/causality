@@ -46,7 +46,11 @@ function apiFetch(state: ApiState): typeof fetch {
         relationCaseLinks: [],
       });
     }
-    if (['/internal/mcp/health', '/internal/mcp/ready', '/internal/mcp/semantic/lifecycle'].includes(url.pathname)) {
+    if (
+      ['/internal/mcp/health', '/internal/mcp/ready', '/internal/mcp/semantic/lifecycle'].includes(
+        url.pathname,
+      )
+    ) {
       state.statusTokens.push(headers.get('x-causality-mcp-token'));
       if (url.pathname === '/internal/mcp/health') {
         return Response.json({ status: 'ok', service: 'causality-api' });

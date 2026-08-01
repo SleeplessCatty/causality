@@ -178,8 +178,11 @@ describe.sequential('server user administration CLI', () => {
     expect(revoked.rows.every((token) => token.revoked_at instanceof Date)).toBe(true);
     for (const token of rawTokens) {
       const denied = await context.app.inject({
-        method: 'POST', url: '/internal/mcp/authorize', headers: {
-          'x-causality-mcp-token': token, 'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+        method: 'POST',
+        url: '/internal/mcp/authorize',
+        headers: {
+          'x-causality-mcp-token': token,
+          'x-causality-internal-mcp-secret': 'ef'.repeat(32),
         },
       });
       expect(denied.statusCode).toBe(401);
@@ -188,8 +191,11 @@ describe.sequential('server user administration CLI', () => {
     await run('enable');
     for (const token of rawTokens) {
       const denied = await context.app.inject({
-        method: 'POST', url: '/internal/mcp/authorize', headers: {
-          'x-causality-mcp-token': token, 'x-causality-internal-mcp-secret': 'ef'.repeat(32),
+        method: 'POST',
+        url: '/internal/mcp/authorize',
+        headers: {
+          'x-causality-mcp-token': token,
+          'x-causality-internal-mcp-secret': 'ef'.repeat(32),
         },
       });
       expect(denied.statusCode).toBe(401);

@@ -103,7 +103,10 @@ export class PostgresMcpAccessRepository implements McpAccessRepository {
     return result.rows[0]?.enabled === true;
   }
 
-  public async create(client: PoolClient, input: CreateMcpAccessTokenInput): Promise<McpAccessTokenRecord> {
+  public async create(
+    client: PoolClient,
+    input: CreateMcpAccessTokenInput,
+  ): Promise<McpAccessTokenRecord> {
     const inserted = await client.query<TokenRow>(
       `with inserted as (
          insert into mcp_access_tokens (user_id, token_digest, device_name, created_at)

@@ -1,6 +1,8 @@
 import { expect, test } from './support/fixtures';
 
-test('MCP settings create a one-time personal token and confirm revocation', async ({ page }, testInfo) => {
+test('MCP settings create a one-time personal token and confirm revocation', async ({
+  page,
+}, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto('/settings');
 
@@ -15,5 +17,8 @@ test('MCP settings create a one-time personal token and confirm revocation', asy
   await expect(dialog).toContainText('此令牌仅显示一次');
   await dialog.getByRole('button', { name: '我已保存' }).click();
   await expect(panel.getByRole('row', { name: /Playwright client/ })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('parameter-settings-mcp-1280x720.png'), fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath('parameter-settings-mcp-1280x720.png'),
+    fullPage: true,
+  });
 });

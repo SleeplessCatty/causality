@@ -31,5 +31,4 @@ export class PostgresMcpSettingsRepository implements McpSettingsRepository {
     if (!row) throw new Error('MCP settings singleton is missing');
     return record(row);
   }
-
 }

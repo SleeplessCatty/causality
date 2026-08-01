@@ -117,7 +117,10 @@ export class McpAccessService {
     });
   }
 
-  public async authorize(rawToken: string, clientName: string | null = null): Promise<RequestActor | null> {
+  public async authorize(
+    rawToken: string,
+    clientName: string | null = null,
+  ): Promise<RequestActor | null> {
     if (!/^cau_pat_[A-Za-z0-9_-]{43}$/.test(rawToken)) return null;
     const now = this.clock();
     return this.repository.withTransaction(async (client) => {

@@ -523,7 +523,9 @@ describe('CausalityApiClient', () => {
     const fetchImplementation: typeof fetch = async (input, init) => {
       const url = new URL(String(input));
       requests.push({ url, ...(init ? { init } : {}) });
-      return jsonResponse(url.pathname === '/internal/mcp/causal-paths' ? pathResponse : evidenceBundle);
+      return jsonResponse(
+        url.pathname === '/internal/mcp/causal-paths' ? pathResponse : evidenceBundle,
+      );
     };
     const client = createClient(fetchImplementation);
 

@@ -1,7 +1,4 @@
-import {
-  apiErrorSchema,
-  mcpSettingsResponseSchema,
-} from '@causality/contracts';
+import { apiErrorSchema, mcpSettingsResponseSchema } from '@causality/contracts';
 import type { FastifyInstance } from 'fastify';
 import {
   serializerCompiler,
@@ -29,5 +26,4 @@ export function registerMcpSettingsRoutes(app: FastifyInstance, service: McpSett
     },
     async () => service.get(),
   );
-
 }

@@ -18,14 +18,21 @@ function jsonResponse(body: unknown, status = 200): Promise<Response> {
 }
 
 function renderPanel() {
-  render(<AppProviders><McpSettingsPanel /></AppProviders>);
+  render(
+    <AppProviders>
+      <McpSettingsPanel />
+    </AppProviders>,
+  );
 }
 
 describe('McpSettingsPanel', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('shows service help without exposing a token', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => jsonResponse(settings)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => jsonResponse(settings)),
+    );
     renderPanel();
     const panel = await screen.findByRole('region', { name: 'MCP 服务' });
     expect(await within(panel).findByText('运行中')).toBeTruthy();
@@ -39,7 +46,20 @@ describe('McpSettingsPanel', () => {
     const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
       if (String(input).endsWith('/api/mcp/settings')) return jsonResponse(settings);
       if (String(input).endsWith('/api/mcp/tokens') && options?.method === 'POST') {
-        return jsonResponse({ token, summary: { id: '10000000-0000-4000-8000-000000000001', deviceName: 'Desktop', createdAt: settings.updatedAt, lastUsedAt: null, lastClientName: null, revokedAt: null } }, 201);
+        return jsonResponse(
+          {
+            token,
+            summary: {
+              id: '10000000-0000-4000-8000-000000000001',
+              deviceName: 'Desktop',
+              createdAt: settings.updatedAt,
+              lastUsedAt: null,
+              lastClientName: null,
+              revokedAt: null,
+            },
+          },
+          201,
+        );
       }
       return jsonResponse([]);
     });
@@ -50,7 +70,9 @@ describe('McpSettingsPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('设备名称'), { target: { value: 'Desktop' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '创建令牌' }));
     expect(await within(dialog).findByText(token)).toBeTruthy();
-    expect(within(dialog).getByText('此令牌仅显示一次。关闭窗口后无法再次查看，请立即保存。')).toBeTruthy();
+    expect(
+      within(dialog).getByText('此令牌仅显示一次。关闭窗口后无法再次查看，请立即保存。'),
+    ).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: '复制完整 JSON 配置' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining(token)));
   });
@@ -59,8 +81,18 @@ describe('McpSettingsPanel', () => {
     const tokenId = '10000000-0000-4000-8000-000000000001';
     const fetchMock = vi.fn((input: string | URL | Request, options?: RequestInit) => {
       if (String(input).endsWith('/api/mcp/settings')) return jsonResponse(settings);
-      if (String(input).endsWith(tokenId) && options?.method === 'DELETE') return jsonResponse({ revoked: true });
-      return jsonResponse([{ id: tokenId, deviceName: 'Desktop', createdAt: settings.updatedAt, lastUsedAt: null, lastClientName: null, revokedAt: null }]);
+      if (String(input).endsWith(tokenId) && options?.method === 'DELETE')
+        return jsonResponse({ revoked: true });
+      return jsonResponse([
+        {
+          id: tokenId,
+          deviceName: 'Desktop',
+          createdAt: settings.updatedAt,
+          lastUsedAt: null,
+          lastClientName: null,
+          revokedAt: null,
+        },
+      ]);
     });
     vi.stubGlobal('fetch', fetchMock);
     renderPanel();
@@ -71,6 +103,12 @@ describe('McpSettingsPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '撤销 MCP 个人令牌' });
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(tokenId))).toBe(false);
     fireEvent.click(within(dialog).getByRole('button', { name: '确认撤销' }));
-    await waitFor(() => expect(fetchMock.mock.calls.some(([input, options]) => String(input).endsWith(tokenId) && options?.method === 'DELETE')).toBe(true));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, options]) => String(input).endsWith(tokenId) && options?.method === 'DELETE',
+        ),
+      ).toBe(true),
+    );
   });
 });

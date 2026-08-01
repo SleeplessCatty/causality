@@ -268,12 +268,8 @@
           "name": "ai_import_batches_plan_id_ai_import_plans_id_fk",
           "tableFrom": "ai_import_batches",
           "tableTo": "ai_import_plans",
-          "columnsFrom": [
-            "plan_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["plan_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -430,12 +426,8 @@
           "name": "ai_import_plans_replaces_plan_id_ai_import_plans_id_fk",
           "tableFrom": "ai_import_plans",
           "tableTo": "ai_import_plans",
-          "columnsFrom": [
-            "replaces_plan_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["replaces_plan_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -588,12 +580,8 @@
           "name": "ai_import_records_batch_id_ai_import_batches_id_fk",
           "tableFrom": "ai_import_records",
           "tableTo": "ai_import_batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["batch_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -761,12 +749,8 @@
           "name": "audit_logs_actor_user_id_users_id_fk",
           "tableFrom": "audit_logs",
           "tableTo": "users",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["actor_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -964,12 +948,8 @@
           "name": "causal_relation_cases_causal_relation_id_causal_relations_id_fk",
           "tableFrom": "causal_relation_cases",
           "tableTo": "causal_relations",
-          "columnsFrom": [
-            "causal_relation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["causal_relation_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -977,12 +957,8 @@
           "name": "causal_relation_cases_concrete_case_id_concrete_cases_id_fk",
           "tableFrom": "causal_relation_cases",
           "tableTo": "concrete_cases",
-          "columnsFrom": [
-            "concrete_case_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["concrete_case_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -990,10 +966,7 @@
       "compositePrimaryKeys": {
         "causal_relation_cases_causal_relation_id_concrete_case_id_pk": {
           "name": "causal_relation_cases_causal_relation_id_concrete_case_id_pk",
-          "columns": [
-            "causal_relation_id",
-            "concrete_case_id"
-          ]
+          "columns": ["causal_relation_id", "concrete_case_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1181,12 +1154,8 @@
           "name": "causal_relations_cause_event_id_abstract_events_id_fk",
           "tableFrom": "causal_relations",
           "tableTo": "abstract_events",
-          "columnsFrom": [
-            "cause_event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["cause_event_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -1194,12 +1163,8 @@
           "name": "causal_relations_effect_event_id_abstract_events_id_fk",
           "tableFrom": "causal_relations",
           "tableTo": "abstract_events",
-          "columnsFrom": [
-            "effect_event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["effect_event_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1779,12 +1744,8 @@
           "name": "event_aliases_event_id_abstract_events_id_fk",
           "tableFrom": "event_aliases",
           "tableTo": "abstract_events",
-          "columnsFrom": [
-            "event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1920,12 +1881,8 @@
           "name": "event_keywords_event_id_abstract_events_id_fk",
           "tableFrom": "event_keywords",
           "tableTo": "abstract_events",
-          "columnsFrom": [
-            "event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2310,12 +2267,8 @@
           "name": "import_records_batch_id_import_batches_id_fk",
           "tableFrom": "import_records",
           "tableTo": "import_batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["batch_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2445,12 +2398,8 @@
           "name": "mcp_access_tokens_user_id_users_id_fk",
           "tableFrom": "mcp_access_tokens",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2571,12 +2520,8 @@
           "name": "semantic_embeddings_model_code_semantic_model_settings_model_code_fk",
           "tableFrom": "semantic_embeddings",
           "tableTo": "semantic_model_settings",
-          "columnsFrom": [
-            "model_code"
-          ],
-          "columnsTo": [
-            "model_code"
-          ],
+          "columnsFrom": ["model_code"],
+          "columnsTo": ["model_code"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2584,10 +2529,7 @@
       "compositePrimaryKeys": {
         "semantic_embeddings_entity_pk": {
           "name": "semantic_embeddings_entity_pk",
-          "columns": [
-            "entity_type",
-            "entity_id"
-          ]
+          "columns": ["entity_type", "entity_id"]
         }
       },
       "uniqueConstraints": {},
@@ -2715,12 +2657,8 @@
           "name": "semantic_index_state_active_model_code_semantic_model_settings_model_code_fk",
           "tableFrom": "semantic_index_state",
           "tableTo": "semantic_model_settings",
-          "columnsFrom": [
-            "active_model_code"
-          ],
-          "columnsTo": [
-            "model_code"
-          ],
+          "columnsFrom": ["active_model_code"],
+          "columnsTo": ["model_code"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -3003,12 +2941,8 @@
           "name": "semantic_jobs_model_code_semantic_model_settings_model_code_fk",
           "tableFrom": "semantic_jobs",
           "tableTo": "semantic_model_settings",
-          "columnsFrom": [
-            "model_code"
-          ],
-          "columnsTo": [
-            "model_code"
-          ],
+          "columnsFrom": ["model_code"],
+          "columnsTo": ["model_code"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3386,12 +3320,8 @@
           "name": "web_sessions_user_id_users_id_fk",
           "tableFrom": "web_sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }

@@ -186,7 +186,9 @@ export class SlidingWindowRateLimiter {
     return true;
   }
 
-  public get size(): number { return this.requests.size; }
+  public get size(): number {
+    return this.requests.size;
+  }
 }
 
 function listen(server: HttpServer, host: string, port: number): Promise<void> {

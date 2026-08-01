@@ -93,7 +93,9 @@ test('production smoke never passes its personal token in argv and deletes the s
   const cleanupBody = productionScript.slice(cleanupStart, cleanupEnd);
   assert.match(productionScript, /readFileSync\(process\.argv\[1\]/);
   assert.doesNotMatch(productionScript, /process\.argv\[1\].*smoke_token\)/);
-  assert.ok(cleanupBody.indexOf('rm -f "$smoke_token_file"') < cleanupBody.indexOf('docker compose'));
+  assert.ok(
+    cleanupBody.indexOf('rm -f "$smoke_token_file"') < cleanupBody.indexOf('docker compose'),
+  );
   assert.match(cleanupBody, /smoke_token=""/);
 });
 
