@@ -19,16 +19,7 @@
 }
 
 .auth-card__brand {
-  display: grid;
-  width: 40px;
-  height: 40px;
   margin-bottom: 22px;
-  place-items: center;
-  border: 2px solid #176348;
-  border-radius: 7px;
-  color: #143d2f;
-  font-family: Georgia, serif;
-  font-size: 24px;
 }
 
 .auth-card h1 {

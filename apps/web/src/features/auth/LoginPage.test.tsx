@@ -108,4 +108,10 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('密码')).toBeTruthy();
     expect(screen.queryByText(/注册|找回密码|OAuth|TOTP|移动端/)).toBeNull();
   });
+
+  it('renders the shared Causality brand mark', () => {
+    renderLogin(response({ code: 'INVALID_CREDENTIALS', message: '用户名或密码错误' }, 401));
+
+    expect(document.querySelector('[data-brand-mark="causality"]')).toBeTruthy();
+  });
 });

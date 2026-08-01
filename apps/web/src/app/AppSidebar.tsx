@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 
+import { AppBrandMark } from '../shared/brand/AppBrandMark';
+
 export interface AppSidebarProps {
   collapsed: boolean;
   forced: boolean;
@@ -116,9 +118,7 @@ export function AppSidebar({ collapsed, forced, onToggle, footer }: AppSidebarPr
   return (
     <aside className="app-sidebar" aria-label="应用导航">
       <NavLink className="app-sidebar__brand" to="/events" aria-label="Causality 原子事件首页">
-        <span className="app-sidebar__brand-mark" aria-hidden="true">
-          C
-        </span>
+        <AppBrandMark />
         <span className="app-sidebar__brand-name">Causality</span>
       </NavLink>
 

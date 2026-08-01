@@ -25,6 +25,12 @@ function renderSidebar(collapsed = false, forced = false, onToggle = vi.fn()) {
 }
 
 describe('AppSidebar', () => {
+  it('renders the shared Causality brand mark', () => {
+    renderSidebar();
+
+    expect(document.querySelector('[data-brand-mark="causality"]')).toBeTruthy();
+  });
+
   it('renders the complete expanded navigation and marks the active route', () => {
     renderSidebar();
 

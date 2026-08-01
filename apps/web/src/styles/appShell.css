@@ -42,7 +42,7 @@
   white-space: nowrap;
 }
 
-.app-sidebar__brand-mark {
+.app-brand-mark {
   display: grid;
   width: 34px;
   min-width: 34px;
@@ -50,6 +50,7 @@
   place-items: center;
   border: 2px solid #176348;
   border-radius: 6px;
+  color: #143d2f;
   font-family: Georgia, serif;
   font-size: 21px;
 }

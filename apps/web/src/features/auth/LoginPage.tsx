@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 
 import { ApiClientError } from '../../shared/api/httpClient';
+import { AppBrandMark } from '../../shared/brand/AppBrandMark';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
 import { useAuth } from './AuthProvider';
 
@@ -67,9 +68,7 @@ export function LoginPage() {
   return (
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="login-title">
-        <div className="auth-card__brand" aria-hidden="true">
-          C
-        </div>
+        <AppBrandMark className="auth-card__brand" />
         <header>
           <h1 id="login-title">登录 Causality</h1>
           <p>进入共享因果知识库</p>
