@@ -3,12 +3,17 @@ import { z } from 'zod';
 const developmentSessionKey = 'ca'.repeat(32);
 const developmentSourceKey = 'db'.repeat(32);
 const developmentInternalMcpSecret = 'ef'.repeat(32);
+const developmentTokenEncryptionKey = Buffer.alloc(32, 0x74).toString('base64');
 
 const booleanEnvironmentValue = z
   .union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')])
   .default(false);
 
 const secretSchema = z.string().regex(/^[0-9a-f]{64}$/);
+const tokenEncryptionKeySchema = z.string().refine((value) => {
+  const decoded = Buffer.from(value, 'base64');
+  return decoded.length === 32 && decoded.toString('base64') === value;
+});
 
 const envSchema = z
   .object({
@@ -30,6 +35,7 @@ const envSchema = z
     CAUSALITY_SESSION_HMAC_KEY: secretSchema.default(developmentSessionKey),
     CAUSALITY_AUTH_IP_HASH_KEY: secretSchema.default(developmentSourceKey),
     CAUSALITY_INTERNAL_MCP_SECRET: secretSchema.default(developmentInternalMcpSecret),
+    CAUSALITY_TOKEN_ENCRYPTION_KEY: tokenEncryptionKeySchema.default(developmentTokenEncryptionKey),
     CAUSALITY_COOKIE_SECURE: booleanEnvironmentValue,
   })
   .superRefine((value, context) => {
@@ -65,6 +71,11 @@ const envSchema = z
           'CAUSALITY_INTERNAL_MCP_SECRET',
           value.CAUSALITY_INTERNAL_MCP_SECRET,
           developmentInternalMcpSecret,
+        ],
+        [
+          'CAUSALITY_TOKEN_ENCRYPTION_KEY',
+          value.CAUSALITY_TOKEN_ENCRYPTION_KEY,
+          developmentTokenEncryptionKey,
         ],
       ] as const) {
         if (secret === developmentValue || new Set(secret).size === 1) {

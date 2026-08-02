@@ -87,6 +87,8 @@ describe('API foundation', () => {
 });
 
 describe('environment configuration', () => {
+  const developmentTokenEncryptionKey = Buffer.alloc(32, 0x74).toString('base64');
+
   it('applies non-sensitive defaults', () => {
     expect(parseEnv({ DATABASE_URL: 'postgresql://localhost/causality' })).toMatchObject({
       NODE_ENV: 'development',
@@ -105,6 +107,7 @@ describe('environment configuration', () => {
       CAUSALITY_SESSION_HMAC_KEY: 'ca'.repeat(32),
       CAUSALITY_AUTH_IP_HASH_KEY: 'db'.repeat(32),
       CAUSALITY_INTERNAL_MCP_SECRET: 'ef'.repeat(32),
+      CAUSALITY_TOKEN_ENCRYPTION_KEY: developmentTokenEncryptionKey,
     });
   });
 
@@ -121,6 +124,7 @@ describe('environment configuration', () => {
       CAUSALITY_SESSION_HMAC_KEY: '12'.repeat(32),
       CAUSALITY_AUTH_IP_HASH_KEY: '34'.repeat(32),
       CAUSALITY_INTERNAL_MCP_SECRET: '56'.repeat(32),
+      CAUSALITY_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 0x78).toString('base64'),
     };
 
     expect(parseEnv(base)).toMatchObject({
@@ -128,8 +132,22 @@ describe('environment configuration', () => {
       CAUSALITY_SESSION_HMAC_KEY: '12'.repeat(32),
       CAUSALITY_AUTH_IP_HASH_KEY: '34'.repeat(32),
       CAUSALITY_INTERNAL_MCP_SECRET: '56'.repeat(32),
+      CAUSALITY_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 0x78).toString('base64'),
     });
     expect(() => parseEnv({ ...base, CAUSALITY_SESSION_HMAC_KEY: undefined })).toThrow();
+    expect(() => parseEnv({ ...base, CAUSALITY_TOKEN_ENCRYPTION_KEY: undefined })).toThrow();
+    expect(() =>
+      parseEnv({ ...base, CAUSALITY_TOKEN_ENCRYPTION_KEY: developmentTokenEncryptionKey }),
+    ).toThrow();
+    expect(() =>
+      parseEnv({ ...base, CAUSALITY_TOKEN_ENCRYPTION_KEY: Buffer.alloc(31).toString('base64') }),
+    ).toThrow();
+    expect(() =>
+      parseEnv({
+        ...base,
+        CAUSALITY_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 0x78).toString('base64').replace(/=$/, ''),
+      }),
+    ).toThrow();
     expect(() =>
       parseEnv({ ...base, CAUSALITY_AUTH_IP_HASH_KEY: base.CAUSALITY_SESSION_HMAC_KEY }),
     ).toThrow();
