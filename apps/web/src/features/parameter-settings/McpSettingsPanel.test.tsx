@@ -58,6 +58,17 @@ describe('McpSettingsPanel', () => {
         .getAllByRole('columnheader')
         .map((cell) => cell.textContent),
     ).toEqual(['令牌名称', '令牌', '最近使用时间', '操作']);
+    expect(Array.from(table.querySelectorAll('col')).map((column) => column.className)).toEqual([
+      'mcp-settings-token-column--name',
+      'mcp-settings-token-column--token',
+      'mcp-settings-token-column--last-used',
+      'mcp-settings-token-column--actions',
+    ]);
+    expect(
+      within(table)
+        .getByRole('columnheader', { name: '操作' })
+        .classList.contains('mcp-settings-token-actions-heading'),
+    ).toBe(true);
     const row = within(table).getByRole('row', { name: /Codex/ });
     expect(within(row).getByText(activeToken.maskedToken)).toBeTruthy();
     for (const action of ['查看', '复制令牌', '复制完整 JSON 配置', '撤销']) {
@@ -81,7 +92,12 @@ describe('McpSettingsPanel', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '创建个人令牌' }));
     const dialog = screen.getByRole('dialog', { name: '创建 MCP 个人令牌' });
-    fireEvent.change(within(dialog).getByLabelText('令牌名称'), { target: { value: 'Codex' } });
+    const nameInput = within(dialog).getByLabelText('令牌名称');
+    expect(document.activeElement).toBe(nameInput);
+    expect(nameInput.classList.contains('mcp-token-dialog__input')).toBe(true);
+    expect(nameInput.getAttribute('placeholder')).toBe('例如：Codex Desktop');
+    expect(nameInput.closest('label')?.classList.contains('mcp-token-dialog__field')).toBe(true);
+    fireEvent.change(nameInput, { target: { value: 'Codex' } });
     fireEvent.click(within(dialog).getByRole('button', { name: '创建令牌' }));
 
     await waitFor(() =>
@@ -201,6 +217,7 @@ describe('McpSettingsPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '创建令牌' }));
     expect((await within(dialog).findByRole('alert')).textContent).toBe('令牌名称已存在');
     fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    expect(screen.queryByRole('alert')).toBeNull();
 
     deleteFails = true;
     const row = screen.getByRole('row', { name: /Codex/ });

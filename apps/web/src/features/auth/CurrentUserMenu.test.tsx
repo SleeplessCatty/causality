@@ -1,9 +1,16 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { createContext, useContext } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from './AuthProvider';
 import { CurrentUserMenu } from './CurrentUserMenu';
+
+const SidebarCollapsedContext = createContext(false);
+
+function CurrentUserMenuHarness() {
+  return <CurrentUserMenu collapsed={useContext(SidebarCollapsedContext)} />;
+}
 
 function response(body: unknown, status = 200): Response {
   return {
@@ -29,18 +36,32 @@ function renderMenu(collapsed = false) {
   vi.stubGlobal('fetch', fetchMock);
   const router = createMemoryRouter(
     [
-      { path: '/events', element: <CurrentUserMenu collapsed={collapsed} /> },
+      { path: '/events', element: <CurrentUserMenuHarness /> },
       { path: '/change-initial-password', element: <div>密码修改页面</div> },
       { path: '/login', element: <div>登录页面</div> },
     ],
     { initialEntries: ['/events?page=2'] },
   );
-  render(
-    <AuthProvider>
-      <RouterProvider router={router} />
-    </AuthProvider>,
+  const view = render(
+    <SidebarCollapsedContext.Provider value={collapsed}>
+      <AuthProvider>
+        <RouterProvider router={router} />
+      </AuthProvider>
+    </SidebarCollapsedContext.Provider>,
   );
-  return { fetchMock, router };
+  return {
+    fetchMock,
+    router,
+    rerenderMenu(nextCollapsed: boolean) {
+      view.rerender(
+        <SidebarCollapsedContext.Provider value={nextCollapsed}>
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
+        </SidebarCollapsedContext.Provider>,
+      );
+    },
+  };
 }
 
 describe('CurrentUserMenu', () => {
@@ -85,11 +106,25 @@ describe('CurrentUserMenu', () => {
     expect(fetchMock.mock.calls[1]?.[0]).toBe(endpoint);
   });
 
-  it('retains an accessible tooltip when the sidebar is collapsed', async () => {
+  it('renders a non-interactive current-user identity when the sidebar is collapsed', async () => {
     renderMenu(true);
 
-    const trigger = await screen.findByRole('button', { name: '打开 Jason 的用户菜单' });
-    expect(trigger.getAttribute('title')).toBe('Jason');
+    const identity = await screen.findByLabelText('当前用户 Jason');
+    expect(identity.getAttribute('title')).toBe('Jason');
     expect(screen.queryByText('Jason')).toBeNull();
+    expect(screen.queryByRole('button', { name: /用户菜单/ })).toBeNull();
+  });
+
+  it('closes an open user menu when the sidebar collapses', async () => {
+    const { rerenderMenu } = renderMenu();
+    await screen.findByText('Jason');
+    fireEvent.click(screen.getByRole('button', { name: '打开当前用户菜单' }));
+    expect(screen.getByRole('menu', { name: '当前用户操作' })).toBeTruthy();
+
+    rerenderMenu(true);
+
+    expect(screen.queryByRole('menu', { name: '当前用户操作' })).toBeNull();
+    expect(await screen.findByLabelText('当前用户 Jason')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /用户菜单/ })).toBeNull();
   });
 });

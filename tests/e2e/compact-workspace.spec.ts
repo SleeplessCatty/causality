@@ -29,8 +29,13 @@ test('compact shell and full-canvas graph preserve workspace geometry', async ({
   await page.goto('/events');
   const shell = page.locator('.product-shell');
   await expect(shell).toHaveAttribute('data-sidebar-state', 'expanded');
+  await page.getByRole('button', { name: '打开当前用户菜单' }).click();
+  await expect(page.getByRole('menu', { name: '当前用户操作' })).toBeVisible();
   await page.getByRole('button', { name: '收起导航栏' }).click();
   await expect(shell).toHaveAttribute('data-sidebar-state', 'collapsed');
+  await expect(page.getByRole('menu', { name: '当前用户操作' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /用户菜单/ })).toHaveCount(0);
+  await expect(page.getByLabel('当前用户 e2e-user')).toBeVisible();
   await page.getByRole('button', { name: '展开导航栏' }).click();
   await expect(shell).toHaveAttribute('data-sidebar-state', 'expanded');
 

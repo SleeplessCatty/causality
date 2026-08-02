@@ -19,6 +19,13 @@ test('MCP settings reveal, copy, configure, and hard-delete a recoverable token'
 
   const row = tokenManagement.getByRole('row', { name: /Playwright token/ });
   await expect(row).toBeVisible();
+  const tokenColumnWidths = await tokenManagement
+    .locator('col')
+    .evaluateAll((columns) =>
+      columns.map((column) => Math.round(column.getBoundingClientRect().width)),
+    );
+  expect(tokenColumnWidths).toHaveLength(4);
+  expect(tokenColumnWidths[1]).toBeGreaterThan(tokenColumnWidths[3]!);
   const mask = row.getByText(/^cau_pat_[A-Za-z0-9_-]{4}••••[A-Za-z0-9_-]{4}$/u);
   await expect(mask).toBeVisible();
   await expect(tokenManagement.getByRole('columnheader', { name: '状态' })).toHaveCount(0);

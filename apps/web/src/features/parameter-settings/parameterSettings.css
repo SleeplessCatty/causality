@@ -207,26 +207,25 @@
   padding-left: 12px;
 }
 
-.mcp-settings-token-table th:nth-child(1) {
-  width: 22%;
+.mcp-settings-token-column--name {
+  width: 20%;
 }
 
-.mcp-settings-token-table th:nth-child(2) {
-  width: 25%;
+.mcp-settings-token-column--token {
+  width: 34%;
 }
 
-.mcp-settings-token-table th:nth-child(3) {
+.mcp-settings-token-column--last-used {
   width: 16%;
 }
 
-.mcp-settings-token-table th:nth-child(4) {
-  width: 37%;
+.mcp-settings-token-column--actions {
+  width: 30%;
 }
 
 .mcp-settings-token-table th:last-child,
 .mcp-settings-token-table td:last-child {
-  padding-right: 0;
-  text-align: right;
+  text-align: left;
 }
 
 .mcp-settings-token-table tbody tr:last-child td {
@@ -249,7 +248,7 @@
 .mcp-token-row-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   white-space: nowrap;
 }
@@ -313,6 +312,54 @@
 
 .mcp-token-dialog {
   width: min(460px, calc(100vw - 40px));
+}
+
+.mcp-token-dialog .mcp-token-dialog__description {
+  margin: 10px 0 0;
+  color: #5b6b62;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.mcp-token-dialog__field {
+  display: grid;
+  gap: 7px;
+  margin-top: 17px;
+}
+
+.mcp-token-dialog__field > span {
+  color: #314a3e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mcp-token-dialog__input {
+  width: 100%;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid #cbd7cf;
+  border-radius: 6px;
+  outline: 0;
+  background: #fff;
+  color: #243d32;
+  font: inherit;
+  font-size: 12px;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.mcp-token-dialog__input::placeholder {
+  color: #98a49d;
+}
+
+.mcp-token-dialog__input:hover {
+  border-color: #aebfb4;
+}
+
+.mcp-token-dialog__input:focus {
+  border-color: #1d8762;
+  box-shadow: 0 0 0 3px rgb(29 135 98 / 12%);
 }
 
 .semantic-settings-section__heading {

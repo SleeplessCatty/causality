@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 
 import { useAuth } from './AuthProvider';
@@ -14,7 +14,25 @@ export function CurrentUserMenu({ collapsed }: CurrentUserMenuProps) {
   const [open, setOpen] = useState(false);
   const username = auth.user?.username;
 
+  useEffect(() => {
+    if (collapsed) setOpen(false);
+  }, [collapsed]);
+
   if (auth.status !== 'authenticated' || !username) return null;
+
+  if (collapsed) {
+    return (
+      <div
+        className="current-user-menu current-user-menu--identity"
+        aria-label={`当前用户 ${username}`}
+        title={username}
+      >
+        <span className="current-user-menu__avatar" aria-hidden="true">
+          {Array.from(username)[0]?.toLocaleUpperCase() ?? 'U'}
+        </span>
+      </div>
+    );
+  }
 
   const currentPath = `${location.pathname}${location.search}${location.hash}`;
 
@@ -31,7 +49,7 @@ export function CurrentUserMenu({ collapsed }: CurrentUserMenuProps) {
   }
 
   return (
-    <div className={`current-user-menu${collapsed ? ' is-collapsed' : ''}`}>
+    <div className="current-user-menu">
       {open ? (
         <div className="current-user-menu__popover" role="menu" aria-label="当前用户操作">
           <button type="button" role="menuitem" onClick={changePassword}>
@@ -48,20 +66,17 @@ export function CurrentUserMenu({ collapsed }: CurrentUserMenuProps) {
       <button
         className="current-user-menu__trigger"
         type="button"
-        aria-label={collapsed ? `打开 ${username} 的用户菜单` : '打开当前用户菜单'}
+        aria-label="打开当前用户菜单"
         aria-expanded={open}
-        title={collapsed ? username : undefined}
         onClick={() => setOpen((value) => !value)}
       >
         <span className="current-user-menu__avatar" aria-hidden="true">
           {Array.from(username)[0]?.toLocaleUpperCase() ?? 'U'}
         </span>
-        {!collapsed ? <span className="current-user-menu__name">{username}</span> : null}
-        {!collapsed ? (
-          <svg aria-hidden="true" viewBox="0 0 20 20">
-            <path d="m6 8 4 4 4-4" />
-          </svg>
-        ) : null}
+        <span className="current-user-menu__name">{username}</span>
+        <svg aria-hidden="true" viewBox="0 0 20 20">
+          <path d="m6 8 4 4 4-4" />
+        </svg>
       </button>
     </div>
   );

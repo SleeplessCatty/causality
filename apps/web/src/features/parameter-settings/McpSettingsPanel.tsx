@@ -49,6 +49,7 @@ function createClientConfiguration(endpoint: string, token: string): string {
 export function McpSettingsPanel() {
   const queryClient = useQueryClient();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const tokenNameInputRef = useRef<HTMLInputElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [tokenName, setTokenName] = useState('');
   const [revealedTokens, setRevealedTokens] = useState<Record<string, string>>({});
@@ -98,6 +99,11 @@ export function McpSettingsPanel() {
     },
     onError: reportError,
   });
+
+  function closeCreateDialog(): void {
+    setCreateOpen(false);
+    setActionError(undefined);
+  }
 
   async function readSecret(tokenId: string): Promise<string | undefined> {
     setSecretPendingId(tokenId);
@@ -251,12 +257,18 @@ export function McpSettingsPanel() {
                 </div>
               ) : (
                 <table className="mcp-settings-token-table">
+                  <colgroup>
+                    <col className="mcp-settings-token-column--name" />
+                    <col className="mcp-settings-token-column--token" />
+                    <col className="mcp-settings-token-column--last-used" />
+                    <col className="mcp-settings-token-column--actions" />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th>令牌名称</th>
                       <th>令牌</th>
                       <th>最近使用时间</th>
-                      <th>操作</th>
+                      <th className="mcp-settings-token-actions-heading">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -340,10 +352,10 @@ export function McpSettingsPanel() {
         title="创建 MCP 个人令牌"
         descriptionId="mcp-token-create-description"
         pending={create.isPending}
-        initialFocusRef={cancelButtonRef}
+        initialFocusRef={tokenNameInputRef}
         className="mcp-token-dialog"
         onClose={() => {
-          if (!create.isPending) setCreateOpen(false);
+          if (!create.isPending) closeCreateDialog();
         }}
         actions={
           <>
@@ -352,7 +364,7 @@ export function McpSettingsPanel() {
               className="button button--secondary"
               type="button"
               disabled={create.isPending}
-              onClick={() => setCreateOpen(false)}
+              onClick={closeCreateDialog}
             >
               取消
             </button>
@@ -372,12 +384,17 @@ export function McpSettingsPanel() {
             {actionError}
           </div>
         ) : null}
-        <p id="mcp-token-create-description">设置一个便于识别的令牌名称。</p>
-        <label>
-          令牌名称
+        <p id="mcp-token-create-description" className="mcp-token-dialog__description">
+          设置一个便于识别的令牌名称，创建后可在列表中查看和复制令牌。
+        </p>
+        <label className="mcp-token-dialog__field">
+          <span>令牌名称</span>
           <input
+            ref={tokenNameInputRef}
+            className="mcp-token-dialog__input"
             value={tokenName}
             maxLength={80}
+            placeholder="例如：Codex Desktop"
             onChange={(event) => setTokenName(event.target.value)}
             autoComplete="off"
           />
