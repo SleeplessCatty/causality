@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 
 import { AppBrandMark } from '../shared/brand/AppBrandMark';
+import { preloadRoute, type PreloadableRouteId } from './preloadableRoutes';
 
 export interface AppSidebarProps {
   collapsed: boolean;
@@ -12,6 +13,7 @@ export interface AppSidebarProps {
 
 interface NavigationItem {
   to: string;
+  routeId: PreloadableRouteId;
   label: string;
   icon: ReactNode;
 }
@@ -25,6 +27,7 @@ const iconProps = {
 const navigationItems: NavigationItem[] = [
   {
     to: '/events',
+    routeId: 'events',
     label: '原子事件',
     icon: (
       <svg {...iconProps}>
@@ -35,6 +38,7 @@ const navigationItems: NavigationItem[] = [
   },
   {
     to: '/relations',
+    routeId: 'relations',
     label: '因果关系',
     icon: (
       <svg {...iconProps}>
@@ -47,6 +51,7 @@ const navigationItems: NavigationItem[] = [
   },
   {
     to: '/cases',
+    routeId: 'cases',
     label: '具体案例',
     icon: (
       <svg {...iconProps}>
@@ -57,6 +62,7 @@ const navigationItems: NavigationItem[] = [
   },
   {
     to: '/graph',
+    routeId: 'graph',
     label: '因果图',
     icon: (
       <svg {...iconProps}>
@@ -70,6 +76,7 @@ const navigationItems: NavigationItem[] = [
   },
   {
     to: '/maintenance',
+    routeId: 'maintenance',
     label: '数据维护',
     icon: (
       <svg {...iconProps}>
@@ -81,6 +88,7 @@ const navigationItems: NavigationItem[] = [
   },
   {
     to: '/data-transfer',
+    routeId: 'data-transfer',
     label: '导入导出',
     icon: (
       <svg {...iconProps}>
@@ -91,6 +99,7 @@ const navigationItems: NavigationItem[] = [
   },
   {
     to: '/settings',
+    routeId: 'settings',
     label: '参数配置',
     icon: (
       <svg {...iconProps}>
@@ -102,6 +111,7 @@ const navigationItems: NavigationItem[] = [
   },
   {
     to: '/system',
+    routeId: 'system',
     label: '系统状态',
     icon: (
       <svg {...iconProps}>
@@ -131,6 +141,8 @@ export function AppSidebar({ collapsed, forced, onToggle, footer }: AppSidebarPr
             aria-label={item.label}
             data-tooltip={collapsed ? item.label : undefined}
             title={collapsed ? item.label : undefined}
+            onMouseEnter={() => void preloadRoute(item.routeId)}
+            onFocus={() => void preloadRoute(item.routeId)}
           >
             <span className="app-sidebar__icon">{item.icon}</span>
             <span className="app-sidebar__label">{item.label}</span>

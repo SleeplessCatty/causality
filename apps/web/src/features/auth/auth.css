@@ -121,3 +121,8 @@
   color: #617168;
   font-size: 13px;
 }
+.auth-route-state {
+  min-height: 100vh;
+  padding: 28px;
+  background: var(--color-surface-muted, #f7faf8);
+}

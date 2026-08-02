@@ -1,10 +1,13 @@
 import type { ComponentType } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 
-import { App } from './App';
 import { InitialPasswordPage } from '../features/auth/InitialPasswordPage';
 import { LoginPage } from '../features/auth/LoginPage';
 import { RequireSession } from '../features/auth/RequireSession';
+import { PageSkeleton, type SkeletonVariant } from '../shared/loading/PageSkeleton';
+import { useDelayedVisibility } from '../shared/loading/useDelayedVisibility';
+import { App } from './App';
+import { routeLoaders } from './preloadableRoutes';
 
 function lazyPage<TModule>(
   load: () => Promise<TModule>,
@@ -13,13 +16,18 @@ function lazyPage<TModule>(
   return async () => ({ Component: select(await load()) });
 }
 
-function GraphRouteFallback() {
-  return <div className="page-state">正在加载因果图…</div>;
+function createRouteFallback(variant: SkeletonVariant): ComponentType {
+  return function RouteFallback() {
+    const visible = useDelayedVisibility(true, { delayMs: 180, minimumVisibleMs: 300 });
+    return <PageSkeleton variant={variant} visible={visible} />;
+  };
 }
 
-function AppRouteFallback() {
-  return <div className="page-state">正在加载页面…</div>;
-}
+const ListRouteFallback = createRouteFallback('list');
+const DetailRouteFallback = createRouteFallback('detail');
+const FormRouteFallback = createRouteFallback('form');
+const SettingsRouteFallback = createRouteFallback('settings');
+const CanvasRouteFallback = createRouteFallback('canvas');
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -33,142 +41,103 @@ export const router = createBrowserRouter([
       {
         path: '/',
         element: <App />,
-        HydrateFallback: AppRouteFallback,
+        HydrateFallback: SettingsRouteFallback,
         children: [
           { index: true, element: <Navigate to="/events" replace /> },
           {
             path: 'events',
-            lazy: lazyPage(
-              () => import('../features/events/pages/EventListPage'),
-              (module) => module.EventListPage,
-            ),
+            HydrateFallback: ListRouteFallback,
+            lazy: lazyPage(routeLoaders.eventList.load, (module) => module.EventListPage),
           },
           {
             path: 'events/new',
-            lazy: lazyPage(
-              () => import('../features/events/pages/EventCreatePage'),
-              (module) => module.EventCreatePage,
-            ),
+            HydrateFallback: FormRouteFallback,
+            lazy: lazyPage(routeLoaders.eventCreate.load, (module) => module.EventCreatePage),
           },
           {
             path: 'events/:eventId',
-            lazy: lazyPage(
-              () => import('../features/events/pages/EventDetailPage'),
-              (module) => module.EventDetailPage,
-            ),
+            HydrateFallback: DetailRouteFallback,
+            lazy: lazyPage(routeLoaders.eventDetail.load, (module) => module.EventDetailPage),
           },
           {
             path: 'events/:eventId/edit',
-            lazy: lazyPage(
-              () => import('../features/events/pages/EventEditPage'),
-              (module) => module.EventEditPage,
-            ),
+            HydrateFallback: FormRouteFallback,
+            lazy: lazyPage(routeLoaders.eventEdit.load, (module) => module.EventEditPage),
           },
           {
             path: 'relations',
-            lazy: lazyPage(
-              () => import('../features/relations/pages/RelationListPage'),
-              (module) => module.RelationListPage,
-            ),
+            HydrateFallback: ListRouteFallback,
+            lazy: lazyPage(routeLoaders.relationList.load, (module) => module.RelationListPage),
           },
           {
             path: 'relations/new',
-            lazy: lazyPage(
-              () => import('../features/relations/pages/RelationCreatePage'),
-              (module) => module.RelationCreatePage,
-            ),
+            HydrateFallback: FormRouteFallback,
+            lazy: lazyPage(routeLoaders.relationCreate.load, (module) => module.RelationCreatePage),
           },
           {
             path: 'relations/:relationId',
-            lazy: lazyPage(
-              () => import('../features/relations/pages/RelationDetailPage'),
-              (module) => module.RelationDetailPage,
-            ),
+            HydrateFallback: DetailRouteFallback,
+            lazy: lazyPage(routeLoaders.relationDetail.load, (module) => module.RelationDetailPage),
           },
           {
             path: 'relations/:relationId/edit',
-            lazy: lazyPage(
-              () => import('../features/relations/pages/RelationEditPage'),
-              (module) => module.RelationEditPage,
-            ),
+            HydrateFallback: FormRouteFallback,
+            lazy: lazyPage(routeLoaders.relationEdit.load, (module) => module.RelationEditPage),
           },
           {
             path: 'cases',
-            lazy: lazyPage(
-              () => import('../features/cases/pages/CaseListPage'),
-              (module) => module.CaseListPage,
-            ),
+            HydrateFallback: ListRouteFallback,
+            lazy: lazyPage(routeLoaders.caseList.load, (module) => module.CaseListPage),
           },
           {
             path: 'cases/new',
-            lazy: lazyPage(
-              () => import('../features/cases/pages/CaseCreatePage'),
-              (module) => module.CaseCreatePage,
-            ),
+            HydrateFallback: FormRouteFallback,
+            lazy: lazyPage(routeLoaders.caseCreate.load, (module) => module.CaseCreatePage),
           },
           {
             path: 'cases/:caseId',
-            lazy: lazyPage(
-              () => import('../features/cases/pages/CaseDetailPage'),
-              (module) => module.CaseDetailPage,
-            ),
+            HydrateFallback: DetailRouteFallback,
+            lazy: lazyPage(routeLoaders.caseDetail.load, (module) => module.CaseDetailPage),
           },
           {
             path: 'cases/:caseId/edit',
-            lazy: lazyPage(
-              () => import('../features/cases/pages/CaseEditPage'),
-              (module) => module.CaseEditPage,
-            ),
+            HydrateFallback: FormRouteFallback,
+            lazy: lazyPage(routeLoaders.caseEdit.load, (module) => module.CaseEditPage),
           },
           {
             path: 'graph',
-            HydrateFallback: GraphRouteFallback,
-            lazy: lazyPage(
-              () => import('../features/causal-graph/pages/CausalGraphPage'),
-              (module) => module.CausalGraphPage,
-            ),
+            HydrateFallback: CanvasRouteFallback,
+            lazy: lazyPage(routeLoaders.graph.load, (module) => module.CausalGraphPage),
           },
           {
             path: 'maintenance',
-            lazy: lazyPage(
-              () => import('../features/data-maintenance/DataMaintenance'),
-              (module) => module.DataMaintenance,
-            ),
+            HydrateFallback: SettingsRouteFallback,
+            lazy: lazyPage(routeLoaders.maintenance.load, (module) => module.DataMaintenance),
           },
           {
             path: 'data-transfer',
-            lazy: lazyPage(
-              () => import('../features/data-transfer/DataTransferPage'),
-              (module) => module.DataTransferPage,
-            ),
+            HydrateFallback: SettingsRouteFallback,
+            lazy: lazyPage(routeLoaders.dataTransfer.load, (module) => module.DataTransferPage),
           },
           {
             path: 'data-transfer/imports/:batchId',
-            lazy: lazyPage(
-              () => import('../features/data-transfer/pages/ImportDetailPage'),
-              (module) => module.ImportDetailPage,
-            ),
+            HydrateFallback: DetailRouteFallback,
+            lazy: lazyPage(routeLoaders.importDetail.load, (module) => module.ImportDetailPage),
           },
           {
             path: 'data-transfer/ai-imports/:batchId',
-            lazy: lazyPage(
-              () => import('../features/data-transfer/pages/AiImportDetailPage'),
-              (module) => module.AiImportDetailPage,
-            ),
+            HydrateFallback: DetailRouteFallback,
+            lazy: lazyPage(routeLoaders.aiImportDetail.load, (module) => module.AiImportDetailPage),
           },
           {
             path: 'settings',
-            lazy: lazyPage(
-              () => import('../features/parameter-settings/ParameterSettings'),
-              (module) => module.ParameterSettings,
-            ),
+            HydrateFallback: SettingsRouteFallback,
+            lazy: lazyPage(routeLoaders.settings.load, (module) => module.ParameterSettings),
           },
           {
             path: 'system',
-            lazy: lazyPage(
-              () => import('../features/system-status/SystemStatus'),
-              (module) => module.SystemStatus,
-            ),
+            HydrateFallback: SettingsRouteFallback,
+            lazy: lazyPage(routeLoaders.system.load, (module) => module.SystemStatus),
           },
           { path: '*', element: <Navigate to="/events" replace /> },
         ],

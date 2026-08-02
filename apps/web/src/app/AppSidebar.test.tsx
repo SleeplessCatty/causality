@@ -2,7 +2,12 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
+import { preloadRoute } from './preloadableRoutes';
 import { AppSidebar } from './AppSidebar';
+
+vi.mock('./preloadableRoutes', () => ({
+  preloadRoute: vi.fn(() => Promise.resolve()),
+}));
 
 const navigationLabels = [
   '原子事件',
@@ -66,5 +71,16 @@ describe('AppSidebar', () => {
 
     const toggle = screen.getByRole('button', { name: '当前窗口空间不足' });
     expect((toggle as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('preloads a route module on pointer or keyboard intent', () => {
+    renderSidebar();
+
+    const graphLink = screen.getByRole('link', { name: '因果图' });
+    fireEvent.mouseEnter(graphLink);
+    fireEvent.focus(graphLink);
+
+    expect(preloadRoute).toHaveBeenCalledWith('graph');
+    expect(preloadRoute).toHaveBeenCalledTimes(2);
   });
 });

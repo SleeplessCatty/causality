@@ -1,5 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 
+import { PageSkeleton } from '../../shared/loading/PageSkeleton';
+import { useDelayedVisibility } from '../../shared/loading/useDelayedVisibility';
 import { useAuth } from './AuthProvider';
 
 export interface RequireSessionProps {
@@ -14,9 +16,17 @@ export function RequireSession({ allowPasswordChange = false }: RequireSessionPr
   const auth = useAuth();
   const location = useLocation();
   const returnTo = currentPath(location.pathname, location.search, location.hash);
+  const showAuthSkeleton = useDelayedVisibility(auth.status === 'loading', {
+    delayMs: 180,
+    minimumVisibleMs: 300,
+  });
 
-  if (auth.status === 'loading') {
-    return <div className="auth-route-state">正在检查登录状态…</div>;
+  if (auth.status === 'loading' || showAuthSkeleton) {
+    return (
+      <div className="auth-route-state">
+        <PageSkeleton variant="settings" visible={showAuthSkeleton} />
+      </div>
+    );
   }
   if (auth.status === 'anonymous') {
     return <Navigate to="/login" replace state={{ returnTo }} />;
