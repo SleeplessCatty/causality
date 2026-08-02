@@ -287,21 +287,24 @@ export {
 export {
   createMcpTokenInputSchema,
   createMcpTokenResponseSchema,
+  deleteMcpTokenResponseSchema,
   mcpAuthorizationResponseSchema,
   mcpClientConfigSchema,
+  mcpMaskedTokenSchema,
   mcpPersonalAccessTokenSchema,
   mcpServiceStatusSchema,
   mcpSettingsResponseSchema,
+  mcpTokenSecretResponseSchema,
   mcpTokenSummarySchema,
-  revokeMcpTokenResponseSchema,
   type CreateMcpTokenInput,
   type CreateMcpTokenResponse,
+  type DeleteMcpTokenResponse,
   type McpAuthorizationResponse,
   type McpClientConfig,
   type McpServiceStatus,
   type McpSettingsResponse,
+  type McpTokenSecretResponse,
   type McpTokenSummary,
-  type RevokeMcpTokenResponse,
 } from './mcp/mcpSettingsSchemas.js';
 
 export {

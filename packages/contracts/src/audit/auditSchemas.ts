@@ -14,6 +14,7 @@ export const auditActions = [
   'account.unlocked',
   'mcp_token.created',
   'mcp_token.revoked',
+  'mcp_token.deleted',
   'mcp_token.auth_failed',
   'event.created',
   'event.updated',

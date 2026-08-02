@@ -13,6 +13,7 @@ describe('audit contracts', () => {
       expect(auditActionSchema.parse(action)).toBe(action);
     }
     expect(auditActionSchema.safeParse('event.read').success).toBe(false);
+    expect(auditActionSchema.parse('mcp_token.deleted')).toBe('mcp_token.deleted');
   });
 
   it('limits audit results and targets to the shared finite catalogs', () => {

@@ -4,11 +4,13 @@ import {
   apiErrorSchema,
   createMcpTokenInputSchema,
   createMcpTokenResponseSchema,
+  deleteMcpTokenResponseSchema,
   mcpAuthorizationResponseSchema,
+  mcpMaskedTokenSchema,
   mcpPersonalAccessTokenSchema,
   mcpSettingsResponseSchema,
+  mcpTokenSecretResponseSchema,
   mcpTokenSummarySchema,
-  revokeMcpTokenResponseSchema,
 } from '../src/index.js';
 
 const token = `cau_pat_${'a'.repeat(43)}`;
@@ -63,27 +65,30 @@ describe('MCP settings contracts', () => {
     ).toBe(false);
   });
 
-  it('accepts one-time personal token creation and safe summaries', () => {
+  it('accepts recoverable personal-token management contracts', () => {
     const summary = {
       id: tokenId,
-      deviceName: 'Jason desktop',
+      name: 'Codex',
+      maskedToken: 'cau_pat_aaaa••••aaaa',
       createdAt: '2026-07-28T10:00:00.000Z',
       lastUsedAt: null,
-      lastClientName: null,
-      revokedAt: null,
     };
     expect(mcpPersonalAccessTokenSchema.parse(token)).toBe(token);
+    expect(mcpMaskedTokenSchema.parse(summary.maskedToken)).toBe(summary.maskedToken);
     expect(mcpTokenSummarySchema.parse(summary)).toEqual(summary);
-    expect(createMcpTokenInputSchema.parse({ deviceName: '  Jason desktop  ' })).toEqual({
-      deviceName: 'Jason desktop',
+    expect(createMcpTokenInputSchema.parse({ name: '  Codex  ' })).toEqual({
+      name: 'Codex',
     });
-    expect(createMcpTokenResponseSchema.parse({ token, summary })).toEqual({ token, summary });
-    expect(revokeMcpTokenResponseSchema.parse({ revoked: true })).toEqual({ revoked: true });
+    expect(createMcpTokenResponseSchema.parse({ summary })).toEqual({ summary });
+    expect(mcpTokenSecretResponseSchema.parse({ token })).toEqual({ token });
+    expect(deleteMcpTokenResponseSchema.parse({ deleted: true })).toEqual({ deleted: true });
+    expect(mcpTokenSummarySchema.safeParse({ ...summary, status: 'valid' }).success).toBe(false);
   });
 
-  it('enforces device-name and personal-token boundaries', () => {
-    expect(createMcpTokenInputSchema.safeParse({ deviceName: '   ' }).success).toBe(false);
-    expect(createMcpTokenInputSchema.safeParse({ deviceName: 'a'.repeat(81) }).success).toBe(false);
+  it('enforces token-name, mask, and personal-token boundaries', () => {
+    expect(createMcpTokenInputSchema.safeParse({ name: '   ' }).success).toBe(false);
+    expect(createMcpTokenInputSchema.safeParse({ name: 'a'.repeat(81) }).success).toBe(false);
+    expect(mcpMaskedTokenSchema.safeParse('cau_pat_aaaa...aaaa').success).toBe(false);
     expect(mcpPersonalAccessTokenSchema.safeParse(`cau_pat_${'a'.repeat(42)}`).success).toBe(false);
   });
 

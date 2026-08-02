@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 const timestampSchema = z.iso.datetime({ offset: true });
 export const mcpPersonalAccessTokenSchema = z.string().regex(/^cau_pat_[A-Za-z0-9_-]{43}$/);
+export const mcpMaskedTokenSchema = z
+  .string()
+  .regex(/^cau_pat_[A-Za-z0-9_-]{4}••••[A-Za-z0-9_-]{4}$/);
 
 export const mcpServiceStatusSchema = z.enum(['running', 'stopped']);
 
@@ -33,23 +36,24 @@ export const mcpSettingsResponseSchema = z
 export const mcpTokenSummarySchema = z
   .object({
     id: z.uuid(),
-    deviceName: z.string().trim().min(1).max(80),
+    name: z.string().trim().min(1).max(80),
+    maskedToken: mcpMaskedTokenSchema,
     createdAt: timestampSchema,
     lastUsedAt: timestampSchema.nullable(),
-    lastClientName: z.string().max(120).nullable(),
-    revokedAt: timestampSchema.nullable(),
   })
   .strict();
 
 export const createMcpTokenInputSchema = z
-  .object({ deviceName: z.string().trim().min(1).max(80) })
+  .object({ name: z.string().trim().min(1).max(80) })
   .strict();
 
-export const createMcpTokenResponseSchema = z
-  .object({ token: mcpPersonalAccessTokenSchema, summary: mcpTokenSummarySchema })
+export const createMcpTokenResponseSchema = z.object({ summary: mcpTokenSummarySchema }).strict();
+
+export const mcpTokenSecretResponseSchema = z
+  .object({ token: mcpPersonalAccessTokenSchema })
   .strict();
 
-export const revokeMcpTokenResponseSchema = z.object({ revoked: z.literal(true) }).strict();
+export const deleteMcpTokenResponseSchema = z.object({ deleted: z.literal(true) }).strict();
 
 export const mcpAuthorizationResponseSchema = z
   .object({
@@ -66,5 +70,6 @@ export type McpSettingsResponse = z.infer<typeof mcpSettingsResponseSchema>;
 export type McpTokenSummary = z.infer<typeof mcpTokenSummarySchema>;
 export type CreateMcpTokenInput = z.infer<typeof createMcpTokenInputSchema>;
 export type CreateMcpTokenResponse = z.infer<typeof createMcpTokenResponseSchema>;
-export type RevokeMcpTokenResponse = z.infer<typeof revokeMcpTokenResponseSchema>;
+export type McpTokenSecretResponse = z.infer<typeof mcpTokenSecretResponseSchema>;
+export type DeleteMcpTokenResponse = z.infer<typeof deleteMcpTokenResponseSchema>;
 export type McpAuthorizationResponse = z.infer<typeof mcpAuthorizationResponseSchema>;
