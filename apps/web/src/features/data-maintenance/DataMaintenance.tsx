@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
+import { LoadingHeadingStatus } from '../../shared/loading/LoadingState';
 import { getReadiness } from '../system-status/systemStatusApi';
 import { DataCheckPanel } from './DataCheckPanel';
 import { getLatestDataCheck, startDataCheck } from './dataMaintenanceApi';
@@ -13,11 +14,13 @@ export function DataMaintenance() {
   const readiness = useQuery({
     queryKey: ['system', 'readiness'],
     queryFn: ({ signal }) => getReadiness(signal),
+    staleTime: 0,
   });
   const dataCheck = useQuery({
     queryKey: ['data-checks', 'latest'],
     queryFn: ({ signal }) => getLatestDataCheck(signal),
     refetchInterval: (query) => (query.state.data?.task.status === 'running' ? 250 : false),
+    staleTime: 0,
   });
   const startCheck = useMutation({
     mutationFn: startDataCheck,
@@ -57,6 +60,14 @@ export function DataMaintenance() {
           <h1>数据维护</h1>
           <p>检查数据质量问题并建议处理方案</p>
         </div>
+        <LoadingHeadingStatus
+          fetching={
+            (readiness.isFetching && !readiness.isPending) ||
+            (dataCheck.isFetching && !dataCheck.isPending)
+          }
+          error={readiness.error ?? dataCheck.error}
+          onRetry={() => void Promise.all([readiness.refetch(), dataCheck.refetch()])}
+        />
       </div>
       <DataCheckPanel
         latest={dataCheck.data}

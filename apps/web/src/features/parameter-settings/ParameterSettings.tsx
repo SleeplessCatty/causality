@@ -8,6 +8,7 @@ import { useState } from 'react';
 
 import { ApiClientError } from '../../shared/api/httpClient';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
+import { LoadingHeadingStatus } from '../../shared/loading/LoadingState';
 import { McpSettingsPanel } from './McpSettingsPanel';
 import { SemanticModelCard } from './SemanticModelCard';
 import { SemanticModelActionDialog, type SemanticModelAction } from './SemanticModelActionDialog';
@@ -73,6 +74,7 @@ export function ParameterSettings() {
     queryFn: ({ signal }) => getSemanticLifecycle(signal),
     refetchInterval: (query) => query.state.data?.pollAfterMs ?? false,
     refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   function reportError(error: unknown): void {
@@ -155,6 +157,11 @@ export function ParameterSettings() {
             <p>模型下载完成后会自动加载并生成当前业务数据的语义索引。</p>
           </div>
           <span>最近检查 {formatSemanticDate(current.updatedAt)}</span>
+          <LoadingHeadingStatus
+            fetching={lifecycle.isFetching && !lifecycle.isPending}
+            error={lifecycle.error}
+            onRetry={() => void lifecycle.refetch()}
+          />
         </div>
 
         {current.operation ? <SemanticTaskProgress operation={current.operation} /> : null}

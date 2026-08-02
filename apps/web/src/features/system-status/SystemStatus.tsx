@@ -1,6 +1,7 @@
 import type { SemanticWorkerStatus } from '@causality/contracts';
 import { useQuery } from '@tanstack/react-query';
 
+import { LoadingHeadingStatus } from '../../shared/loading/LoadingState';
 import { getHealth, getReadiness, getSemanticWorkerStatus } from './systemStatusApi';
 
 type StatusTone = 'neutral' | 'positive' | 'negative';
@@ -46,14 +47,17 @@ export function SystemStatus() {
   const health = useQuery({
     queryKey: ['system', 'health'],
     queryFn: ({ signal }) => getHealth(signal),
+    staleTime: 0,
   });
   const readiness = useQuery({
     queryKey: ['system', 'readiness'],
     queryFn: ({ signal }) => getReadiness(signal),
+    staleTime: 0,
   });
   const worker = useQuery({
     queryKey: ['system', 'semantic-worker'],
     queryFn: ({ signal }) => getSemanticWorkerStatus(signal),
+    staleTime: 0,
   });
   const apiStatus: StatusValueProps = health.isPending
     ? { label: '检查中', tone: 'neutral' }
@@ -84,6 +88,11 @@ export function SystemStatus() {
         <button type="button" onClick={retry} disabled={isChecking}>
           {isChecking ? '检查中…' : '重新检查'}
         </button>
+        <LoadingHeadingStatus
+          fetching={isChecking && !health.isPending && !readiness.isPending && !worker.isPending}
+          error={health.error ?? readiness.error ?? worker.error}
+          onRetry={retry}
+        />
       </div>
 
       <div className="status-list" aria-live="polite">

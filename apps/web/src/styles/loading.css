@@ -205,6 +205,21 @@
   line-height: 1.4;
 }
 
+.status-card__heading,
+.semantic-settings-section__heading,
+.page-heading {
+  position: relative;
+}
+
+.status-card__heading > .loading-heading-status {
+  top: 31px;
+  right: 138px;
+}
+
+.semantic-settings-section__heading > .loading-heading-status {
+  top: 28px;
+}
+
 .loading-heading-status--error {
   display: flex;
   align-items: center;
