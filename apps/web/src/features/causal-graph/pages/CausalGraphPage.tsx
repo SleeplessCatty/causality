@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
 import { ApiClientError } from '../../../shared/api/httpClient';
+import { PageSkeleton } from '../../../shared/loading/PageSkeleton';
+import { useDelayedVisibility } from '../../../shared/loading/useDelayedVisibility';
 import { getCausalGraph } from '../api/causalGraphApi';
 import { CausalGraphCanvas, type CausalGraphCanvasHandle } from '../components/CausalGraphCanvas';
 import { CausalGraphInspector } from '../components/CausalGraphInspector';
@@ -79,6 +81,7 @@ export function CausalGraphPage() {
     queryKey: ['causal-graph', centerEventId, direction, limit, minConfidence, minCaseCount],
     queryFn: ({ signal }) => getCausalGraph(requestedQuery, signal),
     enabled: hasValidCenter,
+    staleTime: 0,
   });
 
   useEffect(() => {
@@ -199,6 +202,11 @@ export function CausalGraphPage() {
     lastGraph &&
     (graphQuery.isFetching || (graphQuery.data && layoutState === 'loading' && !graphQuery.error)),
   );
+  const initialGraphLoading = hasValidCenter && !lastGraph && !queryError;
+  const showCanvasSkeleton = useDelayedVisibility(initialGraphLoading, {
+    delayMs: 180,
+    minimumVisibleMs: 300,
+  });
 
   return (
     <section className="causal-graph-page" aria-label="局部因果图工作台">
@@ -226,6 +234,9 @@ export function CausalGraphPage() {
             setInspectorOpen(false);
           }}
         />
+        {initialGraphLoading || showCanvasSkeleton ? (
+          <PageSkeleton variant="canvas" visible={showCanvasSkeleton} />
+        ) : null}
       </div>
       <CausalGraphToolbar
         selectedEvent={selectedEvent}

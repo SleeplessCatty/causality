@@ -162,7 +162,6 @@ vi.mock('../components/CausalGraphCanvas', async () => {
             {!visibleGraph && !graph && !isInitialLoading && !overlay
               ? '搜索并选择一个中心事件'
               : null}
-            {isInitialLoading ? '正在生成因果图…' : null}
             {isRefreshing ? '正在重新生成…' : null}
             {overlay?.message}
             {overlay?.actionLabel ? (
@@ -348,6 +347,7 @@ describe('CausalGraphPage', () => {
 
     await screen.findByText('节点 2');
 
+    expect(screen.queryByText('正在生成因果图…')).toBeNull();
     expect(getEvent).not.toHaveBeenCalled();
   });
 

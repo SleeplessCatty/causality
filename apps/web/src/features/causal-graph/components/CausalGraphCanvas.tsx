@@ -300,11 +300,6 @@ export const CausalGraphCanvas = forwardRef<CausalGraphCanvasHandle, CausalGraph
             <span>选择后将自动生成初始局部因果图</span>
           </div>
         ) : null}
-        {isInitialLoading ? (
-          <div className="causal-graph-canvas__state" role="status">
-            <strong>正在生成因果图…</strong>
-          </div>
-        ) : null}
         {overlay ? (
           <div className="causal-graph-canvas__state is-overlay" role={overlay.role ?? 'alert'}>
             <strong>{overlay.message}</strong>
