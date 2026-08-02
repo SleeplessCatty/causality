@@ -7,6 +7,7 @@ import {
   listFocusState,
   resolveRecordReturnTarget,
 } from '../../../shared/navigation/listReturn';
+import { LoadingState } from '../../../shared/loading/LoadingState';
 import { getAllRelationCases, getRelation, replaceRelation } from '../api/relationApi';
 import { RelationForm } from '../components/RelationForm';
 
@@ -35,18 +36,6 @@ export function RelationEditPage() {
   const listReturnTo = returnTarget.path;
   const focusState = listFocusState(relationId);
 
-  if (relation.isPending || casesPending) return <div className="page-state">加载因果关系…</div>;
-  if (relation.isError || casesError) {
-    return (
-      <div className="page-state page-state--error" role="alert">
-        <strong>无法读取因果关系</strong>
-        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
-          返回关系列表
-        </Link>
-      </div>
-    );
-  }
-
   async function submit(input: RelationFormInput): Promise<void> {
     const updated = await replaceRelation(relationId, input);
     queryClient.setQueryData(['relations', 'detail', relationId], updated);
@@ -62,36 +51,57 @@ export function RelationEditPage() {
     });
   }
 
+  const initialPending = relation.isPending || casesPending;
+  const initialError = relation.isError || casesError;
+
   return (
-    <section
-      className="event-editor-page relation-editor-page"
-      aria-labelledby="edit-relation-title"
+    <LoadingState
+      pending={initialPending}
+      fetching={relation.isFetching || linkedCases.isFetching}
+      hasData={(!initialPending && Boolean(relation.data)) || initialError}
+      error={null}
+      skeleton="form"
+      onRetry={() => void Promise.all([relation.refetch(), linkedCases.refetch()])}
     >
-      <Link className="back-link" to={listReturnTo} state={focusState}>
-        <svg aria-hidden="true" viewBox="0 0 20 20">
-          <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
-        </svg>
-        返回关系列表
-      </Link>
-      <h1 id="edit-relation-title">编辑因果关系</h1>
-      <RelationForm
-        mode="edit"
-        relationId={relationId}
-        initialValue={{
-          causeEvent: relation.data.causeEvent,
-          effectEvent: relation.data.effectEvent,
-          confidence: relation.data.confidence,
-          description: relation.data.description,
-          caseSelections: (linkedCases.data ?? []).map((item) => ({
-            type: 'existing' as const,
-            caseId: item.id,
-            content: item.content,
-          })),
-        }}
-        onSubmit={submit}
-        cancelTo={listReturnTo}
-        cancelState={focusState}
-      />
-    </section>
+      {initialError ? (
+        <div className="page-state page-state--error" role="alert">
+          <strong>无法读取因果关系</strong>
+          <Link className="button button--secondary" to={listReturnTo} state={focusState}>
+            返回关系列表
+          </Link>
+        </div>
+      ) : relation.data ? (
+        <section
+          className="event-editor-page relation-editor-page"
+          aria-labelledby="edit-relation-title"
+        >
+          <Link className="back-link" to={listReturnTo} state={focusState}>
+            <svg aria-hidden="true" viewBox="0 0 20 20">
+              <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
+            </svg>
+            返回关系列表
+          </Link>
+          <h1 id="edit-relation-title">编辑因果关系</h1>
+          <RelationForm
+            mode="edit"
+            relationId={relationId}
+            initialValue={{
+              causeEvent: relation.data.causeEvent,
+              effectEvent: relation.data.effectEvent,
+              confidence: relation.data.confidence,
+              description: relation.data.description,
+              caseSelections: (linkedCases.data ?? []).map((item) => ({
+                type: 'existing' as const,
+                caseId: item.id,
+                content: item.content,
+              })),
+            }}
+            onSubmit={submit}
+            cancelTo={listReturnTo}
+            cancelState={focusState}
+          />
+        </section>
+      ) : null}
+    </LoadingState>
   );
 }

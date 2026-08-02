@@ -6,6 +6,7 @@ import { Link, useLocation, useParams, useSearchParams } from 'react-router';
 import { scrollMainContentToTop } from '../../../app/scrollMainContentToTop';
 import { AppTabs } from '../../../shared/controls/AppTabs';
 import { listFocusState, resolveListReturnPath } from '../../../shared/navigation/listReturn';
+import { LoadingState } from '../../../shared/loading/LoadingState';
 import { ListPagination, readListPage } from '../../../shared/pagination/ListPagination';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { getImportBatch, getImportRecords } from '../dataTransferApi';
@@ -144,134 +145,144 @@ export function ImportDetailPage() {
 
   const returnPath = resolveListReturnPath(location.state, '/data-transfer', 1);
 
-  if (batch.isPending) return <div className="page-state">加载导入详情…</div>;
-  if (batch.isError) {
-    return (
-      <div className="page-state page-state--error" role="alert">
-        <strong>无法读取导入详情</strong>
-        <Link className="button button--secondary" to={returnPath} state={listFocusState(batchId)}>
-          返回导入历史
-        </Link>
-      </div>
-    );
-  }
-
   return (
-    <section
-      className="event-detail-page data-transfer-detail-page"
-      aria-labelledby="import-detail-title"
+    <LoadingState
+      pending={batch.isPending}
+      fetching={batch.isFetching}
+      hasData={Boolean(batch.data) || batch.isError}
+      error={null}
+      skeleton="detail"
+      onRetry={() => void batch.refetch()}
     >
-      <Link className="back-link" to={returnPath} state={listFocusState(batchId)}>
-        <svg aria-hidden="true" viewBox="0 0 20 20">
-          <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
-        </svg>
-        返回导入历史
-      </Link>
-      <div className="detail-heading data-transfer-detail-heading">
-        <div>
-          <span className="detail-label">导入记录</span>
-          <OverflowText content={batch.data.filename} lines={2} mode="always">
-            <h1 id="import-detail-title">{batch.data.filename}</h1>
-          </OverflowText>
+      {batch.isError ? (
+        <div className="page-state page-state--error" role="alert">
+          <strong>无法读取导入详情</strong>
+          <Link
+            className="button button--secondary"
+            to={returnPath}
+            state={listFocusState(batchId)}
+          >
+            返回导入历史
+          </Link>
         </div>
-      </div>
-
-      <dl className="data-transfer-summary-grid">
-        <div>
-          <dt>完成时间</dt>
-          <dd>{completedAtFormatter.format(new Date(batch.data.completedAt))}</dd>
-        </div>
-        {detailTabs.map((tab) => (
-          <div key={tab.value}>
-            <dt>{tab.label}</dt>
-            <dd>{formatCounts(batch.data, tab.recordType)}</dd>
-          </div>
-        ))}
-      </dl>
-
-      <div className="data-transfer-detail-records">
-        <AppTabs
-          id="import-record-type"
-          label="导入明细类型"
-          value={activeTab.value}
-          tabs={detailTabs}
-          onChange={(value) => {
-            const next = new URLSearchParams(searchParameters);
-            next.set('tab', value);
-            setSearchParameters(next, { state: location.state });
-          }}
+      ) : batch.data ? (
+        <section
+          className="event-detail-page data-transfer-detail-page"
+          aria-labelledby="import-detail-title"
         >
-          {records.isPending && !recordData ? (
-            <div className="table-state">加载导入明细…</div>
-          ) : null}
-          {records.isError ? (
-            <div className="table-state table-state--error" role="alert">
-              <strong>无法加载导入明细</strong>
-              <button
-                className="button button--secondary"
-                type="button"
-                onClick={() => void records.refetch()}
-              >
-                重新加载
-              </button>
+          <Link className="back-link" to={returnPath} state={listFocusState(batchId)}>
+            <svg aria-hidden="true" viewBox="0 0 20 20">
+              <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
+            </svg>
+            返回导入历史
+          </Link>
+          <div className="detail-heading data-transfer-detail-heading">
+            <div>
+              <span className="detail-label">导入记录</span>
+              <OverflowText content={batch.data.filename} lines={2} mode="always">
+                <h1 id="import-detail-title">{batch.data.filename}</h1>
+              </OverflowText>
             </div>
-          ) : null}
-          {recordData?.items.length === 0 ? (
-            <div className="table-state table-state--empty">
-              <strong>没有这类导入明细</strong>
+          </div>
+
+          <dl className="data-transfer-summary-grid">
+            <div>
+              <dt>完成时间</dt>
+              <dd>{completedAtFormatter.format(new Date(batch.data.completedAt))}</dd>
             </div>
-          ) : null}
-          {recordData && recordData.items.length > 0 ? (
-            <div className="event-table-wrap data-transfer-table-wrap">
-              <table className="event-table data-transfer-record-table">
-                <thead>
-                  <tr>
-                    <th scope="col">顺序</th>
-                    <th scope="col">处理结果</th>
-                    <th scope="col">内容</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recordData.items.map((record) => {
-                    const content = formatRecordText(record);
-                    return (
-                      <tr key={record.id}>
-                        <td>{record.sequence}</td>
-                        <td>
-                          <span
-                            className={`data-transfer-outcome data-transfer-outcome--${record.outcome}`}
-                          >
-                            {record.outcome === 'created' ? '新增' : '复用'}
-                          </span>
-                        </td>
-                        <td>
-                          <OverflowText content={content} mode="always">
-                            <span>{content}</span>
-                          </OverflowText>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-          {recordData ? (
-            <ListPagination
-              page={recordData.page}
-              totalPages={recordData.totalPages}
-              totalItems={recordData.totalItems}
-              disabled={records.isFetching}
-              onPageChange={(page) => {
+            {detailTabs.map((tab) => (
+              <div key={tab.value}>
+                <dt>{tab.label}</dt>
+                <dd>{formatCounts(batch.data, tab.recordType)}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <div className="data-transfer-detail-records">
+            <AppTabs
+              id="import-record-type"
+              label="导入明细类型"
+              value={activeTab.value}
+              tabs={detailTabs}
+              onChange={(value) => {
                 const next = new URLSearchParams(searchParameters);
-                next.set(activeTab.pageParameter, String(page));
+                next.set('tab', value);
                 setSearchParameters(next, { state: location.state });
               }}
-              onNavigate={scrollMainContentToTop}
-            />
-          ) : null}
-        </AppTabs>
-      </div>
-    </section>
+            >
+              {records.isPending && !recordData ? (
+                <div className="table-state">加载导入明细…</div>
+              ) : null}
+              {records.isError ? (
+                <div className="table-state table-state--error" role="alert">
+                  <strong>无法加载导入明细</strong>
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    onClick={() => void records.refetch()}
+                  >
+                    重新加载
+                  </button>
+                </div>
+              ) : null}
+              {recordData?.items.length === 0 ? (
+                <div className="table-state table-state--empty">
+                  <strong>没有这类导入明细</strong>
+                </div>
+              ) : null}
+              {recordData && recordData.items.length > 0 ? (
+                <div className="event-table-wrap data-transfer-table-wrap">
+                  <table className="event-table data-transfer-record-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">顺序</th>
+                        <th scope="col">处理结果</th>
+                        <th scope="col">内容</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recordData.items.map((record) => {
+                        const content = formatRecordText(record);
+                        return (
+                          <tr key={record.id}>
+                            <td>{record.sequence}</td>
+                            <td>
+                              <span
+                                className={`data-transfer-outcome data-transfer-outcome--${record.outcome}`}
+                              >
+                                {record.outcome === 'created' ? '新增' : '复用'}
+                              </span>
+                            </td>
+                            <td>
+                              <OverflowText content={content} mode="always">
+                                <span>{content}</span>
+                              </OverflowText>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+              {recordData ? (
+                <ListPagination
+                  page={recordData.page}
+                  totalPages={recordData.totalPages}
+                  totalItems={recordData.totalItems}
+                  disabled={records.isFetching}
+                  onPageChange={(page) => {
+                    const next = new URLSearchParams(searchParameters);
+                    next.set(activeTab.pageParameter, String(page));
+                    setSearchParameters(next, { state: location.state });
+                  }}
+                  onNavigate={scrollMainContentToTop}
+                />
+              ) : null}
+            </AppTabs>
+          </div>
+        </section>
+      ) : null}
+    </LoadingState>
   );
 }

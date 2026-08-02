@@ -7,6 +7,7 @@ import {
   listFocusState,
   resolveRecordReturnTarget,
 } from '../../../shared/navigation/listReturn';
+import { LoadingState } from '../../../shared/loading/LoadingState';
 import { getCase, replaceCase } from '../api/caseApi';
 import { CaseForm } from '../components/CaseForm';
 
@@ -28,18 +29,6 @@ export function CaseEditPage() {
   const listReturnTo = returnTarget.path;
   const focusState = listFocusState(caseId);
 
-  if (detail.isPending) return <div className="page-state">加载案例…</div>;
-  if (detail.isError) {
-    return (
-      <div className="page-state page-state--error" role="alert">
-        <strong>无法读取案例</strong>
-        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
-          返回案例列表
-        </Link>
-      </div>
-    );
-  }
-
   async function submit(input: CaseFormInput): Promise<void> {
     const updated = await replaceCase(caseId, input);
     queryClient.setQueryData(['cases', 'detail', caseId], updated);
@@ -55,26 +44,44 @@ export function CaseEditPage() {
   }
 
   return (
-    <section className="event-editor-page" aria-labelledby="edit-case-title">
-      <Link className="back-link" to={listReturnTo} state={focusState}>
-        <svg aria-hidden="true" viewBox="0 0 20 20">
-          <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
-        </svg>
-        返回案例列表
-      </Link>
-      <h1 id="edit-case-title">编辑具体案例</h1>
-      {detail.data.relationCount > 0 ? (
-        <div className="case-edit-notice">
-          修改会同步影响当前案例所关联的 {detail.data.relationCount} 条因果关系中的显示内容。
+    <LoadingState
+      pending={detail.isPending}
+      fetching={detail.isFetching}
+      hasData={Boolean(detail.data) || detail.isError}
+      error={null}
+      skeleton="form"
+      onRetry={() => void detail.refetch()}
+    >
+      {detail.isError ? (
+        <div className="page-state page-state--error" role="alert">
+          <strong>无法读取案例</strong>
+          <Link className="button button--secondary" to={listReturnTo} state={focusState}>
+            返回案例列表
+          </Link>
         </div>
+      ) : detail.data ? (
+        <section className="event-editor-page" aria-labelledby="edit-case-title">
+          <Link className="back-link" to={listReturnTo} state={focusState}>
+            <svg aria-hidden="true" viewBox="0 0 20 20">
+              <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
+            </svg>
+            返回案例列表
+          </Link>
+          <h1 id="edit-case-title">编辑具体案例</h1>
+          {detail.data.relationCount > 0 ? (
+            <div className="case-edit-notice">
+              修改会同步影响当前案例所关联的 {detail.data.relationCount} 条因果关系中的显示内容。
+            </div>
+          ) : null}
+          <CaseForm
+            mode="edit"
+            initialContent={detail.data.content}
+            onSubmit={submit}
+            cancelTo={listReturnTo}
+            cancelState={focusState}
+          />
+        </section>
       ) : null}
-      <CaseForm
-        mode="edit"
-        initialContent={detail.data.content}
-        onSubmit={submit}
-        cancelTo={listReturnTo}
-        cancelState={focusState}
-      />
-    </section>
+    </LoadingState>
   );
 }

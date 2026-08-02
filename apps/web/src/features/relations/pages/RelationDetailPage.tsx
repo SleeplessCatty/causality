@@ -5,6 +5,7 @@ import { Link, useLocation, useParams } from 'react-router';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
 import { fetchAllRemainingPages } from '../../../shared/pagination/fetchAllRemainingPages';
 import { listFocusState, resolveListReturnPath } from '../../../shared/navigation/listReturn';
+import { LoadingState } from '../../../shared/loading/LoadingState';
 import { getRelation, getRelationCases } from '../api/relationApi';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
@@ -47,165 +48,171 @@ export function RelationDetailPage() {
   );
   const focusState = listFocusState(relationId);
 
-  if (relation.isPending) return <div className="page-state">加载因果关系详情…</div>;
-  if (relation.isError) {
-    return (
-      <div className="page-state page-state--error" role="alert">
-        <strong>无法读取因果关系</strong>
-        <Link className="button button--secondary" to={listReturnTo} state={focusState}>
-          返回关系列表
-        </Link>
-      </div>
-    );
-  }
-
   return (
-    <section
-      className="event-detail-page relation-detail-page"
-      aria-labelledby="relation-detail-title"
+    <LoadingState
+      pending={relation.isPending}
+      fetching={relation.isFetching}
+      hasData={Boolean(relation.data) || relation.isError}
+      error={null}
+      skeleton="detail"
+      onRetry={() => void relation.refetch()}
     >
-      {typeof location.state === 'object' && location.state && 'notice' in location.state ? (
-        <div className="success-notice" aria-live="polite">
-          {String(location.state.notice)}
+      {relation.isError ? (
+        <div className="page-state page-state--error" role="alert">
+          <strong>无法读取因果关系</strong>
+          <Link className="button button--secondary" to={listReturnTo} state={focusState}>
+            返回关系列表
+          </Link>
         </div>
-      ) : null}
-      <Link className="back-link" to={listReturnTo} state={focusState}>
-        <svg aria-hidden="true" viewBox="0 0 20 20">
-          <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
-        </svg>
-        返回关系列表
-      </Link>
-      <div className="detail-heading relation-detail-heading">
-        <div>
-          <span className="detail-label">因果关系</span>
-          <h1 id="relation-detail-title">
-            <OverflowText content={relation.data.causeEvent.name} lines={2}>
-              <Link to={`/events/${relation.data.causeEvent.id}`}>
-                {relation.data.causeEvent.name}
-              </Link>
-            </OverflowText>
-            <span aria-hidden="true">→</span>
-            <OverflowText content={relation.data.effectEvent.name} lines={2}>
-              <Link to={`/events/${relation.data.effectEvent.id}`}>
-                {relation.data.effectEvent.name}
-              </Link>
-            </OverflowText>
-          </h1>
-        </div>
-        <Link
-          className="button button--primary"
-          to={`/relations/${relation.data.id}/edit`}
-          state={{ listReturnPath: listReturnTo, listFocusId: relation.data.id }}
+      ) : relation.data ? (
+        <section
+          className="event-detail-page relation-detail-page"
+          aria-labelledby="relation-detail-title"
         >
-          编辑因果关系
-        </Link>
-      </div>
+          {typeof location.state === 'object' && location.state && 'notice' in location.state ? (
+            <div className="success-notice" aria-live="polite">
+              {String(location.state.notice)}
+            </div>
+          ) : null}
+          <Link className="back-link" to={listReturnTo} state={focusState}>
+            <svg aria-hidden="true" viewBox="0 0 20 20">
+              <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
+            </svg>
+            返回关系列表
+          </Link>
+          <div className="detail-heading relation-detail-heading">
+            <div>
+              <span className="detail-label">因果关系</span>
+              <h1 id="relation-detail-title">
+                <OverflowText content={relation.data.causeEvent.name} lines={2}>
+                  <Link to={`/events/${relation.data.causeEvent.id}`}>
+                    {relation.data.causeEvent.name}
+                  </Link>
+                </OverflowText>
+                <span aria-hidden="true">→</span>
+                <OverflowText content={relation.data.effectEvent.name} lines={2}>
+                  <Link to={`/events/${relation.data.effectEvent.id}`}>
+                    {relation.data.effectEvent.name}
+                  </Link>
+                </OverflowText>
+              </h1>
+            </div>
+            <Link
+              className="button button--primary"
+              to={`/relations/${relation.data.id}/edit`}
+              state={{ listReturnPath: listReturnTo, listFocusId: relation.data.id }}
+            >
+              编辑因果关系
+            </Link>
+          </div>
 
-      <dl className="event-detail-grid relation-detail-grid">
-        <div className="detail-wide">
-          <dt>关系说明</dt>
-          <dd>
-            {relation.data.description ? (
-              <OverflowText content={relation.data.description} lines={6}>
-                <span>{relation.data.description}</span>
-              </OverflowText>
+          <dl className="event-detail-grid relation-detail-grid">
+            <div className="detail-wide">
+              <dt>关系说明</dt>
+              <dd>
+                {relation.data.description ? (
+                  <OverflowText content={relation.data.description} lines={6}>
+                    <span>{relation.data.description}</span>
+                  </OverflowText>
+                ) : (
+                  <span className="detail-empty">未填写</span>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>置信度</dt>
+              <dd className="confidence-value">{relation.data.confidence}%</dd>
+            </div>
+            <div>
+              <dt>具体案例</dt>
+              <dd>{relation.data.caseCount} 条</dd>
+            </div>
+            <div>
+              <dt>创建时间</dt>
+              <dd>{dateFormatter.format(new Date(relation.data.createdAt))}</dd>
+            </div>
+            <div>
+              <dt>最后更新</dt>
+              <dd>{dateFormatter.format(new Date(relation.data.updatedAt))}</dd>
+            </div>
+          </dl>
+
+          <section
+            className="case-relations relation-detail-cases"
+            aria-labelledby="relation-cases-title"
+          >
+            <div className="section-heading">
+              <h2 id="relation-cases-title">关联的具体案例</h2>
+              <span>{relation.data.caseCount} 条</span>
+            </div>
+            {relation.data.caseCount === 0 ? (
+              <div className="case-relations__state">尚未关联具体案例</div>
             ) : (
-              <span className="detail-empty">未填写</span>
+              <>
+                {linkedCases.isPending ? (
+                  <div className="case-relations__state">加载具体案例…</div>
+                ) : null}
+                {linkedCases.isError && !linkedCases.data ? (
+                  <div className="case-relations__state" role="alert">
+                    <span>无法读取具体案例</span>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => void linkedCases.refetch()}
+                    >
+                      重新加载
+                    </button>
+                  </div>
+                ) : null}
+                {cases.length > 0 ? (
+                  <ul className="case-relation-list relation-detail-case-list">
+                    {cases.map((item) => (
+                      <li key={item.id}>
+                        <OverflowText content={item.content} lines={2}>
+                          <Link className="case-relation-list__case" to={`/cases/${item.id}`}>
+                            {item.content}
+                          </Link>
+                        </OverflowText>
+                        <time dateTime={item.linkedAt}>
+                          关联于 {dateFormatter.format(new Date(item.linkedAt))}
+                        </time>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {linkedCases.hasNextPage && !linkedCases.isFetchNextPageError ? (
+                  <div
+                    className="case-relations__state case-relations__state--inline"
+                    style={{ justifyContent: 'flex-end' }}
+                  >
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={linkedCases.isFetchingNextPage}
+                      onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
+                    >
+                      {linkedCases.isFetchingNextPage ? '加载中…' : '加载更多'}
+                    </button>
+                  </div>
+                ) : null}
+                {linkedCases.isFetchNextPageError ? (
+                  <div className="case-relations__state case-relations__state--inline" role="alert">
+                    <span>其余案例加载失败，已显示成功加载的内容。</span>
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={linkedCases.isFetchingNextPage}
+                      onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
+                    >
+                      {linkedCases.isFetchingNextPage ? '加载中…' : '重试加载其余案例'}
+                    </button>
+                  </div>
+                ) : null}
+              </>
             )}
-          </dd>
-        </div>
-        <div>
-          <dt>置信度</dt>
-          <dd className="confidence-value">{relation.data.confidence}%</dd>
-        </div>
-        <div>
-          <dt>具体案例</dt>
-          <dd>{relation.data.caseCount} 条</dd>
-        </div>
-        <div>
-          <dt>创建时间</dt>
-          <dd>{dateFormatter.format(new Date(relation.data.createdAt))}</dd>
-        </div>
-        <div>
-          <dt>最后更新</dt>
-          <dd>{dateFormatter.format(new Date(relation.data.updatedAt))}</dd>
-        </div>
-      </dl>
-
-      <section
-        className="case-relations relation-detail-cases"
-        aria-labelledby="relation-cases-title"
-      >
-        <div className="section-heading">
-          <h2 id="relation-cases-title">关联的具体案例</h2>
-          <span>{relation.data.caseCount} 条</span>
-        </div>
-        {relation.data.caseCount === 0 ? (
-          <div className="case-relations__state">尚未关联具体案例</div>
-        ) : (
-          <>
-            {linkedCases.isPending ? (
-              <div className="case-relations__state">加载具体案例…</div>
-            ) : null}
-            {linkedCases.isError && !linkedCases.data ? (
-              <div className="case-relations__state" role="alert">
-                <span>无法读取具体案例</span>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => void linkedCases.refetch()}
-                >
-                  重新加载
-                </button>
-              </div>
-            ) : null}
-            {cases.length > 0 ? (
-              <ul className="case-relation-list relation-detail-case-list">
-                {cases.map((item) => (
-                  <li key={item.id}>
-                    <OverflowText content={item.content} lines={2}>
-                      <Link className="case-relation-list__case" to={`/cases/${item.id}`}>
-                        {item.content}
-                      </Link>
-                    </OverflowText>
-                    <time dateTime={item.linkedAt}>
-                      关联于 {dateFormatter.format(new Date(item.linkedAt))}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {linkedCases.hasNextPage && !linkedCases.isFetchNextPageError ? (
-              <div
-                className="case-relations__state case-relations__state--inline"
-                style={{ justifyContent: 'flex-end' }}
-              >
-                <button
-                  type="button"
-                  className="text-button"
-                  disabled={linkedCases.isFetchingNextPage}
-                  onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
-                >
-                  {linkedCases.isFetchingNextPage ? '加载中…' : '加载更多'}
-                </button>
-              </div>
-            ) : null}
-            {linkedCases.isFetchNextPageError ? (
-              <div className="case-relations__state case-relations__state--inline" role="alert">
-                <span>其余案例加载失败，已显示成功加载的内容。</span>
-                <button
-                  type="button"
-                  className="text-button"
-                  disabled={linkedCases.isFetchingNextPage}
-                  onClick={() => void fetchAllRemainingPages(linkedCases.fetchNextPage)}
-                >
-                  {linkedCases.isFetchingNextPage ? '加载中…' : '重试加载其余案例'}
-                </button>
-              </div>
-            ) : null}
-          </>
-        )}
-      </section>
-    </section>
+          </section>
+        </section>
+      ) : null}
+    </LoadingState>
   );
 }
