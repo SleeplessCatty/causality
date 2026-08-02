@@ -2,9 +2,10 @@ import {
   apiErrorSchema,
   createMcpTokenInputSchema,
   createMcpTokenResponseSchema,
+  deleteMcpTokenResponseSchema,
   mcpAuthorizationResponseSchema,
+  mcpTokenSecretResponseSchema,
   mcpTokenSummarySchema,
-  revokeMcpTokenResponseSchema,
 } from '@causality/contracts';
 import type { FastifyInstance } from 'fastify';
 import {
@@ -21,15 +22,18 @@ import type { McpAccessService } from './mcpAccessService.js';
 const tokenParamsSchema = z.object({ tokenId: z.uuid() }).strict();
 
 function errorResponse(error: unknown): {
-  status: 401 | 404 | 409;
+  status: 401 | 404 | 409 | 500;
   body: { code: string; message: string };
 } {
   if (error instanceof McpAccessServiceError) {
-    if (error.code === 'TOKEN_LIMIT_REACHED') {
+    if (error.code === 'TOKEN_LIMIT_REACHED' || error.code === 'TOKEN_NAME_EXISTS') {
       return { status: 409, body: { code: error.code, message: error.message } };
     }
     if (error.code === 'TOKEN_NOT_FOUND') {
       return { status: 404, body: { code: error.code, message: error.message } };
+    }
+    if (error.code === 'TOKEN_SECRET_UNAVAILABLE') {
+      return { status: 500, body: { code: error.code, message: error.message } };
     }
     return { status: 401, body: { code: error.code, message: error.message } };
   }
@@ -70,8 +74,33 @@ export function registerMcpAccessRoutes(app: FastifyInstance, service: McpAccess
     },
     async (request, reply) => {
       try {
-        const result = await service.create(getRequestActor(request)!, request.body.deviceName);
+        const result = await service.create(getRequestActor(request)!, request.body.name);
         return reply.status(201).send(result);
+      } catch (error) {
+        const response = errorResponse(error);
+        return reply.status(response.status as never).send(response.body as never);
+      }
+    },
+  );
+
+  routes.get(
+    '/api/mcp/tokens/:tokenId/secret',
+    {
+      schema: {
+        tags: ['mcp'],
+        params: tokenParamsSchema,
+        response: {
+          200: mcpTokenSecretResponseSchema,
+          401: apiErrorSchema,
+          404: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const result = await service.getSecret(getRequestActor(request)!, request.params.tokenId);
+        return reply.header('Cache-Control', 'no-store').send(result);
       } catch (error) {
         const response = errorResponse(error);
         return reply.status(response.status as never).send(response.body as never);
@@ -85,13 +114,13 @@ export function registerMcpAccessRoutes(app: FastifyInstance, service: McpAccess
       schema: {
         tags: ['mcp'],
         params: tokenParamsSchema,
-        response: { 200: revokeMcpTokenResponseSchema, 401: apiErrorSchema, 404: apiErrorSchema },
+        response: { 200: deleteMcpTokenResponseSchema, 401: apiErrorSchema, 404: apiErrorSchema },
       },
     },
     async (request, reply) => {
       try {
-        await service.revoke(getRequestActor(request)!, request.params.tokenId);
-        return { revoked: true as const };
+        await service.delete(getRequestActor(request)!, request.params.tokenId);
+        return { deleted: true as const };
       } catch (error) {
         const response = errorResponse(error);
         return reply.status(response.status as never).send(response.body as never);

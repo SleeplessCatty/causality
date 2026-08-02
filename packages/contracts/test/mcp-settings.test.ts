@@ -106,7 +106,12 @@ describe('MCP settings contracts', () => {
   });
 
   it('accepts personal-token API error codes', () => {
-    for (const code of ['TOKEN_LIMIT_REACHED', 'TOKEN_NOT_FOUND'] as const) {
+    for (const code of [
+      'TOKEN_LIMIT_REACHED',
+      'TOKEN_NAME_EXISTS',
+      'TOKEN_NOT_FOUND',
+      'TOKEN_SECRET_UNAVAILABLE',
+    ] as const) {
       expect(apiErrorSchema.parse({ code, message: 'MCP 令牌操作失败' })).toEqual({
         code,
         message: 'MCP 令牌操作失败',

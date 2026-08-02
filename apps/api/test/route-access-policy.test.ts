@@ -62,6 +62,9 @@ describe('API route access policy', () => {
         .sort(),
     ).toEqual(['GET /api/health', 'GET /api/ready', 'POST /api/auth/login']);
     expect(entries.find((entry) => entry.url === '/api/events')?.access).toBe('business');
+    expect(entries.find((entry) => entry.url === '/api/mcp/tokens/:tokenId/secret')?.access).toBe(
+      'business',
+    );
     expect(entries.find((entry) => entry.url === '/api/openapi.json')?.access).toBe('business');
 
     await app.close();

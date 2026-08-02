@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 
 import { Pool } from 'pg';
@@ -6,6 +6,7 @@ import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainer
 
 import { buildApp } from '../../app.js';
 import type { AiCaptureSemanticCandidates } from '../../features/ai-capture/aiCaptureRoutes.js';
+import { createAesGcmMcpTokenCipher } from '../../features/mcp-access/mcpTokenCipher.js';
 import type { SemanticWorkerClient } from '../../features/semantic/semanticWorkerClient.js';
 import { runMigrations } from '../migrate.js';
 import { runSimulation } from '../test-data/simulate.js';
@@ -95,14 +96,30 @@ async function main(): Promise<void> {
     await runMigrations(pool);
     const simulation = await runSimulation(pool, dataset, 'mcp-capacity-20260731');
     const benchmarkToken = `cau_pat_${randomBytes(32).toString('base64url')}`;
+    const benchmarkTokenId = randomUUID();
+    const tokenCipher = createAesGcmMcpTokenCipher(Buffer.alloc(32, 0x74).toString('base64'));
     const benchmarkUser = await pool.query<{ id: string }>(
       `insert into users (username, password_hash, must_change_password)
        values ('mcp-benchmark', 'benchmark-only-password-hash', false) returning id`,
     );
+    const encryptedToken = tokenCipher.encrypt(benchmarkToken, {
+      userId: benchmarkUser.rows[0]!.id,
+      tokenId: benchmarkTokenId,
+    });
     await pool.query(
-      `insert into mcp_access_tokens (user_id, token_digest, device_name)
-       values ($1, $2, 'mcp-benchmark-runner')`,
-      [benchmarkUser.rows[0]!.id, createHash('sha256').update(benchmarkToken).digest()],
+      `insert into mcp_access_tokens (
+         id, user_id, token_digest, name, masked_token,
+         token_ciphertext, token_iv, token_auth_tag
+       ) values ($1, $2, $3, 'mcp-benchmark-runner', $4, $5, $6, $7)`,
+      [
+        benchmarkTokenId,
+        benchmarkUser.rows[0]!.id,
+        createHash('sha256').update(benchmarkToken).digest(),
+        tokenCipher.mask(benchmarkToken),
+        encryptedToken.ciphertext,
+        encryptedToken.iv,
+        encryptedToken.authTag,
+      ],
     );
     app = buildApp({
       databasePool: pool,

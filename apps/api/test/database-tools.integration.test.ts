@@ -156,6 +156,11 @@ describe.sequential('database data tools', () => {
       invalidImportRecordSnapshots: 0,
       expiredExportRequests: 0,
     });
+    expect(report.mcpAccess).toEqual({
+      requiredColumnsPresent: true,
+      requiredIndexesPresent: true,
+      invalidEncryptedFields: 0,
+    });
     expect(report.valid).toBe(true);
   });
 

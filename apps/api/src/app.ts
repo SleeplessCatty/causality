@@ -32,6 +32,7 @@ import { McpSettingsService } from './features/mcp-settings/mcpSettingsService.j
 import { registerMcpSettingsRoutes } from './features/mcp-settings/mcpSettingsRoutes.js';
 import { PostgresMcpAccessRepository } from './features/mcp-access/mcpAccessRepository.js';
 import { McpAccessService } from './features/mcp-access/mcpAccessService.js';
+import { createAesGcmMcpTokenCipher } from './features/mcp-access/mcpTokenCipher.js';
 import {
   registerInternalMcpAuthorizationRoute,
   registerMcpAccessRoutes,
@@ -72,11 +73,13 @@ export interface BuildAppOptions {
   sessionHmacKey?: string;
   authIpHashKey?: string;
   internalMcpSecret?: string;
+  tokenEncryptionKey?: string;
 }
 
 const developmentSessionKey = 'ca'.repeat(32);
 const developmentSourceKey = 'db'.repeat(32);
 const developmentInternalMcpSecret = 'ef'.repeat(32);
+const developmentTokenEncryptionKey = Buffer.alloc(32, 0x74).toString('base64');
 
 function createHmacDigest(key: string): (value: string) => Buffer {
   const keyBuffer = Buffer.from(key, 'hex');
@@ -207,6 +210,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       const mcpAccessService = new McpAccessService(
         new PostgresMcpAccessRepository(databasePool),
         new PostgresAuditWriter(),
+        createAesGcmMcpTokenCipher(options.tokenEncryptionKey ?? developmentTokenEncryptionKey),
       );
       void app.register(async (business) => {
         markBusinessRoutes(business);

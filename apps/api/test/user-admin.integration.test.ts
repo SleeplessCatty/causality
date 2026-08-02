@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -8,6 +8,7 @@ import {
   type UserAdminIo,
 } from '../src/commands/userAdmin.js';
 import { argon2idPasswordHasher } from '../src/features/auth/passwordHasher.js';
+import { createAesGcmMcpTokenCipher } from '../src/features/mcp-access/mcpTokenCipher.js';
 import { startPostgresTestContext } from './support/postgresTestContext.js';
 
 describe.sequential('server user administration CLI', () => {
@@ -153,7 +154,7 @@ describe.sequential('server user administration CLI', () => {
     );
   });
 
-  it('revokes every personal token on disable and never restores it on re-enable', async () => {
+  it('deletes every personal token on disable and never restores it on re-enable', async () => {
     const user = await context.pool.query<{ id: string }>(
       `select id from users where normalized_username = 'friend'`,
     );
@@ -161,21 +162,34 @@ describe.sequential('server user administration CLI', () => {
       { length: 2 },
       () => `cau_pat_${randomBytes(32).toString('base64url')}`,
     );
+    const tokenCipher = createAesGcmMcpTokenCipher(Buffer.alloc(32, 0x74).toString('base64'));
     for (const [index, token] of rawTokens.entries()) {
+      const tokenId = randomUUID();
+      const encrypted = tokenCipher.encrypt(token, { userId: user.rows[0]!.id, tokenId });
       await context.pool.query(
-        `insert into mcp_access_tokens (user_id, token_digest, device_name)
-         values ($1, $2, $3)`,
-        [user.rows[0]!.id, createHash('sha256').update(token).digest(), `Admin test ${index}`],
+        `insert into mcp_access_tokens (
+           id, user_id, token_digest, name, masked_token,
+           token_ciphertext, token_iv, token_auth_tag
+         ) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          tokenId,
+          user.rows[0]!.id,
+          createHash('sha256').update(token).digest(),
+          `Admin test ${index}`,
+          tokenCipher.mask(token),
+          encrypted.ciphertext,
+          encrypted.iv,
+          encrypted.authTag,
+        ],
       );
     }
     resetHarness(['friend'], []);
     await run('disable');
-    const revoked = await context.pool.query<{ revoked_at: Date | null }>(
-      `select revoked_at from mcp_access_tokens where user_id = $1 order by created_at desc limit 2`,
+    const remaining = await context.pool.query<{ count: number }>(
+      `select count(*)::int as count from mcp_access_tokens where user_id = $1`,
       [user.rows[0]!.id],
     );
-    expect(revoked.rows).toHaveLength(2);
-    expect(revoked.rows.every((token) => token.revoked_at instanceof Date)).toBe(true);
+    expect(remaining.rows[0]?.count).toBe(0);
     for (const token of rawTokens) {
       const denied = await context.app.inject({
         method: 'POST',

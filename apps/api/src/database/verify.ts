@@ -43,12 +43,19 @@ interface DataTransferIntegrity {
   expiredExportRequests: number;
 }
 
+interface McpAccessIntegrity {
+  requiredColumnsPresent: boolean;
+  requiredIndexesPresent: boolean;
+  invalidEncryptedFields: number;
+}
+
 export interface DatabaseVerificationReport {
   migrationApplied: boolean;
   counts: DatabaseCounts;
   integrity: IntegrityCounts;
   semantic: SemanticIntegrity;
   dataTransfer: DataTransferIntegrity;
+  mcpAccess: McpAccessIntegrity;
   valid: boolean;
 }
 
@@ -159,6 +166,32 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
              'import_records_batch_type_sequence_idx',
              'export_requests_token_hash_uidx',
              'export_requests_expires_at_idx'
+           ])
+       ) as required_indexes_present`,
+  );
+  const mcpAccessFoundation = await pool.query<{
+    required_columns_present: boolean;
+    required_indexes_present: boolean;
+  }>(
+    `select
+       (
+         select count(*) = 11
+         from information_schema.columns
+         where table_schema = 'public'
+           and table_name = 'mcp_access_tokens'
+           and column_name = any(array[
+             'id', 'user_id', 'token_digest', 'name', 'created_at', 'last_used_at',
+             'last_client_name', 'masked_token', 'token_ciphertext', 'token_iv',
+             'token_auth_tag'
+           ])
+       ) as required_columns_present,
+       (
+         select count(*) = 2
+         from pg_indexes
+         where schemaname = 'public'
+           and indexname = any(array[
+             'mcp_access_tokens_digest_uidx',
+             'mcp_access_tokens_user_name_uidx'
            ])
        ) as required_indexes_present`,
   );
@@ -305,6 +338,20 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
   const semanticCountRow = semanticCounts?.rows[0];
   const semanticLifecycleRow = semanticLifecycleCounts?.rows[0];
   const dataTransferCountRow = dataTransferCounts?.rows[0];
+  const mcpAccessFoundationRow = mcpAccessFoundation.rows[0]!;
+  const mcpAccessCounts = mcpAccessFoundationRow.required_columns_present
+    ? await pool.query<{ invalid_encrypted_fields: number }>(
+        `select count(*)::int as invalid_encrypted_fields
+         from mcp_access_tokens
+         where octet_length(token_digest) <> 32
+            or name <> btrim(name)
+            or char_length(name) not between 1 and 80
+            or masked_token !~ '^cau_pat_[A-Za-z0-9_-]{4}••••[A-Za-z0-9_-]{4}$'
+            or octet_length(token_ciphertext) = 0
+            or octet_length(token_iv) <> 12
+            or octet_length(token_auth_tag) <> 16`,
+      )
+    : undefined;
   const report: DatabaseVerificationReport = {
     migrationApplied: migration.rows[0]?.applied ?? false,
     counts: {
@@ -340,6 +387,11 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
       invalidImportRecordSnapshots: dataTransferCountRow?.invalid_import_record_snapshots ?? 0,
       expiredExportRequests: dataTransferCountRow?.expired_export_requests ?? 0,
     },
+    mcpAccess: {
+      requiredColumnsPresent: mcpAccessFoundationRow.required_columns_present,
+      requiredIndexesPresent: mcpAccessFoundationRow.required_indexes_present,
+      invalidEncryptedFields: mcpAccessCounts?.rows[0]?.invalid_encrypted_fields ?? 0,
+    },
     valid: false,
   };
 
@@ -357,7 +409,10 @@ export async function verifyDatabase(pool: Pool | PoolClient): Promise<DatabaseV
     report.dataTransfer.requiredTablesPresent &&
     report.dataTransfer.requiredIndexesPresent &&
     report.dataTransfer.invalidImportCounts === 0 &&
-    report.dataTransfer.invalidImportRecordSnapshots === 0;
+    report.dataTransfer.invalidImportRecordSnapshots === 0 &&
+    report.mcpAccess.requiredColumnsPresent &&
+    report.mcpAccess.requiredIndexesPresent &&
+    report.mcpAccess.invalidEncryptedFields === 0;
 
   return report;
 }
