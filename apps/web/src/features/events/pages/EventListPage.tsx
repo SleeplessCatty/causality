@@ -6,6 +6,7 @@ import { DeleteRecordDialog } from '../../../shared/deletion/DeleteRecordDialog'
 import { usePermanentDeletion } from '../../../shared/deletion/usePermanentDeletion';
 import { ListSearchControls } from '../../../shared/lists/ListSearchControls';
 import { useListPageCorrection, useListQueryState } from '../../../shared/lists/useListQueryState';
+import { LoadingState } from '../../../shared/loading/LoadingState';
 import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
@@ -87,158 +88,153 @@ export function EventListPage() {
   });
 
   return (
-    <section className="event-list-page" aria-labelledby="event-list-title">
-      <div className="page-heading">
-        <div>
-          <h1 id="event-list-title">原子事件</h1>
-          <p>管理因果网络中可复用的原子事件</p>
-        </div>
-        <Link
-          className="button button--primary"
-          to="/events/new"
-          state={createListReturnState(location)}
-        >
-          创建事件
-        </Link>
-      </div>
-
-      <ListSearchControls
-        label="搜索事件"
-        placeholder="搜索名称、别名或关键词"
-        value={listState.searchInput}
-        isEnhancing={enhancedSearch.isEnhancing}
-        notice={enhancedSearch.notice}
-        onChange={listState.setSearchInput}
-        onEnhance={enhancedSearch.requestEnhanced}
-      />
-
-      {deletion.pageError ? (
-        <div className="form-alert list-action-error" role="alert">
-          {deletion.pageError}
-        </div>
-      ) : null}
-      {events.isPending && !eventData ? <div className="table-state">加载事件…</div> : null}
-      {events.isError && !semanticQueryError ? (
-        <div className="table-state table-state--error" role="alert">
-          <strong>无法加载事件</strong>
-          <span>请确认服务连接后重试。</span>
-          <button
-            className="button button--secondary"
-            type="button"
-            onClick={() => void events.refetch()}
-          >
-            重新加载
-          </button>
-        </div>
-      ) : null}
-      {eventData && eventData.items.length === 0 ? (
-        <div className="table-state table-state--empty">
-          <strong>{hasActiveFilter ? '没有找到事件' : '还没有原子事件'}</strong>
-          <span>
-            {hasActiveFilter ? '尝试调整筛选条件。' : '创建第一个事件，开始构建因果知识。'}
-          </span>
+    <LoadingState
+      pending={events.isPending}
+      fetching={events.isFetching}
+      hasData={Boolean(eventData)}
+      error={semanticQueryError ? null : events.error}
+      skeleton="list"
+      onRetry={() => void events.refetch()}
+    >
+      <section className="event-list-page" aria-labelledby="event-list-title">
+        <div className="page-heading">
+          <div>
+            <h1 id="event-list-title">原子事件</h1>
+            <p>管理因果网络中可复用的原子事件</p>
+          </div>
           <Link
-            className="button button--secondary"
+            className="button button--primary"
             to="/events/new"
             state={createListReturnState(location)}
           >
             创建事件
           </Link>
         </div>
-      ) : null}
-      {eventData && eventData.items.length > 0 ? (
-        <div className="event-table-wrap">
-          <table className="event-table">
-            <thead>
-              <tr>
-                <th scope="col">标准名称</th>
-                <th scope="col">别名</th>
-                <th scope="col">关键词</th>
-                <th scope="col">关联关系数</th>
-                <th scope="col">更新时间</th>
-                <th scope="col">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {eventData.items.map((event) => (
-                <tr key={event.id} id={listRecordDomId(event.id)}>
-                  <td>
-                    <OverflowText content={event.name}>
+
+        <ListSearchControls
+          label="搜索事件"
+          placeholder="搜索名称、别名或关键词"
+          value={listState.searchInput}
+          isEnhancing={enhancedSearch.isEnhancing}
+          notice={enhancedSearch.notice}
+          onChange={listState.setSearchInput}
+          onEnhance={enhancedSearch.requestEnhanced}
+        />
+
+        {deletion.pageError ? (
+          <div className="form-alert list-action-error" role="alert">
+            {deletion.pageError}
+          </div>
+        ) : null}
+        {eventData && eventData.items.length === 0 ? (
+          <div className="table-state table-state--empty">
+            <strong>{hasActiveFilter ? '没有找到事件' : '还没有原子事件'}</strong>
+            <span>
+              {hasActiveFilter ? '尝试调整筛选条件。' : '创建第一个事件，开始构建因果知识。'}
+            </span>
+            <Link
+              className="button button--secondary"
+              to="/events/new"
+              state={createListReturnState(location)}
+            >
+              创建事件
+            </Link>
+          </div>
+        ) : null}
+        {eventData && eventData.items.length > 0 ? (
+          <div className="event-table-wrap">
+            <table className="event-table">
+              <thead>
+                <tr>
+                  <th scope="col">标准名称</th>
+                  <th scope="col">别名</th>
+                  <th scope="col">关键词</th>
+                  <th scope="col">关联关系数</th>
+                  <th scope="col">更新时间</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {eventData.items.map((event) => (
+                  <tr key={event.id} id={listRecordDomId(event.id)}>
+                    <td>
+                      <OverflowText content={event.name}>
+                        <Link
+                          to={`/events/${event.id}`}
+                          state={createListReturnState(location, event.id)}
+                        >
+                          {event.name}
+                        </Link>
+                      </OverflowText>
+                    </td>
+                    <td>
+                      <MetadataCell values={event.aliases} />
+                    </td>
+                    <td>
+                      <MetadataCell values={event.keywords} />
+                    </td>
+                    <td>{event.relationCount}</td>
+                    <td>
+                      <time dateTime={event.updatedAt}>
+                        {dateFormatter.format(new Date(event.updatedAt))}
+                      </time>
+                    </td>
+                    <td className="event-row-actions">
                       <Link
-                        to={`/events/${event.id}`}
+                        className="text-button"
+                        to={`/events/${event.id}/edit`}
                         state={createListReturnState(location, event.id)}
                       >
-                        {event.name}
+                        编辑
                       </Link>
-                    </OverflowText>
-                  </td>
-                  <td>
-                    <MetadataCell values={event.aliases} />
-                  </td>
-                  <td>
-                    <MetadataCell values={event.keywords} />
-                  </td>
-                  <td>{event.relationCount}</td>
-                  <td>
-                    <time dateTime={event.updatedAt}>
-                      {dateFormatter.format(new Date(event.updatedAt))}
-                    </time>
-                  </td>
-                  <td className="event-row-actions">
-                    <Link
-                      className="text-button"
-                      to={`/events/${event.id}/edit`}
-                      state={createListReturnState(location, event.id)}
-                    >
-                      编辑
-                    </Link>
-                    <button
-                      className="text-button text-button--danger"
-                      type="button"
-                      disabled={deletion.loadingId === event.id}
-                      onClick={() => void deletion.requestDelete(event.id)}
-                    >
-                      {deletion.loadingId === event.id ? '检查中…' : '删除'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      {eventData ? (
-        <ListPagination
-          page={eventData.page}
-          totalPages={eventData.totalPages}
-          totalItems={eventData.totalItems}
-          disabled={events.isFetching}
-          onPageChange={listState.changePage}
-          onNavigate={scrollMainContentToTop}
+                      <button
+                        className="text-button text-button--danger"
+                        type="button"
+                        disabled={deletion.loadingId === event.id}
+                        onClick={() => void deletion.requestDelete(event.id)}
+                      >
+                        {deletion.loadingId === event.id ? '检查中…' : '删除'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {eventData ? (
+          <ListPagination
+            page={eventData.page}
+            totalPages={eventData.totalPages}
+            totalItems={eventData.totalItems}
+            disabled={events.isFetching}
+            onPageChange={listState.changePage}
+            onNavigate={scrollMainContentToTop}
+          />
+        ) : null}
+        <DeleteRecordDialog
+          open={Boolean(deletion.targetId && deletion.impact)}
+          title="删除原子事件"
+          message={
+            deletion.impact?.hasRelations
+              ? '这个原子事件存在关联因果关系，必须先删除相关因果关系。'
+              : '确认永久删除这个原子事件？此操作无法恢复。'
+          }
+          blocked={Boolean(deletion.impact?.hasRelations)}
+          pending={deletion.pending}
+          error={deletion.dialogError}
+          onCancel={deletion.close}
+          onConfirm={() => void deletion.confirmDelete()}
+          {...(deletion.targetId && deletion.impact?.hasRelations
+            ? {
+                blockedAction: {
+                  label: '查看相关因果关系',
+                  href: `/relations?eventId=${deletion.targetId}`,
+                },
+              }
+            : {})}
         />
-      ) : null}
-      <DeleteRecordDialog
-        open={Boolean(deletion.targetId && deletion.impact)}
-        title="删除原子事件"
-        message={
-          deletion.impact?.hasRelations
-            ? '这个原子事件存在关联因果关系，必须先删除相关因果关系。'
-            : '确认永久删除这个原子事件？此操作无法恢复。'
-        }
-        blocked={Boolean(deletion.impact?.hasRelations)}
-        pending={deletion.pending}
-        error={deletion.dialogError}
-        onCancel={deletion.close}
-        onConfirm={() => void deletion.confirmDelete()}
-        {...(deletion.targetId && deletion.impact?.hasRelations
-          ? {
-              blockedAction: {
-                label: '查看相关因果关系',
-                href: `/relations?eventId=${deletion.targetId}`,
-              },
-            }
-          : {})}
-      />
-    </section>
+      </section>
+    </LoadingState>
   );
 }

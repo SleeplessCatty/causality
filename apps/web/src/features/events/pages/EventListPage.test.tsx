@@ -66,7 +66,7 @@ describe('EventListPage', () => {
     );
     renderList();
 
-    expect(screen.getByText('加载事件…')).toBeTruthy();
+    expect(screen.queryByText('加载事件…')).toBeNull();
     expect(await screen.findByRole('link', { name: '原油价格上涨' })).toBeTruthy();
     expect(screen.getByText('油价上涨、原油上涨、国际油价上涨')).toBeTruthy();
     expect(screen.getByText('+1')).toBeTruthy();
@@ -219,7 +219,7 @@ describe('EventListPage', () => {
     vi.stubGlobal('fetch', fetchMock);
     renderList();
 
-    expect(await screen.findByText('无法加载事件')).toBeTruthy();
+    expect(await screen.findByText('加载失败')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '重新加载' }));
     expect(await screen.findByText('还没有原子事件')).toBeTruthy();
     expect(screen.getByText('共 0 条 · 第 1/1 页')).toBeTruthy();

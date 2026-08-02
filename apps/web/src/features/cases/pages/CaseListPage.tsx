@@ -6,6 +6,7 @@ import { DeleteRecordDialog } from '../../../shared/deletion/DeleteRecordDialog'
 import { usePermanentDeletion } from '../../../shared/deletion/usePermanentDeletion';
 import { ListSearchControls } from '../../../shared/lists/ListSearchControls';
 import { useListPageCorrection, useListQueryState } from '../../../shared/lists/useListQueryState';
+import { LoadingState } from '../../../shared/loading/LoadingState';
 import { createListReturnState } from '../../../shared/navigation/listReturn';
 import { listRecordDomId, useListRecordFocus } from '../../../shared/navigation/useListRecordFocus';
 import { OverflowText } from '../../../shared/tooltip/OverflowText';
@@ -87,151 +88,146 @@ export function CaseListPage() {
   }
 
   return (
-    <section className="event-list-page" aria-labelledby="case-list-title">
-      <div className="page-heading">
-        <div>
-          <h1 id="case-list-title">具体案例</h1>
-          <p>记录真实发生的事件，并将其作为抽象因果关系的验证依据</p>
-        </div>
-        <Link
-          className="button button--primary"
-          to="/cases/new"
-          state={createListReturnState(location)}
-        >
-          创建案例
-        </Link>
-      </div>
-
-      {relationId ? (
-        <div className="case-filter-notice">
-          <span>当前仅显示指定因果关系关联的案例</span>
-          <button className="text-button" type="button" onClick={clearRelationFilter}>
-            清除筛选
-          </button>
-        </div>
-      ) : null}
-
-      <ListSearchControls
-        label="搜索案例"
-        placeholder="搜索案例内容"
-        value={listState.searchInput}
-        isEnhancing={enhancedSearch.isEnhancing}
-        notice={enhancedSearch.notice}
-        onChange={listState.setSearchInput}
-        onEnhance={enhancedSearch.requestEnhanced}
-      />
-
-      {deletion.pageError ? (
-        <div className="form-alert list-action-error" role="alert">
-          {deletion.pageError}
-        </div>
-      ) : null}
-      {cases.isPending && !caseData ? <div className="table-state">加载案例…</div> : null}
-      {cases.isError && !semanticQueryError ? (
-        <div className="table-state table-state--error" role="alert">
-          <strong>无法加载案例</strong>
-          <span>请确认服务连接后重试。</span>
-          <button
-            className="button button--secondary"
-            type="button"
-            onClick={() => void cases.refetch()}
+    <LoadingState
+      pending={cases.isPending}
+      fetching={cases.isFetching}
+      hasData={Boolean(caseData)}
+      error={semanticQueryError ? null : cases.error}
+      skeleton="list"
+      onRetry={() => void cases.refetch()}
+    >
+      <section className="event-list-page" aria-labelledby="case-list-title">
+        <div className="page-heading">
+          <div>
+            <h1 id="case-list-title">具体案例</h1>
+            <p>记录真实发生的事件，并将其作为抽象因果关系的验证依据</p>
+          </div>
+          <Link
+            className="button button--primary"
+            to="/cases/new"
+            state={createListReturnState(location)}
           >
-            重新加载
-          </button>
+            创建案例
+          </Link>
         </div>
-      ) : null}
-      {caseData && caseData.items.length === 0 ? (
-        <div className="table-state table-state--empty">
-          <strong>{hasActiveFilter ? '没有找到案例' : '还没有具体案例'}</strong>
-          <span>{hasActiveFilter ? '尝试调整筛选条件。' : '创建第一条真实事件记录。'}</span>
-          {!relationId ? (
-            <Link
-              className="button button--secondary"
-              to="/cases/new"
-              state={createListReturnState(location)}
-            >
-              创建案例
-            </Link>
-          ) : null}
-        </div>
-      ) : null}
-      {caseData && caseData.items.length > 0 ? (
-        <div className="event-table-wrap">
-          <table className="event-table case-table">
-            <thead>
-              <tr>
-                <th scope="col">案例内容</th>
-                <th scope="col">关联关系数</th>
-                <th scope="col">更新时间</th>
-                <th scope="col">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {caseData.items.map((item) => (
-                <tr key={item.id} id={listRecordDomId(item.id)}>
-                  <td>
-                    <OverflowText content={item.content}>
+
+        {relationId ? (
+          <div className="case-filter-notice">
+            <span>当前仅显示指定因果关系关联的案例</span>
+            <button className="text-button" type="button" onClick={clearRelationFilter}>
+              清除筛选
+            </button>
+          </div>
+        ) : null}
+
+        <ListSearchControls
+          label="搜索案例"
+          placeholder="搜索案例内容"
+          value={listState.searchInput}
+          isEnhancing={enhancedSearch.isEnhancing}
+          notice={enhancedSearch.notice}
+          onChange={listState.setSearchInput}
+          onEnhance={enhancedSearch.requestEnhanced}
+        />
+
+        {deletion.pageError ? (
+          <div className="form-alert list-action-error" role="alert">
+            {deletion.pageError}
+          </div>
+        ) : null}
+        {caseData && caseData.items.length === 0 ? (
+          <div className="table-state table-state--empty">
+            <strong>{hasActiveFilter ? '没有找到案例' : '还没有具体案例'}</strong>
+            <span>{hasActiveFilter ? '尝试调整筛选条件。' : '创建第一条真实事件记录。'}</span>
+            {!relationId ? (
+              <Link
+                className="button button--secondary"
+                to="/cases/new"
+                state={createListReturnState(location)}
+              >
+                创建案例
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+        {caseData && caseData.items.length > 0 ? (
+          <div className="event-table-wrap">
+            <table className="event-table case-table">
+              <thead>
+                <tr>
+                  <th scope="col">案例内容</th>
+                  <th scope="col">关联关系数</th>
+                  <th scope="col">更新时间</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {caseData.items.map((item) => (
+                  <tr key={item.id} id={listRecordDomId(item.id)}>
+                    <td>
+                      <OverflowText content={item.content}>
+                        <Link
+                          to={`/cases/${item.id}`}
+                          state={createListReturnState(location, item.id)}
+                        >
+                          {item.content}
+                        </Link>
+                      </OverflowText>
+                    </td>
+                    <td>{item.relationCount}</td>
+                    <td>
+                      <time dateTime={item.updatedAt}>
+                        {dateFormatter.format(new Date(item.updatedAt))}
+                      </time>
+                    </td>
+                    <td className="case-row-actions">
                       <Link
-                        to={`/cases/${item.id}`}
+                        className="table-action-link"
+                        to={`/cases/${item.id}/edit`}
                         state={createListReturnState(location, item.id)}
                       >
-                        {item.content}
+                        编辑
                       </Link>
-                    </OverflowText>
-                  </td>
-                  <td>{item.relationCount}</td>
-                  <td>
-                    <time dateTime={item.updatedAt}>
-                      {dateFormatter.format(new Date(item.updatedAt))}
-                    </time>
-                  </td>
-                  <td className="case-row-actions">
-                    <Link
-                      className="table-action-link"
-                      to={`/cases/${item.id}/edit`}
-                      state={createListReturnState(location, item.id)}
-                    >
-                      编辑
-                    </Link>
-                    <button
-                      className="text-button text-button--danger"
-                      type="button"
-                      disabled={deletion.loadingId === item.id}
-                      onClick={() => void deletion.requestDelete(item.id)}
-                    >
-                      {deletion.loadingId === item.id ? '检查中…' : '删除'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      {caseData ? (
-        <ListPagination
-          page={caseData.page}
-          totalPages={caseData.totalPages}
-          totalItems={caseData.totalItems}
-          disabled={cases.isFetching}
-          onPageChange={listState.changePage}
-          onNavigate={scrollMainContentToTop}
+                      <button
+                        className="text-button text-button--danger"
+                        type="button"
+                        disabled={deletion.loadingId === item.id}
+                        onClick={() => void deletion.requestDelete(item.id)}
+                      >
+                        {deletion.loadingId === item.id ? '检查中…' : '删除'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {caseData ? (
+          <ListPagination
+            page={caseData.page}
+            totalPages={caseData.totalPages}
+            totalItems={caseData.totalItems}
+            disabled={cases.isFetching}
+            onPageChange={listState.changePage}
+            onNavigate={scrollMainContentToTop}
+          />
+        ) : null}
+        <DeleteRecordDialog
+          open={Boolean(deletion.targetId && deletion.impact)}
+          title="删除具体案例"
+          message={
+            deletion.impact?.hasRelations
+              ? '该具体案例有关联因果关系。删除只会移除案例及其关联，不会删除因果关系。'
+              : '该具体案例没有关联因果关系。删除只会移除案例及其关联，不会删除因果关系。'
+          }
+          blocked={false}
+          pending={deletion.pending}
+          error={deletion.dialogError}
+          onCancel={deletion.close}
+          onConfirm={() => void deletion.confirmDelete()}
         />
-      ) : null}
-      <DeleteRecordDialog
-        open={Boolean(deletion.targetId && deletion.impact)}
-        title="删除具体案例"
-        message={
-          deletion.impact?.hasRelations
-            ? '该具体案例有关联因果关系。删除只会移除案例及其关联，不会删除因果关系。'
-            : '该具体案例没有关联因果关系。删除只会移除案例及其关联，不会删除因果关系。'
-        }
-        blocked={false}
-        pending={deletion.pending}
-        error={deletion.dialogError}
-        onCancel={deletion.close}
-        onConfirm={() => void deletion.confirmDelete()}
-      />
-    </section>
+      </section>
+    </LoadingState>
   );
 }
