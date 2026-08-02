@@ -1,12 +1,14 @@
 import {
   createMcpTokenResponseSchema,
+  deleteMcpTokenResponseSchema,
   mcpSettingsResponseSchema,
+  mcpTokenSecretResponseSchema,
   mcpTokenSummarySchema,
-  revokeMcpTokenResponseSchema,
   type CreateMcpTokenResponse,
   semanticActionAcceptedSchema,
   semanticLifecycleSnapshotSchema,
   type McpSettingsResponse,
+  type McpTokenSecretResponse,
   type McpTokenSummary,
   type SemanticActionAccepted,
   type SemanticLifecycleSnapshot,
@@ -25,17 +27,23 @@ export async function listMcpTokens(signal?: AbortSignal): Promise<McpTokenSumma
   return mcpTokenSummarySchema.array().parse(await requestJson('/api/mcp/tokens', {}, signal));
 }
 
-export async function createMcpToken(deviceName: string): Promise<CreateMcpTokenResponse> {
+export async function createMcpToken(name: string): Promise<CreateMcpTokenResponse> {
   return createMcpTokenResponseSchema.parse(
     await requestJson('/api/mcp/tokens', {
       method: 'POST',
-      body: JSON.stringify({ deviceName }),
+      body: JSON.stringify({ name }),
     }),
   );
 }
 
-export async function revokeMcpToken(tokenId: string): Promise<void> {
-  revokeMcpTokenResponseSchema.parse(
+export async function getMcpTokenSecret(tokenId: string): Promise<McpTokenSecretResponse> {
+  return mcpTokenSecretResponseSchema.parse(
+    await requestJson(`/api/mcp/tokens/${encodeURIComponent(tokenId)}/secret`),
+  );
+}
+
+export async function deleteMcpToken(tokenId: string): Promise<void> {
+  deleteMcpTokenResponseSchema.parse(
     await requestJson(
       `/api/mcp/tokens/${encodeURIComponent(tokenId)}`,
       { method: 'DELETE' },

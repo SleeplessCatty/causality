@@ -7,13 +7,18 @@ import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
 import { OverflowText } from '../../shared/tooltip/OverflowText';
 import {
   createMcpToken,
+  deleteMcpToken,
   getMcpSettings,
+  getMcpTokenSecret,
   listMcpTokens,
-  revokeMcpToken,
 } from './parameterSettingsApi';
 
 const mcpSettingsQueryKey = ['mcp', 'settings'] as const;
 const mcpTokensQueryKey = ['mcp', 'tokens'] as const;
+const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
 
 function actionErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError) return error.details.message;
@@ -21,23 +26,44 @@ function actionErrorMessage(error: unknown): string {
   return '操作失败，请稍后重试';
 }
 
+function formatLastUsed(value: string | null): string {
+  return value ? dateFormatter.format(new Date(value)) : '从未';
+}
+
+function createClientConfiguration(endpoint: string, token: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        causality: {
+          transport: 'streamable-http',
+          url: endpoint,
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
 export function McpSettingsPanel() {
   const queryClient = useQueryClient();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [deviceName, setDeviceName] = useState('');
-  const [createdToken, setCreatedToken] = useState<string>();
-  const [revokeToken, setRevokeToken] = useState<{ id: string; deviceName: string }>();
+  const [tokenName, setTokenName] = useState('');
+  const [revealedTokens, setRevealedTokens] = useState<Record<string, string>>({});
+  const [deleteToken, setDeleteToken] = useState<{ id: string; name: string }>();
+  const [secretPendingId, setSecretPendingId] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [errorRevision, setErrorRevision] = useState(0);
-  const [copied, setCopied] = useState(false);
+  const [copyNotice, setCopyNotice] = useState<'token' | 'json'>();
 
   useAutoDismissError(Boolean(actionError), errorRevision, () => setActionError(undefined));
   useEffect(() => {
-    if (!copied) return;
-    const timeout = window.setTimeout(() => setCopied(false), 2_000);
+    if (!copyNotice) return;
+    const timeout = window.setTimeout(() => setCopyNotice(undefined), 2_000);
     return () => window.clearTimeout(timeout);
-  }, [copied]);
+  }, [copyNotice]);
 
   const settings = useQuery({
     queryKey: mcpSettingsQueryKey,
@@ -55,17 +81,17 @@ export function McpSettingsPanel() {
   }
 
   const create = useMutation({
-    mutationFn: () => createMcpToken(deviceName),
-    onSuccess: (result) => {
-      setCreatedToken(result.token);
-      setDeviceName('');
+    mutationFn: () => createMcpToken(tokenName),
+    onSuccess: () => {
+      setCreateOpen(false);
+      setTokenName('');
       setActionError(undefined);
       void queryClient.invalidateQueries({ queryKey: mcpTokensQueryKey });
     },
     onError: reportError,
   });
-  const revoke = useMutation({
-    mutationFn: revokeMcpToken,
+  const remove = useMutation({
+    mutationFn: deleteMcpToken,
     onSuccess: () => {
       setActionError(undefined);
       void queryClient.invalidateQueries({ queryKey: mcpTokensQueryKey });
@@ -73,10 +99,43 @@ export function McpSettingsPanel() {
     onError: reportError,
   });
 
-  async function copy(value: string): Promise<void> {
+  async function readSecret(tokenId: string): Promise<string | undefined> {
+    setSecretPendingId(tokenId);
     try {
+      const secret = await getMcpTokenSecret(tokenId);
+      setActionError(undefined);
+      return secret.token;
+    } catch (error) {
+      reportError(error);
+      return undefined;
+    } finally {
+      setSecretPendingId(undefined);
+    }
+  }
+
+  async function toggleReveal(tokenId: string): Promise<void> {
+    if (revealedTokens[tokenId]) {
+      setRevealedTokens((current) => {
+        const next = { ...current };
+        delete next[tokenId];
+        return next;
+      });
+      return;
+    }
+    const secret = await readSecret(tokenId);
+    if (secret) setRevealedTokens((current) => ({ ...current, [tokenId]: secret }));
+  }
+
+  async function copySecret(tokenId: string, format: 'token' | 'json'): Promise<void> {
+    const secret = await readSecret(tokenId);
+    if (!secret) return;
+    try {
+      const value =
+        format === 'token'
+          ? secret
+          : createClientConfiguration(settings.data?.endpoint ?? '', secret);
       await navigator.clipboard.writeText(value);
-      setCopied(true);
+      setCopyNotice(format);
       setActionError(undefined);
     } catch (error) {
       reportError(error);
@@ -84,22 +143,6 @@ export function McpSettingsPanel() {
   }
 
   const current = settings.data;
-  const configuration =
-    createdToken && current
-      ? JSON.stringify(
-          {
-            mcpServers: {
-              causality: {
-                transport: 'streamable-http',
-                url: current.endpoint,
-                headers: { Authorization: `Bearer ${createdToken}` },
-              },
-            },
-          },
-          null,
-          2,
-        )
-      : '';
 
   return (
     <>
@@ -178,28 +221,28 @@ export function McpSettingsPanel() {
               <div className="mcp-settings-block__heading mcp-settings-block__heading--actions">
                 <div>
                   <h3 id="mcp-tokens-title">个人令牌管理</h3>
-                  <p>个人令牌只会在创建时显示一次。</p>
+                  <p>令牌默认隐藏，可按需查看、复制或撤销。</p>
                 </div>
                 <button
                   className="button button--primary"
                   type="button"
                   onClick={() => {
-                    setCreatedToken(undefined);
                     setActionError(undefined);
+                    setTokenName('');
                     setCreateOpen(true);
                   }}
                 >
                   创建个人令牌
                 </button>
               </div>
-              {actionError && !createOpen && !revokeToken ? (
+              {actionError && !createOpen && !deleteToken ? (
                 <div className="form-alert mcp-settings-alert" role="alert">
                   {actionError}
                 </div>
               ) : null}
-              {copied ? (
+              {copyNotice ? (
                 <span className="mcp-settings-copy-status" role="status">
-                  已复制
+                  {copyNotice === 'token' ? '令牌已复制' : 'JSON 配置已复制'}
                 </span>
               ) : null}
               {tokens.isPending ? (
@@ -211,38 +254,71 @@ export function McpSettingsPanel() {
                   <thead>
                     <tr>
                       <th>令牌名称</th>
-                      <th>最近使用</th>
-                      <th>状态</th>
+                      <th>令牌</th>
+                      <th>最近使用时间</th>
                       <th>操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {tokens.data?.map((token) => (
-                      <tr key={token.id}>
-                        <td>
-                          <OverflowText content={token.deviceName} mode="always">
-                            <span className="mcp-settings-token-name">{token.deviceName}</span>
-                          </OverflowText>
-                        </td>
-                        <td>{token.lastUsedAt ?? '从未'}</td>
-                        <td>{token.revokedAt ? '已撤销' : '有效'}</td>
-                        <td>
-                          {token.revokedAt ? null : (
-                            <button
-                              className="button button--secondary"
-                              type="button"
-                              disabled={revoke.isPending}
-                              onClick={() => {
-                                setActionError(undefined);
-                                setRevokeToken({ id: token.id, deviceName: token.deviceName });
-                              }}
-                            >
-                              撤销
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                    {tokens.data?.map((token) => {
+                      const revealed = revealedTokens[token.id];
+                      const displayedToken = revealed ?? token.maskedToken;
+                      const pending = secretPendingId === token.id;
+                      return (
+                        <tr key={token.id}>
+                          <td>
+                            <OverflowText content={token.name} mode="always">
+                              <span className="mcp-settings-token-name">{token.name}</span>
+                            </OverflowText>
+                          </td>
+                          <td>
+                            <OverflowText content={displayedToken} mode="always">
+                              <code className="mcp-settings-token-value">{displayedToken}</code>
+                            </OverflowText>
+                          </td>
+                          <td>{formatLastUsed(token.lastUsedAt)}</td>
+                          <td>
+                            <div className="mcp-token-row-actions">
+                              <button
+                                className="mcp-token-row-action"
+                                type="button"
+                                disabled={pending}
+                                onClick={() => void toggleReveal(token.id)}
+                              >
+                                {revealed ? '隐藏' : '查看'}
+                              </button>
+                              <button
+                                className="mcp-token-row-action"
+                                type="button"
+                                disabled={pending}
+                                onClick={() => void copySecret(token.id, 'token')}
+                              >
+                                复制令牌
+                              </button>
+                              <button
+                                className="mcp-token-row-action"
+                                type="button"
+                                disabled={pending}
+                                onClick={() => void copySecret(token.id, 'json')}
+                              >
+                                复制完整 JSON 配置
+                              </button>
+                              <button
+                                className="mcp-token-row-action mcp-token-row-action--danger"
+                                type="button"
+                                disabled={remove.isPending}
+                                onClick={() => {
+                                  setActionError(undefined);
+                                  setDeleteToken({ id: token.id, name: token.name });
+                                }}
+                              >
+                                撤销
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -280,24 +356,14 @@ export function McpSettingsPanel() {
             >
               取消
             </button>
-            {createdToken ? (
-              <button
-                className="button button--primary"
-                type="button"
-                onClick={() => setCreateOpen(false)}
-              >
-                我已保存
-              </button>
-            ) : (
-              <button
-                className="button button--primary"
-                type="button"
-                disabled={create.isPending || !deviceName.trim()}
-                onClick={() => create.mutate()}
-              >
-                {create.isPending ? '正在创建…' : '创建令牌'}
-              </button>
-            )}
+            <button
+              className="button button--primary"
+              type="button"
+              disabled={create.isPending || !tokenName.trim()}
+              onClick={() => create.mutate()}
+            >
+              {create.isPending ? '正在创建…' : '创建令牌'}
+            </button>
           </>
         }
       >
@@ -306,53 +372,26 @@ export function McpSettingsPanel() {
             {actionError}
           </div>
         ) : null}
-        {createdToken ? (
-          <>
-            <p id="mcp-token-create-description">
-              此令牌仅显示一次。关闭窗口后无法再次查看，请立即保存。
-            </p>
-            <code className="mcp-token-once">{createdToken}</code>
-            <div className="mcp-settings-actions">
-              <button
-                className="button button--secondary"
-                type="button"
-                onClick={() => void copy(createdToken)}
-              >
-                复制令牌
-              </button>
-              <button
-                className="button button--secondary"
-                type="button"
-                onClick={() => void copy(configuration)}
-              >
-                复制完整 JSON 配置
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p id="mcp-token-create-description">设置一个便于识别的令牌名称。</p>
-            <label>
-              令牌名称
-              <input
-                value={deviceName}
-                maxLength={80}
-                onChange={(event) => setDeviceName(event.target.value)}
-                autoComplete="off"
-              />
-            </label>
-          </>
-        )}
+        <p id="mcp-token-create-description">设置一个便于识别的令牌名称。</p>
+        <label>
+          令牌名称
+          <input
+            value={tokenName}
+            maxLength={80}
+            onChange={(event) => setTokenName(event.target.value)}
+            autoComplete="off"
+          />
+        </label>
       </AppDialog>
       <AppDialog
-        open={Boolean(revokeToken)}
+        open={Boolean(deleteToken)}
         title="撤销 MCP 个人令牌"
-        descriptionId="mcp-token-revoke-description"
-        pending={revoke.isPending}
+        descriptionId="mcp-token-delete-description"
+        pending={remove.isPending}
         initialFocusRef={cancelButtonRef}
         className="mcp-token-dialog"
         onClose={() => {
-          if (!revoke.isPending) setRevokeToken(undefined);
+          if (!remove.isPending) setDeleteToken(undefined);
         }}
         actions={
           <>
@@ -360,27 +399,37 @@ export function McpSettingsPanel() {
               ref={cancelButtonRef}
               className="button button--secondary"
               type="button"
-              disabled={revoke.isPending}
-              onClick={() => setRevokeToken(undefined)}
+              disabled={remove.isPending}
+              onClick={() => setDeleteToken(undefined)}
             >
               取消
             </button>
             <button
               className="button button--primary"
               type="button"
-              disabled={revoke.isPending}
+              disabled={remove.isPending}
               onClick={() => {
-                if (revokeToken)
-                  revoke.mutate(revokeToken.id, { onSuccess: () => setRevokeToken(undefined) });
+                if (deleteToken) {
+                  remove.mutate(deleteToken.id, {
+                    onSuccess: () => {
+                      setRevealedTokens((current) => {
+                        const next = { ...current };
+                        delete next[deleteToken.id];
+                        return next;
+                      });
+                      setDeleteToken(undefined);
+                    },
+                  });
+                }
               }}
             >
-              {revoke.isPending ? '正在撤销…' : '确认撤销'}
+              {remove.isPending ? '正在撤销…' : '确认撤销'}
             </button>
           </>
         }
       >
-        <p id="mcp-token-revoke-description">
-          撤销令牌“{revokeToken?.deviceName}”后，使用该令牌的连接将在下一次请求时被拒绝。
+        <p id="mcp-token-delete-description">
+          撤销令牌“{deleteToken?.name}”后，该令牌会被永久删除，使用它的连接将在下一次请求时被拒绝。
         </p>
         {actionError ? (
           <div className="form-alert mcp-settings-alert" role="alert">

@@ -204,13 +204,27 @@
 
 .mcp-settings-token-table th:first-child,
 .mcp-settings-token-table td:first-child {
-  width: 42%;
   padding-left: 12px;
+}
+
+.mcp-settings-token-table th:nth-child(1) {
+  width: 22%;
+}
+
+.mcp-settings-token-table th:nth-child(2) {
+  width: 25%;
+}
+
+.mcp-settings-token-table th:nth-child(3) {
+  width: 16%;
+}
+
+.mcp-settings-token-table th:nth-child(4) {
+  width: 37%;
 }
 
 .mcp-settings-token-table th:last-child,
 .mcp-settings-token-table td:last-child {
-  width: 82px;
   padding-right: 0;
   text-align: right;
 }
@@ -222,6 +236,52 @@
 .mcp-settings-token-name {
   display: block;
   min-width: 0;
+}
+
+.mcp-settings-token-value {
+  display: block;
+  min-width: 0;
+  color: #29473b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+}
+
+.mcp-token-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.mcp-token-row-action {
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #176348;
+  font: inherit;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.mcp-token-row-action:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.mcp-token-row-action:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid rgba(29, 135, 98, 0.35);
+  outline-offset: 2px;
+}
+
+.mcp-token-row-action:disabled {
+  color: #9aa69f;
+  cursor: not-allowed;
+}
+
+.mcp-token-row-action--danger {
+  color: var(--danger);
 }
 
 .mcp-settings-help {
