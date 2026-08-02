@@ -10,10 +10,15 @@ const workerDockerfile = readFileSync(
   new URL('../../apps/semantic-worker/Dockerfile', import.meta.url),
   'utf8',
 );
+const composeYaml = readFileSync(new URL('../../compose.yaml', import.meta.url), 'utf8');
+const rootEnvExample = readFileSync(new URL('../../.env.example', import.meta.url), 'utf8');
 const apiDockerfile = readFileSync(new URL('../../apps/api/Dockerfile', import.meta.url), 'utf8');
 const mcpDockerfileUrl = new URL('../../apps/mcp/Dockerfile', import.meta.url);
 const mcpDockerfile = existsSync(mcpDockerfileUrl) ? readFileSync(mcpDockerfileUrl, 'utf8') : '';
 const tokenEncryptionKey = Buffer.alloc(32, 0x78).toString('base64');
+const sessionHmacKey = '12'.repeat(32);
+const authIpHashKey = '34'.repeat(32);
+const internalMcpSecret = '56'.repeat(32);
 
 function composeConfig(files) {
   const args = ['compose'];
@@ -24,11 +29,28 @@ function composeConfig(files) {
       encoding: 'utf8',
       env: {
         ...process.env,
+        CAUSALITY_SESSION_HMAC_KEY: sessionHmacKey,
+        CAUSALITY_AUTH_IP_HASH_KEY: authIpHashKey,
+        CAUSALITY_INTERNAL_MCP_SECRET: internalMcpSecret,
         CAUSALITY_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
       },
     }),
   );
 }
+
+test('production Compose requires independently generated deployment secrets', () => {
+  for (const key of [
+    'CAUSALITY_SESSION_HMAC_KEY',
+    'CAUSALITY_AUTH_IP_HASH_KEY',
+    'CAUSALITY_INTERNAL_MCP_SECRET',
+    'CAUSALITY_TOKEN_ENCRYPTION_KEY',
+  ]) {
+    assert.match(composeYaml, new RegExp(`\\$\\{${key}:\\?`));
+    assert.match(rootEnvExample, new RegExp(`^${key}=replace_with_`, 'm'));
+  }
+  assert.match(rootEnvExample, /openssl rand -hex 32/);
+  assert.match(rootEnvExample, /openssl rand -base64 32/);
+});
 
 test('production Compose exposes only the Web and MCP loopback entry points', () => {
   const config = composeConfig(['compose.yaml']);
@@ -61,6 +83,10 @@ test('production Compose exposes only the Web and MCP loopback entry points', ()
   assert.equal(config.services.api.environment.SEMANTIC_WORKER_URL, 'http://semantic-worker:3100');
   assert.equal(config.services.api.environment.CAUSALITY_MCP_HEALTH_URL, 'http://mcp:8081/health');
   assert.equal(config.services.mcp.environment.CAUSALITY_API_URL, 'http://api:3000');
+  assert.equal(config.services.api.environment.CAUSALITY_SESSION_HMAC_KEY, sessionHmacKey);
+  assert.equal(config.services.api.environment.CAUSALITY_AUTH_IP_HASH_KEY, authIpHashKey);
+  assert.equal(config.services.api.environment.CAUSALITY_INTERNAL_MCP_SECRET, internalMcpSecret);
+  assert.equal(config.services.mcp.environment.CAUSALITY_INTERNAL_MCP_SECRET, internalMcpSecret);
   assert.equal(config.services.mcp.environment.DATABASE_URL, undefined);
   assert.equal(config.services.api.environment.CAUSALITY_TOKEN_ENCRYPTION_KEY, tokenEncryptionKey);
   assert.equal(

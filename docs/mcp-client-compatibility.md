@@ -12,7 +12,8 @@ Causality 提供 15 个 Tool、5 个 Prompt、4 个 Resource。Tool 是最低通
 docker compose up -d --build --wait
 ```
 
-在“参数配置 → MCP 服务”复制配置。默认端点为 `http://127.0.0.1:8081/mcp`。配置模板：
+登录后在“参数配置 → MCP 服务”为客户端创建个人令牌，并从对应行复制完整配置。
+默认端点为 `http://127.0.0.1:8081/mcp`。配置模板：
 
 ```json
 {
@@ -45,10 +46,14 @@ http_headers = { Authorization = "Bearer <TOKEN>" }
 ```text
 command: pnpm
 args: ["--dir", "<PROJECT_PATH>", "mcp:stdio"]
-env: { "CAUSALITY_API_URL": "http://127.0.0.1:3000" }
+env: {
+  "CAUSALITY_API_URL": "http://127.0.0.1:3000",
+  "CAUSALITY_MCP_TOKEN": "<个人令牌>"
+}
 ```
 
-stdio 会从本地 API 读取当前 Token。协议使用 stdout；诊断日志只写 stderr。
+stdio 还必须通过环境变量提供 `CAUSALITY_MCP_TOKEN=<个人令牌>`。协议使用 stdout；
+诊断日志只写 stderr。
 
 ## MCP Inspector
 
@@ -59,9 +64,11 @@ pnpm mcp:inspect
 
 Inspector 适合手工查看目录、Schema、Prompt、Resource 和 Tool 返回值，不替代自动兼容性门禁。
 
-## Token 显示、保存、轮换与旧会话
+## Token 显示、保存、撤销与旧会话
 
-Token 仅在本机参数配置页面显示和复制。不要写入已跟踪文件、命令行参数、聊天内容或日志。轮换 Token 后，旧配置发出的下一个 HTTP 请求立即失败；已有会话也必须改用新 Token，推荐重新初始化新会话。
+个人令牌在参数配置页面默认缩写显示，可按需查看或复制。不要写入已跟踪文件、命令行
+参数、聊天内容或日志。可以为不同客户端创建不同令牌；撤销某个令牌后，使用它的下一
+个 HTTP 请求会失败，并应使用其他有效令牌重新初始化会话。
 
 ## `pnpm mcp:check`
 
@@ -94,7 +101,7 @@ pnpm mcp:check -- --transport=stdio
 | --- | --- |
 | 服务未启动 | `docker compose ps`，再执行 `docker compose up -d --build --wait` |
 | 端口错误 | 核对 `CAUSALITY_MCP_PORT` 与客户端 `<MCP_URL>` |
-| Token 缺失或已轮换 | 重新复制配置并新建会话，不复用旧 Authorization |
+| Token 缺失或已撤销 | 查看现有令牌或创建新令牌，重新复制配置并新建会话 |
 | initialize 失败 | 检查传输类型、URL、Origin、SDK 协议和 MCP 日志 |
 | 目录数量不一致 | 重建当前镜像，运行 `pnpm test:mcp-compat` 和 `mcp:check` |
 | 客户端只支持 Tool | 直接按 Tool 序列工作；Prompt/Resource 不是必需条件 |
@@ -112,6 +119,6 @@ pnpm mcp:check -- --transport=stdio
 3. 读取 `causality_analyze_event` 和 `causality://capabilities`。
 4. 普通事件搜索成功，零 UUID 返回嵌套结构化错误。
 5. 两个会话可并发查询，关闭一个不影响另一个。
-6. Token 轮换后旧配置失败，新配置重新连接成功。
+6. 撤销一个 Token 后旧配置失败，其他有效 Token 仍可重新连接。
 7. 日志含 request ID、操作名和耗时，不含 Token、查询正文或完整响应。
 8. `mcp:check` 文本与 JSON 模式均可理解，stdio 也能完成检查。

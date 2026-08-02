@@ -12,3 +12,10 @@ test-results
 *.log
 *.tsbuildinfo
 .DS_Store
+docs
+manual-test-data
+research
+.agents
+prompts
+tests
+**/test

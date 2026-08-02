@@ -69,11 +69,29 @@ async function verifyMcp(token: string) {
   });
 }
 
-test('production stack boots empty, persists data, and seeds explicitly', async ({
+test('production stack authenticates, boots empty, persists data, and seeds explicitly', async ({
   page,
-  request,
 }) => {
   const browserErrors: string[] = [];
+
+  await page.goto('/events');
+  await expect(page).toHaveURL(/\/login$/);
+  const username = process.env.CAUSALITY_PRODUCTION_USERNAME;
+  const initialPassword = process.env.CAUSALITY_PRODUCTION_INITIAL_PASSWORD;
+  const password = process.env.CAUSALITY_PRODUCTION_PASSWORD;
+  if (!username || !initialPassword || !password) {
+    throw new Error('Production smoke credentials are required');
+  }
+  await page.getByLabel('用户名').fill(username);
+  await page.getByLabel('密码').fill(initialPassword);
+  await page.getByRole('button', { name: '登录' }).click();
+  await expect(page).toHaveURL(/\/change-initial-password$/);
+  await expect(page.getByLabel('初始密码')).toHaveCount(0);
+  await page.getByLabel('新密码', { exact: true }).fill(password);
+  await page.getByLabel('确认新密码', { exact: true }).fill(password);
+  await page.getByRole('button', { name: '保存新密码' }).click();
+  await expect(page).toHaveURL(/\/events$/);
+  await expect(page.getByRole('heading', { name: '原子事件' })).toBeVisible();
   page.on('console', (message) => {
     if (message.type() === 'error') {
       browserErrors.push(`console: ${message.text()}`);
@@ -82,11 +100,16 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   page.on('pageerror', (error) => {
     browserErrors.push(`pageerror: ${error.message}`);
   });
-
-  await page.goto('/events');
-  await expect(page.getByRole('heading', { name: '原子事件' })).toBeVisible();
   await page.goto('/graph');
   await expect(page.getByRole('region', { name: '局部因果图工作台' })).toBeVisible();
+
+  const request = page.request;
+  const csrfToken = (await page.context().cookies()).find(
+    (cookie) => cookie.name === 'causality_csrf',
+  )?.value;
+  const origin = process.env.PRODUCTION_BASE_URL;
+  if (!csrfToken || !origin) throw new Error('Authenticated production smoke context is missing');
+  const mutationHeaders = { origin, 'x-csrf-token': csrfToken };
 
   await expect.poll(async () => (await request.get('/api/ready')).status()).toBe(200);
   const unauthenticatedMcp = await request.post(`http://127.0.0.1:${mcpPort}/mcp`, {
@@ -103,7 +126,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
     valid: true,
   });
 
-  const startCheck = await request.post('/api/data-checks');
+  const startCheck = await request.post('/api/data-checks', { headers: mutationHeaders });
   expect(startCheck.status()).toBe(202);
   await expect
     .poll(async () => (await request.get('/api/data-checks/latest')).json())
@@ -114,6 +137,7 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
 
   const eventName = `生产持久化测试 ${Date.now()}`;
   const create = await request.post('/api/events', {
+    headers: mutationHeaders,
     data: { name: eventName, description: null, aliases: [], keywords: [] },
   });
   expect(create.status()).toBe(201);
@@ -136,7 +160,9 @@ test('production stack boots empty, persists data, and seeds explicitly', async 
   expect(orphanEvents.status()).toBe(200);
   expect((await orphanEvents.json()) as { totalItems: number }).toMatchObject({ totalItems: 1 });
   expect((await request.get(`/api/events/${created.id}/deletion-impact`)).status()).toBe(200);
-  expect((await request.delete(`/api/events/${created.id}`)).status()).toBe(200);
+  expect(
+    (await request.delete(`/api/events/${created.id}`, { headers: mutationHeaders })).status(),
+  ).toBe(200);
   const deletedOrphans = await request.get(
     `/api/events?orphan=true&q=${encodeURIComponent(eventName)}`,
   );

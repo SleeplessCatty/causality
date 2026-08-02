@@ -14,3 +14,8 @@ tests/e2e/.auth/
 .superpowers/
 .codex/config.toml
 .causality-mcp-check.json
+research/
+manual-test-data/
+docs/stages/
+docs/superpowers/
+.project-archive/
