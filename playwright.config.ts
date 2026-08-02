@@ -53,6 +53,7 @@ export default defineConfig({
         CORS_ORIGIN: webOrigin,
         CAUSALITY_PUBLIC_ORIGIN: webOrigin,
         CAUSALITY_INTERNAL_MCP_SECRET: 'ef'.repeat(32),
+        CAUSALITY_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 0x74).toString('base64'),
       },
     },
     {

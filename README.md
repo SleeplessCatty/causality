@@ -23,8 +23,16 @@ Causality 是一个用于人工维护原子事件、因果关系和具体案例�
 需要安装 Docker，并确保 Docker Compose 可用。在仓库根目录执行：
 
 ```bash
+umask 077
+touch .env
+grep -q '^CAUSALITY_TOKEN_ENCRYPTION_KEY=' .env || \
+  printf 'CAUSALITY_TOKEN_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" >> .env
 docker compose up -d --build --wait
 ```
+
+`.env` 中的 `CAUSALITY_TOKEN_ENCRYPTION_KEY` 用于加密可恢复的 MCP 个人令牌。必须将
+该文件作为部署密钥安全备份，不能提交到 Git、发送给他人或在不同部署之间共用。密钥丢失或
+被错误替换后，已有令牌仍可通过摘要完成认证，但无法再查看或复制，只能删除并重新创建。
 
 浏览器打开 <http://127.0.0.1:8080>。MCP Streamable HTTP 服务位于
 <http://127.0.0.1:8081/mcp>，访问令牌和可复制的客户端配置在“参数配置 → MCP
@@ -42,12 +50,14 @@ docker compose run --rm migrate
 ```
 
 迁移只更新数据库结构，不会自动写入示例业务数据。执行升级和迁移前应先备份 PostgreSQL 命名卷。
+引入可恢复 MCP 令牌的 `0023_recoverable_mcp_tokens` 迁移会删除升级前的全部摘要令牌；升级完成后
+需要在“参数配置 → MCP 服务”中重新创建令牌。
 
 ## 数据与持久化
 
 PostgreSQL 数据和模型文件分别保存在两个 Compose 命名卷中：
 
-- `causality-postgres-data`：业务数据、配置、任务状态、MCP 令牌、AI 入库历史和可重建的向量索引；
+- `causality-postgres-data`：业务数据、配置、任务状态、加密后的 MCP 令牌、AI 入库历史和可重建的向量索引；
 - `causality-semantic-models`：下载后的模型文件。
 
 停止应用不会删除业务数据、向量索引或模型：
@@ -179,7 +189,7 @@ CSV 只包含以下三种记录：
 }
 ```
 
-Causality 发布 15 个 Tool、5 个 Prompt、4 个 Resource。Tool 是跨客户端最低通用能力；Prompt、Resource、Skill 或斜杠命令不可见时仍可直接使用 Tool。在 Codex 中用 `/mcp` 检查服务器和 Tool，用 `/skills` 检查 5 个同源工作流。令牌只用于本机连接，不要提交到 Git、写入命令行或发送给他人；轮换后旧配置和旧会话立即失效。
+Causality 发布 15 个 Tool、5 个 Prompt、4 个 Resource。Tool 是跨客户端最低通用能力；Prompt、Resource、Skill 或斜杠命令不可见时仍可直接使用 Tool。在 Codex 中用 `/mcp` 检查服务器和 Tool，用 `/skills` 检查 5 个同源工作流。个人令牌默认以缩写显示，可以随时查看、复制令牌或复制完整 JSON 配置；点击“撤销”会永久删除令牌，并使使用它的连接立即失效。完整令牌和配置不要提交到 Git、写入命令行历史或发送给他人。
 
 采集流程只在用户明确确认最新完整方案后执行事务入库；分析、路径、链条审查和结果推测均只读。应用不内置在线模型或联网搜索，也不保存完整会话、网页来源或 AI 推理。
 
@@ -200,6 +210,7 @@ Causality 发布 15 个 Tool、5 个 Prompt、4 个 Resource。Tool 是跨客户
 - `CAUSALITY_WEB_PORT`：Web 绑定到本机回环地址的端口，默认 `8080`；
 - `CAUSALITY_MCP_PORT`：MCP Streamable HTTP 服务绑定到本机回环地址的端口，默认 `8081`；
 - `CAUSALITY_LOG_LEVEL`：API 日志级别，默认 `info`。
+- `CAUSALITY_TOKEN_ENCRYPTION_KEY`：Base64 编码的 32 字节 MCP 令牌加密密钥；生产环境必须配置并长期备份，可使用 `openssl rand -base64 32` 生成。
 
 示例：
 
@@ -269,7 +280,8 @@ Web 开发服务器和生产 Nginx 都通过同源 `/api` 提供接口：
 - `/api/cases`：具体案例列表、搜索、候选、详情、关联关系、创建和更新；
 - `/api/data-checks`：手动数据检查、最近成功快照和当前问题处理；
 - `/api/data-transfers`：CSV 导入、导入历史、导出范围确认和流式导出；
-- `/api/mcp`：MCP 连接信息、令牌轮换和令牌授权；
+- `/api/mcp/settings`：MCP 连接信息和服务状态；
+- `/api/mcp/tokens`：个人令牌创建、缩写列表、按需查看和永久删除；
 - `/api/ai-captures`：MCP 受控对比、方案、确认入库、结果和成功历史；
 - `/api/semantic`：统一模型生命周期、阶段专用操作、Worker 状态、模型切换、重新索引和增强查询状态；
 - `/api/causal-graph`：以一个原子事件为中心查询局部因果图；
@@ -277,9 +289,8 @@ Web 开发服务器和生产 Nginx 都通过同源 `/api` 提供接口：
 - `/api/health`：API 进程存活状态，不检查数据库；
 - `/api/ready`：数据库连接就绪状态。
 
-普通 Web API 没有账号认证，只应在受信任的本机环境中使用。MCP
-工作流写操作需要当前 64 位访问令牌；生产 Compose 只把 Web 和 MCP
-绑定到本机回环地址，不直接暴露 API。
+Web 业务 API 需要登录会话，MCP 调用需要当前用户创建的 Bearer Token。生产 Compose
+只把 Web 和 MCP 绑定到本机回环地址，不直接暴露 API。
 
 ## 质量验证
 

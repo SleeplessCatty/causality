@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import process from 'node:process';
 import test from 'node:test';
 import { URL } from 'node:url';
 
@@ -11,12 +13,21 @@ const workerDockerfile = readFileSync(
 const apiDockerfile = readFileSync(new URL('../../apps/api/Dockerfile', import.meta.url), 'utf8');
 const mcpDockerfileUrl = new URL('../../apps/mcp/Dockerfile', import.meta.url);
 const mcpDockerfile = existsSync(mcpDockerfileUrl) ? readFileSync(mcpDockerfileUrl, 'utf8') : '';
+const tokenEncryptionKey = Buffer.alloc(32, 0x78).toString('base64');
 
 function composeConfig(files) {
   const args = ['compose'];
   for (const file of files) args.push('-f', file);
   args.push('--profile', 'tools', 'config', '--format', 'json');
-  return JSON.parse(execFileSync('docker', args, { encoding: 'utf8' }));
+  return JSON.parse(
+    execFileSync('docker', args, {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        CAUSALITY_TOKEN_ENCRYPTION_KEY: tokenEncryptionKey,
+      },
+    }),
+  );
 }
 
 test('production Compose exposes only the Web and MCP loopback entry points', () => {
@@ -51,6 +62,16 @@ test('production Compose exposes only the Web and MCP loopback entry points', ()
   assert.equal(config.services.api.environment.CAUSALITY_MCP_HEALTH_URL, 'http://mcp:8081/health');
   assert.equal(config.services.mcp.environment.CAUSALITY_API_URL, 'http://api:3000');
   assert.equal(config.services.mcp.environment.DATABASE_URL, undefined);
+  assert.equal(config.services.api.environment.CAUSALITY_TOKEN_ENCRYPTION_KEY, tokenEncryptionKey);
+  assert.equal(
+    config.services.migrate.environment.CAUSALITY_TOKEN_ENCRYPTION_KEY,
+    tokenEncryptionKey,
+  );
+  assert.equal(config.services.mcp.environment.CAUSALITY_TOKEN_ENCRYPTION_KEY, undefined);
+  assert.equal(
+    config.services['semantic-worker'].environment.CAUSALITY_TOKEN_ENCRYPTION_KEY,
+    undefined,
+  );
   assert.equal(config.services.mcp.depends_on.api.condition, 'service_healthy');
   assert.ok(config.services.mcp.healthcheck);
   assert.equal(config.services.api.depends_on.migrate.condition, 'service_completed_successfully');
