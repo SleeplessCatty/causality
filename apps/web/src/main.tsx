@@ -8,6 +8,7 @@ import { AuthProvider } from './features/auth/AuthProvider';
 import './styles/base.css';
 import './styles/appShell.css';
 import './styles/shared.css';
+import './styles/loading.css';
 import './styles/recordManagement.css';
 import './features/system-status/systemStatus.css';
 import './features/data-maintenance/dataMaintenance.css';
