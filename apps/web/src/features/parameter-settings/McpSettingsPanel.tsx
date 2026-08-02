@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiClientError } from '../../shared/api/httpClient';
 import { AppDialog } from '../../shared/dialog/AppDialog';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
+import { LoadingState } from '../../shared/loading/LoadingState';
 import { OverflowText } from '../../shared/tooltip/OverflowText';
 import {
   createMcpToken,
@@ -159,23 +160,15 @@ export function McpSettingsPanel() {
             <p>查看服务状态，管理个人令牌并获取客户端配置说明。</p>
           </div>
         </div>
-        {settings.isPending ? (
-          <div className="mcp-settings-state" role="status">
-            正在读取 MCP 服务配置…
-          </div>
-        ) : settings.isError || !current ? (
-          <div className="mcp-settings-state mcp-settings-state--error">
-            <span>无法读取 MCP 服务配置</span>
-            <button
-              className="button button--secondary"
-              type="button"
-              onClick={() => void settings.refetch()}
-            >
-              重新加载
-            </button>
-          </div>
-        ) : (
-          <>
+        <LoadingState
+          pending={settings.isPending}
+          fetching={settings.isFetching}
+          hasData={Boolean(current)}
+          error={settings.error}
+          skeleton="settings"
+          onRetry={() => void settings.refetch()}
+        >
+          {current ? (
             <section className="mcp-settings-block" aria-labelledby="mcp-overview-title">
               <div className="mcp-settings-block__heading">
                 <h3 id="mcp-overview-title">服务概览</h3>
@@ -223,129 +216,134 @@ export function McpSettingsPanel() {
                 </div>
               </dl>
             </section>
-            <section className="mcp-settings-block" aria-labelledby="mcp-tokens-title">
-              <div className="mcp-settings-block__heading mcp-settings-block__heading--actions">
-                <div>
-                  <h3 id="mcp-tokens-title">个人令牌管理</h3>
-                  <p>令牌默认隐藏，可按需查看、复制或撤销。</p>
-                </div>
-                <button
-                  className="button button--primary"
-                  type="button"
-                  onClick={() => {
-                    setActionError(undefined);
-                    setTokenName('');
-                    setCreateOpen(true);
-                  }}
-                >
-                  创建个人令牌
-                </button>
-              </div>
-              {actionError && !createOpen && !deleteToken ? (
-                <div className="form-alert mcp-settings-alert" role="alert">
-                  {actionError}
-                </div>
-              ) : null}
-              {copyNotice ? (
-                <span className="mcp-settings-copy-status" role="status">
-                  {copyNotice === 'token' ? '令牌已复制' : 'JSON 配置已复制'}
-                </span>
-              ) : null}
-              {tokens.isPending ? (
-                <div className="mcp-settings-table-state" role="status">
-                  正在读取令牌…
-                </div>
-              ) : (
-                <table className="mcp-settings-token-table">
-                  <colgroup>
-                    <col className="mcp-settings-token-column--name" />
-                    <col className="mcp-settings-token-column--token" />
-                    <col className="mcp-settings-token-column--last-used" />
-                    <col className="mcp-settings-token-column--actions" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>令牌名称</th>
-                      <th>令牌</th>
-                      <th>最近使用时间</th>
-                      <th className="mcp-settings-token-actions-heading">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tokens.data?.map((token) => {
-                      const revealed = revealedTokens[token.id];
-                      const displayedToken = revealed ?? token.maskedToken;
-                      const pending = secretPendingId === token.id;
-                      return (
-                        <tr key={token.id}>
-                          <td>
-                            <OverflowText content={token.name} mode="always">
-                              <span className="mcp-settings-token-name">{token.name}</span>
-                            </OverflowText>
-                          </td>
-                          <td>
-                            <OverflowText content={displayedToken} mode="always">
-                              <code className="mcp-settings-token-value">{displayedToken}</code>
-                            </OverflowText>
-                          </td>
-                          <td>{formatLastUsed(token.lastUsedAt)}</td>
-                          <td>
-                            <div className="mcp-token-row-actions">
-                              <button
-                                className="mcp-token-row-action"
-                                type="button"
-                                disabled={pending}
-                                onClick={() => void toggleReveal(token.id)}
-                              >
-                                {revealed ? '隐藏' : '查看'}
-                              </button>
-                              <button
-                                className="mcp-token-row-action"
-                                type="button"
-                                disabled={pending}
-                                onClick={() => void copySecret(token.id, 'token')}
-                              >
-                                复制令牌
-                              </button>
-                              <button
-                                className="mcp-token-row-action"
-                                type="button"
-                                disabled={pending}
-                                onClick={() => void copySecret(token.id, 'json')}
-                              >
-                                复制完整 JSON 配置
-                              </button>
-                              <button
-                                className="mcp-token-row-action mcp-token-row-action--danger"
-                                type="button"
-                                disabled={remove.isPending}
-                                onClick={() => {
-                                  setActionError(undefined);
-                                  setDeleteToken({ id: token.id, name: token.name });
-                                }}
-                              >
-                                撤销
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </section>
-            <section className="mcp-settings-block" aria-labelledby="mcp-client-help-title">
-              <div className="mcp-settings-block__heading">
-                <h3 id="mcp-client-help-title">客户端配置说明</h3>
-              </div>
-              <p className="mcp-settings-help">
-                请在支持手工 Bearer Token 配置的客户端中使用个人令牌；不支持 OAuth discovery 或仅
-                OAuth 的客户端。
-              </p>
-            </section>
-          </>
-        )}
+          ) : null}
+        </LoadingState>
+        <section className="mcp-settings-block" aria-labelledby="mcp-tokens-title">
+          <div className="mcp-settings-block__heading mcp-settings-block__heading--actions">
+            <div>
+              <h3 id="mcp-tokens-title">个人令牌管理</h3>
+              <p>令牌默认隐藏，可按需查看、复制或撤销。</p>
+            </div>
+            <button
+              className="button button--primary"
+              type="button"
+              onClick={() => {
+                setActionError(undefined);
+                setTokenName('');
+                setCreateOpen(true);
+              }}
+            >
+              创建个人令牌
+            </button>
+          </div>
+          {actionError && !createOpen && !deleteToken ? (
+            <div className="form-alert mcp-settings-alert" role="alert">
+              {actionError}
+            </div>
+          ) : null}
+          {copyNotice ? (
+            <span className="mcp-settings-copy-status" role="status">
+              {copyNotice === 'token' ? '令牌已复制' : 'JSON 配置已复制'}
+            </span>
+          ) : null}
+          <LoadingState
+            pending={tokens.isPending}
+            fetching={tokens.isFetching}
+            hasData={Boolean(tokens.data)}
+            error={tokens.error}
+            skeleton="list"
+            onRetry={() => void tokens.refetch()}
+          >
+            {tokens.data ? (
+              <table className="mcp-settings-token-table">
+                <colgroup>
+                  <col className="mcp-settings-token-column--name" />
+                  <col className="mcp-settings-token-column--token" />
+                  <col className="mcp-settings-token-column--last-used" />
+                  <col className="mcp-settings-token-column--actions" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>令牌名称</th>
+                    <th>令牌</th>
+                    <th>最近使用时间</th>
+                    <th className="mcp-settings-token-actions-heading">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tokens.data.map((token) => {
+                    const revealed = revealedTokens[token.id];
+                    const displayedToken = revealed ?? token.maskedToken;
+                    const pending = secretPendingId === token.id;
+                    return (
+                      <tr key={token.id}>
+                        <td>
+                          <OverflowText content={token.name} mode="always">
+                            <span className="mcp-settings-token-name">{token.name}</span>
+                          </OverflowText>
+                        </td>
+                        <td>
+                          <OverflowText content={displayedToken} mode="always">
+                            <code className="mcp-settings-token-value">{displayedToken}</code>
+                          </OverflowText>
+                        </td>
+                        <td>{formatLastUsed(token.lastUsedAt)}</td>
+                        <td>
+                          <div className="mcp-token-row-actions">
+                            <button
+                              className="mcp-token-row-action"
+                              type="button"
+                              disabled={pending}
+                              onClick={() => void toggleReveal(token.id)}
+                            >
+                              {revealed ? '隐藏' : '查看'}
+                            </button>
+                            <button
+                              className="mcp-token-row-action"
+                              type="button"
+                              disabled={pending}
+                              onClick={() => void copySecret(token.id, 'token')}
+                            >
+                              复制令牌
+                            </button>
+                            <button
+                              className="mcp-token-row-action"
+                              type="button"
+                              disabled={pending}
+                              onClick={() => void copySecret(token.id, 'json')}
+                            >
+                              复制完整 JSON 配置
+                            </button>
+                            <button
+                              className="mcp-token-row-action mcp-token-row-action--danger"
+                              type="button"
+                              disabled={remove.isPending}
+                              onClick={() => {
+                                setActionError(undefined);
+                                setDeleteToken({ id: token.id, name: token.name });
+                              }}
+                            >
+                              撤销
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : null}
+          </LoadingState>
+        </section>
+        <section className="mcp-settings-block" aria-labelledby="mcp-client-help-title">
+          <div className="mcp-settings-block__heading">
+            <h3 id="mcp-client-help-title">客户端配置说明</h3>
+          </div>
+          <p className="mcp-settings-help">
+            请在支持手工 Bearer Token 配置的客户端中使用个人令牌；不支持 OAuth discovery 或仅 OAuth
+            的客户端。
+          </p>
+        </section>
       </section>
       <AppDialog
         open={createOpen}

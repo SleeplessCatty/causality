@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { AppTabs } from '../../shared/controls/AppTabs';
 import { AppDialog } from '../../shared/dialog/AppDialog';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
+import { LoadingState } from '../../shared/loading/LoadingState';
 import { createListReturnState } from '../../shared/navigation/listReturn';
 import { useListRecordFocus } from '../../shared/navigation/useListRecordFocus';
 import { readListPage } from '../../shared/pagination/ListPagination';
@@ -200,29 +201,23 @@ export function DataTransferPage() {
                     <p>仅记录已经成功提交的导入批次。</p>
                   </div>
                 </div>
-                {history.isPending && !historyData ? (
-                  <div className="table-state">加载导入历史…</div>
-                ) : null}
-                {history.isError ? (
-                  <div className="table-state table-state--error" role="alert">
-                    <strong>无法加载导入历史</strong>
-                    <button
-                      className="button button--secondary"
-                      type="button"
-                      onClick={() => void history.refetch()}
-                    >
-                      重新加载
-                    </button>
-                  </div>
-                ) : null}
-                {historyData ? (
-                  <ImportHistoryTable
-                    data={historyData}
-                    fetching={history.isFetching}
-                    location={location}
-                    onPageChange={changePage}
-                  />
-                ) : null}
+                <LoadingState
+                  pending={history.isPending}
+                  fetching={history.isFetching}
+                  hasData={Boolean(historyData)}
+                  error={history.error}
+                  skeleton="list"
+                  onRetry={() => void history.refetch()}
+                >
+                  {historyData ? (
+                    <ImportHistoryTable
+                      data={historyData}
+                      fetching={history.isFetching}
+                      location={location}
+                      onPageChange={changePage}
+                    />
+                  ) : null}
+                </LoadingState>
               </section>
             </>
           ) : activeTab === 'export' ? (
@@ -238,29 +233,23 @@ export function DataTransferPage() {
                   <p>仅记录已经成功提交的 AI 采集入库批次。</p>
                 </div>
               </div>
-              {aiHistory.isPending && !aiHistoryData ? (
-                <div className="table-state">加载 AI 导入历史…</div>
-              ) : null}
-              {aiHistory.isError ? (
-                <div className="table-state table-state--error" role="alert">
-                  <strong>无法加载 AI 导入历史</strong>
-                  <button
-                    className="button button--secondary"
-                    type="button"
-                    onClick={() => void aiHistory.refetch()}
-                  >
-                    重新加载
-                  </button>
-                </div>
-              ) : null}
-              {aiHistoryData ? (
-                <AiImportHistoryTable
-                  data={aiHistoryData}
-                  fetching={aiHistory.isFetching}
-                  location={location}
-                  onPageChange={changePage}
-                />
-              ) : null}
+              <LoadingState
+                pending={aiHistory.isPending}
+                fetching={aiHistory.isFetching}
+                hasData={Boolean(aiHistoryData)}
+                error={aiHistory.error}
+                skeleton="list"
+                onRetry={() => void aiHistory.refetch()}
+              >
+                {aiHistoryData ? (
+                  <AiImportHistoryTable
+                    data={aiHistoryData}
+                    fetching={aiHistory.isFetching}
+                    location={location}
+                    onPageChange={changePage}
+                  />
+                ) : null}
+              </LoadingState>
             </section>
           )}
         </AppTabs>

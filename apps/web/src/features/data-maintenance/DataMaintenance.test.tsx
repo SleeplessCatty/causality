@@ -459,7 +459,7 @@ describe('DataMaintenance', () => {
     vi.stubGlobal('fetch', baseFetch(succeeded, items));
     renderMaintenanceRoute();
 
-    const table = screen.getByRole('table');
+    const table = await screen.findByRole('table');
     await within(table).findByRole('link', { name: '供应中断' });
     expect(within(table).getByRole('link', { name: '供应中断' }).getAttribute('href')).toBe(
       `/events/${eventAId}`,
@@ -521,7 +521,7 @@ describe('DataMaintenance', () => {
     const router = renderMaintenanceRoute(`/maintenance?expanded=${singleIssue.id}`);
 
     expect(await screen.findByTestId(`expanded-${singleIssue.id}`)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '严重程度' }));
+    fireEvent.click(await screen.findByRole('button', { name: '严重程度' }));
     fireEvent.click(screen.getByRole('option', { name: '错误' }));
     await waitFor(() => {
       expect(router.state.location.search).toBe('?severity=error');
@@ -561,7 +561,7 @@ describe('DataMaintenance', () => {
     );
     await waitFor(() => expect(router.state.location.search).toBe(''));
 
-    fireEvent.click(screen.getByRole('button', { name: '严重程度' }));
+    fireEvent.click(await screen.findByRole('button', { name: '严重程度' }));
     fireEvent.click(screen.getByRole('option', { name: '警告' }));
     await waitFor(() => expect(router.state.location.search).toBe('?severity=warning'));
   });

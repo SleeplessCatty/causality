@@ -8,7 +8,7 @@ import { useState } from 'react';
 
 import { ApiClientError } from '../../shared/api/httpClient';
 import { useAutoDismissError } from '../../shared/forms/useAutoDismissError';
-import { LoadingHeadingStatus } from '../../shared/loading/LoadingState';
+import { LoadingHeadingStatus, LoadingState } from '../../shared/loading/LoadingState';
 import { McpSettingsPanel } from './McpSettingsPanel';
 import { SemanticModelCard } from './SemanticModelCard';
 import { SemanticModelActionDialog, type SemanticModelAction } from './SemanticModelActionDialog';
@@ -108,24 +108,6 @@ export function ParameterSettings() {
     onError: reportError,
   });
 
-  if (lifecycle.isPending) {
-    return <div className="page-state">正在加载参数配置…</div>;
-  }
-  if (lifecycle.isError || !lifecycle.data) {
-    return (
-      <div className="page-state page-state--error">
-        <span>参数配置加载失败</span>
-        <button
-          className="button button--secondary"
-          type="button"
-          onClick={() => void lifecycle.refetch()}
-        >
-          重新加载
-        </button>
-      </div>
-    );
-  }
-
   const current = lifecycle.data;
 
   function requestAction(action: SemanticAction, model: SemanticModelLifecycle): void {
@@ -150,61 +132,75 @@ export function ParameterSettings() {
 
       <McpSettingsPanel />
 
-      <section className="semantic-settings-section" aria-labelledby="semantic-settings-title">
-        <div className="semantic-settings-section__heading">
-          <div>
-            <h2 id="semantic-settings-title">语义增强查询</h2>
-            <p>模型下载完成后会自动加载并生成当前业务数据的语义索引。</p>
-          </div>
-          <span>最近检查 {formatSemanticDate(current.updatedAt)}</span>
-          <LoadingHeadingStatus
-            fetching={lifecycle.isFetching && !lifecycle.isPending}
-            error={lifecycle.error}
-            onRetry={() => void lifecycle.refetch()}
-          />
-        </div>
-
-        {current.operation ? <SemanticTaskProgress operation={current.operation} /> : null}
-
-        {current.index.status === 'incomplete' ? (
-          <div className="semantic-retry" role="status">
-            <div>
-              <strong>语义索引不完整</strong>
-              <span>失败 {current.index.failedItems} 项</span>
+      <LoadingState
+        pending={lifecycle.isPending}
+        fetching={lifecycle.isFetching}
+        hasData={Boolean(current)}
+        error={lifecycle.error}
+        skeleton="settings"
+        onRetry={() => void lifecycle.refetch()}
+      >
+        {current ? (
+          <section className="semantic-settings-section" aria-labelledby="semantic-settings-title">
+            <div className="semantic-settings-section__heading">
+              <div>
+                <h2 id="semantic-settings-title">语义增强查询</h2>
+                <p>模型下载完成后会自动加载并生成当前业务数据的语义索引。</p>
+              </div>
+              <span>最近检查 {formatSemanticDate(current.updatedAt)}</span>
+              <LoadingHeadingStatus
+                fetching={lifecycle.isFetching && !lifecycle.isPending}
+                error={lifecycle.error}
+                onRetry={() => void lifecycle.refetch()}
+              />
             </div>
-          </div>
-        ) : null}
 
-        <div className="semantic-model-grid">
-          {current.models.map((model) => (
-            <SemanticModelCard
-              key={model.modelCode}
-              model={model}
-              actionsDisabled={executeAction.isPending}
-              pendingAction={
-                executeAction.isPending && executeAction.variables?.modelCode === model.modelCode
-                  ? executeAction.variables.action
-                  : null
-              }
-              thresholdPending={
-                updateThreshold.isPending &&
-                updateThreshold.variables?.modelCode === model.modelCode
-              }
-              dedupeThresholdPending={
-                updateDedupeThreshold.isPending &&
-                updateDedupeThreshold.variables?.modelCode === model.modelCode
-              }
-              onAction={requestAction}
-              onThreshold={(modelCode, threshold) =>
-                updateThreshold.mutateAsync({ modelCode, threshold }).then(() => undefined)
-              }
-              onDedupeThreshold={(modelCode, threshold) =>
-                updateDedupeThreshold.mutateAsync({ modelCode, threshold }).then(() => undefined)
-              }
-            />
-          ))}
-        </div>
-      </section>
+            {current.operation ? <SemanticTaskProgress operation={current.operation} /> : null}
+
+            {current.index.status === 'incomplete' ? (
+              <div className="semantic-retry" role="status">
+                <div>
+                  <strong>语义索引不完整</strong>
+                  <span>失败 {current.index.failedItems} 项</span>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="semantic-model-grid">
+              {current.models.map((model) => (
+                <SemanticModelCard
+                  key={model.modelCode}
+                  model={model}
+                  actionsDisabled={executeAction.isPending}
+                  pendingAction={
+                    executeAction.isPending &&
+                    executeAction.variables?.modelCode === model.modelCode
+                      ? executeAction.variables.action
+                      : null
+                  }
+                  thresholdPending={
+                    updateThreshold.isPending &&
+                    updateThreshold.variables?.modelCode === model.modelCode
+                  }
+                  dedupeThresholdPending={
+                    updateDedupeThreshold.isPending &&
+                    updateDedupeThreshold.variables?.modelCode === model.modelCode
+                  }
+                  onAction={requestAction}
+                  onThreshold={(modelCode, threshold) =>
+                    updateThreshold.mutateAsync({ modelCode, threshold }).then(() => undefined)
+                  }
+                  onDedupeThreshold={(modelCode, threshold) =>
+                    updateDedupeThreshold
+                      .mutateAsync({ modelCode, threshold })
+                      .then(() => undefined)
+                  }
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
+      </LoadingState>
 
       <SemanticModelActionDialog
         action={modelAction}

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
-import { LoadingHeadingStatus } from '../../shared/loading/LoadingState';
+import { LoadingHeadingStatus, LoadingState } from '../../shared/loading/LoadingState';
 import { getReadiness } from '../system-status/systemStatusApi';
 import { DataCheckPanel } from './DataCheckPanel';
 import { getLatestDataCheck, startDataCheck } from './dataMaintenanceApi';
@@ -69,20 +69,25 @@ export function DataMaintenance() {
           onRetry={() => void Promise.all([readiness.refetch(), dataCheck.refetch()])}
         />
       </div>
-      <DataCheckPanel
-        latest={dataCheck.data}
-        loading={dataCheck.isPending}
-        checking={isChecking}
-        queryState={queryState}
-        onCheck={() => void checkData()}
-        error={
-          startCheck.error instanceof Error
-            ? startCheck.error.message
-            : dataCheck.error instanceof Error
-              ? dataCheck.error.message
-              : readinessError
-        }
-      />
+      <LoadingState
+        pending={dataCheck.isPending}
+        fetching={dataCheck.isFetching}
+        hasData={Boolean(dataCheck.data)}
+        error={dataCheck.error}
+        skeleton="settings"
+        onRetry={() => void dataCheck.refetch()}
+      >
+        {dataCheck.data ? (
+          <DataCheckPanel
+            latest={dataCheck.data}
+            loading={false}
+            checking={isChecking}
+            queryState={queryState}
+            onCheck={() => void checkData()}
+            error={startCheck.error instanceof Error ? startCheck.error.message : readinessError}
+          />
+        ) : null}
+      </LoadingState>
     </div>
   );
 }
