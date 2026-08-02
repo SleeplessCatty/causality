@@ -26,6 +26,7 @@
 - `token_ciphertext`：AES-256-GCM 加密后的令牌原文。
 - `token_iv`：每条令牌独立生成的随机 12 字节 IV。
 - `token_auth_tag`：GCM 认证标签。
+- `masked_token`：创建时生成的非敏感缩写，供列表直接读取而无需解密令牌。
 - `name`：令牌名称。
 - `created_at`、`last_used_at`、`last_client_name`：现有生命周期信息。
 
