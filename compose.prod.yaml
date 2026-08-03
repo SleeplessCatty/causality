@@ -1,16 +1,16 @@
 x-api-environment: &api-environment
   NODE_ENV: production
   DATABASE_URL: postgresql://causality:causality@postgres:5432/causality
-  CORS_ORIGIN: http://23.254.158.233:${CAUSALITY_WEB_PORT:-8080}
-  CAUSALITY_PUBLIC_ORIGIN: http://23.254.158.233:${CAUSALITY_WEB_PORT:-8080}
-  CAUSALITY_COOKIE_SECURE: 'false'
+  CORS_ORIGIN: https://causalities.cc
+  CAUSALITY_PUBLIC_ORIGIN: https://causalities.cc
+  CAUSALITY_COOKIE_SECURE: 'true'
   CAUSALITY_SESSION_HMAC_KEY: ${CAUSALITY_SESSION_HMAC_KEY:?Set CAUSALITY_SESSION_HMAC_KEY in the root .env file}
   CAUSALITY_AUTH_IP_HASH_KEY: ${CAUSALITY_AUTH_IP_HASH_KEY:?Set CAUSALITY_AUTH_IP_HASH_KEY in the root .env file}
   CAUSALITY_INTERNAL_MCP_SECRET: ${CAUSALITY_INTERNAL_MCP_SECRET:?Set CAUSALITY_INTERNAL_MCP_SECRET in the root .env file}
   CAUSALITY_TOKEN_ENCRYPTION_KEY: ${CAUSALITY_TOKEN_ENCRYPTION_KEY:?Set CAUSALITY_TOKEN_ENCRYPTION_KEY in the root .env file}
   LOG_LEVEL: ${CAUSALITY_LOG_LEVEL:-info}
   SEMANTIC_WORKER_URL: http://semantic-worker:3100
-  CAUSALITY_MCP_ENDPOINT: http://23.254.158.233:${CAUSALITY_MCP_PORT:-8081}/mcp
+  CAUSALITY_MCP_ENDPOINT: https://causalities.cc/mcp
   CAUSALITY_MCP_HEALTH_URL: http://mcp:8081/health
 
 services:
@@ -73,7 +73,7 @@ services:
       CAUSALITY_API_URL: http://api:3000
       CAUSALITY_INTERNAL_MCP_SECRET: ${CAUSALITY_INTERNAL_MCP_SECRET:?Set CAUSALITY_INTERNAL_MCP_SECRET in the root .env file}
     ports:
-      - '${CAUSALITY_MCP_PORT:-8081}:8081'
+      - '127.0.0.1:${CAUSALITY_MCP_PORT:-8081}:8081'
     depends_on:
       api:
         condition: service_healthy
@@ -128,7 +128,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     ports:
-      - '${CAUSALITY_WEB_PORT:-8080}:8080'
+      - '127.0.0.1:${CAUSALITY_WEB_PORT:-8080}:8080'
     depends_on:
       api:
         condition: service_healthy
