@@ -35,6 +35,63 @@ http_headers = { Authorization = "Bearer <TOKEN>" }
 
 进入 `<PROJECT_PATH>` 后启动 Codex。用 `/mcp` 检查服务器与 15 个 Tool，用 `/skills` 检查 5 个 Causality Skill。Codex 的 `/mcp` 不负责展示 Prompt 和 Resource。
 
+## Claude Code 与 Claude Desktop
+
+Claude Code 原生支持 Streamable HTTP 与自定义请求头，是首选方式；Claude Desktop 的 `mcpServers` 只支持 stdio，远程 HTTP 需经 `mcp-remote` 桥接。两者令牌都不得写入已跟踪文件。
+
+### Claude Code（Streamable HTTP，推荐）
+
+在 `<PROJECT_PATH>` 下用 CLI 注册，令牌只写入本地用户配置（`~/.claude.json`），不进入仓库：
+
+```bash
+claude mcp add --scope local --transport http causality <MCP_URL> \
+  --header "Authorization: Bearer <TOKEN>"
+```
+
+启动 `claude` 后用 `/mcp` 检查服务器与 15 个 Tool。5 个 Prompt 以斜杠命令 `/mcp__causality__<prompt名>` 出现；Resource 由客户端按需读取。`.agents/skills` 是 Codex 使用的 Skill，Claude Code 不发现它们，改用 Prompt 或本目录下的 Markdown 工作流。
+
+若偏好文件方式，可在项目根创建 `.mcp.json`（含令牌，必须加入 `.gitignore`）：
+
+```json
+{
+  "mcpServers": {
+    "causality": {
+      "type": "http",
+      "url": "<MCP_URL>",
+      "headers": { "Authorization": "Bearer <TOKEN>" }
+    }
+  }
+}
+```
+
+### Claude Code（stdio）
+
+先启动本地 API，再注册 stdio 命令：
+
+```bash
+claude mcp add --scope local causality \
+  --env CAUSALITY_API_URL=http://127.0.0.1:3000 \
+  --env CAUSALITY_MCP_TOKEN=<TOKEN> \
+  -- pnpm --dir <PROJECT_PATH> mcp:stdio
+```
+
+### Claude Desktop
+
+Desktop 的 `claude_desktop_config.json` 原生只支持 stdio，远程 Streamable HTTP 需通过 `mcp-remote` 桥接注入 Bearer 头：
+
+```json
+{
+  "mcpServers": {
+    "causality": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "<MCP_URL>", "--header", "Authorization: Bearer <TOKEN>"]
+    }
+  }
+}
+```
+
+配置文件位置：macOS `~/Library/Application Support/Claude/claude_desktop_config.json`；Windows `%APPDATA%\Claude\claude_desktop_config.json`。修改后重启 Desktop，在“设置 → Connectors”确认 causality 已连接。
+
 ## 通用 Streamable HTTP JSON
 
 客户端配置只需保持三项语义：`streamable-http`、`<MCP_URL>`、`Authorization: Bearer <TOKEN>`。不同客户端可以使用不同的外层字段名。首次请求必须执行 MCP initialize，后续请求携带服务端返回的会话 ID。

@@ -13,6 +13,7 @@ tests/e2e/.auth/
 *.tsbuildinfo
 .superpowers/
 .codex/config.toml
+.mcp.json
 .causality-mcp-check.json
 research/
 manual-test-data/
