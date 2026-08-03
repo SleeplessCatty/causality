@@ -31,6 +31,27 @@ function formatLastUsed(value: string | null): string {
   return value ? dateFormatter.format(new Date(value)) : '从未';
 }
 
+async function writeToClipboard(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  // 非安全上下文（例如通过 http://<IP> 访问）下 navigator.clipboard 不可用，
+  // 退回传统的 textarea + execCommand 复制。
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    if (!document.execCommand('copy')) throw new Error('execCommand copy failed');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 function createClientConfiguration(endpoint: string, token: string): string {
   return JSON.stringify(
     {
@@ -141,7 +162,7 @@ export function McpSettingsPanel() {
         format === 'token'
           ? secret
           : createClientConfiguration(settings.data?.endpoint ?? '', secret);
-      await navigator.clipboard.writeText(value);
+      await writeToClipboard(value);
       setCopyNotice(format);
       setActionError(undefined);
     } catch (error) {
