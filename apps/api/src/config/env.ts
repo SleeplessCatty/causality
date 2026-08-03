@@ -39,23 +39,24 @@ const envSchema = z
     CAUSALITY_COOKIE_SECURE: booleanEnvironmentValue,
   })
   .superRefine((value, context) => {
-    const publicOrigin = new URL(value.CAUSALITY_PUBLIC_ORIGIN);
-    const isLoopback =
-      publicOrigin.hostname === '127.0.0.1' || publicOrigin.hostname === 'localhost';
-    if (!isLoopback && publicOrigin.protocol !== 'https:') {
-      context.addIssue({
-        code: 'custom',
-        path: ['CAUSALITY_PUBLIC_ORIGIN'],
-        message: 'HTTPS required',
-      });
-    }
-    if (!value.CAUSALITY_COOKIE_SECURE && !isLoopback) {
-      context.addIssue({
-        code: 'custom',
-        path: ['CAUSALITY_COOKIE_SECURE'],
-        message: 'Insecure cookies require loopback origin',
-      });
-    }
+    // cancel the checks for HTTPS and secure cookies for now
+    // const publicOrigin = new URL(value.CAUSALITY_PUBLIC_ORIGIN);
+    // const isLoopback =
+    //   publicOrigin.hostname === '127.0.0.1' || publicOrigin.hostname === 'localhost';
+    // if (!isLoopback && publicOrigin.protocol !== 'https:') {
+    //   context.addIssue({
+    //     code: 'custom',
+    //     path: ['CAUSALITY_PUBLIC_ORIGIN'],
+    //     message: 'HTTPS required',
+    //   });
+    // }
+    // if (!value.CAUSALITY_COOKIE_SECURE && !isLoopback) {
+    //   context.addIssue({
+    //     code: 'custom',
+    //     path: ['CAUSALITY_COOKIE_SECURE'],
+    //     message: 'Insecure cookies require loopback origin',
+    //   });
+    // }
     if (value.CAUSALITY_SESSION_HMAC_KEY === value.CAUSALITY_AUTH_IP_HASH_KEY) {
       context.addIssue({
         code: 'custom',

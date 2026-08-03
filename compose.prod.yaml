@@ -1,0 +1,154 @@
+x-api-environment: &api-environment
+  NODE_ENV: production
+  DATABASE_URL: postgresql://causality:causality@postgres:5432/causality
+  CORS_ORIGIN: http://23.254.158.233:${CAUSALITY_WEB_PORT:-8080}
+  CAUSALITY_PUBLIC_ORIGIN: http://23.254.158.233:${CAUSALITY_WEB_PORT:-8080}
+  CAUSALITY_COOKIE_SECURE: 'false'
+  CAUSALITY_SESSION_HMAC_KEY: ${CAUSALITY_SESSION_HMAC_KEY:?Set CAUSALITY_SESSION_HMAC_KEY in the root .env file}
+  CAUSALITY_AUTH_IP_HASH_KEY: ${CAUSALITY_AUTH_IP_HASH_KEY:?Set CAUSALITY_AUTH_IP_HASH_KEY in the root .env file}
+  CAUSALITY_INTERNAL_MCP_SECRET: ${CAUSALITY_INTERNAL_MCP_SECRET:?Set CAUSALITY_INTERNAL_MCP_SECRET in the root .env file}
+  CAUSALITY_TOKEN_ENCRYPTION_KEY: ${CAUSALITY_TOKEN_ENCRYPTION_KEY:?Set CAUSALITY_TOKEN_ENCRYPTION_KEY in the root .env file}
+  LOG_LEVEL: ${CAUSALITY_LOG_LEVEL:-info}
+  SEMANTIC_WORKER_URL: http://semantic-worker:3100
+  CAUSALITY_MCP_ENDPOINT: http://127.0.0.1:${CAUSALITY_MCP_PORT:-8081}/mcp
+  CAUSALITY_MCP_HEALTH_URL: http://mcp:8081/health
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg18
+    environment:
+      POSTGRES_DB: causality
+      POSTGRES_USER: causality
+      POSTGRES_PASSWORD: causality
+    volumes:
+      - causality-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U causality -d causality']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+
+  migrate:
+    image: causality-api:local
+    environment: *api-environment
+    command: ['node', 'dist/database/migrate.js']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    image: causality-api:local
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment: *api-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/api/ready')
+          .then((response) => { if (!response.ok) process.exit(1); })
+          .catch(() => process.exit(1));
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  mcp:
+    image: causality-mcp:local
+    build:
+      context: .
+      dockerfile: apps/mcp/Dockerfile
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8081
+      CAUSALITY_API_URL: http://api:3000
+      CAUSALITY_INTERNAL_MCP_SECRET: ${CAUSALITY_INTERNAL_MCP_SECRET:?Set CAUSALITY_INTERNAL_MCP_SECRET in the root .env file}
+    ports:
+      - '127.0.0.1:${CAUSALITY_MCP_PORT:-8081}:8081'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:8081/health')
+          .then((response) => { if (!response.ok) process.exit(1); })
+          .catch(() => process.exit(1));
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  semantic-worker:
+    image: causality-semantic-worker:local
+    build:
+      context: .
+      dockerfile: apps/semantic-worker/Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://causality:causality@postgres:5432/causality
+      HOST: 0.0.0.0
+      PORT: 3100
+      MODEL_DIRECTORY: /var/lib/causality/models
+      LOG_LEVEL: ${CAUSALITY_LOG_LEVEL:-info}
+    volumes:
+      - causality-semantic-models:/var/lib/causality/models
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3100/internal/health')
+          .then((response) => { if (!response.ok) process.exit(1); })
+          .catch(() => process.exit(1));
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  web:
+    image: causality-web:local
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - '${CAUSALITY_WEB_PORT:-8080}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8080/health']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  seed:
+    image: causality-api:local
+    profiles: ['tools']
+    environment: *api-environment
+    command: ['node', 'dist/database/test-data/fixedSeed.js']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: 'no'
+
+volumes:
+  causality-postgres-data:
+  causality-semantic-models:
